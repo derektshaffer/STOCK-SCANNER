@@ -126,7 +126,7 @@ def get_bars(symbol, timeframe, start, end, limit):
         "sort": "asc",
     })
     url = f"{DATA_BASE}/v2/stocks/{urllib.parse.quote(symbol)}/bars?{params}"
-    return get_json(url).get("bars", [])
+    return get_json(url).get("bars") or []
 
 
 def is_regular_session(now_et):
