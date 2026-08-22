@@ -1,0 +1,61 @@
+name: Momentum Outcome Tracker
+
+on:
+  schedule:
+    # Runs twice in UTC so the New York-time gate works in both EDT and EST.
+    - cron: '30 20-21 * * 1-5'
+  workflow_dispatch:
+    inputs:
+      date:
+        description: 'Trading date to score (YYYY-MM-DD; blank = auto)'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  score:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check scoring time
+        id: score_time
+        shell: bash
+        run: |
+          NY_DAY=$(TZ=America/New_York date +%u)
+          NY_HM=$(TZ=America/New_York date +%H%M)
+
+          if [ "$NY_DAY" -le 5 ] && [ "$NY_HM" -ge 1630 ] && [ "$NY_HM" -lt 1700 ]; then
+            echo "should_score=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_score=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Score scanner outcomes
+        if: github.event_name == 'workflow_dispatch' || steps.score_time.outputs.should_score == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          OUTCOME_DATE: ${{ inputs.date }}
+          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+        run: python score_outcomes.py
+
+      - name: Preserve outcome reports
+        if: always() && (github.event_name == 'workflow_dispatch' || steps.score_time.outputs.should_score == 'true')
+        uses: actions/upload-artifact@v4
+        with:
+          name: outcome-report-${{ github.run_id }}-${{ github.run_attempt }}
+          path: outcome_reports/*
+          if-no-files-found: warn
+          retention-days: 90
