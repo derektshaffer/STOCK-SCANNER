@@ -1,4 +1,4 @@
-name: Trigger Zapier Stock Scanner
+name: Momentum Stock Scanner
 
 on:
   schedule:
@@ -6,11 +6,11 @@ on:
   workflow_dispatch:
 
 jobs:
-  trigger-zapier:
+  scan:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Check US market-hours window
+      - name: Check US market hours
         id: market_time
         shell: bash
         run: |
@@ -23,20 +23,17 @@ jobs:
             echo "in_market_hours=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Trigger Zapier webhook
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Run momentum scanner
         if: github.event_name == 'workflow_dispatch' || steps.market_time.outputs.in_market_hours == 'true'
         env:
-          ZAPIER_WEBHOOK_URL: ${{ secrets.ZAPIER_WEBHOOK_URL }}
-        shell: bash
-        run: |
-          if [ -z "$ZAPIER_WEBHOOK_URL" ]; then
-            echo "ZAPIER_WEBHOOK_URL secret is not configured."
-            exit 1
-          fi
-
-          curl --fail --silent --show-error \
-            --retry 2 \
-            --retry-delay 2 \
-            -X POST "$ZAPIER_WEBHOOK_URL" \
-            -H "Content-Type: application/json" \
-            -d "{\"source\":\"github-actions\",\"event\":\"scheduled_scan\",\"timestamp_utc\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}"
+          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+        run: python stock_scanner.py
