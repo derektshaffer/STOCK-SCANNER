@@ -1,0 +1,42 @@
+name: Trigger Zapier Stock Scanner
+
+on:
+  schedule:
+    - cron: '*/5 13-21 * * 1-5'
+  workflow_dispatch:
+
+jobs:
+  trigger-zapier:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check US market-hours window
+        id: market_time
+        shell: bash
+        run: |
+          NY_DAY=$(TZ=America/New_York date +%u)
+          NY_HM=$(TZ=America/New_York date +%H%M)
+
+          if [ "$NY_DAY" -gt 5 ] || [ "$NY_HM" -lt 0930 ] || [ "$NY_HM" -gt 1600 ]; then
+            echo "in_market_hours=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "in_market_hours=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Trigger Zapier webhook
+        if: steps.market_time.outputs.in_market_hours == 'true'
+        env:
+          ZAPIER_WEBHOOK_URL: ${{ secrets.ZAPIER_WEBHOOK_URL }}
+        shell: bash
+        run: |
+          if [ -z "$ZAPIER_WEBHOOK_URL" ]; then
+            echo "ZAPIER_WEBHOOK_URL secret is not configured."
+            exit 1
+          fi
+
+          curl --fail --silent --show-error \
+            --retry 2 \
+            --retry-delay 2 \
+            -X POST "$ZAPIER_WEBHOOK_URL" \
+            -H "Content-Type: application/json" \
+            -d "{\"source\":\"github-actions\",\"event\":\"scheduled_scan\",\"timestamp_utc\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}"
