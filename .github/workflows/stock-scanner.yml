@@ -24,7 +24,7 @@ jobs:
           fi
 
       - name: Trigger Zapier webhook
-        if: steps.market_time.outputs.in_market_hours == 'true'
+        if: github.event_name == 'workflow_dispatch' || steps.market_time.outputs.in_market_hours == 'true'
         env:
           ZAPIER_WEBHOOK_URL: ${{ secrets.ZAPIER_WEBHOOK_URL }}
         shell: bash
