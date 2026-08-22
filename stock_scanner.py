@@ -579,7 +579,7 @@ def main():
         reverse=True,
     )
 
-    if is_regular_session(now_et):
+   if is_regular_session(now_et):
     for c in rows[:ENRICH_TOP]:
         enrich_live(c, now_utc, now_et)
         time.sleep(0.05)
