@@ -2,7 +2,6 @@ import html, os, subprocess, sys, json, urllib.request, urllib.error
 from datetime import datetime
 import pandas as pd
 import streamlit as st
-from streamlit_searchbox import st_searchbox
 
 st.set_page_config(page_title="Single Stock Analyzer", page_icon="📈", layout="wide")
 
@@ -293,7 +292,7 @@ st.markdown("""
 .card{border:1px solid #1d334e;background:#0c1727;border-radius:14px;padding:14px 16px;min-height:108px}.k{font-size:11px;color:#8097b3;font-weight:800;letter-spacing:.08em}.v{font-size:27px;font-weight:900;margin-top:4px}.n{font-size:12px;color:#91a7c2;margin-top:2px}
 .good{color:#65e98d}.bad{color:#ff8181}.warn{color:#ffd166}.section{font-size:18px;font-weight:900;margin:22px 0 9px}.callout{border-left:4px solid #4593ff;background:#0d1a2d;padding:14px 16px;border-radius:8px;margin-top:10px}
 .tradeplan{border:1px solid #274664;background:#0b1829;border-radius:16px;padding:18px 20px;margin:16px 0 8px}.tradeaction{font-size:25px;font-weight:900;margin-bottom:5px}.tradewhy{color:#a9bdd4;font-size:13px}.smallnote{color:#91a7c2;font-size:12px}
-.search-label{font-size:14px;font-weight:800;color:#dbe7f5;margin:0 0 7px 2px;line-height:1.2}
+.search-label{font-size:19px;font-weight:900;color:#f4f8ff;margin:0 0 10px 2px;line-height:1.25;letter-spacing:.01em}
 </style>
 """,unsafe_allow_html=True)
 
@@ -301,41 +300,29 @@ st.markdown('<div class="hero"><div class="title">Single Stock Analyzer</div><di
 
 @st.fragment
 def render_ticker_search(asset_choices, current_symbol):
-    """Stable autocomplete control: typing/clearing reruns only this fragment."""
+    """Native searchable ticker picker with stable clearing behavior."""
     st.markdown('<div class="search-label">Ticker or company</div>', unsafe_allow_html=True)
 
-    selected_asset=st_searchbox(
-        search_equity_choices,
-        key="ticker_autocomplete",
-        label=None,
+    # Keep the picker empty by default. The currently analyzed ticker is shown
+    # separately below, so clearing the picker never restores an old value.
+    if "ticker_picker" not in st.session_state:
+        st.session_state["ticker_picker"] = []
+
+    selected_assets = st.multiselect(
+        "Ticker or company",
+        options=asset_choices,
+        key="ticker_picker",
+        max_selections=1,
         placeholder="Start typing a ticker or company name…",
-        default=None,
-        default_searchterm="",
-        default_options=[],
-        rerun_on_update=True,
-        rerun_scope="fragment",
-        debounce=120,
-        edit_after_submit="option",
-        clear_on_submit=False,
-        style_overrides={
-            "clear": {
-                "clearable": "always",
-                "icon": "cross",
-                "width": 20,
-                "height": 20,
-            },
-            "dropdown": {
-                "rotate": True,
-                "width": 24,
-                "height": 24,
-            },
-        },
+        label_visibility="collapsed",
+        width="stretch",
     )
 
-    selected_symbol=_ticker_from_choice(selected_asset)
+    selected_asset = selected_assets[0] if selected_assets else None
+    selected_symbol = _ticker_from_choice(selected_asset)
 
-    # Only a completed selection triggers a full app rerun.
-    # Typing and clearing stay inside this fragment, keeping the field stable.
+    # Only a completed selection triggers analysis. Typing and filtering are
+    # handled client-side by Streamlit, so the field stays visually stable.
     if selected_symbol and selected_symbol != st.session_state.get("ticker_search_request"):
         st.session_state["ticker_search_request"] = selected_symbol
         st.rerun(scope="app")
@@ -344,14 +331,14 @@ def render_ticker_search(asset_choices, current_symbol):
 
     if asset_choices:
         st.caption(
-            f"Autocomplete ready · {len(asset_choices):,} active US equities loaded from Alpaca. "
-            "Type a symbol or company name and choose a suggestion."
+            f"Search ready · {len(asset_choices):,} active US equities loaded from Alpaca. "
+            "Type a symbol or company name and select one match."
         )
     else:
         load_error = st.session_state.get("_ticker_asset_load_error")
         detail = f" ({load_error})" if load_error else ""
         st.warning(
-            "Ticker autocomplete could not load Alpaca's active-equity list. "
+            "Ticker search could not load Alpaca's active-equity list. "
             "The analyzer itself can still work; this only affects company-name suggestions."
             + detail
         )
@@ -604,4 +591,4 @@ elif pos=="BELOW": verdict="The setup has weakened because price is below VWAP. 
 else: verdict="The setup is mixed. Watch the nearest support/resistance and require confirmation before treating the move as high quality."
 st.markdown(f'<div class="callout"><b>{html.escape(ticker)} read:</b> {html.escape(verdict)}<br><span class="sub">This is a trading-analysis aid, not a guarantee of future price movement.</span></div>',unsafe_allow_html=True)
 
-st.caption(f'As of {r.get("as_of")} · Live={r.get("live_feed")} · Historical/liquidity={r.get("historical_feed")} · Engine={r.get("engine_version") or "unknown"} · UI=true-autocomplete-v4.3')
+st.caption(f'As of {r.get("as_of")} · Live={r.get("live_feed")} · Historical/liquidity={r.get("historical_feed")} · Engine={r.get("engine_version") or "unknown"} · UI=native-ticker-search-v4.4')
