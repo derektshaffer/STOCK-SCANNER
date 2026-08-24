@@ -2,6 +2,7 @@ import html, os, subprocess, sys, json, urllib.request, urllib.error
 from datetime import datetime
 import pandas as pd
 import streamlit as st
+from streamlit_searchbox import st_searchbox
 
 st.set_page_config(page_title="Single Stock Analyzer", page_icon="📈", layout="wide")
 
@@ -78,6 +79,42 @@ def _ticker_from_choice(value):
         return ""
     text = str(value).strip()
     return text.split(" — ", 1)[0].strip().upper()
+
+
+def search_equity_choices(searchterm: str):
+    """Return ranked ticker/company suggestions as the user types."""
+    choices = load_active_us_equities()
+    term = str(searchterm or "").strip().lower()
+    if not term:
+        current = str(st.session_state.get("ticker", "SDOT") or "SDOT").upper().strip()
+        preferred = [x for x in choices if x.startswith(current + " — ") or x == current]
+        return preferred[:1] + [x for x in choices[:9] if x not in preferred]
+
+    ranked = []
+    for choice in choices:
+        symbol, _, name = choice.partition(" — ")
+        s = symbol.lower()
+        n = name.lower()
+
+        # Strongest matches: ticker prefix/exact, then company-name prefix,
+        # then substring matches.
+        if s == term:
+            rank = (0, len(symbol))
+        elif s.startswith(term):
+            rank = (1, len(symbol))
+        elif n.startswith(term):
+            rank = (2, len(name))
+        elif term in s:
+            rank = (3, s.index(term), len(symbol))
+        elif term in n:
+            rank = (4, n.index(term), len(name))
+        else:
+            continue
+
+        ranked.append((rank, choice))
+
+    ranked.sort(key=lambda x: x[0])
+    return [choice for _, choice in ranked[:15]]
 
 
 TERM_GLOSSARY = {
@@ -236,26 +273,36 @@ c1,c2,c3=st.columns([2.2,1,1])
 with c1:
     asset_choices=load_active_us_equities()
     current_symbol=str(st.session_state.get("ticker","SDOT") or "SDOT").upper().strip()
-    current_choice=next((x for x in asset_choices if x.startswith(current_symbol+" — ") or x==current_symbol), current_symbol)
-    options=list(asset_choices)
-    if current_choice not in options:
-        options.insert(0,current_choice)
-    selected_asset=st.selectbox(
-        "Ticker or company",
-        options,
-        index=options.index(current_choice) if current_choice in options else 0,
-        placeholder="Start typing a ticker or company name…",
-        accept_new_options=True,
-        filter_mode="contains",
-        width="stretch",
-        help="Type either a ticker symbol or part of a company name, then choose the matching suggestion.",
-        key="ticker_picker",
+    current_choice=next(
+        (x for x in asset_choices if x.startswith(current_symbol+" — ") or x==current_symbol),
+        current_symbol,
     )
-    ticker=_ticker_from_choice(selected_asset)
+
+    selected_asset=st_searchbox(
+        search_equity_choices,
+        key="ticker_autocomplete",
+        label="Ticker or company",
+        placeholder="Start typing a ticker or company name…",
+        default=current_choice,
+        default_searchterm=current_choice,
+        default_options=search_equity_choices(""),
+        rerun_on_update=True,
+        debounce=120,
+        edit_after_submit="option",
+        clear_on_submit=False,
+    )
+
+    ticker=_ticker_from_choice(selected_asset or current_choice)
     if asset_choices:
-        st.caption("Start typing a ticker or company name; suggestions come from Alpaca's active US-equity list.")
+        st.caption(
+            f"Autocomplete ready · {len(asset_choices):,} active US equities loaded from Alpaca. "
+            "Type a symbol or company name and choose a suggestion."
+        )
     else:
-        st.caption("Ticker suggestions are temporarily unavailable; you can still type a ticker manually.")
+        st.warning(
+            "Ticker autocomplete could not load Alpaca's active-equity list. "
+            "Check the Alpaca credentials/API connection."
+        )
 with c2:
     run=st.button("Analyze",type="primary",width="stretch")
 with c3:
@@ -491,4 +538,4 @@ elif pos=="BELOW": verdict="The setup has weakened because price is below VWAP. 
 else: verdict="The setup is mixed. Watch the nearest support/resistance and require confirmation before treating the move as high quality."
 st.markdown(f'<div class="callout"><b>{html.escape(ticker)} read:</b> {html.escape(verdict)}<br><span class="sub">This is a trading-analysis aid, not a guarantee of future price movement.</span></div>',unsafe_allow_html=True)
 
-st.caption(f'As of {r.get("as_of")} · Live={r.get("live_feed")} · Historical/liquidity={r.get("historical_feed")} · Engine={r.get("engine_version") or "unknown"} · UI=autocomplete-glossary-v3')
+st.caption(f'As of {r.get("as_of")} · Live={r.get("live_feed")} · Historical/liquidity={r.get("historical_feed")} · Engine={r.get("engine_version") or "unknown"} · UI=true-autocomplete-v4')

@@ -1,2 +1,3 @@
 streamlit
 pandas
+streamlit-searchbox==0.1.24
