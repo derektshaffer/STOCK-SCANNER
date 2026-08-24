@@ -293,34 +293,52 @@ st.markdown("""
 .card{border:1px solid #1d334e;background:#0c1727;border-radius:14px;padding:14px 16px;min-height:108px}.k{font-size:11px;color:#8097b3;font-weight:800;letter-spacing:.08em}.v{font-size:27px;font-weight:900;margin-top:4px}.n{font-size:12px;color:#91a7c2;margin-top:2px}
 .good{color:#65e98d}.bad{color:#ff8181}.warn{color:#ffd166}.section{font-size:18px;font-weight:900;margin:22px 0 9px}.callout{border-left:4px solid #4593ff;background:#0d1a2d;padding:14px 16px;border-radius:8px;margin-top:10px}
 .tradeplan{border:1px solid #274664;background:#0b1829;border-radius:16px;padding:18px 20px;margin:16px 0 8px}.tradeaction{font-size:25px;font-weight:900;margin-bottom:5px}.tradewhy{color:#a9bdd4;font-size:13px}.smallnote{color:#91a7c2;font-size:12px}
+.search-label{font-size:14px;font-weight:800;color:#dbe7f5;margin:0 0 7px 2px;line-height:1.2}
 </style>
 """,unsafe_allow_html=True)
 
 st.markdown('<div class="hero"><div class="title">Single Stock Analyzer</div><div class="sub">Live momentum, VWAP, volume, historical analogs, support/resistance and dynamic entry/exit planning.</div></div>',unsafe_allow_html=True)
 
-c1,c2,c3=st.columns([2.2,1,1])
-with c1:
-    asset_choices=load_active_us_equities()
-    current_symbol=str(st.session_state.get("ticker","SDOT") or "SDOT").upper().strip()
+@st.fragment
+def render_ticker_search(asset_choices, current_symbol):
+    """Stable autocomplete control: typing/clearing reruns only this fragment."""
+    st.markdown('<div class="search-label">Ticker or company</div>', unsafe_allow_html=True)
 
-    # Keep the search field separate from the ticker currently being analyzed.
-    # This prevents the old ticker from reappearing after the user clicks X.
     selected_asset=st_searchbox(
         search_equity_choices,
         key="ticker_autocomplete",
-        label="Search ticker or company",
+        label=None,
         placeholder="Start typing a ticker or company name…",
         default=None,
         default_searchterm="",
         default_options=[],
         rerun_on_update=True,
+        rerun_scope="fragment",
         debounce=120,
         edit_after_submit="option",
         clear_on_submit=False,
+        style_overrides={
+            "clear": {
+                "clearable": "always",
+                "icon": "cross",
+                "width": 20,
+                "height": 20,
+            },
+            "dropdown": {
+                "rotate": True,
+                "width": 24,
+                "height": 24,
+            },
+        },
     )
 
     selected_symbol=_ticker_from_choice(selected_asset)
-    ticker=selected_symbol or current_symbol
+
+    # Only a completed selection triggers a full app rerun.
+    # Typing and clearing stay inside this fragment, keeping the field stable.
+    if selected_symbol and selected_symbol != st.session_state.get("ticker_search_request"):
+        st.session_state["ticker_search_request"] = selected_symbol
+        st.rerun(scope="app")
 
     st.caption(f"Currently analyzed: **{current_symbol}**")
 
@@ -337,6 +355,19 @@ with c1:
             "The analyzer itself can still work; this only affects company-name suggestions."
             + detail
         )
+
+
+c1,c2,c3=st.columns([2.2,1,1])
+with c1:
+    asset_choices=load_active_us_equities()
+    current_symbol=str(st.session_state.get("ticker","SDOT") or "SDOT").upper().strip()
+    render_ticker_search(asset_choices, current_symbol)
+
+ticker=str(
+    st.session_state.get("ticker_search_request")
+    or st.session_state.get("ticker","SDOT")
+    or "SDOT"
+).upper().strip()
 with c2:
     run=st.button("Analyze",type="primary",width="stretch")
 with c3:
@@ -347,6 +378,7 @@ if run or "result" not in st.session_state or st.session_state.get("ticker")!=ti
         with st.spinner(f"Analyzing {ticker}…"):
             st.session_state["result"]=analyze(ticker)
             st.session_state["ticker"]=ticker
+            st.session_state["ticker_search_request"]=ticker
     except Exception as e:
         st.error(str(e)); st.stop()
 r=st.session_state["result"]
@@ -572,4 +604,4 @@ elif pos=="BELOW": verdict="The setup has weakened because price is below VWAP. 
 else: verdict="The setup is mixed. Watch the nearest support/resistance and require confirmation before treating the move as high quality."
 st.markdown(f'<div class="callout"><b>{html.escape(ticker)} read:</b> {html.escape(verdict)}<br><span class="sub">This is a trading-analysis aid, not a guarantee of future price movement.</span></div>',unsafe_allow_html=True)
 
-st.caption(f'As of {r.get("as_of")} · Live={r.get("live_feed")} · Historical/liquidity={r.get("historical_feed")} · Engine={r.get("engine_version") or "unknown"} · UI=true-autocomplete-v4.2')
+st.caption(f'As of {r.get("as_of")} · Live={r.get("live_feed")} · Historical/liquidity={r.get("historical_feed")} · Engine={r.get("engine_version") or "unknown"} · UI=true-autocomplete-v4.3')
