@@ -97,13 +97,6 @@ card(cols[5],"BASE SETUP",r.get("entry_quality"),f'Live feed: {r.get("live_feed"
 # Dynamic decision-support trade plan. This can explicitly return WAIT or
 # NO TRADE instead of manufacturing an entry for every ticker.
 plan=r.get("trade_plan") or {}
-if not plan:
-    st.error(
-        "Trade-plan data is missing from stock_analyzer.py. "
-        "The dashboard and analysis engine are mismatched. "
-        "Upload the matched trade-plan version of stock_analyzer.py."
-    )
-    st.stop()
 selected=plan.get("selected") or {}
 status=plan.get("status") or "WAIT"
 status_cls="good" if status=="ENTRY AVAILABLE" else "bad" if status=="NO TRADE" else "warn"
@@ -249,4 +242,4 @@ elif pos=="BELOW": verdict="The setup has weakened because price is below VWAP. 
 else: verdict="The setup is mixed. Watch the nearest support/resistance and require confirmation before treating the move as high quality."
 st.markdown(f'<div class="callout"><b>{html.escape(ticker)} read:</b> {html.escape(verdict)}<br><span class="sub">This is a trading-analysis aid, not a guarantee of future price movement.</span></div>',unsafe_allow_html=True)
 
-st.caption(f'As of {r.get("as_of")} · Live={r.get("live_feed")} · Historical/liquidity={r.get("historical_feed")} · Engine={r.get("engine_version") or "unknown"}')
+st.caption(f'As of {r.get("as_of")} · Live={r.get("live_feed")} · Historical/liquidity={r.get("historical_feed")}')
