@@ -40,36 +40,65 @@ from stock_analyzer import analyze
 
 @st.cache_data(ttl=21600, show_spinner=False)
 def load_active_us_equities():
-    """Load active US equities from Alpaca for ticker/company autocomplete."""
+    """Load active US equities from Alpaca for ticker/company autocomplete.
+
+    Alpaca paper keys and live keys use different trading API hosts.
+    Try both automatically so the user does not have to change secrets.
+    """
     key = os.environ.get("ALPACA_API_KEY", "").strip()
     secret = os.environ.get("ALPACA_SECRET_KEY", "").strip()
     if not key or not secret:
         return []
-    url = "https://api.alpaca.markets/v2/assets?status=active&asset_class=us_equity"
-    req = urllib.request.Request(
-        url,
-        headers={
-            "APCA-API-KEY-ID": key,
-            "APCA-API-SECRET-KEY": secret,
-            "Accept": "application/json",
-        },
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=20) as resp:
-            assets = json.loads(resp.read().decode("utf-8"))
-    except Exception:
+
+    headers = {
+        "APCA-API-KEY-ID": key,
+        "APCA-API-SECRET-KEY": secret,
+        "Accept": "application/json",
+        "User-Agent": "single-stock-analyzer/1.0",
+    }
+
+    endpoints = [
+        "https://paper-api.alpaca.markets/v2/assets?status=active&asset_class=us_equity",
+        "https://api.alpaca.markets/v2/assets?status=active&asset_class=us_equity",
+    ]
+
+    assets = None
+    last_error = None
+
+    for url in endpoints:
+        req = urllib.request.Request(url, headers=headers)
+        try:
+            with urllib.request.urlopen(req, timeout=20) as resp:
+                payload = json.loads(resp.read().decode("utf-8"))
+            if isinstance(payload, list) and payload:
+                assets = payload
+                break
+        except Exception as exc:
+            last_error = str(exc)
+
+    if not isinstance(assets, list):
+        # Store a diagnostic for display without exposing credentials.
+        st.session_state["_ticker_asset_load_error"] = last_error or "No asset data returned."
         return []
+
+    st.session_state.pop("_ticker_asset_load_error", None)
 
     choices = []
     seen = set()
-    for asset in assets if isinstance(assets, list) else []:
+    for asset in assets:
         symbol = str(asset.get("symbol") or "").strip().upper()
         name = str(asset.get("name") or "").strip()
         status = str(asset.get("status") or "").lower()
+        tradable = asset.get("tradable")
+
         if not symbol or symbol in seen or status not in ("", "active"):
             continue
+
+        # Keep listed equities even when temporarily non-tradable, because
+        # the analyzer may still be useful for research.
         seen.add(symbol)
         choices.append(f"{symbol} — {name}" if name else symbol)
+
     choices.sort(key=lambda x: x.split(" — ", 1)[0])
     return choices
 
@@ -299,9 +328,12 @@ with c1:
             "Type a symbol or company name and choose a suggestion."
         )
     else:
+        load_error = st.session_state.get("_ticker_asset_load_error")
+        detail = f" ({load_error})" if load_error else ""
         st.warning(
             "Ticker autocomplete could not load Alpaca's active-equity list. "
-            "Check the Alpaca credentials/API connection."
+            "The analyzer itself can still work; this only affects company-name suggestions."
+            + detail
         )
 with c2:
     run=st.button("Analyze",type="primary",width="stretch")
@@ -538,4 +570,4 @@ elif pos=="BELOW": verdict="The setup has weakened because price is below VWAP. 
 else: verdict="The setup is mixed. Watch the nearest support/resistance and require confirmation before treating the move as high quality."
 st.markdown(f'<div class="callout"><b>{html.escape(ticker)} read:</b> {html.escape(verdict)}<br><span class="sub">This is a trading-analysis aid, not a guarantee of future price movement.</span></div>',unsafe_allow_html=True)
 
-st.caption(f'As of {r.get("as_of")} · Live={r.get("live_feed")} · Historical/liquidity={r.get("historical_feed")} · Engine={r.get("engine_version") or "unknown"} · UI=true-autocomplete-v4')
+st.caption(f'As of {r.get("as_of")} · Live={r.get("live_feed")} · Historical/liquidity={r.get("historical_feed")} · Engine={r.get("engine_version") or "unknown"} · UI=true-autocomplete-v4.1')
