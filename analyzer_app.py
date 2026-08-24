@@ -300,29 +300,25 @@ st.markdown('<div class="hero"><div class="title">Single Stock Analyzer</div><di
 
 @st.fragment
 def render_ticker_search(asset_choices, current_symbol):
-    """Native searchable ticker picker with stable clearing behavior."""
+    """Native searchable ticker picker with Enter-to-select behavior."""
     st.markdown('<div class="search-label">Ticker or company</div>', unsafe_allow_html=True)
 
-    # Keep the picker empty by default. The currently analyzed ticker is shown
-    # separately below, so clearing the picker never restores an old value.
-    if "ticker_picker" not in st.session_state:
-        st.session_state["ticker_picker"] = []
-
-    selected_assets = st.multiselect(
+    # No default selection: clearing the picker keeps it empty instead of
+    # restoring the currently analyzed ticker.
+    selected_asset = st.selectbox(
         "Ticker or company",
         options=asset_choices,
+        index=None,
         key="ticker_picker",
-        max_selections=1,
         placeholder="Start typing a ticker or company name…",
         label_visibility="collapsed",
         width="stretch",
     )
 
-    selected_asset = selected_assets[0] if selected_assets else None
     selected_symbol = _ticker_from_choice(selected_asset)
 
-    # Only a completed selection triggers analysis. Typing and filtering are
-    # handled client-side by Streamlit, so the field stays visually stable.
+    # In Streamlit's native selectbox, typing filters the options and Enter
+    # accepts the currently highlighted match (normally the first result).
     if selected_symbol and selected_symbol != st.session_state.get("ticker_search_request"):
         st.session_state["ticker_search_request"] = selected_symbol
         st.rerun(scope="app")
@@ -332,7 +328,7 @@ def render_ticker_search(asset_choices, current_symbol):
     if asset_choices:
         st.caption(
             f"Search ready · {len(asset_choices):,} active US equities loaded from Alpaca. "
-            "Type a symbol or company name and select one match."
+            "Type a symbol or company name; press Enter to choose the highlighted match."
         )
     else:
         load_error = st.session_state.get("_ticker_asset_load_error")
@@ -591,4 +587,4 @@ elif pos=="BELOW": verdict="The setup has weakened because price is below VWAP. 
 else: verdict="The setup is mixed. Watch the nearest support/resistance and require confirmation before treating the move as high quality."
 st.markdown(f'<div class="callout"><b>{html.escape(ticker)} read:</b> {html.escape(verdict)}<br><span class="sub">This is a trading-analysis aid, not a guarantee of future price movement.</span></div>',unsafe_allow_html=True)
 
-st.caption(f'As of {r.get("as_of")} · Live={r.get("live_feed")} · Historical/liquidity={r.get("historical_feed")} · Engine={r.get("engine_version") or "unknown"} · UI=native-ticker-search-v4.4')
+st.caption(f'As of {r.get("as_of")} · Live={r.get("live_feed")} · Historical/liquidity={r.get("historical_feed")} · Engine={r.get("engine_version") or "unknown"} · UI=enter-select-ticker-v4.5')
