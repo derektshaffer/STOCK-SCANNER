@@ -1,4 +1,4 @@
-import html, os, subprocess, sys, json
+import html, os, subprocess, sys, json, urllib.request, urllib.error
 from datetime import datetime
 import pandas as pd
 import streamlit as st
@@ -10,7 +10,7 @@ st.set_page_config(page_title="Single Stock Analyzer", page_icon="📈", layout=
 # stock_analyzer because that module reads its configuration at import time.
 def _load_streamlit_secrets_into_env():
     required = ("ALPACA_API_KEY", "ALPACA_SECRET_KEY")
-    optional = ("ALPACA_LIVE_FEED", "ALPACA_HISTORICAL_FEED")
+    optional = ("ALPACA_LIVE_FEED", "ALPACA_HISTORICAL_FEED", "OPENAI_API_KEY", "OPENAI_MODEL")
 
     try:
         secrets = dict(st.secrets)
@@ -37,6 +37,188 @@ _load_streamlit_secrets_into_env()
 
 from stock_analyzer import analyze
 
+@st.cache_data(ttl=21600, show_spinner=False)
+def load_active_us_equities():
+    """Load active US equities from Alpaca for ticker/company autocomplete."""
+    key = os.environ.get("ALPACA_API_KEY", "").strip()
+    secret = os.environ.get("ALPACA_SECRET_KEY", "").strip()
+    if not key or not secret:
+        return []
+    url = "https://api.alpaca.markets/v2/assets?status=active&asset_class=us_equity"
+    req = urllib.request.Request(
+        url,
+        headers={
+            "APCA-API-KEY-ID": key,
+            "APCA-API-SECRET-KEY": secret,
+            "Accept": "application/json",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            assets = json.loads(resp.read().decode("utf-8"))
+    except Exception:
+        return []
+
+    choices = []
+    seen = set()
+    for asset in assets if isinstance(assets, list) else []:
+        symbol = str(asset.get("symbol") or "").strip().upper()
+        name = str(asset.get("name") or "").strip()
+        status = str(asset.get("status") or "").lower()
+        if not symbol or symbol in seen or status not in ("", "active"):
+            continue
+        seen.add(symbol)
+        choices.append(f"{symbol} — {name}" if name else symbol)
+    choices.sort(key=lambda x: x.split(" — ", 1)[0])
+    return choices
+
+
+def _ticker_from_choice(value):
+    if value is None:
+        return ""
+    text = str(value).strip()
+    return text.split(" — ", 1)[0].strip().upper()
+
+
+TERM_GLOSSARY = {
+    "ATR": "Average True Range measures how much a stock normally moves over a recent period. A larger ATR means wider normal price swings, so entries and stops usually need more room.",
+    "ATR %": "ATR expressed as a percentage of the stock price. This makes volatility easier to compare across stocks with very different share prices.",
+    "VWAP": "Volume-Weighted Average Price is the session's average traded price weighted by volume. Price holding above VWAP is generally constructive for intraday momentum; below VWAP can signal weakness. Being far above VWAP can also mean the stock is extended and risky to chase.",
+    "VWAP extension": "The percentage distance between the current price and VWAP. A positive value means price is above VWAP; a large positive value can indicate chase risk. A negative value means price is below VWAP.",
+    "Volume pace": "Current trading volume compared with the amount of volume the stock would normally be expected to have by this time of day. 1.0x is roughly normal, while 3.0x means trading activity is running at about three times normal pace.",
+    "Relative volume": "Current volume compared with a normal historical baseline. High relative volume suggests unusually strong participation and can make a move more meaningful.",
+    "Liquidity": "How easily shares can be bought or sold without moving the price much. Higher liquidity usually means tighter spreads, less slippage, cleaner entries/exits, and lower risk of getting stuck.",
+    "Dollar volume": "Share volume multiplied by price. It estimates how much money is changing hands and is often more useful than share volume alone when comparing liquidity across stocks.",
+    "Bid": "The highest current price a buyer is offering to pay for a share.",
+    "Ask": "The lowest current price a seller is willing to accept for a share.",
+    "Bid/ask spread": "The gap between the best bid and ask. A tight spread generally means better liquidity and less immediate trading friction; a wide spread can cause significant slippage.",
+    "Slippage": "The difference between the price you expect to trade at and the price you actually receive. Slippage tends to be worse in thinly traded stocks or when spreads are wide.",
+    "Support": "A price area where buying has previously been strong enough to slow or reverse a decline. Support is a zone, not a guaranteed floor.",
+    "Resistance": "A price area where selling has previously been strong enough to slow or reverse a rise. A clean break above resistance can become a breakout signal.",
+    "Level touch": "A test of a support or resistance area. Multiple recent touches can make a level more meaningful, although repeated tests can also weaken a level over time.",
+    "Breakout": "A move through an important resistance level. Higher-quality breakouts are usually supported by strong volume, acceptable liquidity, and price holding above the broken level.",
+    "Breakout confirmation": "Evidence that a breakout is real rather than a quick false move, such as price holding above the level, increasing volume, a tight spread, or a successful retest.",
+    "False breakout": "A move above resistance that quickly fails and falls back below the level. False breakouts are one reason the analyzer can recommend waiting for confirmation rather than buying the first tick above resistance.",
+    "Pullback": "A temporary move lower during a broader upward move. Traders often look for pullbacks toward VWAP, prior resistance, or support to obtain a better entry than chasing a spike.",
+    "Entry zone": "A price range where the analyzer sees a more favorable balance of upside versus downside. It is a zone rather than one exact price because real markets rarely turn at a single penny.",
+    "Stop / invalidation": "The price area where the original trade thesis is considered wrong or materially weakened. It is based on technical structure and volatility rather than an arbitrary percentage loss.",
+    "Target 1": "The first, usually more conservative, profit objective. It is commonly based on nearby resistance or another technically meaningful level.",
+    "Target 2": "A secondary profit objective beyond Target 1, often using the next resistance area, volatility projection, or historical continuation behavior.",
+    "Stretch target": "A more aggressive upside objective that generally requires unusually strong continuation. It should be treated as lower-probability than Target 1.",
+    "Reward / risk": "Potential reward divided by potential loss from the proposed entry to the stop. A 2:1 ratio means the target offers about two dollars of potential reward for every one dollar at risk.",
+    "Setup score": "The analyzer's combined technical score based on factors such as momentum, VWAP position, volume, liquidity, price location, and other setup-quality inputs. It is not a probability of profit.",
+    "Plan confidence": "A quality score for the specific trade plan. It reflects how well the current technical, liquidity, historical, and catalyst evidence agree; it is not a guaranteed probability of success.",
+    "Historical spike analog": "A previous large move in the same ticker that resembles the current move. The analyzer uses these examples to estimate how the stock behaved after comparable spikes.",
+    "MFE": "Maximum Favorable Excursion: the largest favorable move that occurred after a historical setup. It helps estimate realistic upside behavior rather than only closing-price returns.",
+    "MAE": "Maximum Adverse Excursion: the largest move against the position after a historical setup. It helps estimate how much normal drawdown similar setups experienced.",
+    "Catalyst": "A news event or company development that can materially change demand for the stock, such as earnings, FDA news, a contract, merger activity, financing, or a reverse split.",
+    "Warrant": "A security that gives its holder the right to buy common shares at a specified exercise price. Warrants can create future dilution if exercised.",
+    "Warrant overhang": "Potential selling or dilution pressure created by outstanding warrants. If the stock rises above warrant exercise prices, holders may exercise warrants and sell shares, which can limit upside.",
+    "Dilution": "An increase in the number of shares outstanding. New shares can reduce each existing share's proportional ownership and can pressure price when issued into the market.",
+    "Float": "The number of shares readily available for public trading. Low-float stocks can move very quickly because relatively little buying or selling can shift price.",
+    "Market cap": "Share price multiplied by total shares outstanding. It estimates the market value of the company's equity.",
+    "Short interest": "Shares that have been sold short and remain open. High short interest can add squeeze potential but can also indicate substantial bearish conviction.",
+    "Short float": "Short interest expressed as a percentage of the publicly tradable float.",
+    "Short squeeze": "A rapid rise that forces short sellers to buy shares to close positions, which can add additional upward buying pressure.",
+    "Halt": "A temporary pause in trading. Volatile stocks may be halted by exchange volatility rules, and trading can resume at a substantially different price.",
+    "Gap up": "When a stock opens materially above the prior session's close, leaving a price gap between sessions.",
+    "Gap down": "When a stock opens materially below the prior session's close.",
+    "Momentum": "The speed and persistence of price movement. The analyzer compares several short time windows so a one-minute bounce is not mistaken for broader strength.",
+}
+
+TERM_ALIASES = {
+    "vwap ext": "VWAP extension",
+    "vwap extension %": "VWAP extension",
+    "vol pace": "Volume pace",
+    "rvol": "Relative volume",
+    "spread": "Bid/ask spread",
+    "bid ask spread": "Bid/ask spread",
+    "risk reward": "Reward / risk",
+    "rr": "Reward / risk",
+    "stop": "Stop / invalidation",
+    "invalidation": "Stop / invalidation",
+    "analog": "Historical spike analog",
+    "historical analog": "Historical spike analog",
+    "warrant overhang": "Warrant overhang",
+    "warrants": "Warrant",
+}
+
+
+def _glossary_match(term):
+    if not term:
+        return None, None
+    q = str(term).strip().lower()
+    canonical = TERM_ALIASES.get(q)
+    if canonical:
+        return canonical, TERM_GLOSSARY.get(canonical)
+    for key, value in TERM_GLOSSARY.items():
+        if key.lower() == q:
+            return key, value
+    return None, None
+
+
+def _extract_response_text(data):
+    pieces = []
+    for item in data.get("output") or []:
+        if not isinstance(item, dict) or item.get("type") != "message":
+            continue
+        for content in item.get("content") or []:
+            if isinstance(content, dict) and content.get("type") == "output_text":
+                text = content.get("text")
+                if text:
+                    pieces.append(str(text))
+    return "\n".join(pieces).strip()
+
+
+def ask_openai_about_term(term, ticker, result):
+    api_key = os.environ.get("OPENAI_API_KEY", "").strip()
+    if not api_key:
+        raise RuntimeError("OPENAI_API_KEY is not configured in Streamlit Secrets.")
+    model = os.environ.get("OPENAI_MODEL", "gpt-5.6-luna").strip() or "gpt-5.6-luna"
+    context = {
+        "ticker": ticker,
+        "price": result.get("price"),
+        "day_pct": result.get("day_pct"),
+        "vwap": result.get("vwap"),
+        "vwap_extension_pct": result.get("vwap_extension_pct"),
+        "volume_pace": result.get("volume_pace"),
+        "spread_pct": result.get("spread_pct"),
+        "score": result.get("score"),
+        "grade": result.get("grade"),
+        "trade_plan_status": (result.get("trade_plan") or {}).get("status"),
+    }
+    prompt = (
+        "Explain the trading or stock-market term below in plain English for a newer short-term trader. "
+        "First define it, then explain why it matters, then briefly relate it to the current analyzer data only if relevant. "
+        "Do not promise outcomes or present the explanation as a guaranteed buy/sell signal. Keep the answer concise.\n\n"
+        f"Term: {term}\nCurrent analyzer context: {json.dumps(context, default=str)}"
+    )
+    payload = json.dumps({
+        "model": model,
+        "input": prompt,
+        "max_output_tokens": 450,
+    }).encode("utf-8")
+    req = urllib.request.Request(
+        "https://api.openai.com/v1/responses",
+        data=payload,
+        method="POST",
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=45) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"OpenAI API error {exc.code}: {body[:400]}")
+    text = _extract_response_text(data)
+    if not text:
+        raise RuntimeError("The OpenAI API returned no text answer.")
+    return text, model
+
+
 st.markdown("""
 <style>
 .stApp{background:#08111f;color:#edf5ff}.block-container{max-width:1450px;padding-top:1.4rem}
@@ -52,9 +234,30 @@ st.markdown('<div class="hero"><div class="title">Single Stock Analyzer</div><di
 
 c1,c2,c3=st.columns([2.2,1,1])
 with c1:
-    ticker=st.text_input("Ticker",value=st.session_state.get("ticker","SDOT"),placeholder="SDOT").upper().strip()
+    asset_choices=load_active_us_equities()
+    current_symbol=str(st.session_state.get("ticker","SDOT") or "SDOT").upper().strip()
+    current_choice=next((x for x in asset_choices if x.startswith(current_symbol+" — ") or x==current_symbol), current_symbol)
+    options=list(asset_choices)
+    if current_choice not in options:
+        options.insert(0,current_choice)
+    selected_asset=st.selectbox(
+        "Ticker or company",
+        options,
+        index=options.index(current_choice) if current_choice in options else 0,
+        placeholder="Start typing a ticker or company name…",
+        accept_new_options=True,
+        filter_mode="contains",
+        width="stretch",
+        help="Type either a ticker symbol or part of a company name, then choose the matching suggestion.",
+        key="ticker_picker",
+    )
+    ticker=_ticker_from_choice(selected_asset)
+    if asset_choices:
+        st.caption("Start typing a ticker or company name; suggestions come from Alpaca's active US-equity list.")
+    else:
+        st.caption("Ticker suggestions are temporarily unavailable; you can still type a ticker manually.")
 with c2:
-    run=st.button("Analyze",type="primary",use_container_width=True)
+    run=st.button("Analyze",type="primary",width="stretch")
 with c3:
     st.caption("Live feed is controlled by `ALPACA_LIVE_FEED` (IEX now; SIP after upgrade).")
 
@@ -66,6 +269,45 @@ if run or "result" not in st.session_state or st.session_state.get("ticker")!=ti
     except Exception as e:
         st.error(str(e)); st.stop()
 r=st.session_state["result"]
+
+with st.expander("📘 Trading term lookup / Ask AI", expanded=False):
+    st.caption("Search common analyzer terms. Built-in definitions work without an AI key; optional OpenAI answers can use the current ticker's metrics for context.")
+    glossary_terms=sorted(TERM_GLOSSARY.keys())
+    term=st.selectbox(
+        "Term",
+        glossary_terms,
+        index=None,
+        placeholder="Type VWAP, liquidity, warrant overhang, MFE…",
+        accept_new_options=True,
+        filter_mode="contains",
+        width="stretch",
+        key="term_lookup",
+    )
+    if term:
+        matched_term, definition=_glossary_match(term)
+        if definition:
+            st.markdown(f"**{matched_term}**")
+            st.write(definition)
+        else:
+            st.info(f'“{term}” is not in the built-in glossary yet.')
+
+        openai_ready=bool(os.environ.get("OPENAI_API_KEY", "").strip())
+        if openai_ready:
+            if st.button("Ask AI for a contextual explanation", key="ask_term_ai", width="content"):
+                try:
+                    with st.spinner(f"Explaining {term}…"):
+                        answer, model=ask_openai_about_term(term,ticker,r)
+                    st.session_state["term_ai_answer"]={"term":str(term),"answer":answer,"model":model}
+                except Exception as exc:
+                    st.error(str(exc))
+            saved=st.session_state.get("term_ai_answer") or {}
+            if saved.get("term")==str(term) and saved.get("answer"):
+                st.markdown("#### AI explanation")
+                st.write(saved["answer"])
+                st.caption(f'Answered by OpenAI API model: {saved.get("model")}')
+        else:
+            st.caption("Optional: add `OPENAI_API_KEY` to Streamlit Secrets to get AI explanations inside the analyzer. This is separate from your ChatGPT subscription.")
+            st.link_button("Open ChatGPT", "https://chatgpt.com/", width="content")
 
 def money(x): return "—" if x is None else f"${x:,.2f}"
 def pp(x): return "—" if x is None else f"{x:+.2f}%"
@@ -97,6 +339,13 @@ card(cols[5],"BASE SETUP",r.get("entry_quality"),f'Live feed: {r.get("live_feed"
 # Dynamic decision-support trade plan. This can explicitly return WAIT or
 # NO TRADE instead of manufacturing an entry for every ticker.
 plan=r.get("trade_plan") or {}
+if not plan:
+    st.error(
+        "Trade-plan data is missing from stock_analyzer.py. "
+        "The dashboard and analysis engine are mismatched. "
+        "Upload the matched trade-plan version of stock_analyzer.py."
+    )
+    st.stop()
 selected=plan.get("selected") or {}
 status=plan.get("status") or "WAIT"
 status_cls="good" if status=="ENTRY AVAILABLE" else "bad" if status=="NO TRADE" else "warn"
@@ -161,7 +410,7 @@ with st.expander("Trade plan details — pullback vs breakout"):
         "Median 1d drawdown":pp(histctx.get("median_mae_1d")),
         "Catalyst bias":cat.get("label") or "NEUTRAL",
     }])
-    st.dataframe(ddf,use_container_width=True,hide_index=True)
+    st.dataframe(ddf,width="stretch",hide_index=True)
     st.caption(plan.get("method_note") or "")
 
 st.markdown('<div class="section">Momentum & liquidity</div>',unsafe_allow_html=True)
@@ -172,7 +421,7 @@ df=pd.DataFrame([{
     "Spread %":r.get("spread_pct"),"Volume Pace":r.get("volume_pace"),"Liquidity":liq.get("label"),
     "Avg $ Volume":dollars_compact(liq.get("avg_dollar_volume"))
 }])
-st.dataframe(df,use_container_width=True,hide_index=True)
+st.dataframe(df,width="stretch",hide_index=True)
 
 def level_table(rows):
     columns=["Price","Touches","Last touch","Age","Quality","Side"]
@@ -196,7 +445,7 @@ with scol:
     sup=r.get("supports") or []
     st.dataframe(
         level_table(sup),
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
         column_config={"Price":st.column_config.NumberColumn(format="$%.2f")},
     )
@@ -205,7 +454,7 @@ with rcol:
     res=r.get("resistances") or []
     st.dataframe(
         level_table(res),
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
         column_config={"Price":st.column_config.NumberColumn(format="$%.2f")},
     )
@@ -222,7 +471,7 @@ if h.get("status")=="ok":
     sdf=pd.DataFrame(h.get("samples") or [])
     if not sdf.empty:
         show=[c for c in ["date","spike_pct","d1","d2","d3","d5"] if c in sdf.columns]
-        st.dataframe(sdf[show],use_container_width=True,hide_index=True)
+        st.dataframe(sdf[show],width="stretch",hide_index=True)
 else: st.info("Not enough historical data for spike analogs yet.")
 
 st.markdown('<div class="section">Recent catalyst/news context</div>',unsafe_allow_html=True)
@@ -242,4 +491,4 @@ elif pos=="BELOW": verdict="The setup has weakened because price is below VWAP. 
 else: verdict="The setup is mixed. Watch the nearest support/resistance and require confirmation before treating the move as high quality."
 st.markdown(f'<div class="callout"><b>{html.escape(ticker)} read:</b> {html.escape(verdict)}<br><span class="sub">This is a trading-analysis aid, not a guarantee of future price movement.</span></div>',unsafe_allow_html=True)
 
-st.caption(f'As of {r.get("as_of")} · Live={r.get("live_feed")} · Historical/liquidity={r.get("historical_feed")}')
+st.caption(f'As of {r.get("as_of")} · Live={r.get("live_feed")} · Historical/liquidity={r.get("historical_feed")} · Engine={r.get("engine_version") or "unknown"} · UI=autocomplete-glossary-v3')
