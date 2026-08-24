@@ -302,26 +302,28 @@ c1,c2,c3=st.columns([2.2,1,1])
 with c1:
     asset_choices=load_active_us_equities()
     current_symbol=str(st.session_state.get("ticker","SDOT") or "SDOT").upper().strip()
-    current_choice=next(
-        (x for x in asset_choices if x.startswith(current_symbol+" — ") or x==current_symbol),
-        current_symbol,
-    )
 
+    # Keep the search field separate from the ticker currently being analyzed.
+    # This prevents the old ticker from reappearing after the user clicks X.
     selected_asset=st_searchbox(
         search_equity_choices,
         key="ticker_autocomplete",
-        label="Ticker or company",
+        label="Search ticker or company",
         placeholder="Start typing a ticker or company name…",
-        default=current_choice,
-        default_searchterm=current_choice,
-        default_options=search_equity_choices(""),
+        default=None,
+        default_searchterm="",
+        default_options=[],
         rerun_on_update=True,
         debounce=120,
         edit_after_submit="option",
         clear_on_submit=False,
     )
 
-    ticker=_ticker_from_choice(selected_asset or current_choice)
+    selected_symbol=_ticker_from_choice(selected_asset)
+    ticker=selected_symbol or current_symbol
+
+    st.caption(f"Currently analyzed: **{current_symbol}**")
+
     if asset_choices:
         st.caption(
             f"Autocomplete ready · {len(asset_choices):,} active US equities loaded from Alpaca. "
@@ -570,4 +572,4 @@ elif pos=="BELOW": verdict="The setup has weakened because price is below VWAP. 
 else: verdict="The setup is mixed. Watch the nearest support/resistance and require confirmation before treating the move as high quality."
 st.markdown(f'<div class="callout"><b>{html.escape(ticker)} read:</b> {html.escape(verdict)}<br><span class="sub">This is a trading-analysis aid, not a guarantee of future price movement.</span></div>',unsafe_allow_html=True)
 
-st.caption(f'As of {r.get("as_of")} · Live={r.get("live_feed")} · Historical/liquidity={r.get("historical_feed")} · Engine={r.get("engine_version") or "unknown"} · UI=true-autocomplete-v4.1')
+st.caption(f'As of {r.get("as_of")} · Live={r.get("live_feed")} · Historical/liquidity={r.get("historical_feed")} · Engine={r.get("engine_version") or "unknown"} · UI=true-autocomplete-v4.2')
