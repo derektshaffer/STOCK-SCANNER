@@ -1,6 +1,10 @@
 name: Momentum Stock Scanner
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/stock-scanner.yml'
   schedule:
     - cron: '*/5 13-21 * * 1-5'
   workflow_dispatch:
@@ -46,7 +50,7 @@ jobs:
           git apply --check /tmp/v27.patch
           git apply /tmp/v27.patch
           python -m py_compile stock_scanner.py scanner_app.py
-          git show HEAD^:.github/workflows/stock-scanner.yml > .github/workflows/stock-scanner.yml
+          git show HEAD^^:.github/workflows/stock-scanner.yml > .github/workflows/stock-scanner.yml
           git rm .github/workflows/apply-v27-tod-volume.yml
           git config user.name "ChatGPT Scanner Updater"
           git config user.email "actions@users.noreply.github.com"
