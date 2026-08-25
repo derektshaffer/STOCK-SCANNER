@@ -13,7 +13,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 # ============================================================
-# MOMENTUM STOCK SCANNER - v2.6
+# MOMENTUM STOCK SCANNER - v2.7
 #
 # v2.5 includes:
 #   1) Near-miss / watchlist ranking even when nothing fully passes.
@@ -28,6 +28,7 @@ from zoneinfo import ZoneInfo
 #  10) Liquidity prefers real consolidated SIP volume delayed ~15 minutes, with IEX scaling only as fallback.
 #  11) Setup grades, chase-risk flags, and alert-readiness labels.
 #  12) Machine-readable scan snapshots for later performance/outcome analysis.
+#  13) Per-ticker historical time-of-day volume curves replace the old linear volume assumption.
 #
 # Historical analysis compares each ticker with its OWN past intraday
 # setups at roughly the same time of day, then measures the next
@@ -72,9 +73,18 @@ NEWS_LIMIT = 50
 HISTORY_LOOKBACK_DAYS = 180
 HISTORY_MAX_SAMPLES = 10
 
+# Time-of-day volume profile. The scanner runs every 5 minutes, so 5-minute
+# bars give a good balance of accuracy and API/data size. We compare each
+# ticker with its OWN recent regular-session volume curve using IEX for both
+# today's live volume and the historical baseline so the feeds stay consistent.
+VOLUME_PROFILE_TIMEFRAME = "5Min"
+VOLUME_PROFILE_LOOKBACK_DAYS = 50
+VOLUME_PROFILE_SESSIONS = 20
+VOLUME_PROFILE_MIN_SESSIONS = 7
+
 SCAN_LOG_DIR = os.environ.get("SCAN_LOG_DIR", "scan_logs").strip() or "scan_logs"
 SCAN_LOG_TOP = 25
-SCANNER_VERSION = "2.6"
+SCANNER_VERSION = "2.7"
 
 API_KEY = os.environ.get("ALPACA_API_KEY", "").strip()
 API_SECRET = os.environ.get("ALPACA_SECRET_KEY", "").strip()
@@ -87,7 +97,7 @@ HEADERS = {
     "APCA-API-KEY-ID": API_KEY,
     "APCA-API-SECRET-KEY": API_SECRET,
     "Accept": "application/json",
-    "User-Agent": "github-stock-scanner/2.6",
+    "User-Agent": "github-stock-scanner/2.7",
 }
 
 # (category, base score, keywords)
@@ -779,6 +789,84 @@ def avg_daily_volume(symbol, now_utc):
     return sum(float(b["v"]) for b in completed) / len(completed)
 
 
+def historical_volume_profile(symbol, now_utc, now_et):
+    """Return this ticker's typical cumulative volume fraction for this time of day.
+
+    Uses recent completed regular sessions only. Each day's cumulative fraction is
+    measured at the current clock time, then the median is used so one huge spike
+    day does not distort the baseline. The typical daily volume is also a median.
+    """
+    bars = get_bars(
+        symbol,
+        VOLUME_PROFILE_TIMEFRAME,
+        now_utc - timedelta(days=VOLUME_PROFILE_LOOKBACK_DAYS),
+        now_utc,
+        10000,
+        feed=LIVE_FEED,
+    )
+    if not bars:
+        return None
+
+    ny = ZoneInfo("America/New_York")
+    today = now_et.date().isoformat()
+    open_minute = 9 * 60 + 30
+    close_minute = 16 * 60
+
+    # Interpolate inside the current 5-minute bucket. At exactly 10:05, for
+    # example, the 10:05 bucket has just begun and contributes ~0%; at 10:07:30
+    # it contributes ~50%. This keeps the expected curve aligned with a live
+    # cumulative-volume snapshot rather than jumping in 5-minute steps.
+    now_minute = now_et.hour * 60 + now_et.minute
+    bucket_start = now_minute - (now_minute % 5)
+    bucket_progress = min(1.0, max(0.0, ((now_minute - bucket_start) * 60 + now_et.second) / 300.0))
+
+    by_day = defaultdict(dict)
+    for bar in bars:
+        ts = parse_timestamp(bar.get("t"))
+        volume = bar.get("v")
+        if ts is None or volume is None:
+            continue
+        ts_et = ts.astimezone(ny)
+        day = ts_et.date().isoformat()
+        if day == today:
+            continue
+        minute = ts_et.hour * 60 + ts_et.minute
+        if minute < open_minute or minute >= close_minute:
+            continue
+        try:
+            by_day[day][minute] = by_day[day].get(minute, 0.0) + float(volume)
+        except (TypeError, ValueError):
+            continue
+
+    sessions = []
+    for day in sorted(by_day)[-VOLUME_PROFILE_SESSIONS:]:
+        minute_volumes = by_day[day]
+        total = sum(minute_volumes.values())
+        if total <= 0:
+            continue
+
+        before_bucket = sum(v for minute, v in minute_volumes.items() if minute < bucket_start)
+        current_bucket = minute_volumes.get(bucket_start, 0.0)
+        expected_so_far = before_bucket + current_bucket * bucket_progress
+        fraction = min(1.0, max(0.0, expected_so_far / total))
+        sessions.append((total, fraction))
+
+    if len(sessions) < VOLUME_PROFILE_MIN_SESSIONS:
+        return None
+
+    typical_daily_volume = median(total for total, _ in sessions)
+    expected_fraction = median(fraction for _, fraction in sessions)
+    expected_volume = typical_daily_volume * expected_fraction
+
+    return {
+        "sample_count": len(sessions),
+        "typical_daily_volume": typical_daily_volume,
+        "expected_fraction": expected_fraction,
+        "expected_volume": expected_volume,
+        "source": "ticker_historical_tod_iex",
+    }
+
+
 def recent_momentum(symbol, now_utc, current_price):
     bars = get_bars(symbol, "1Min", now_utc - timedelta(minutes=60), now_utc, 60)
     if len(bars) < 2:
@@ -797,13 +885,29 @@ def enrich_live(c, now_utc, now_et):
     try:
         m5, m15 = recent_momentum(c["symbol"], now_utc, c["price"])
         avg_vol = avg_daily_volume(c["symbol"], now_utc)
+        volume_profile = historical_volume_profile(c["symbol"], now_utc, now_et)
     except Exception as exc:
         c["enrichment_error"] = str(exc)
         return c
 
     pace = None
-    if avg_vol and avg_vol > 0:
-        expected_so_far = avg_vol * session_fraction(now_et)
+    expected_so_far = None
+    expected_fraction = None
+    pace_source = None
+    profile_samples = 0
+
+    if volume_profile and volume_profile.get("expected_volume", 0) > 0:
+        expected_so_far = float(volume_profile["expected_volume"])
+        expected_fraction = float(volume_profile["expected_fraction"])
+        profile_samples = int(volume_profile.get("sample_count") or 0)
+        pace_source = volume_profile.get("source") or "ticker_historical_tod"
+        pace = c["volume"] / expected_so_far
+    elif avg_vol and avg_vol > 0:
+        # Safe fallback for newly listed / extremely thin symbols that do not yet
+        # have enough intraday history. This preserves the old scanner behavior.
+        expected_fraction = session_fraction(now_et)
+        expected_so_far = avg_vol * expected_fraction
+        pace_source = "linear_fallback"
         if expected_so_far > 0:
             pace = c["volume"] / expected_so_far
 
@@ -811,6 +915,11 @@ def enrich_live(c, now_utc, now_et):
     c["momentum_15m"] = round(m15, 2) if m15 is not None else None
     c["avg_20d_volume"] = round(avg_vol, 0) if avg_vol is not None else None
     c["volume_pace"] = round(pace, 2) if pace is not None else None
+    c["volume_pace_source"] = pace_source
+    c["expected_volume_by_now"] = round(expected_so_far, 0) if expected_so_far is not None else None
+    c["expected_volume_fraction_pct"] = round(expected_fraction * 100.0, 1) if expected_fraction is not None else None
+    c["volume_vs_expected_pct"] = round((pace - 1.0) * 100.0, 1) if pace is not None else None
+    c["volume_profile_samples"] = profile_samples
     c["live_bonus"] = live_bonus_score(c)
     c["score"] = round(c["base_score"] + c["live_bonus"] + c.get("news_bonus", 0), 1)
     return c
@@ -1177,6 +1286,11 @@ def candidate_log_record(c, rank):
         "momentum_5m": c.get("momentum_5m"),
         "momentum_15m": c.get("momentum_15m"),
         "volume_pace": c.get("volume_pace"),
+        "volume_pace_source": c.get("volume_pace_source"),
+        "expected_volume_by_now": c.get("expected_volume_by_now"),
+        "expected_volume_fraction_pct": c.get("expected_volume_fraction_pct"),
+        "volume_vs_expected_pct": c.get("volume_vs_expected_pct"),
+        "volume_profile_samples": c.get("volume_profile_samples"),
         "live_confirmation_count": c.get("live_confirmation_count"),
         "news": compact_catalyst(c),
         "historical": compact_historical(c.get("historical")),
@@ -1241,6 +1355,8 @@ def write_scan_logs(rows, now_utc, now_et, excluded_symbols):
             "scan_id", "scan_time_et", "rank", "symbol", "price", "day_pct",
             "score", "setup_grade", "setup_label", "alert_tier", "alert_ready",
             "passed_base_filters", "momentum_5m", "momentum_15m", "volume_pace",
+            "volume_pace_source", "expected_volume_by_now",
+            "expected_volume_fraction_pct", "volume_vs_expected_pct", "volume_profile_samples",
             "liquidity_source", "liquidity_dollar_volume", "iex_spread_pct",
             "distance_from_high_pct", "distance_from_vwap_pct", "above_vwap",
             "failed_filters", "tradability_warnings", "setup_flags",
@@ -1269,6 +1385,11 @@ def write_scan_logs(rows, now_utc, now_et, excluded_symbols):
                     "momentum_5m": r.get("momentum_5m"),
                     "momentum_15m": r.get("momentum_15m"),
                     "volume_pace": r.get("volume_pace"),
+                    "volume_pace_source": r.get("volume_pace_source"),
+                    "expected_volume_by_now": r.get("expected_volume_by_now"),
+                    "expected_volume_fraction_pct": r.get("expected_volume_fraction_pct"),
+                    "volume_vs_expected_pct": r.get("volume_vs_expected_pct"),
+                    "volume_profile_samples": r.get("volume_profile_samples"),
                     "liquidity_source": r.get("liquidity_source"),
                     "liquidity_dollar_volume": r.get("liquidity_dollar_volume"),
                     "iex_spread_pct": r.get("iex_spread_pct"),

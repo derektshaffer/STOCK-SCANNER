@@ -293,7 +293,8 @@ def card(c):
   <div class="grid">
     {metric("5 MIN",f(c.get("momentum_5m"),2,"%"),"pos" if (c.get("momentum_5m") or 0)>0 else "muted")}
     {metric("15 MIN",f(c.get("momentum_15m"),2,"%"),"pos" if (c.get("momentum_15m") or 0)>0 else "muted")}
-    {metric("VOLUME PACE",f(c.get("volume_pace"),2,"x"),"pos" if (c.get("volume_pace") or 0)>=1.5 else "muted")}
+    {metric("TOD VOL PACE",f(c.get("volume_pace"),2,"x"),"pos" if (c.get("volume_pace") or 0)>=1.5 else "muted")}
+    {metric("NORMAL VOL BY NOW",f(c.get("expected_volume_fraction_pct"),1,"%"))}
     {metric("VWAP PRICE","$"+f(c.get("vwap"),2),"pos" if c.get("above_vwap") else "neg")}
     {metric("FROM HIGH",f(c.get("distance_from_high_pct"),2,"%"))}
     {metric("IEX SPREAD",f(spread,2,"%"))}
@@ -320,7 +321,10 @@ def to_df(records):
                 "Day %": c.get("day_pct"),
                 "5m %": c.get("momentum_5m"),
                 "15m %": c.get("momentum_15m"),
-                "Vol Pace": c.get("volume_pace"),
+                "TOD Vol Pace": c.get("volume_pace"),
+                "Normal Vol by Now %": c.get("expected_volume_fraction_pct"),
+                "Vol vs Expected %": c.get("volume_vs_expected_pct"),
+                "Vol Profile Days": c.get("volume_profile_samples"),
                 "From High %": c.get("distance_from_high_pct"),
                 "VWAP $": c.get("vwap"),
                 "VWAP Status": "ABOVE" if c.get("above_vwap") else "BELOW",
@@ -617,8 +621,8 @@ st.markdown(
       </div>
     </div>
     <div class="legend-item">
-      <div class="legend-term">Volume Pace</div>
-      <div class="legend-def">Current volume compared with the stock's normal volume expected by this time of day. 1.00x is roughly normal pace; 2.00x means roughly twice the usual pace. Strong volume pace helps confirm that a price move has broad participation instead of being caused by only a small number of trades.</div>
+      <div class="legend-term">Time-of-Day Volume Pace</div>
+      <div class="legend-def">This now uses the stock's <b>own recent intraday volume pattern</b>, not a straight-line assumption. The scanner looks at recent completed sessions and estimates what percentage of a normal day's volume this ticker usually has traded by the current clock time. That automatically accounts for the fact that volume is normally much heavier near the open and often quieter in the middle of the day.<br><br><b>1.00x:</b> about normal for this ticker at this exact time. <b>2.00x:</b> about twice the volume normally expected by now. <b>Normal Vol by Now %</b> shows the historical percentage of a typical day's volume usually completed by this time. The scanner uses a median-based baseline so one unusually huge prior day does not distort the comparison. If a ticker does not yet have enough intraday history, it temporarily falls back to the older linear calculation.</div>
     </div>
     <div class="legend-item">
       <div class="legend-term">IEX Spread</div>
