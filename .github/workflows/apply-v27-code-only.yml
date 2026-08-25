@@ -37,3 +37,5 @@ jobs:
           git add stock_scanner.py scanner_app.py
           git commit -m "Update momentum scanner to v2.7 TOD volume [skip ci]"
           git push origin HEAD:main
+
+# trigger: direct code-only retry
