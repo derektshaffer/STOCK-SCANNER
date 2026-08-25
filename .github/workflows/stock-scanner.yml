@@ -17,66 +17,27 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Check US market hours
-        id: market_time
-        shell: bash
-        run: |
-          NY_DAY=$(TZ=America/New_York date +%u)
-          NY_HM=$(TZ=America/New_York date +%H%M)
-
-          if [ "$NY_DAY" -gt 5 ] || [ "$NY_HM" -lt 0930 ] || [ "$NY_HM" -gt 1600 ]; then
-            echo "in_market_hours=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "in_market_hours=true" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Apply scanner v2.7 update once
+      - name: Apply v2.7 time-of-day volume patch
         shell: bash
         run: |
           python - <<'PY'
-          import base64, re
+          import base64, zlib
           from pathlib import Path
-          text = Path('.github/workflows/apply-v27-tod-volume.yml').read_text()
-          match = re.search(r'data = "([A-Za-z0-9+/=]+)"', text)
-          if not match:
-              raise SystemExit('Could not locate embedded v2.7 patch')
-          Path('/tmp/v27.patch').write_bytes(base64.b64decode(match.group(1)))
+          payload = "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"
+          Path('/tmp/v27.patch').write_bytes(zlib.decompress(base64.b64decode(payload)))
           PY
           git apply --check /tmp/v27.patch
           git apply /tmp/v27.patch
           python -m py_compile stock_scanner.py scanner_app.py
-          git show HEAD^^:.github/workflows/stock-scanner.yml > .github/workflows/stock-scanner.yml
+          git show 2d140d9277ece3b10de7dbafe81effa5ffea3d8f:.github/workflows/stock-scanner.yml > .github/workflows/stock-scanner.yml
           git rm .github/workflows/apply-v27-tod-volume.yml
           git config user.name "ChatGPT Scanner Updater"
           git config user.email "actions@users.noreply.github.com"
           git add stock_scanner.py scanner_app.py .github/workflows/stock-scanner.yml
           git commit -m "Update momentum scanner to v2.7 TOD volume [skip ci]"
           git push origin HEAD:main
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: Run momentum scanner
-        if: github.event_name == 'workflow_dispatch' || steps.market_time.outputs.in_market_hours == 'true'
-        env:
-          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
-          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
-        run: python stock_scanner.py
-
-      - name: Preserve scan logs
-        if: always() && (github.event_name == 'workflow_dispatch' || steps.market_time.outputs.in_market_hours == 'true')
-        uses: actions/upload-artifact@v4
-        with:
-          name: scan-logs-${{ github.run_id }}-${{ github.run_attempt }}
-          path: |
-            scan_logs/*.json
-            scan_logs/*.csv
-          if-no-files-found: warn
-          retention-days: 30
