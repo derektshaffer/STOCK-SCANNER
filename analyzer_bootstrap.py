@@ -60,13 +60,7 @@ def _install_no_fade_css():
 
 
 def _cleanup_combined_browser_helpers():
-    """Remove Scanner-only browser state before the Analyzer does heavy work.
-
-    The expanded scanner cards are injected directly into the browser DOM, so
-    Streamlit does not own them and cannot reliably remove them during a rerun.
-    Clean them up immediately when entering the Analyzer. Also stop the old
-    scroll/tooltip observers so they do not watch the Analyzer build.
-    """
+    """Retire the old Scanner DOM immediately before Analyzer UI is rendered."""
     components.html(
         """
         <script>
@@ -108,6 +102,19 @@ def _cleanup_combined_browser_helpers():
           }
           const tipBox = d.getElementById('stock-tech-tooltip');
           if (tipBox) tipBox.style.display = 'none';
+
+          // The Scanner was intentionally kept fully visible while the server
+          // calculated the requested analysis. The result is ready now, so
+          // remove that protection and hide only Streamlit's old stale nodes
+          // before any Analyzer widgets are emitted.
+          const preserve = d.getElementById('stock-analyze-preserve-scanner');
+          if (preserve) preserve.remove();
+          d.querySelectorAll('[data-stale="true"]').forEach((node) => {
+            try {
+              node.style.display = 'none';
+              node.style.pointerEvents = 'none';
+            } catch (_) {}
+          });
         })();
         </script>
         """,
@@ -268,8 +275,6 @@ def _render_saved_stocks():
     st.markdown(
         """
         <style>
-        /* The keyed container is a top-level Streamlit block. Give it the
-           earliest flex order so Saved Stocks stays at the top of the page. */
         .st-key-saved_stocks_top { order: -1000 !important; }
         .saved-stock-shell{
             border:1px solid #263e5c;background:#0d192a;border-radius:14px;
@@ -332,29 +337,75 @@ def _render_saved_stocks():
                     st.rerun()
 
 
+def _prepare_combined_result(sa):
+    """Calculate a requested ticker before any Analyzer UI is rendered.
+
+    Scanner Analyze buttons intentionally clear ``result``. Doing the expensive
+    work here keeps the Scanner as the only visible page until the result is
+    ready. analyzer_ui_core.py then consumes this fresh result without showing
+    its own spinner or calling the market APIs again.
+    """
+    ticker = str(
+        st.session_state.get("ticker_search_request")
+        or st.session_state.get("ticker")
+        or "SDOT"
+    ).upper().strip()
+    if not ticker:
+        return "No ticker was selected."
+
+    existing = st.session_state.get("result")
+    existing_symbol = str((existing or {}).get("symbol") or "").upper().strip() if isinstance(existing, dict) else ""
+    state_symbol = str(st.session_state.get("ticker") or "").upper().strip()
+
+    if isinstance(existing, dict) and existing and state_symbol == ticker and (not existing_symbol or existing_symbol == ticker):
+        return None
+
+    try:
+        result = sa.analyze(ticker)
+    except Exception as exc:
+        return str(exc)
+
+    st.session_state["result"] = result
+    st.session_state["ticker"] = ticker
+    st.session_state["ticker_search_request"] = ticker
+    st.session_state.pop("ticker_picker", None)
+    return None
+
+
 def run():
     _preload_secrets()
     combined = _combined_workspace()
-    if combined:
-        # Remove browser-injected Scanner content before any heavy Analyzer
-        # imports/data calls begin, so old Scanner cards cannot linger onscreen.
-        _cleanup_combined_browser_helpers()
-
-        # Render Saved Stocks before the Analyzer's heavier imports and UI.
-        # The keyed container keeps this block pinned at the top of the page.
-        with st.container(key="saved_stocks_top"):
-            _render_saved_stocks()
-    else:
+    if not combined:
         _install_no_fade_css()
 
     import stock_analyzer as sa
     from historical_integration import install_historical_analysis
-    from historical_ui import render_historical_setup
     from ml_integration import install_ml_analysis
-    from ml_ui import render_ml_prediction
 
+    # Install the exact same enhanced analyzer used by the final dashboard
+    # before pre-calculating a Scanner-launched result.
     install_historical_analysis(sa)
     install_ml_analysis(sa)
+
+    launch_error = None
+    if combined:
+        # Important ordering: do the expensive API/history/ML work first while
+        # the previous Scanner remains the only visible page. Do not emit the
+        # Analyzer header, Saved Stocks, or spinner until this finishes.
+        launch_error = _prepare_combined_result(sa)
+
+        # The result is ready. Retire old Scanner DOM immediately, then render
+        # the Analyzer from the already-populated session result.
+        _cleanup_combined_browser_helpers()
+        with st.container(key="saved_stocks_top"):
+            _render_saved_stocks()
+
+        if launch_error:
+            st.error(f"Could not analyze the selected ticker: {launch_error}")
+            return
+
+    from historical_ui import render_historical_setup
+    from ml_ui import render_ml_prediction
 
     target = Path(__file__).with_name("analyzer_ui_core.py")
     if not target.exists():
