@@ -215,6 +215,61 @@ if view == "Momentum Scanner":
     st.session_state["_scanner_status_mount"] = st.empty()
 
 
+if view == "Momentum Scanner":
+    st.markdown(
+        """
+        <style>
+        /* Compact the combined one-click scanner section without affecting
+           the Stock Analyzer page. */
+        .combined-quick {
+            padding: 7px 10px 6px !important;
+            margin: 0 0 7px !important;
+            border-radius: 9px !important;
+        }
+        .combined-quick-title {
+            font-size: 14px !important;
+            line-height: 1.1 !important;
+            margin-bottom: 1px !important;
+        }
+        .combined-quick-sub {
+            font-size: 11px !important;
+            line-height: 1.2 !important;
+            margin-bottom: 3px !important;
+        }
+        .combined-ticker-row {
+            min-height: 50px !important;
+            gap: 6px !important;
+            padding: 4px 0 !important;
+        }
+        .combined-ticker-symbol {
+            font-size: 20px !important;
+        }
+        .combined-ticker-caption {
+            font-size: 9px !important;
+            margin-top: 2px !important;
+        }
+        .combined-stat {
+            padding: 5px 8px !important;
+            border-radius: 8px !important;
+        }
+        .combined-stat-label {
+            font-size: 8.5px !important;
+        }
+        .combined-stat-value {
+            font-size: 17px !important;
+            margin-top: 2px !important;
+        }
+        [class*="st-key-combined_analyze_"] button {
+            min-height: 46px !important;
+            height: 46px !important;
+            border-radius: 9px !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def _latest_scan_candidates():
     path = Path("scan_logs/latest_scan.json")
     if not path.exists():
