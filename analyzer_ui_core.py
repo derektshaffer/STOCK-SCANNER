@@ -418,8 +418,6 @@ with st.container(key="analyzer_header"):
 @st.fragment
 def render_ticker_search(asset_choices, current_symbol):
     """Native searchable ticker picker with Enter-to-select behavior."""
-    st.markdown('<div class="search-label">Ticker or company</div>', unsafe_allow_html=True)
-
     # No default selection: clearing the picker keeps it empty instead of
     # restoring the currently analyzed ticker.
     selected_asset = st.selectbox(
@@ -460,7 +458,7 @@ def render_ticker_search(asset_choices, current_symbol):
 
 
 with st.container(key="analyzer_controls"):
-    c1,c2,c3=st.columns([2.2,1,1])
+    c1,c2,c3=st.columns([2.2,1,1], vertical_alignment="center")
     with c1:
         asset_choices=load_active_us_equities()
         current_symbol=str(st.session_state.get("ticker","SDOT") or "SDOT").upper().strip()
