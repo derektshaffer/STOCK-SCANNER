@@ -259,6 +259,26 @@ if view == "Momentum Scanner":
             font-size: 16px !important;
             margin-top: 1px !important;
         }
+
+        /* Align ticker cells with metric rows */
+        .combined-ticker-row {
+            align-items: center !important;
+        }
+        .combined-ticker-symbol-wrap {
+            height: 100% !important;
+            display: flex !important;
+            justify-content: center !important;
+        }
+        .combined-ticker-symbol {
+            display: flex !important;
+            align-items: center !important;
+            height: 100% !important;
+            line-height: 1 !important;
+        }
+        .combined-ticker-caption {
+            display: none !important;
+        }
+
         [class*="st-key-combined_analyze_"] button {
             min-height: 42px !important;
             height: 42px !important;
@@ -399,7 +419,6 @@ if view == "Momentum Scanner":
                     f'<div class="combined-ticker-row">'
                     f'  <div class="combined-ticker-symbol-wrap">'
                     f'    <div class="combined-ticker-symbol">{symbol}</div>'
-                    f'    <div class="combined-ticker-caption">MOMENTUM CANDIDATE</div>'
                     f'  </div>'
                     f'  <div class="combined-stat">'
                     f'    <div class="combined-stat-label">Grade</div>'
