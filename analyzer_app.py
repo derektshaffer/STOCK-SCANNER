@@ -158,7 +158,7 @@ def _install_scanner_interactions():
 
 
 def _install_working_button_transition():
-    """Keep Scanner visible while Analyze prepares the next page."""
+    """Keep Scanner visible while the selected analysis is prepared."""
     components.html(
         """
         <script>
@@ -211,7 +211,7 @@ def _install_working_button_transition():
             button.style.cursor = 'wait';
             button.style.pointerEvents = 'none';
             const textNode = button.querySelector('p') || button.querySelector('span') || button;
-            if (textNode) textNode.textContent = 'Analyzing…';
+            if (textNode) textNode.textContent = 'Working...';
             preserveScannerDuringAnalysis();
           }
 
