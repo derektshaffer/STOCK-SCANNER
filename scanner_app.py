@@ -409,16 +409,19 @@ controls_mount = st.session_state.get("_scanner_controls_mount")
 controls_context = controls_mount.container() if controls_mount is not None else st.container(key="scanner_controls_top")
 
 with controls_context:
-    control_a, control_b, control_c = st.columns([2.2, 1.2, 1.2], vertical_alignment="center")
-    with control_a:
+    scan_col, auto_col, spacer_col, market_col = st.columns(
+        [1.15, 1.45, 2.45, 1.55],
+        vertical_alignment="center",
+    )
+    with scan_col:
+        clicked = st.button("▶ Run Fresh Scan", type="primary", use_container_width=True)
+    with auto_col:
         st.toggle(
             "Auto scan every 5 minutes",
             key="auto_scan_enabled",
             help="Runs while this dashboard tab/session is active. Automatic scans pause when the regular US market is closed.",
         )
-    with control_b:
-        clicked = st.button("▶ Run Fresh Scan", type="primary", use_container_width=True)
-    with control_c:
+    with market_col:
         market_open, now_et = market_is_open()
         market_label = "🟢 MARKET OPEN" if market_open else "🟡 MARKET CLOSED"
         st.markdown(
