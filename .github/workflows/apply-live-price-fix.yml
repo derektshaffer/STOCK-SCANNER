@@ -17,188 +17,187 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Apply analyzer live-price patch
+      - name: Apply analyzer live-price fix
         shell: bash
         run: |
-          cat > /tmp/live-price.patch <<'PATCH'
-          --- a/analyzer_app.py
-          +++ b/analyzer_app.py
-          @@ -1,5 +1,5 @@
-          -import html, os, subprocess, sys, json, urllib.request, urllib.error
-          -from datetime import datetime
-          +import html, os, subprocess, sys, json, urllib.request, urllib.error, time
-          +from datetime import datetime, timezone
-           import pandas as pd
-           import streamlit as st
-           
-          @@ -37,6 +37,32 @@
-           
-           from stock_analyzer import analyze
-           
-          +AUTO_REFRESH_SECONDS = max(5, int(os.environ.get("ANALYZER_REFRESH_SECONDS", "15") or 15))
-          +
-          +def _result_age_seconds(result):
-          +    if not result or not result.get("as_of"):
-          +        return None
-          +    try:
-          +        dt=datetime.fromisoformat(str(result["as_of"]))
-          +        if dt.tzinfo is None:
-          +            dt=dt.replace(tzinfo=timezone.utc)
-          +        return max(0.0, (datetime.now(timezone.utc)-dt.astimezone(timezone.utc)).total_seconds())
-          +    except Exception:
-          +        return None
-          +
-          +def _age_text(seconds):
-          +    if seconds is None:
-          +        return "time unavailable"
-          +    seconds=float(seconds)
-          +    if seconds < 2:
-          +        return "just now"
-          +    if seconds < 60:
-          +        return f"{seconds:.0f}s ago"
-          +    minutes=seconds/60
-          +    if minutes < 60:
-          +        return f"{minutes:.1f}m ago"
-          +    return f"{minutes/60:.1f}h ago"
-          +
-           @st.cache_data(ttl=21600, show_spinner=False)
-           def load_active_us_equities():
-               """Load active US equities from Alpaca for ticker/company autocomplete.
-          @@ -354,9 +380,34 @@
-           with c2:
-               run=st.button("Analyze",type="primary",width="stretch")
-           with c3:
-          -    st.caption("Live feed is controlled by `ALPACA_LIVE_FEED` (IEX now; SIP after upgrade).")
-          +    st.toggle("Auto-refresh", value=True, key="auto_refresh_enabled")
-          +    st.caption(f"Refresh every {AUTO_REFRESH_SECONDS}s · use `ALPACA_LIVE_FEED=\"sip\"` for consolidated real-time data when your Alpaca plan supports SIP.")
-          +
-          +@st.fragment(run_every=f"{AUTO_REFRESH_SECONDS}s")
-          +def _auto_refresh_driver():
-          +    """Trigger a full app rerun on the refresh interval without looping on first render."""
-          +    if not st.session_state.get("auto_refresh_enabled", True):
-          +        return
-          +    now_ts=time.time()
-          +    last=st.session_state.get("_auto_refresh_last_rerun")
-          +    if last is None or now_ts < float(last):
-          +        st.session_state["_auto_refresh_last_rerun"]=now_ts
-          +        return
-          +    if now_ts-float(last) >= max(1, AUTO_REFRESH_SECONDS-0.75):
-          +        st.session_state["_auto_refresh_last_rerun"]=now_ts
-          +        st.rerun(scope="app")
-           
-          -if run or "result" not in st.session_state or st.session_state.get("ticker")!=ticker:
-          +_auto_refresh_driver()
-          +
-          +_existing_result=st.session_state.get("result")
-          +_result_age=_result_age_seconds(_existing_result)
-          +_refresh_due=(
-          +    st.session_state.get("auto_refresh_enabled", True)
-          +    and _result_age is not None
-          +    and _result_age >= max(1, AUTO_REFRESH_SECONDS-1)
-          +)
-          +
-          +if run or "result" not in st.session_state or st.session_state.get("ticker")!=ticker or _refresh_due:
-               try:
-                   with st.spinner(f"Analyzing {ticker}…"):
-                       st.session_state["result"]=analyze(ticker)
-          @@ -425,13 +476,25 @@
-               with col: st.markdown(f'<div class="card"><div class="k">{html.escape(k)}</div><div class="v {cls}">{html.escape(str(v))}</div><div class="n">{html.escape(str(n))}</div></div>',unsafe_allow_html=True)
-           
-           cols=st.columns(6)
-          -card(cols[0],"PRICE",money(r.get("price")),pp(r.get("day_pct")),"good" if (r.get("day_pct") or 0)>=0 else "bad")
-          +_trade_age=r.get("trade_age_seconds")
-          +_price_note=f'{pp(r.get("day_pct"))} · trade {_age_text(_trade_age)} · {r.get("live_feed")}'
-          +card(cols[0],"PRICE",money(r.get("price")),_price_note,"good" if (r.get("day_pct") or 0)>=0 else "bad")
-           card(cols[1],"VWAP",money(r.get("vwap")),f'{r.get("vwap_position")} · {pp(r.get("vwap_extension_pct"))}',"good" if r.get("vwap_position")=="ABOVE" else "bad")
-           card(cols[2],"DAY RANGE",f'{money(r.get("day_low"))}–{money(r.get("day_high"))}',f'{r.get("from_high_pct",0):.1f}% below high')
-           card(cols[3],"VOL PACE",multiple(r.get("volume_pace")),f'{r.get("volume",0):,.0f} shown · {r.get("volume_source")}')
-           card(cols[4],"SETUP SCORE",f'{r.get("score"):.1f} / 100',f'Grade {r.get("grade")}',"good" if r.get("grade") in ("A","B") else "warn")
-           card(cols[5],"BASE SETUP",r.get("entry_quality"),f'Live feed: {r.get("live_feed")}',"good" if r.get("entry_quality")=="FAVORABLE" else "warn")
-           
-          +if _trade_age is not None and float(_trade_age) > max(30, AUTO_REFRESH_SECONDS*2):
-          +    feed_name=str(r.get("live_feed") or "").upper()
-          +    extra=(
-          +        " IEX is a single exchange, so its most recent trade can lag the consolidated market for some stocks. "
-          +        "If your Alpaca subscription includes SIP, set ALPACA_LIVE_FEED=\"sip\" in Streamlit Secrets."
-          +        if feed_name=="IEX" else
-          +        " The upstream Alpaca feed itself has not reported a newer eligible trade yet."
-          +    )
-          +    st.warning(f"Latest {feed_name or 'market'} trade is {_age_text(_trade_age)}.{extra}")
-          +
-           # Dynamic decision-support trade plan. This can explicitly return WAIT or
-           # NO TRADE instead of manufacturing an entry for every ticker.
-           plan=r.get("trade_plan") or {}
-          @@ -587,4 +650,4 @@
-           else: verdict="The setup is mixed. Watch the nearest support/resistance and require confirmation before treating the move as high quality."
-           st.markdown(f'<div class="callout"><b>{html.escape(ticker)} read:</b> {html.escape(verdict)}<br><span class="sub">This is a trading-analysis aid, not a guarantee of future price movement.</span></div>',unsafe_allow_html=True)
-           
-          -st.caption(f'As of {r.get("as_of")} · Live={r.get("live_feed")} · Historical/liquidity={r.get("historical_feed")} · Engine={r.get("engine_version") or "unknown"} · UI=enter-select-ticker-v4.5')
-          +st.caption(f'Analysis as of {r.get("as_of")} · Latest trade={r.get("latest_trade_time") or "—"} ({_age_text(r.get("trade_age_seconds"))}) · Latest quote={r.get("latest_quote_time") or "—"} ({_age_text(r.get("quote_age_seconds"))}) · Live={r.get("live_feed")} · Historical/liquidity={r.get("historical_feed")} · Engine={r.get("engine_version") or "unknown"} · UI=live-refresh-v5.0')
-          --- a/stock_analyzer.py
-          +++ b/stock_analyzer.py
-          @@ -46,6 +46,37 @@
-               q=urllib.parse.urlencode({"feed":feed or LIVE_FEED})
-               return get_json(f"{DATA_BASE}/v2/stocks/{urllib.parse.quote(symbol)}/snapshot?{q}")
-           
-          +def _parse_market_timestamp(value):
-          +    if not value:
-          +        return None
-          +    try:
-          +        # Alpaca timestamps may include nanoseconds; Python's parser accepts
-          +        # microseconds, so trim fractional precision safely before parsing.
-          +        raw=str(value).strip().replace("Z", "+00:00")
-          +        if "." in raw:
-          +            head, tail = raw.split(".", 1)
-          +            frac, suffix = tail, ""
-          +            for marker in ("+", "-"):
-          +                pos = frac.find(marker)
-          +                if pos > 0:
-          +                    suffix = frac[pos:]
-          +                    frac = frac[:pos]
-          +                    break
-          +            frac = frac[:6]
-          +            raw = f"{head}.{frac}{suffix}" if frac else f"{head}{suffix}"
-          +        dt=datetime.fromisoformat(raw)
-          +        if dt.tzinfo is None:
-          +            dt=dt.replace(tzinfo=timezone.utc)
-          +        return dt.astimezone(timezone.utc)
-          +    except Exception:
-          +        return None
-          +
-          +def _market_age_seconds(value, now):
-          +    dt=_parse_market_timestamp(value)
-          +    if dt is None:
-          +        return None
-          +    return max(0.0, (now-dt).total_seconds())
-          +
-           def news(symbol, now, hours=96, limit=50):
-               q=urllib.parse.urlencode({"symbols":symbol,"start":_iso(now-timedelta(hours=hours)),"end":_iso(now),"sort":"desc","limit":limit,"include_content":"false"})
-               return get_json(f"{DATA_BASE}/v1beta1/news?{q}").get("news") or []
-          @@ -739,6 +770,8 @@
-               now=datetime.now(timezone.utc); now_et=now.astimezone(ET)
-               snap=snapshot(symbol,LIVE_FEED)
-               trade=snap.get("latestTrade") or {}; quote=snap.get("latestQuote") or {}; day=snap.get("dailyBar") or {}; prev=snap.get("prevDailyBar") or {}
-          +    trade_ts=trade.get("t"); quote_ts=quote.get("t")
-          +    trade_age=_market_age_seconds(trade_ts,now); quote_age=_market_age_seconds(quote_ts,now)
-               price=fnum(trade.get("p")) or fnum(day.get("c"))
-               if not price: raise RuntimeError("No current price returned")
-               prev_close=fnum(prev.get("c")); day_pct=pct(price,prev_close) if prev_close else None
-          @@ -778,7 +811,7 @@
-               try:arts=catalyst_summary(news(symbol,now),now)
-               except Exception: pass
-               liquidity=liquidity_context(price,avgvol,pace,spread_pct)
-          -    metrics={"engine_version":ANALYZER_ENGINE_VERSION,"symbol":symbol,"as_of":now_et.isoformat(),"live_feed":LIVE_FEED.upper(),"historical_feed":daysrc,"price":round(price,4),"prev_close":prev_close,"day_pct":round(day_pct,2) if day_pct is not None else None,"bid":bid,"ask":ask,"spread_pct":round(spread_pct,2) if spread_pct is not None else None,"day_high":round(high,4),"day_low":round(low,4),"from_high_pct":round(from_high,2) if from_high is not None else None,"vwap":round(vwap,4) if vwap else None,"vwap_position":"ABOVE" if vwap and price>=vwap else "BELOW" if vwap else "N/A","vwap_extension_pct":round(pct(price,vwap),2) if vwap else None,"momentum_5m":round(mom(5),2) if mom(5) is not None else None,"momentum_15m":round(mom(15),2) if mom(15) is not None else None,"momentum_30m":round(mom(30),2) if mom(30) is not None else None,"volume":round(today_volume),"avg_20d_volume":round(avgvol) if avgvol else None,"volume_pace":round(pace,2) if pace is not None else None,"volume_source":volsrc,"atr_14":round(atr14,4) if atr14 is not None else None,"atr_14_pct":round(atr14_pct,2) if atr14_pct is not None else None,"liquidity":liquidity,"supports":supports,"resistances":resist,"historical_analogs":hist,"news":arts}
-          +    metrics={"engine_version":ANALYZER_ENGINE_VERSION,"symbol":symbol,"as_of":now_et.isoformat(),"live_feed":LIVE_FEED.upper(),"historical_feed":daysrc,"latest_trade_time":trade_ts,"latest_quote_time":quote_ts,"trade_age_seconds":round(trade_age,2) if trade_age is not None else None,"quote_age_seconds":round(quote_age,2) if quote_age is not None else None,"price":round(price,4),"prev_close":prev_close,"day_pct":round(day_pct,2) if day_pct is not None else None,"bid":bid,"ask":ask,"spread_pct":round(spread_pct,2) if spread_pct is not None else None,"day_high":round(high,4),"day_low":round(low,4),"from_high_pct":round(from_high,2) if from_high is not None else None,"vwap":round(vwap,4) if vwap else None,"vwap_position":"ABOVE" if vwap and price>=vwap else "BELOW" if vwap else "N/A","vwap_extension_pct":round(pct(price,vwap),2) if vwap else None,"momentum_5m":round(mom(5),2) if mom(5) is not None else None,"momentum_15m":round(mom(15),2) if mom(15) is not None else None,"momentum_30m":round(mom(30),2) if mom(30) is not None else None,"volume":round(today_volume),"avg_20d_volume":round(avgvol) if avgvol else None,"volume_pace":round(pace,2) if pace is not None else None,"volume_source":volsrc,"atr_14":round(atr14,4) if atr14 is not None else None,"atr_14_pct":round(atr14_pct,2) if atr14_pct is not None else None,"liquidity":liquidity,"supports":supports,"resistances":resist,"historical_analogs":hist,"news":arts}
-               score,grade,entry,reasons=score_setup(metrics)
-               metrics.update({"score":score,"grade":grade,"entry_quality":entry,"score_reasons":reasons})
-               metrics["trade_plan"]=build_trade_plan(metrics,now)
-          PATCH
+          python - <<'PY'
+          from pathlib import Path
 
-          sed -i 's/^          //' /tmp/live-price.patch
-          git apply --check /tmp/live-price.patch
-          git apply /tmp/live-price.patch
-          rm -f .github/workflows/apply-live-price-fix.yml
+          def replace_once(text, old, new, label):
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{label}: expected exactly 1 match, found {count}")
+              return text.replace(old, new, 1)
+
+          app_path = Path("analyzer_app.py")
+          app = app_path.read_text()
+
+          app = replace_once(
+              app,
+              'import html, os, subprocess, sys, json, urllib.request, urllib.error\nfrom datetime import datetime\n',
+              'import html, os, subprocess, sys, json, urllib.request, urllib.error, time\nfrom datetime import datetime, timezone\n',
+              'app imports',
+          )
+
+          marker = 'from stock_analyzer import analyze\n\n'
+          helpers = '''from stock_analyzer import analyze
+
+AUTO_REFRESH_SECONDS = max(5, int(os.environ.get("ANALYZER_REFRESH_SECONDS", "15") or 15))
+
+def _result_age_seconds(result):
+    if not result or not result.get("as_of"):
+        return None
+    try:
+        dt=datetime.fromisoformat(str(result["as_of"]))
+        if dt.tzinfo is None:
+            dt=dt.replace(tzinfo=timezone.utc)
+        return max(0.0, (datetime.now(timezone.utc)-dt.astimezone(timezone.utc)).total_seconds())
+    except Exception:
+        return None
+
+def _age_text(seconds):
+    if seconds is None:
+        return "time unavailable"
+    seconds=float(seconds)
+    if seconds < 2:
+        return "just now"
+    if seconds < 60:
+        return f"{seconds:.0f}s ago"
+    minutes=seconds/60
+    if minutes < 60:
+        return f"{minutes:.1f}m ago"
+    return f"{minutes/60:.1f}h ago"
+
+'''
+          app = replace_once(app, marker, helpers, 'app refresh helpers')
+
+          old_refresh = '''with c3:
+    st.caption("Live feed is controlled by `ALPACA_LIVE_FEED` (IEX now; SIP after upgrade).")
+
+if run or "result" not in st.session_state or st.session_state.get("ticker")!=ticker:
+'''
+          new_refresh = '''with c3:
+    st.toggle("Auto-refresh", value=True, key="auto_refresh_enabled")
+    st.caption(f"Refresh every {AUTO_REFRESH_SECONDS}s · use `ALPACA_LIVE_FEED=\\"sip\\"` for consolidated real-time data when your Alpaca plan supports SIP.")
+
+@st.fragment(run_every=f"{AUTO_REFRESH_SECONDS}s")
+def _auto_refresh_driver():
+    """Trigger a full app rerun on the refresh interval without looping on first render."""
+    if not st.session_state.get("auto_refresh_enabled", True):
+        return
+    now_ts=time.time()
+    last=st.session_state.get("_auto_refresh_last_rerun")
+    if last is None or now_ts < float(last):
+        st.session_state["_auto_refresh_last_rerun"]=now_ts
+        return
+    if now_ts-float(last) >= max(1, AUTO_REFRESH_SECONDS-0.75):
+        st.session_state["_auto_refresh_last_rerun"]=now_ts
+        st.rerun(scope="app")
+
+_auto_refresh_driver()
+
+_existing_result=st.session_state.get("result")
+_result_age=_result_age_seconds(_existing_result)
+_refresh_due=(
+    st.session_state.get("auto_refresh_enabled", True)
+    and _result_age is not None
+    and _result_age >= max(1, AUTO_REFRESH_SECONDS-1)
+)
+
+if run or "result" not in st.session_state or st.session_state.get("ticker")!=ticker or _refresh_due:
+'''
+          app = replace_once(app, old_refresh, new_refresh, 'app refresh block')
+
+          app = replace_once(
+              app,
+              'card(cols[0],"PRICE",money(r.get("price")),pp(r.get("day_pct")),"good" if (r.get("day_pct") or 0)>=0 else "bad")\n',
+              '_trade_age=r.get("trade_age_seconds")\n_price_note=f\'{pp(r.get("day_pct"))} · trade {_age_text(_trade_age)} · {r.get("live_feed")}\'\ncard(cols[0],"PRICE",money(r.get("price")),_price_note,"good" if (r.get("day_pct") or 0)>=0 else "bad")\n',
+              'price card',
+          )
+
+          old_base = '''card(cols[5],"BASE SETUP",r.get("entry_quality"),f'Live feed: {r.get("live_feed")}',"good" if r.get("entry_quality")=="FAVORABLE" else "warn")
+
+# Dynamic decision-support trade plan. This can explicitly return WAIT or
+'''
+          new_base = '''card(cols[5],"BASE SETUP",r.get("entry_quality"),f'Live feed: {r.get("live_feed")}',"good" if r.get("entry_quality")=="FAVORABLE" else "warn")
+
+if _trade_age is not None and float(_trade_age) > max(30, AUTO_REFRESH_SECONDS*2):
+    feed_name=str(r.get("live_feed") or "").upper()
+    extra=(
+        " IEX is a single exchange, so its most recent trade can lag the consolidated market for some stocks. "
+        "If your Alpaca subscription includes SIP, set ALPACA_LIVE_FEED=\\"sip\\" in Streamlit Secrets."
+        if feed_name=="IEX" else
+        " The upstream Alpaca feed itself has not reported a newer eligible trade yet."
+    )
+    st.warning(f"Latest {feed_name or 'market'} trade is {_age_text(_trade_age)}.{extra}")
+
+# Dynamic decision-support trade plan. This can explicitly return WAIT or
+'''
+          app = replace_once(app, old_base, new_base, 'stale trade warning')
+
+          old_caption = 'st.caption(f\'As of {r.get("as_of")} · Live={r.get("live_feed")} · Historical/liquidity={r.get("historical_feed")} · Engine={r.get("engine_version") or "unknown"} · UI=enter-select-ticker-v4.5\')'
+          new_caption = 'st.caption(f\'Analysis as of {r.get("as_of")} · Latest trade={r.get("latest_trade_time") or "—"} ({_age_text(r.get("trade_age_seconds"))}) · Latest quote={r.get("latest_quote_time") or "—"} ({_age_text(r.get("quote_age_seconds"))}) · Live={r.get("live_feed")} · Historical/liquidity={r.get("historical_feed")} · Engine={r.get("engine_version") or "unknown"} · UI=live-refresh-v5.0\')'
+          app = replace_once(app, old_caption, new_caption, 'app footer')
+          app_path.write_text(app)
+
+          engine_path = Path("stock_analyzer.py")
+          engine = engine_path.read_text()
+
+          snap_marker = '''def snapshot(symbol, feed=None):
+    q=urllib.parse.urlencode({"feed":feed or LIVE_FEED})
+    return get_json(f"{DATA_BASE}/v2/stocks/{urllib.parse.quote(symbol)}/snapshot?{q}")
+
+def news(symbol, now, hours=96, limit=50):
+'''
+          snap_new = '''def snapshot(symbol, feed=None):
+    q=urllib.parse.urlencode({"feed":feed or LIVE_FEED})
+    return get_json(f"{DATA_BASE}/v2/stocks/{urllib.parse.quote(symbol)}/snapshot?{q}")
+
+def _parse_market_timestamp(value):
+    if not value:
+        return None
+    try:
+        raw=str(value).strip().replace("Z", "+00:00")
+        if "." in raw:
+            head, tail = raw.split(".", 1)
+            frac, suffix = tail, ""
+            for marker in ("+", "-"):
+                pos = frac.find(marker)
+                if pos > 0:
+                    suffix = frac[pos:]
+                    frac = frac[:pos]
+                    break
+            frac = frac[:6]
+            raw = f"{head}.{frac}{suffix}" if frac else f"{head}{suffix}"
+        dt=datetime.fromisoformat(raw)
+        if dt.tzinfo is None:
+            dt=dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+    except Exception:
+        return None
+
+def _market_age_seconds(value, now):
+    dt=_parse_market_timestamp(value)
+    if dt is None:
+        return None
+    return max(0.0, (now-dt).total_seconds())
+
+def news(symbol, now, hours=96, limit=50):
+'''
+          engine = replace_once(engine, snap_marker, snap_new, 'engine timestamp helpers')
+
+          trade_line = '    trade=snap.get("latestTrade") or {}; quote=snap.get("latestQuote") or {}; day=snap.get("dailyBar") or {}; prev=snap.get("prevDailyBar") or {}\n'
+          trade_new = trade_line + '    trade_ts=trade.get("t"); quote_ts=quote.get("t")\n    trade_age=_market_age_seconds(trade_ts,now); quote_age=_market_age_seconds(quote_ts,now)\n'
+          engine = replace_once(engine, trade_line, trade_new, 'engine trade timestamps')
+
+          score_line = '    score,grade,entry,reasons=score_setup(metrics)\n'
+          score_new = '    metrics.update({"latest_trade_time":trade_ts,"latest_quote_time":quote_ts,"trade_age_seconds":round(trade_age,2) if trade_age is not None else None,"quote_age_seconds":round(quote_age,2) if quote_age is not None else None})\n' + score_line
+          engine = replace_once(engine, score_line, score_new, 'engine freshness metrics')
+          engine_path.write_text(engine)
+          PY
+
           python -m py_compile analyzer_app.py stock_analyzer.py
+          rm -f .github/workflows/apply-live-price-fix.yml
 
           git config user.name 'ChatGPT'
           git config user.email 'actions@users.noreply.github.com'
