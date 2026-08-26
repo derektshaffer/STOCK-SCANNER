@@ -41,7 +41,27 @@ def run():
     if not target.exists():
         raise FileNotFoundError("analyzer_ui_core.py is missing from the repository root.")
 
-    ns = runpy.run_path(str(target), run_name="__main__")
+    # Reserve a slot immediately before the existing Trade plan details
+    # expander. The historical section is populated after analyzer_ui_core.py
+    # finishes, when its result/card/format helpers are available. This moves
+    # Historical setup match up without duplicating or rewriting the core UI.
+    original_expander = st.expander
+    history_slot = {"placeholder": None}
+
+    def _expander_with_history_slot(label, *args, **kwargs):
+        if (
+            history_slot["placeholder"] is None
+            and str(label).startswith("Trade plan details")
+        ):
+            history_slot["placeholder"] = st.empty()
+        return original_expander(label, *args, **kwargs)
+
+    st.expander = _expander_with_history_slot
+    try:
+        ns = runpy.run_path(str(target), run_name="__main__")
+    finally:
+        st.expander = original_expander
+
     result = ns.get("r") or {}
     card = ns.get("card")
     pp = ns.get("pp")
@@ -49,4 +69,11 @@ def run():
     # Always render the section, even when a ticker has too little history;
     # in that case the UI clearly says there are not enough comparable days.
     if card and pp:
-        render_historical_setup(st, pd, result, card, pp)
+        slot = history_slot.get("placeholder")
+        if slot is not None:
+            with slot.container():
+                render_historical_setup(st, pd, result, card, pp)
+        else:
+            # Fallback if the core UI changes and the expander label no longer
+            # matches. Better to show the section at the end than hide it.
+            render_historical_setup(st, pd, result, card, pp)
