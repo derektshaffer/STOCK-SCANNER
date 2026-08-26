@@ -273,6 +273,13 @@ div[data-testid="stAlert"]{
 .section-sub{
   margin-bottom:4px !important;
 }
+.top-candidates-section{
+  font-size:24px !important;
+  font-weight:950 !important;
+  margin-top:20px !important;
+  margin-bottom:5px !important;
+  line-height:1.15 !important;
+}
 .legend-box{
   margin:6px 0 8px !important;
   padding:7px 8px !important;
@@ -849,7 +856,7 @@ if not top:
 top = top[:4]
 
 st.markdown(
-    '<div class="section">🔥 Top Candidates</div>',
+    '<div class="section top-candidates-section">🔥 Top Candidates</div>',
     unsafe_allow_html=True,
 )
 
