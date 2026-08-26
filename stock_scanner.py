@@ -352,7 +352,7 @@ def get_candidate_universe(now_et):
                 errors.append(str(exc))
 
         if merged:
-            return list(merged.values())[:150]
+            return list(merged.values())[:100]
 
         # Graceful fallback if the most-active screener is unavailable.
         if errors:
@@ -995,12 +995,12 @@ def historical_volume_profile(symbol, now_utc, now_et):
         "typical_daily_volume": typical_daily_volume,
         "expected_fraction": expected_fraction,
         "expected_volume": expected_volume,
-        "source": f"ticker_historical_{market_session_mode(now_et)}_tod_iex",
+        "source": f"ticker_historical_{market_session_mode(now_et)}_tod_{LIVE_FEED}",
     }
 
 
 def current_session_stats(symbol, now_utc, now_et):
-    """Build current pre-market/regular/after-hours stats from live IEX bars."""
+    """Build current pre-market/regular/after-hours stats from the configured live feed."""
     phase = market_session_mode(now_et)
     if phase == "closed":
         return None
@@ -1110,14 +1110,19 @@ def enrich_live(c, now_utc, now_et):
         # not yesterday's/current regular-session daily bar.
         if phase in {"premarket", "afterhours"} and session_dollar > 0:
             c["dollar_volume"] = round(session_dollar, 2)
-            estimated = (
-                session_dollar / IEX_MARKET_SHARE_ESTIMATE
-                if IEX_MARKET_SHARE_ESTIMATE > 0
-                else session_dollar
-            )
-            c["estimated_total_dollar_volume"] = round(estimated, 2)
-            c["liquidity_source"] = "iex_extended_estimate"
-            c["liquidity_dollar_volume"] = round(estimated, 2)
+            if LIVE_FEED == "sip":
+                c["estimated_total_dollar_volume"] = round(session_dollar, 2)
+                c["liquidity_source"] = "live_sip_extended"
+                c["liquidity_dollar_volume"] = round(session_dollar, 2)
+            else:
+                estimated = (
+                    session_dollar / IEX_MARKET_SHARE_ESTIMATE
+                    if IEX_MARKET_SHARE_ESTIMATE > 0
+                    else session_dollar
+                )
+                c["estimated_total_dollar_volume"] = round(estimated, 2)
+                c["liquidity_source"] = "iex_extended_estimate"
+                c["liquidity_dollar_volume"] = round(estimated, 2)
     else:
         session_volume = float(c.get("volume") or 0)
 
@@ -1760,7 +1765,13 @@ def print_catalysts(rows):
 
 
 def print_setup_grades(rows, now_et):
-    mode = "LIVE" if is_regular_session(now_et) else "OFF-HOURS PREVIEW"
+    phase = market_session_mode(now_et)
+    mode = {
+        "premarket": "PRE-MARKET LIVE" if live_feed_available(now_et) else "PRE-MARKET / LIVE DATA UNAVAILABLE",
+        "regular": "REGULAR HOURS LIVE",
+        "afterhours": "AFTER-HOURS LIVE" if live_feed_available(now_et) else "AFTER-HOURS / LIVE DATA UNAVAILABLE",
+        "closed": "MARKET CLOSED / PREVIEW",
+    }[phase]
     print(f"\nSETUP GRADES / ALERT READINESS - {mode}")
     print("-" * 110)
     for c in rows[:WATCHLIST_SIZE]:
@@ -1773,11 +1784,13 @@ def print_setup_grades(rows, now_et):
         )
         print(f"  {reasons}")
 
-    if not is_regular_session(now_et):
+    if phase in {"premarket", "afterhours"}:
         print(
-            "No A/HIGH grade is allowed off-hours. Live 5m/15m momentum and volume pace "
-            "must confirm the setup during the regular session."
+            "Extended-hours setups are capped at B/WATCH. A/HIGH is reserved for "
+            "regular-hours confirmation because liquidity and spreads are less reliable."
         )
+    elif phase == "closed":
+        print("Market is closed; setup grades are preview-only.")
 
 
 def print_passers(rows):
