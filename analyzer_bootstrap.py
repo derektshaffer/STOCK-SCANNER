@@ -435,13 +435,18 @@ def run():
 
     if card and pp:
         slot = analysis_slot.get("placeholder")
+
+        def _render_analysis_sections():
+            with st.container(key="ml_prediction_section"):
+                render_ml_prediction(st, pd, result, card)
+            with st.container(key="historical_match_section"):
+                render_historical_setup(st, pd, result, card, pp)
+
         if slot is not None:
             with slot.container():
-                render_ml_prediction(st, pd, result, card)
-                render_historical_setup(st, pd, result, card, pp)
+                _render_analysis_sections()
         else:
-            render_ml_prediction(st, pd, result, card)
-            render_historical_setup(st, pd, result, card, pp)
+            _render_analysis_sections()
 
     if not combined:
         _install_scroll_keeper()
