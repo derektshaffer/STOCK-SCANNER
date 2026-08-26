@@ -73,7 +73,7 @@ def render_ml_prediction(st, pd, result, card):
     )
     card(
         cols[1],
-        "T1 BEFORE STOP",
+        "TARGET 1 BEFORE STOP",
         _pct_value(target),
         _validation_note(target),
         "good" if (target.get("probability_pct") or 0) >= 65 else "warn",
