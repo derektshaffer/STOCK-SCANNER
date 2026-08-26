@@ -18,6 +18,135 @@ runpy.run_path(str(target), run_name="__main__")
 view = st.session_state.get("app_view", "Momentum Scanner")
 
 
+# Shared presentation polish for the combined workspace. Keep this CSS-only so
+# it cannot interfere with Scanner/Analyzer loading, session state, or reruns.
+st.markdown(
+    """
+    <style>
+    /* Turn the compact radio selector into two large dashboard-style tabs. */
+    .st-key-app_view [data-testid="stRadio"] > div[role="radiogroup"] {
+        display: grid !important;
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        gap: 14px !important;
+        width: 100% !important;
+        margin: 4px 0 22px !important;
+    }
+
+    .st-key-app_view [data-testid="stRadio"] label {
+        position: relative !important;
+        display: flex !important;
+        align-items: center !important;
+        min-height: 92px !important;
+        width: 100% !important;
+        box-sizing: border-box !important;
+        padding: 18px 24px !important;
+        border: 1px solid #2a405a !important;
+        border-radius: 18px !important;
+        background: linear-gradient(135deg, #0c1727, #0b1524) !important;
+        box-shadow: 0 8px 22px rgba(0,0,0,.16) !important;
+        cursor: pointer !important;
+        transition: border-color .15s ease, background .15s ease, box-shadow .15s ease, transform .15s ease !important;
+    }
+
+    .st-key-app_view [data-testid="stRadio"] label:hover {
+        border-color: #3f8b60 !important;
+        background: linear-gradient(135deg, #0f1d2c, #0c1a27) !important;
+        transform: translateY(-1px) !important;
+    }
+
+    /* Current view: dark emerald rather than the old red accent. */
+    .st-key-app_view [data-testid="stRadio"] label:has(input:checked) {
+        border-color: #4fd06f !important;
+        background: linear-gradient(135deg, #123d27, #0c2d1c) !important;
+        box-shadow: 0 0 0 1px rgba(79,208,111,.18), 0 10px 28px rgba(28,132,65,.24) !important;
+    }
+
+    .st-key-app_view [data-testid="stRadio"] label p {
+        color: #f5f9ff !important;
+        font-size: 23px !important;
+        line-height: 1.15 !important;
+        font-weight: 900 !important;
+        letter-spacing: -.01em !important;
+    }
+
+    .st-key-app_view [data-testid="stRadio"] label:has(input:checked) p {
+        color: #ffffff !important;
+    }
+
+    /* Make the radio dot itself feel intentional and match the green theme. */
+    .st-key-app_view [data-testid="stRadio"] label [data-testid="stMarkdownContainer"] {
+        margin-left: 8px !important;
+    }
+    .st-key-app_view [data-testid="stRadio"] label:has(input:checked) > div:first-child {
+        filter: hue-rotate(85deg) saturate(.9) brightness(.95) !important;
+    }
+
+    /* Streamlit's default secondary buttons can render almost white against
+       this dark theme. Force a dark, readable treatment everywhere. */
+    div[data-testid="stButton"] button[kind="secondary"] {
+        background: #101b2d !important;
+        border: 1px solid #36506d !important;
+        color: #eef5ff !important;
+        box-shadow: none !important;
+    }
+    div[data-testid="stButton"] button[kind="secondary"] p,
+    div[data-testid="stButton"] button[kind="secondary"] span {
+        color: #eef5ff !important;
+        font-weight: 800 !important;
+    }
+    div[data-testid="stButton"] button[kind="secondary"]:hover:not(:disabled) {
+        background: #153524 !important;
+        border-color: #49b66a !important;
+        color: #ffffff !important;
+    }
+
+    /* Disabled controls should still be legible, but clearly inactive. */
+    div[data-testid="stButton"] button:disabled {
+        background: #0d1624 !important;
+        border-color: #26384d !important;
+        color: #8396ad !important;
+        opacity: .78 !important;
+    }
+    div[data-testid="stButton"] button:disabled p,
+    div[data-testid="stButton"] button:disabled span {
+        color: #8396ad !important;
+    }
+
+    /* Saved Stocks actions use the approved emerald palette. */
+    .st-key-saved_stocks_top div[data-testid="stButton"] button:not(:disabled) {
+        background: linear-gradient(135deg, #174a2d, #10371f) !important;
+        border-color: #42b965 !important;
+        color: #ffffff !important;
+    }
+    .st-key-saved_stocks_top div[data-testid="stButton"] button:not(:disabled) p,
+    .st-key-saved_stocks_top div[data-testid="stButton"] button:not(:disabled) span {
+        color: #ffffff !important;
+        font-weight: 850 !important;
+    }
+    .st-key-saved_stocks_top div[data-testid="stButton"] button:not(:disabled):hover {
+        background: linear-gradient(135deg, #1b5a35, #124225) !important;
+        border-color: #61dc80 !important;
+    }
+
+    @media (max-width: 760px) {
+        .st-key-app_view [data-testid="stRadio"] > div[role="radiogroup"] {
+            grid-template-columns: 1fr !important;
+            gap: 9px !important;
+        }
+        .st-key-app_view [data-testid="stRadio"] label {
+            min-height: 72px !important;
+            padding: 14px 18px !important;
+        }
+        .st-key-app_view [data-testid="stRadio"] label p {
+            font-size: 19px !important;
+        }
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+
 def _install_scanner_interactions():
     """Scanner detail-card behavior without a page-wide observer."""
     components.html(
