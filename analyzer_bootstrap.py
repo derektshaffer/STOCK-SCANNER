@@ -60,25 +60,54 @@ def _install_no_fade_css():
 
 
 def _cleanup_combined_browser_helpers():
-    """Remove the old analyzer scroll helper when using the combined app.
+    """Remove Scanner-only browser state before the Analyzer does heavy work.
 
-    The scroll keeper was useful when the analyzer was a standalone dashboard,
-    but in the combined scanner/analyzer workspace it can fight Streamlit's
-    view replacement and leave stale content visible for too long.
+    The expanded scanner cards are injected directly into the browser DOM, so
+    Streamlit does not own them and cannot reliably remove them during a rerun.
+    Clean them up immediately when entering the Analyzer. Also stop the old
+    scroll/tooltip observers so they do not watch the Analyzer build.
     """
     components.html(
         """
         <script>
         (() => {
           const p = window.parent;
-          const old = p.__ssaScrollKeeper;
-          if (old) {
-            try { old.observer && old.observer.disconnect(); } catch (_) {}
-            try { old.scroller && old.onScroll && old.scroller.removeEventListener('scroll', old.onScroll); } catch (_) {}
-            try { old.onWindowScroll && p.removeEventListener('scroll', old.onWindowScroll); } catch (_) {}
+          const d = p.document;
+
+          const scroll = p.__ssaScrollKeeper;
+          if (scroll) {
+            try { scroll.observer && scroll.observer.disconnect(); } catch (_) {}
+            try { scroll.scroller && scroll.onScroll && scroll.scroller.removeEventListener('scroll', scroll.onScroll); } catch (_) {}
+            try { scroll.onWindowScroll && p.removeEventListener('scroll', scroll.onWindowScroll); } catch (_) {}
           }
           p.__ssaScrollKeeper = null;
           p.__ssaRerunPending = false;
+
+          const expander = p.__scannerExpandController;
+          if (expander) {
+            try { d.removeEventListener('click', expander.click); } catch (_) {}
+            try { d.removeEventListener('keydown', expander.keydown); } catch (_) {}
+          }
+          p.__scannerExpandController = null;
+
+          const ux = p.__scannerUXPatch;
+          if (ux) {
+            try { d.removeEventListener('click', ux.captureClick, true); } catch (_) {}
+            try { d.removeEventListener('keydown', ux.keydown); } catch (_) {}
+          }
+          p.__scannerUXPatch = null;
+
+          d.querySelectorAll('.scanner-inline-detail').forEach((node) => node.remove());
+          if (p.__scannerExpandedSymbols && p.__scannerExpandedSymbols.clear) {
+            p.__scannerExpandedSymbols.clear();
+          }
+
+          const tips = p.__stockTechnicalTooltips;
+          if (tips && tips.observer) {
+            try { tips.observer.disconnect(); } catch (_) {}
+          }
+          const tipBox = d.getElementById('stock-tech-tooltip');
+          if (tipBox) tipBox.style.display = 'none';
         })();
         </script>
         """,
@@ -218,7 +247,7 @@ def _activate_saved_stock(symbol):
 
 
 def _render_saved_stocks():
-    """Session-persistent one-click stock list for the analyzer."""
+    """Session-persistent one-click stock list pinned to the top of Analyzer."""
     if "saved_stocks" not in st.session_state:
         st.session_state["saved_stocks"] = []
 
@@ -227,7 +256,6 @@ def _render_saved_stocks():
         for x in st.session_state.get("saved_stocks", [])
         if str(x).strip()
     ]
-    # Preserve order while de-duplicating.
     saved = list(dict.fromkeys(saved))[:24]
     st.session_state["saved_stocks"] = saved
 
@@ -240,9 +268,12 @@ def _render_saved_stocks():
     st.markdown(
         """
         <style>
+        /* The keyed container is a top-level Streamlit block. Give it the
+           earliest flex order so Saved Stocks stays at the top of the page. */
+        .st-key-saved_stocks_top { order: -1000 !important; }
         .saved-stock-shell{
             border:1px solid #263e5c;background:#0d192a;border-radius:14px;
-            padding:12px 14px 9px;margin:4px 0 14px;
+            padding:12px 14px 9px;margin:4px 0 10px;
         }
         .saved-stock-title{font-size:15px;font-weight:900;color:#f2f7ff}
         .saved-stock-sub{font-size:12px;color:#91a7c2;margin-top:3px}
@@ -305,9 +336,14 @@ def run():
     _preload_secrets()
     combined = _combined_workspace()
     if combined:
-        # In the combined app, let Streamlit replace stale Scanner/Analyzer DOM
-        # normally. Keeping stale elements opaque caused visible page holdovers.
+        # Remove browser-injected Scanner content before any heavy Analyzer
+        # imports/data calls begin, so old Scanner cards cannot linger onscreen.
         _cleanup_combined_browser_helpers()
+
+        # Render Saved Stocks before the Analyzer's heavier imports and UI.
+        # The keyed container keeps this block pinned at the top of the page.
+        with st.container(key="saved_stocks_top"):
+            _render_saved_stocks()
     else:
         _install_no_fade_css()
 
@@ -323,9 +359,6 @@ def run():
     target = Path(__file__).with_name("analyzer_ui_core.py")
     if not target.exists():
         raise FileNotFoundError("analyzer_ui_core.py is missing from the repository root.")
-
-    if combined:
-        _render_saved_stocks()
 
     original_expander = st.expander
     analysis_slot = {"placeholder": None}
