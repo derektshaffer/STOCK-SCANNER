@@ -46,6 +46,37 @@ def snapshot(symbol, feed=None):
     q=urllib.parse.urlencode({"feed":feed or LIVE_FEED})
     return get_json(f"{DATA_BASE}/v2/stocks/{urllib.parse.quote(symbol)}/snapshot?{q}")
 
+def _parse_market_timestamp(value):
+    if not value:
+        return None
+    try:
+        # Alpaca timestamps may include nanoseconds; Python's parser accepts
+        # microseconds, so trim fractional precision safely before parsing.
+        raw=str(value).strip().replace("Z", "+00:00")
+        if "." in raw:
+            head, tail = raw.split(".", 1)
+            frac, suffix = tail, ""
+            for marker in ("+", "-"):
+                pos = frac.find(marker)
+                if pos > 0:
+                    suffix = frac[pos:]
+                    frac = frac[:pos]
+                    break
+            frac = frac[:6]
+            raw = f"{head}.{frac}{suffix}" if frac else f"{head}{suffix}"
+        dt=datetime.fromisoformat(raw)
+        if dt.tzinfo is None:
+            dt=dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+    except Exception:
+        return None
+
+def _market_age_seconds(value, now):
+    dt=_parse_market_timestamp(value)
+    if dt is None:
+        return None
+    return max(0.0, (now-dt).total_seconds())
+
 def news(symbol, now, hours=96, limit=50):
     q=urllib.parse.urlencode({"symbols":symbol,"start":_iso(now-timedelta(hours=hours)),"end":_iso(now),"sort":"desc","limit":limit,"include_content":"false"})
     return get_json(f"{DATA_BASE}/v1beta1/news?{q}").get("news") or []
@@ -739,6 +770,8 @@ def analyze(symbol):
     now=datetime.now(timezone.utc); now_et=now.astimezone(ET)
     snap=snapshot(symbol,LIVE_FEED)
     trade=snap.get("latestTrade") or {}; quote=snap.get("latestQuote") or {}; day=snap.get("dailyBar") or {}; prev=snap.get("prevDailyBar") or {}
+    trade_ts=trade.get("t"); quote_ts=quote.get("t")
+    trade_age=_market_age_seconds(trade_ts,now); quote_age=_market_age_seconds(quote_ts,now)
     price=fnum(trade.get("p")) or fnum(day.get("c"))
     if not price: raise RuntimeError("No current price returned")
     prev_close=fnum(prev.get("c")); day_pct=pct(price,prev_close) if prev_close else None
@@ -778,7 +811,7 @@ def analyze(symbol):
     try:arts=catalyst_summary(news(symbol,now),now)
     except Exception: pass
     liquidity=liquidity_context(price,avgvol,pace,spread_pct)
-    metrics={"engine_version":ANALYZER_ENGINE_VERSION,"symbol":symbol,"as_of":now_et.isoformat(),"live_feed":LIVE_FEED.upper(),"historical_feed":daysrc,"price":round(price,4),"prev_close":prev_close,"day_pct":round(day_pct,2) if day_pct is not None else None,"bid":bid,"ask":ask,"spread_pct":round(spread_pct,2) if spread_pct is not None else None,"day_high":round(high,4),"day_low":round(low,4),"from_high_pct":round(from_high,2) if from_high is not None else None,"vwap":round(vwap,4) if vwap else None,"vwap_position":"ABOVE" if vwap and price>=vwap else "BELOW" if vwap else "N/A","vwap_extension_pct":round(pct(price,vwap),2) if vwap else None,"momentum_5m":round(mom(5),2) if mom(5) is not None else None,"momentum_15m":round(mom(15),2) if mom(15) is not None else None,"momentum_30m":round(mom(30),2) if mom(30) is not None else None,"volume":round(today_volume),"avg_20d_volume":round(avgvol) if avgvol else None,"volume_pace":round(pace,2) if pace is not None else None,"volume_source":volsrc,"atr_14":round(atr14,4) if atr14 is not None else None,"atr_14_pct":round(atr14_pct,2) if atr14_pct is not None else None,"liquidity":liquidity,"supports":supports,"resistances":resist,"historical_analogs":hist,"news":arts}
+    metrics={"engine_version":ANALYZER_ENGINE_VERSION,"symbol":symbol,"as_of":now_et.isoformat(),"live_feed":LIVE_FEED.upper(),"historical_feed":daysrc,"latest_trade_time":trade_ts,"latest_quote_time":quote_ts,"trade_age_seconds":round(trade_age,2) if trade_age is not None else None,"quote_age_seconds":round(quote_age,2) if quote_age is not None else None,"price":round(price,4),"prev_close":prev_close,"day_pct":round(day_pct,2) if day_pct is not None else None,"bid":bid,"ask":ask,"spread_pct":round(spread_pct,2) if spread_pct is not None else None,"day_high":round(high,4),"day_low":round(low,4),"from_high_pct":round(from_high,2) if from_high is not None else None,"vwap":round(vwap,4) if vwap else None,"vwap_position":"ABOVE" if vwap and price>=vwap else "BELOW" if vwap else "N/A","vwap_extension_pct":round(pct(price,vwap),2) if vwap else None,"momentum_5m":round(mom(5),2) if mom(5) is not None else None,"momentum_15m":round(mom(15),2) if mom(15) is not None else None,"momentum_30m":round(mom(30),2) if mom(30) is not None else None,"volume":round(today_volume),"avg_20d_volume":round(avgvol) if avgvol else None,"volume_pace":round(pace,2) if pace is not None else None,"volume_source":volsrc,"atr_14":round(atr14,4) if atr14 is not None else None,"atr_14_pct":round(atr14_pct,2) if atr14_pct is not None else None,"liquidity":liquidity,"supports":supports,"resistances":resist,"historical_analogs":hist,"news":arts}
     score,grade,entry,reasons=score_setup(metrics)
     metrics.update({"score":score,"grade":grade,"entry_quality":entry,"score_reasons":reasons})
     metrics["trade_plan"]=build_trade_plan(metrics,now)

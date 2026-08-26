@@ -1,5 +1,5 @@
-import html, os, subprocess, sys, json, urllib.request, urllib.error
-from datetime import datetime
+import html, os, subprocess, sys, json, urllib.request, urllib.error, time
+from datetime import datetime, timezone
 import pandas as pd
 import streamlit as st
 
@@ -36,6 +36,32 @@ def _load_streamlit_secrets_into_env():
 _load_streamlit_secrets_into_env()
 
 from stock_analyzer import analyze
+
+AUTO_REFRESH_SECONDS = max(5, int(os.environ.get("ANALYZER_REFRESH_SECONDS", "15") or 15))
+
+def _result_age_seconds(result):
+    if not result or not result.get("as_of"):
+        return None
+    try:
+        dt=datetime.fromisoformat(str(result["as_of"]))
+        if dt.tzinfo is None:
+            dt=dt.replace(tzinfo=timezone.utc)
+        return max(0.0, (datetime.now(timezone.utc)-dt.astimezone(timezone.utc)).total_seconds())
+    except Exception:
+        return None
+
+def _age_text(seconds):
+    if seconds is None:
+        return "time unavailable"
+    seconds=float(seconds)
+    if seconds < 2:
+        return "just now"
+    if seconds < 60:
+        return f"{seconds:.0f}s ago"
+    minutes=seconds/60
+    if minutes < 60:
+        return f"{minutes:.1f}m ago"
+    return f"{minutes/60:.1f}h ago"
 
 @st.cache_data(ttl=21600, show_spinner=False)
 def load_active_us_equities():
@@ -354,9 +380,34 @@ ticker=str(
 with c2:
     run=st.button("Analyze",type="primary",width="stretch")
 with c3:
-    st.caption("Live feed is controlled by `ALPACA_LIVE_FEED` (IEX now; SIP after upgrade).")
+    st.toggle("Auto-refresh", value=True, key="auto_refresh_enabled")
+    st.caption(f"Refresh every {AUTO_REFRESH_SECONDS}s · use `ALPACA_LIVE_FEED=\"sip\"` for consolidated real-time data when your Alpaca plan supports SIP.")
 
-if run or "result" not in st.session_state or st.session_state.get("ticker")!=ticker:
+@st.fragment(run_every=f"{AUTO_REFRESH_SECONDS}s")
+def _auto_refresh_driver():
+    """Trigger a full app rerun on the refresh interval without looping on first render."""
+    if not st.session_state.get("auto_refresh_enabled", True):
+        return
+    now_ts=time.time()
+    last=st.session_state.get("_auto_refresh_last_rerun")
+    if last is None or now_ts < float(last):
+        st.session_state["_auto_refresh_last_rerun"]=now_ts
+        return
+    if now_ts-float(last) >= max(1, AUTO_REFRESH_SECONDS-0.75):
+        st.session_state["_auto_refresh_last_rerun"]=now_ts
+        st.rerun(scope="app")
+
+_auto_refresh_driver()
+
+_existing_result=st.session_state.get("result")
+_result_age=_result_age_seconds(_existing_result)
+_refresh_due=(
+    st.session_state.get("auto_refresh_enabled", True)
+    and _result_age is not None
+    and _result_age >= max(1, AUTO_REFRESH_SECONDS-1)
+)
+
+if run or "result" not in st.session_state or st.session_state.get("ticker")!=ticker or _refresh_due:
     try:
         with st.spinner(f"Analyzing {ticker}…"):
             st.session_state["result"]=analyze(ticker)
@@ -425,12 +476,24 @@ def card(col,k,v,n="",cls=""):
     with col: st.markdown(f'<div class="card"><div class="k">{html.escape(k)}</div><div class="v {cls}">{html.escape(str(v))}</div><div class="n">{html.escape(str(n))}</div></div>',unsafe_allow_html=True)
 
 cols=st.columns(6)
-card(cols[0],"PRICE",money(r.get("price")),pp(r.get("day_pct")),"good" if (r.get("day_pct") or 0)>=0 else "bad")
+_trade_age=r.get("trade_age_seconds")
+_price_note=f'{pp(r.get("day_pct"))} · trade {_age_text(_trade_age)} · {r.get("live_feed")}'
+card(cols[0],"PRICE",money(r.get("price")),_price_note,"good" if (r.get("day_pct") or 0)>=0 else "bad")
 card(cols[1],"VWAP",money(r.get("vwap")),f'{r.get("vwap_position")} · {pp(r.get("vwap_extension_pct"))}',"good" if r.get("vwap_position")=="ABOVE" else "bad")
 card(cols[2],"DAY RANGE",f'{money(r.get("day_low"))}–{money(r.get("day_high"))}',f'{r.get("from_high_pct",0):.1f}% below high')
 card(cols[3],"VOL PACE",multiple(r.get("volume_pace")),f'{r.get("volume",0):,.0f} shown · {r.get("volume_source")}')
 card(cols[4],"SETUP SCORE",f'{r.get("score"):.1f} / 100',f'Grade {r.get("grade")}',"good" if r.get("grade") in ("A","B") else "warn")
 card(cols[5],"BASE SETUP",r.get("entry_quality"),f'Live feed: {r.get("live_feed")}',"good" if r.get("entry_quality")=="FAVORABLE" else "warn")
+
+if _trade_age is not None and float(_trade_age) > max(30, AUTO_REFRESH_SECONDS*2):
+    feed_name=str(r.get("live_feed") or "").upper()
+    extra=(
+        " IEX is a single exchange, so its most recent trade can lag the consolidated market for some stocks. "
+        "If your Alpaca subscription includes SIP, set ALPACA_LIVE_FEED=\"sip\" in Streamlit Secrets."
+        if feed_name=="IEX" else
+        " The upstream Alpaca feed itself has not reported a newer eligible trade yet."
+    )
+    st.warning(f"Latest {feed_name or 'market'} trade is {_age_text(_trade_age)}.{extra}")
 
 # Dynamic decision-support trade plan. This can explicitly return WAIT or
 # NO TRADE instead of manufacturing an entry for every ticker.
@@ -587,4 +650,4 @@ elif pos=="BELOW": verdict="The setup has weakened because price is below VWAP. 
 else: verdict="The setup is mixed. Watch the nearest support/resistance and require confirmation before treating the move as high quality."
 st.markdown(f'<div class="callout"><b>{html.escape(ticker)} read:</b> {html.escape(verdict)}<br><span class="sub">This is a trading-analysis aid, not a guarantee of future price movement.</span></div>',unsafe_allow_html=True)
 
-st.caption(f'As of {r.get("as_of")} · Live={r.get("live_feed")} · Historical/liquidity={r.get("historical_feed")} · Engine={r.get("engine_version") or "unknown"} · UI=enter-select-ticker-v4.5')
+st.caption(f'Analysis as of {r.get("as_of")} · Latest trade={r.get("latest_trade_time") or "—"} ({_age_text(r.get("trade_age_seconds"))}) · Latest quote={r.get("latest_quote_time") or "—"} ({_age_text(r.get("quote_age_seconds"))}) · Live={r.get("live_feed")} · Historical/liquidity={r.get("historical_feed")} · Engine={r.get("engine_version") or "unknown"} · UI=live-refresh-v5.0')
