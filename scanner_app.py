@@ -79,8 +79,15 @@ st.markdown(
 .legend-item{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
 .legend-term{font-size:12px;font-weight:900;margin-bottom:4px}
 .legend-def{color:var(--muted);font-size:12px;line-height:1.4}
-.auto-box{background:var(--panel);border:1px solid var(--line);border-radius:12px;
-  padding:10px 13px;margin:4px 0 12px}
+.auto-box{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+  padding:7px 10px;margin:2px 0 6px}
+.market-box{display:flex;align-items:center;justify-content:space-between;gap:10px;
+  min-height:38px;box-sizing:border-box;background:var(--panel);border:1px solid var(--line);
+  border-radius:9px;padding:6px 10px;margin:0}
+.market-box.open{border-left:4px solid var(--green)}
+.market-box.closed{border-left:4px solid var(--amber)}
+.market-main{font-size:13px;font-weight:900;white-space:nowrap}
+.market-time{color:var(--muted);font-size:11px;font-weight:700;white-space:nowrap}
 .auto-on{border-left:4px solid var(--green)}
 .auto-wait{border-left:4px solid var(--amber)}
 .auto-off{border-left:4px solid var(--muted)}
@@ -90,7 +97,7 @@ st.markdown(
   margin-top:5px;border:1px solid #263750}
 .bar-fill{height:100%;background:linear-gradient(90deg,#f59e0b,#ef4444);border-radius:999px}
 div[data-testid="stDataFrame"]{border:1px solid var(--line);border-radius:12px;overflow:hidden}
-.stButton button{border-radius:10px;font-weight:850;min-height:44px}
+.stButton button{border-radius:8px;font-weight:850;min-height:38px;height:38px;padding-top:4px;padding-bottom:4px}
 @media(max-width:900px){.title{font-size:28px}.ticker{font-size:27px}.grid{grid-template-columns:1fr}.legend-grid{grid-template-columns:1fr}}
 </style>
 """,
@@ -415,8 +422,9 @@ with controls_context:
         market_open, now_et = market_is_open()
         market_label = "🟢 MARKET OPEN" if market_open else "🟡 MARKET CLOSED"
         st.markdown(
-            f'<div class="auto-box {"auto-on" if market_open else "auto-wait"}">'
-            f'<b>{market_label}</b><br><span class="sub">{now_et:%I:%M %p ET}</span></div>',
+            f'<div class="market-box {"open" if market_open else "closed"}">'
+            f'<span class="market-main">{market_label}</span>'
+            f'<span class="market-time">{now_et:%I:%M %p ET}</span></div>',
             unsafe_allow_html=True,
         )
 
@@ -487,9 +495,9 @@ def auto_scan_controller():
             font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;}}
           .auto-box{{box-sizing:border-box;width:100%;background:#111b2e;
             border:1px solid #2b3b56;border-left:4px solid #22c55e;
-            border-radius:12px;padding:10px 13px;margin:4px 0 12px;}}
-          b{{font-size:16px;font-weight:850;}}
-          .sub{{display:inline-block;color:#9fb0c9;font-size:14px;margin-top:5px;}}
+            border-radius:9px;padding:6px 10px;margin:1px 0 5px;}}
+          b{{font-size:13px;font-weight:850;}}
+          .sub{{display:inline-block;color:#9fb0c9;font-size:11px;margin-top:2px;}}
           #live-countdown{{font-variant-numeric:tabular-nums;font-weight:800;color:#f4f7fb;}}
         </style>
         <script>
@@ -511,7 +519,7 @@ def auto_scan_controller():
           }})();
         </script>
         """,
-        height=92,
+        height=54,
         scrolling=False,
     )
 
