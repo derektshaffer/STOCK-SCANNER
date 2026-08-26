@@ -18,7 +18,7 @@ except Exception:
     apply_scanner_ml = None
 
 # ============================================================
-# MOMENTUM STOCK SCANNER - v2.8
+# MOMENTUM STOCK SCANNER - v2.9
 #
 # v2.5 includes:
 #   1) Near-miss / watchlist ranking even when nothing fully passes.
@@ -57,6 +57,7 @@ MIN_PRICE = 1.00
 MAX_PRICE = 50.00
 MIN_DAY_PCT = 3.0
 MIN_TOTAL_DOLLAR_VOLUME = 5_000_000
+MIN_EXTENDED_DOLLAR_VOLUME = 1_000_000
 MIN_RAW_IEX_DOLLAR_VOLUME_FALLBACK = 25_000
 IEX_MARKET_SHARE_ESTIMATE = 0.025
 SIP_LIQUIDITY_DELAY_MINUTES = 16
@@ -89,7 +90,7 @@ VOLUME_PROFILE_MIN_SESSIONS = 7
 
 SCAN_LOG_DIR = os.environ.get("SCAN_LOG_DIR", "scan_logs").strip() or "scan_logs"
 SCAN_LOG_TOP = 30
-SCANNER_VERSION = "2.8"
+SCANNER_VERSION = "2.9"
 
 API_KEY = os.environ.get("ALPACA_API_KEY", "").strip()
 API_SECRET = os.environ.get("ALPACA_SECRET_KEY", "").strip()
@@ -102,7 +103,7 @@ HEADERS = {
     "APCA-API-KEY-ID": API_KEY,
     "APCA-API-SECRET-KEY": API_SECRET,
     "Accept": "application/json",
-    "User-Agent": "github-stock-scanner/2.8",
+    "User-Agent": "github-stock-scanner/2.9",
 }
 
 # (category, base score, keywords)
@@ -309,6 +310,56 @@ def get_movers():
     return get_json(url).get("gainers", [])
 
 
+def get_most_actives(by="volume", top=100):
+    params = urllib.parse.urlencode({"by": by, "top": top})
+    url = f"{DATA_BASE}/v1beta1/screener/stocks/most-actives?{params}"
+    return get_json(url).get("most_actives") or []
+
+
+def get_candidate_universe(now_et):
+    """Use movers in regular hours and real-time activity in extended hours.
+
+    Alpaca's stock movers list does not reset for the new day until the regular
+    open, so pre-market discovery cannot rely on movers alone.
+    """
+    phase = market_session_mode(now_et)
+    if phase == "regular":
+        return get_movers()
+
+    if phase in {"premarket", "afterhours"}:
+        merged = {}
+        errors = []
+        for by in ("volume", "trades"):
+            try:
+                for row in get_most_actives(by=by, top=100):
+                    symbol = str(row.get("symbol") or "").upper().strip()
+                    if symbol:
+                        merged[symbol] = {"symbol": symbol}
+            except Exception as exc:
+                errors.append(str(exc))
+
+        # After the regular open, today's movers are still useful context and
+        # can catch a sharp post-market mover not yet near the activity leaders.
+        if phase == "afterhours":
+            try:
+                for row in get_movers():
+                    symbol = str(row.get("symbol") or "").upper().strip()
+                    if symbol:
+                        merged[symbol] = {"symbol": symbol}
+            except Exception as exc:
+                errors.append(str(exc))
+
+        if merged:
+            return list(merged.values())[:150]
+
+        # Graceful fallback if the most-active screener is unavailable.
+        if errors:
+            print("WARN extended-hours discovery: " + " | ".join(errors[:2]))
+        return get_movers()
+
+    return get_movers()
+
+
 def get_snapshot(symbol):
     q = urllib.parse.urlencode({"feed": LIVE_FEED})
     url = f"{DATA_BASE}/v2/stocks/{urllib.parse.quote(symbol)}/snapshot?{q}"
@@ -386,22 +437,46 @@ def get_news_for_symbols(symbols, now_utc):
     return get_json(url).get("news") or []
 
 
-def is_regular_session(now_et):
+def market_session_mode(now_et):
+    """Return premarket, regular, afterhours, or closed in New York time."""
     if now_et.weekday() >= 5:
-        return False
+        return "closed"
     minutes = now_et.hour * 60 + now_et.minute
-    return (9 * 60 + 30) <= minutes <= (16 * 60)
+    if (4 * 60) <= minutes < (9 * 60 + 30):
+        return "premarket"
+    if (9 * 60 + 30) <= minutes < (16 * 60):
+        return "regular"
+    if (16 * 60) <= minutes < (20 * 60):
+        return "afterhours"
+    return "closed"
+
+
+def is_regular_session(now_et):
+    return market_session_mode(now_et) == "regular"
+
+
+def is_active_market_session(now_et):
+    return market_session_mode(now_et) in {"premarket", "regular", "afterhours"}
+
+
+def session_window_minutes(now_et):
+    phase = market_session_mode(now_et)
+    if phase == "premarket":
+        return 4 * 60, 9 * 60 + 30
+    if phase == "afterhours":
+        return 16 * 60, 20 * 60
+    return 9 * 60 + 30, 16 * 60
 
 
 def session_fraction(now_et):
-    open_minutes = 9 * 60 + 30
-    close_minutes = 16 * 60
+    open_minutes, close_minutes = session_window_minutes(now_et)
     current_minutes = now_et.hour * 60 + now_et.minute
+    total = max(1, close_minutes - open_minutes)
     if current_minutes <= open_minutes:
-        return 1.0 / 390.0
+        return 1.0 / total
     if current_minutes >= close_minutes:
         return 1.0
-    return max(1.0 / 390.0, (current_minutes - open_minutes) / 390.0)
+    return max(1.0 / total, (current_minutes - open_minutes) / total)
 
 
 def base_quality_score(c):
@@ -436,19 +511,26 @@ def live_bonus_score(c):
 
 
 def critical_fail_count(c):
-    """Count strongest liquidity/price failures, preferring delayed SIP when available."""
+    """Count strongest price/liquidity failures with an extended-hours threshold."""
     count = 0
     price = c.get("price") or 0
     if price < MIN_PRICE or price > MAX_PRICE:
         count += 1
 
+    phase = c.get("market_session") or "regular"
+    liquidity_floor = (
+        MIN_EXTENDED_DOLLAR_VOLUME
+        if phase in {"premarket", "afterhours"}
+        else MIN_TOTAL_DOLLAR_VOLUME
+    )
+
     if c.get("liquidity_source") == "delayed_sip":
-        if c.get("liquidity_dollar_volume", 0) < MIN_TOTAL_DOLLAR_VOLUME:
+        if c.get("liquidity_dollar_volume", 0) < liquidity_floor:
             count += 1
     else:
         if c.get("dollar_volume", 0) < MIN_RAW_IEX_DOLLAR_VOLUME_FALLBACK:
             count += 1
-        if c.get("liquidity_dollar_volume", 0) < MIN_TOTAL_DOLLAR_VOLUME:
+        if c.get("liquidity_dollar_volume", 0) < liquidity_floor:
             count += 1
     return count
 
@@ -485,11 +567,13 @@ def setup_risk_flags(c):
 
 
 def assign_setup_grade(c, now_et):
-    """Assign a research grade. A grades require live-session confirmation."""
-    live = is_regular_session(now_et)
+    """Assign research grades while treating extended hours more conservatively."""
+    phase = market_session_mode(now_et)
+    regular = phase == "regular"
+    active = phase in {"premarket", "regular", "afterhours"}
     flags = setup_risk_flags(c)
     c["setup_flags"] = flags
-    c["grade_mode"] = "live" if live else "off_hours_preview"
+    c["grade_mode"] = phase
 
     critical = c.get("critical_fail_count", critical_fail_count(c))
     failed = c.get("failed_count", 99)
@@ -505,10 +589,9 @@ def assign_setup_grade(c, now_et):
     elif failed == 1:
         grade, label = "C", "NEAR MISS"
         reasons.append(c.get("failed_filters", ["one base-filter failure"])[0])
-    elif not live:
-        # Off-hours cannot earn an A because 5m/15m momentum and volume pace are absent.
+    elif not active:
         grade, label = "B", "PREVIEW"
-        reasons.append("base filters pass; awaiting live confirmation")
+        reasons.append("market closed; awaiting live confirmation")
         if warnings:
             reasons.append("execution warning present")
         if flags:
@@ -530,7 +613,8 @@ def assign_setup_grade(c, now_et):
 
         severe_negative_news = c.get("news_bonus", 0) <= -4.0
         if (
-            confirmation_count >= 4
+            regular
+            and confirmation_count >= 4
             and warnings == 0
             and not flags
             and not severe_negative_news
@@ -538,6 +622,17 @@ def assign_setup_grade(c, now_et):
         ):
             grade, label = "A", "HIGH"
             reasons.append(f"{confirmation_count}/5 live confirmations")
+        elif phase in {"premarket", "afterhours"}:
+            grade = "B"
+            label = "PRE-MKT WATCH" if phase == "premarket" else "AFTER-HOURS WATCH"
+            reasons.append(f"{confirmation_count}/5 extended-hours confirmations")
+            reasons.append("A grade reserved for regular-hours confirmation")
+            if warnings:
+                reasons.append("extended-hours spread/liquidity warning")
+            if flags:
+                reasons.append("chase/extension risk present")
+            if severe_negative_news:
+                reasons.append("negative catalyst risk")
         else:
             grade, label = "B", "WATCH"
             reasons.append(f"{confirmation_count}/5 live confirmations")
@@ -552,20 +647,22 @@ def assign_setup_grade(c, now_et):
     c["setup_label"] = label
     c["grade_reasons"] = reasons
 
-    if live and grade == "A":
+    if regular and grade == "A":
         c["alert_tier"] = "HIGH"
         c["alert_ready"] = True
-    elif live and grade == "B" and failed == 0:
+    elif regular and grade == "B" and failed == 0:
         c["alert_tier"] = "WATCH"
         c["alert_ready"] = False
-    elif not live and grade == "B":
+    elif phase in {"premarket", "afterhours"} and grade == "B" and failed == 0:
+        c["alert_tier"] = "EXTENDED"
+        c["alert_ready"] = False
+    elif not active and grade == "B":
         c["alert_tier"] = "PREVIEW"
         c["alert_ready"] = False
     else:
         c["alert_tier"] = None
         c["alert_ready"] = False
     return c
-
 
 def assign_setup_grades(rows, now_et):
     for c in rows:
@@ -581,20 +678,28 @@ def evaluate_base_filters(c):
     if c.get("day_pct") is None or c["day_pct"] < MIN_DAY_PCT:
         reasons.append("day gain < 3%")
 
+    phase = c.get("market_session") or "regular"
+    liquidity_floor = (
+        MIN_EXTENDED_DOLLAR_VOLUME
+        if phase in {"premarket", "afterhours"}
+        else MIN_TOTAL_DOLLAR_VOLUME
+    )
+    liquidity_label = "$1M" if liquidity_floor == MIN_EXTENDED_DOLLAR_VOLUME else "$5M"
+
     if c.get("liquidity_source") == "delayed_sip":
-        if c.get("liquidity_dollar_volume", 0) < MIN_TOTAL_DOLLAR_VOLUME:
-            reasons.append("delayed SIP dollar volume < $5M")
+        if c.get("liquidity_dollar_volume", 0) < liquidity_floor:
+            reasons.append(f"delayed SIP dollar volume < {liquidity_label}")
     else:
         if c.get("dollar_volume", 0) < MIN_RAW_IEX_DOLLAR_VOLUME_FALLBACK:
             reasons.append("IEX dollar volume < $25k (fallback)")
-        if c.get("liquidity_dollar_volume", 0) < MIN_TOTAL_DOLLAR_VOLUME:
-            reasons.append("est. total dollar volume < $5M (fallback)")
+        if c.get("liquidity_dollar_volume", 0) < liquidity_floor:
+            reasons.append(f"est. total dollar volume < {liquidity_label} (fallback)")
 
     if c.get("intraday_range_pct") is None or c["intraday_range_pct"] < MIN_INTRADAY_RANGE_PCT:
         reasons.append("range < 3%")
     if c.get("distance_from_high_pct") is None or c["distance_from_high_pct"] > MAX_DISTANCE_FROM_HIGH_PCT:
         reasons.append("> 8% below high")
-    if not c.get("above_vwap"):
+    if phase == "regular" and not c.get("above_vwap"):
         reasons.append("below VWAP")
     return reasons
 
@@ -628,8 +733,13 @@ def refresh_quality(c):
 
 
 def enrich_delayed_sip_liquidity(rows, now_utc, now_et):
-    """Use consolidated SIP bars through ~15 minutes ago for liquidity when possible."""
+    """Use delayed SIP liquidity in regular hours; extended hours use live session flow."""
     if not rows:
+        return
+
+    if market_session_mode(now_et) in {"premarket", "afterhours"}:
+        for row in rows:
+            row["sip_liquidity_status"] = "extended_session_uses_live_iex"
         return
 
     et = ZoneInfo("America/New_York")
@@ -815,8 +925,7 @@ def historical_volume_profile(symbol, now_utc, now_et):
 
     ny = ZoneInfo("America/New_York")
     today = now_et.date().isoformat()
-    open_minute = 9 * 60 + 30
-    close_minute = 16 * 60
+    open_minute, close_minute = session_window_minutes(now_et)
 
     # Interpolate inside the current 5-minute bucket. At exactly 10:05, for
     # example, the 10:05 bucket has just begun and contributes ~0%; at 10:07:30
@@ -869,7 +978,61 @@ def historical_volume_profile(symbol, now_utc, now_et):
         "typical_daily_volume": typical_daily_volume,
         "expected_fraction": expected_fraction,
         "expected_volume": expected_volume,
-        "source": "ticker_historical_tod_iex",
+        "source": f"ticker_historical_{market_session_mode(now_et)}_tod_iex",
+    }
+
+
+def current_session_stats(symbol, now_utc, now_et):
+    """Build current pre-market/regular/after-hours stats from live IEX bars."""
+    phase = market_session_mode(now_et)
+    if phase == "closed":
+        return None
+
+    open_minute, _ = session_window_minutes(now_et)
+    start_et = now_et.replace(
+        hour=open_minute // 60,
+        minute=open_minute % 60,
+        second=0,
+        microsecond=0,
+    )
+    bars = get_bars(
+        symbol,
+        "5Min",
+        start_et.astimezone(timezone.utc),
+        now_utc,
+        10000,
+        feed=LIVE_FEED,
+    )
+    if not bars:
+        return None
+
+    high = None
+    low = None
+    volume = 0.0
+    dollar = 0.0
+    for bar in bars:
+        h = float(bar.get("h") or 0)
+        l = float(bar.get("l") or 0)
+        v = float(bar.get("v") or 0)
+        px = float(bar.get("vw") or bar.get("c") or 0)
+        if h > 0:
+            high = h if high is None else max(high, h)
+        if l > 0:
+            low = l if low is None else min(low, l)
+        if v > 0 and px > 0:
+            volume += v
+            dollar += v * px
+
+    if high is None or low is None:
+        return None
+
+    return {
+        "phase": phase,
+        "volume": volume,
+        "dollar_volume": dollar,
+        "high": high,
+        "low": low,
+        "vwap": (dollar / volume) if volume > 0 else None,
     }
 
 
@@ -888,13 +1051,58 @@ def recent_momentum(symbol, now_utc, current_price):
 
 
 def enrich_live(c, now_utc, now_et):
+    phase = market_session_mode(now_et)
     try:
         m5, m15 = recent_momentum(c["symbol"], now_utc, c["price"])
         avg_vol = avg_daily_volume(c["symbol"], now_utc)
         volume_profile = historical_volume_profile(c["symbol"], now_utc, now_et)
+        session_stats = current_session_stats(c["symbol"], now_utc, now_et)
     except Exception as exc:
         c["enrichment_error"] = str(exc)
         return c
+
+    if session_stats:
+        session_volume = float(session_stats.get("volume") or 0)
+        session_dollar = float(session_stats.get("dollar_volume") or 0)
+        session_high = session_stats.get("high")
+        session_low = session_stats.get("low")
+        session_vwap = session_stats.get("vwap")
+
+        c["session_volume"] = round(session_volume, 0)
+        c["session_dollar_volume"] = round(session_dollar, 2)
+        c["session_high"] = round(session_high, 4) if session_high else None
+        c["session_low"] = round(session_low, 4) if session_low else None
+        c["session_vwap"] = round(session_vwap, 4) if session_vwap else None
+
+        if session_high and session_low:
+            c["intraday_range_pct"] = round(
+                pct_change(session_high, session_low) or 0.0, 2
+            )
+        if session_high:
+            c["distance_from_high_pct"] = round(
+                ((session_high - c["price"]) / session_high) * 100.0, 2
+            )
+        if session_vwap:
+            c["vwap"] = round(session_vwap, 4)
+            c["distance_from_vwap_pct"] = round(
+                pct_change(c["price"], session_vwap) or 0.0, 2
+            )
+            c["above_vwap"] = bool(c["price"] > session_vwap)
+
+        # Extended-hours liquidity should reflect the current extended session,
+        # not yesterday's/current regular-session daily bar.
+        if phase in {"premarket", "afterhours"} and session_dollar > 0:
+            c["dollar_volume"] = round(session_dollar, 2)
+            estimated = (
+                session_dollar / IEX_MARKET_SHARE_ESTIMATE
+                if IEX_MARKET_SHARE_ESTIMATE > 0
+                else session_dollar
+            )
+            c["estimated_total_dollar_volume"] = round(estimated, 2)
+            c["liquidity_source"] = "iex_extended_estimate"
+            c["liquidity_dollar_volume"] = round(estimated, 2)
+    else:
+        session_volume = float(c.get("volume") or 0)
 
     pace = None
     expected_so_far = None
@@ -907,15 +1115,16 @@ def enrich_live(c, now_utc, now_et):
         expected_fraction = float(volume_profile["expected_fraction"])
         profile_samples = int(volume_profile.get("sample_count") or 0)
         pace_source = volume_profile.get("source") or "ticker_historical_tod"
-        pace = c["volume"] / expected_so_far
-    elif avg_vol and avg_vol > 0:
-        # Safe fallback for newly listed / extremely thin symbols that do not yet
-        # have enough intraday history. This preserves the old scanner behavior.
+        pace = session_volume / expected_so_far
+    elif phase == "regular" and avg_vol and avg_vol > 0:
+        # The linear fallback is only calibrated for the regular session.
         expected_fraction = session_fraction(now_et)
         expected_so_far = avg_vol * expected_fraction
-        pace_source = "linear_fallback"
+        pace_source = "linear_regular_fallback"
         if expected_so_far > 0:
-            pace = c["volume"] / expected_so_far
+            pace = session_volume / expected_so_far
+    elif phase in {"premarket", "afterhours"}:
+        pace_source = "extended_profile_unavailable"
 
     c["momentum_5m"] = round(m5, 2) if m5 is not None else None
     c["momentum_15m"] = round(m15, 2) if m15 is not None else None
@@ -927,9 +1136,8 @@ def enrich_live(c, now_utc, now_et):
     c["volume_vs_expected_pct"] = round((pace - 1.0) * 100.0, 1) if pace is not None else None
     c["volume_profile_samples"] = profile_samples
     c["live_bonus"] = live_bonus_score(c)
-    c["score"] = round(c["base_score"] + c["live_bonus"] + c.get("news_bonus", 0), 1)
+    refresh_quality(c)
     return c
-
 
 def article_catalyst_score(article, now_utc):
     headline = str(article.get("headline") or "")
@@ -1272,6 +1480,7 @@ def candidate_log_record(c, rank):
         "base_score": c.get("base_score"),
         "live_bonus": c.get("live_bonus"),
         "news_bonus": c.get("news_bonus"),
+        "market_session": c.get("market_session"),
         "setup_grade": c.get("setup_grade"),
         "setup_label": c.get("setup_label"),
         "alert_tier": c.get("alert_tier"),
@@ -1338,7 +1547,14 @@ def write_scan_logs(rows, now_utc, now_et, excluded_symbols, ml_summary=None):
             "scan_id": scan_id,
             "scan_time_utc": now_utc.isoformat(),
             "scan_time_et": now_et.isoformat(),
-            "mode": "regular_market_session" if is_regular_session(now_et) else "off_hours_test",
+            "mode": (
+                "regular_market_session"
+                if market_session_mode(now_et) == "regular"
+                else "extended_market_session"
+                if market_session_mode(now_et) in {"premarket", "afterhours"}
+                else "off_hours_test"
+            ),
+            "session_phase": market_session_mode(now_et),
             "github": {
                 "run_id": os.environ.get("GITHUB_RUN_ID"),
                 "run_attempt": os.environ.get("GITHUB_RUN_ATTEMPT"),
@@ -1612,23 +1828,27 @@ def main():
     now_et = now_utc.astimezone(ZoneInfo("America/New_York"))
 
     print(f"Momentum scan v{SCANNER_VERSION} started: {now_et:%Y-%m-%d %H:%M:%S %Z}")
-    print(
-        "Mode: "
-        + ("REGULAR MARKET SESSION" if is_regular_session(now_et) else "OFF-HOURS / TEST")
-    )
+    phase = market_session_mode(now_et)
+    phase_label = {
+        "premarket": "PRE-MARKET",
+        "regular": "REGULAR MARKET SESSION",
+        "afterhours": "AFTER-HOURS",
+        "closed": "MARKET CLOSED / TEST",
+    }[phase]
+    print("Mode: " + phase_label)
     print(
         "Data: live momentum = IEX; liquidity prefers consolidated SIP volume delayed ~15m; "
         "2.5% IEX scaling is fallback only; IEX spread is a warning only."
     )
 
-    movers = get_movers()
-    print(f"Alpaca returned {len(movers)} gainers.")
+    candidates = get_candidate_universe(now_et)
+    print(f"Alpaca discovery returned {len(candidates)} candidate symbols.")
 
     rows = []
     rejection_counts = Counter()
     excluded_symbols = []
 
-    for mover in movers:
+    for mover in candidates:
         symbol = str(mover.get("symbol", "")).upper().strip()
         if not symbol:
             continue
@@ -1648,6 +1868,9 @@ def main():
             rejection_counts["missing market data"] += 1
             continue
 
+        c["market_session"] = phase
+        c["session_date"] = now_et.date().isoformat()
+        refresh_quality(c)
         rows.append(c)
         time.sleep(0.03)
 
@@ -1661,13 +1884,13 @@ def main():
 
     rows.sort(key=ranking_key, reverse=True)
 
-    if is_regular_session(now_et):
+    if is_active_market_session(now_et):
         for c in rows[:ENRICH_TOP]:
             enrich_live(c, now_utc, now_et)
             time.sleep(0.05)
     else:
         for c in rows:
-            c["live_data_status"] = "skipped_off_hours"
+            c["live_data_status"] = "skipped_market_closed"
 
     rows.sort(key=ranking_key, reverse=True)
 
@@ -1697,7 +1920,7 @@ def main():
     # chronological walk-forward validation.
     assign_setup_grades(rows, now_et)
 
-    if is_regular_session(now_et) and apply_scanner_ml is not None:
+    if phase == "regular" and apply_scanner_ml is not None:
         try:
             ml_summary = apply_scanner_ml(rows, now_et)
         except Exception as exc:
@@ -1714,7 +1937,13 @@ def main():
                 row["opportunity_score"] = row.get("score")
     else:
         ml_summary = {
-            "status": "skipped_off_hours" if not is_regular_session(now_et) else "unavailable",
+            "status": (
+                "paused_extended_hours"
+                if phase in {"premarket", "afterhours"}
+                else "skipped_market_closed"
+                if phase == "closed"
+                else "unavailable"
+            ),
             "validated": False,
             "version": "scanner-ml-v1",
             "target": ">= +3% at 60 minutes",
