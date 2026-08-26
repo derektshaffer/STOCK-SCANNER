@@ -158,7 +158,7 @@ def _install_scanner_interactions():
 
 
 def _install_working_button_transition():
-    """Change Analyze to Working only after Streamlit receives the click."""
+    """Immediately show Working without interfering with Streamlit's click."""
     components.html(
         """
         <script>
@@ -166,8 +166,8 @@ def _install_working_button_transition():
           const p = window.parent;
           const d = p.document;
 
-          // Clean up the older full-screen loading implementation if this tab
-          // still has it from a previous deployment.
+          // Remove older transition implementations that may still be attached
+          // to this browser tab from previous deployments.
           const previous = p.__stockWorkspaceTransition;
           if (previous && previous.capture) {
             try { d.removeEventListener('click', previous.capture, true); } catch (_) {}
@@ -175,44 +175,41 @@ def _install_working_button_transition():
           p.__stockWorkspaceTransition = null;
           const oldMask = d.getElementById('stock-workspace-transition-mask');
           if (oldMask) oldMask.remove();
-          try { d.body.style.overflow = ''; } catch (_) {}
-
           const staleStyle = d.getElementById('stock-switch-hide-stale');
           if (staleStyle) staleStyle.remove();
+          try { d.body.style.overflow = ''; } catch (_) {}
 
           const old = p.__stockWorkingButtonTransition;
-          if (old && old.click) {
-            try { d.removeEventListener('click', old.click); } catch (_) {}
+          if (old) {
+            try { old.capture && d.removeEventListener('click', old.capture, true); } catch (_) {}
+            try { old.click && d.removeEventListener('click', old.click); } catch (_) {}
           }
 
           function setWorking(button) {
-            if (!button || !button.isConnected || button.dataset.stockWorking === '1') return;
+            if (!button || button.dataset.stockWorking === '1') return;
             button.dataset.stockWorking = '1';
             button.setAttribute('aria-busy', 'true');
+            button.style.cursor = 'wait';
+            // Prevent a second click without using the disabled attribute,
+            // because disabling during dispatch can block Streamlit's handler.
+            button.style.pointerEvents = 'none';
             const textNode = button.querySelector('p') || button.querySelector('span') || button;
             if (textNode) textNode.textContent = 'Working…';
-            // Disable only after the original click event has completely
-            // finished, so Streamlit's React handler has already received it.
-            button.disabled = true;
-            button.style.cursor = 'wait';
           }
 
-          const click = (event) => {
+          const capture = (event) => {
             const button = event.target.closest && event.target.closest('button');
             if (!button) return;
             const text = String(button.textContent || '').trim();
             if (!/^Analyze\s+[A-Z0-9.\-]+/i.test(text)) return;
 
-            // Important: do not alter/disable the button during this click.
-            // Streamlit must process the event first. A zero-delay timer runs
-            // only after the current event dispatch has completed.
-            p.setTimeout(() => setWorking(button), 0);
+            // Change only presentation. Do not preventDefault, stop propagation,
+            // or set disabled. Streamlit receives this same click normally.
+            setWorking(button);
           };
 
-          // Bubble phase rather than capture phase, so Streamlit's own button
-          // handler gets priority.
-          d.addEventListener('click', click);
-          p.__stockWorkingButtonTransition = {click};
+          d.addEventListener('click', capture, true);
+          p.__stockWorkingButtonTransition = {capture};
         })();
         </script>
         """,
@@ -228,11 +225,20 @@ def _finish_transition_cleanup():
         (() => {
           const p = window.parent;
           const d = p.document;
+
           const previous = p.__stockWorkspaceTransition;
           if (previous && previous.capture) {
             try { d.removeEventListener('click', previous.capture, true); } catch (_) {}
           }
           p.__stockWorkspaceTransition = null;
+
+          const working = p.__stockWorkingButtonTransition;
+          if (working) {
+            try { working.capture && d.removeEventListener('click', working.capture, true); } catch (_) {}
+            try { working.click && d.removeEventListener('click', working.click); } catch (_) {}
+          }
+          p.__stockWorkingButtonTransition = null;
+
           const mask = d.getElementById('stock-workspace-transition-mask');
           if (mask) mask.remove();
           const style = d.getElementById('stock-switch-hide-stale');
