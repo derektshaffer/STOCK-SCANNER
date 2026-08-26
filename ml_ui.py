@@ -10,6 +10,15 @@ def _validation_note(model):
         return "not available"
     status = model.get("status")
     if status != "ok":
+        if status == "insufficient_samples":
+            n = int(model.get("samples") or 0)
+            positives = int(model.get("positives") or 0)
+            negatives = max(0, n - positives)
+            if n >= 180:
+                return (
+                    "insufficient outcome balance"
+                    + (f" · {positives} target wins / {negatives} non-wins" if n else "")
+                )
         n = model.get("samples") or model.get("validation_samples")
         return f"{status.replace('_', ' ')}" + (f" · n={n}" if n else "")
     acc = model.get("walk_forward_accuracy_pct")
