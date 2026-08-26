@@ -398,8 +398,11 @@ if "last_auto_message" not in st.session_state:
     st.session_state["last_auto_message"] = ""
 
 
-with st.container(key="scanner_controls_top"):
-    control_a, control_b, control_c = st.columns([2.2, 1.2, 1.2])
+controls_mount = st.session_state.get("_scanner_controls_mount")
+controls_context = controls_mount.container() if controls_mount is not None else st.container(key="scanner_controls_top")
+
+with controls_context:
+    control_a, control_b, control_c = st.columns([2.2, 1.2, 1.2], vertical_alignment="center")
     with control_a:
         st.toggle(
             "Auto scan every 5 minutes",
@@ -513,7 +516,9 @@ def auto_scan_controller():
     )
 
 
-with st.container(key="scanner_auto_status_top"):
+status_mount = st.session_state.get("_scanner_status_mount")
+status_context = status_mount.container() if status_mount is not None else st.container(key="scanner_auto_status_top")
+with status_context:
     auto_scan_controller()
 
 payload = load_scan()
