@@ -364,6 +364,22 @@ def metric(k, v, cls=""):
     )
 
 
+def ml_display(c):
+    if not c.get("ml_validated"):
+        status = str(c.get("ml_status") or "").lower()
+        if status in {"failed_validation", "prediction_error", "error"}:
+            return "NOT VALID", "neg"
+        return "LEARNING", "muted"
+
+    try:
+        probability = float(c.get("ml_continuation_prob_pct"))
+    except (TypeError, ValueError):
+        return "—", "muted"
+
+    cls = "pos" if probability >= 65 else ("muted" if probability >= 50 else "neg")
+    return f"{probability:.0f}%", cls
+
+
 def format_catalyst_time(news):
     """Return the catalyst publication timestamp in U.S. Eastern Time."""
     raw = news.get("published_at") or news.get("created_at")
@@ -435,6 +451,8 @@ def card(c):
         ac = "green" if alert == "HIGH" else ("blue" if alert == "WATCH" else "amber")
         alert_badge = f'<span class="badge {ac}">ALERT {html.escape(str(alert))}</span>'
 
+    ml_text, ml_cls = ml_display(c)
+
     spread = (
         c.get("iex_spread_pct")
         if c.get("iex_spread_pct") is not None
@@ -479,6 +497,7 @@ def card(c):
   <div class="grid">
     {metric("5 MIN",f(c.get("momentum_5m"),2,"%"),"pos" if (c.get("momentum_5m") or 0)>0 else "muted")}
     {metric("15 MIN",f(c.get("momentum_15m"),2,"%"),"pos" if (c.get("momentum_15m") or 0)>0 else "muted")}
+    {metric("ML 60M",ml_text,ml_cls)}
     {metric("TOD VOL PACE",f(c.get("volume_pace"),2,"x"),"pos" if (c.get("volume_pace") or 0)>=1.5 else "muted")}
     {metric("NORMAL VOL BY NOW",f(c.get("expected_volume_fraction_pct"),1,"%"))}
     {metric("VWAP PRICE","$"+f(c.get("vwap"),2),"pos" if c.get("above_vwap") else "neg")}
@@ -503,6 +522,9 @@ def to_df(records):
                 "Grade": c.get("setup_grade"),
                 "Status": c.get("setup_label"),
                 "Score": c.get("score"),
+                "Opportunity": c.get("opportunity_score"),
+                "ML 60m %": c.get("ml_continuation_prob_pct"),
+                "ML Status": "VALIDATED" if c.get("ml_validated") else str(c.get("ml_status") or "learning").upper(),
                 "Price": c.get("price"),
                 "Day %": c.get("day_pct"),
                 "5m %": c.get("momentum_5m"),
@@ -555,13 +577,27 @@ def styled(df):
             else "color:#ff8181;font-weight:850"
         )
 
+    def ml_style(v):
+        try:
+            x = float(v)
+        except Exception:
+            return "color:#9fb0c9;font-weight:800"
+        if x >= 65:
+            return "color:#65e98d;font-weight:900"
+        if x >= 50:
+            return "color:#ffd166;font-weight:900"
+        return "color:#ff8181;font-weight:900"
+
     return (
-        df.style.map(score_style, subset=["Score"])
+        df.style.map(score_style, subset=["Score", "Opportunity"])
+        .map(ml_style, subset=["ML 60m %"])
         .map(grade_style, subset=["Grade"])
         .map(vwap_style, subset=["VWAP Status"])
         .format(
             {
                 "Score": "{:.1f}",
+                "Opportunity": lambda x: "—" if pd.isna(x) else f"{x:.1f}",
+                "ML 60m %": lambda x: "—" if pd.isna(x) else f"{x:.1f}%",
                 "Price": "${:.2f}",
                 "Day %": lambda x: "—" if pd.isna(x) else f"{x:.2f}%",
                 "5m %": lambda x: "—" if pd.isna(x) else f"{x:.2f}%",
@@ -737,17 +773,38 @@ except Exception:
 pill_cls = "green" if live else "amber"
 pill_text = "● REGULAR MARKET SESSION" if live else "● OFF-HOURS PREVIEW"
 
+payload_summary = payload.get("summary") or {}
+ml_model = payload_summary.get("ml_model") or {}
+ml_status = str(ml_model.get("status") or "learning")
+ml_samples = int(ml_model.get("samples") or 0)
+ml_days = int(ml_model.get("trading_days") or 0)
+ml_auc = ml_model.get("walk_forward_auc")
+
+if ml_model.get("validated"):
+    ml_pill_cls = "green"
+    ml_pill_text = f"ML VALIDATED · AUC {ml_auc if ml_auc is not None else '—'} · n={ml_samples}"
+elif ml_status == "failed_validation":
+    ml_pill_cls = "amber"
+    ml_pill_text = f"ML NOT VALIDATED · AUC {ml_auc if ml_auc is not None else '—'} · n={ml_samples}"
+elif ml_status == "skipped_off_hours":
+    ml_pill_cls = "amber"
+    ml_pill_text = "ML OFF-HOURS · live prediction paused"
+else:
+    ml_pill_cls = "blue"
+    ml_pill_text = f"ML LEARNING · {ml_days}/3 days · n={ml_samples}"
+
 st.markdown(
     f'<div class="header"><div class="title">Momentum Scanner</div>'
     '<div class="sub">Readable ranking of momentum, liquidity, VWAP position, '
-    'catalysts and historical context.</div>'
+    'catalysts, historical context, and validated ML continuation.</div>'
     f'<span class="pill {pill_cls}">{pill_text}</span>'
+    f'<span class="pill {ml_pill_cls}">{html.escape(ml_pill_text)}</span>'
     f'<div class="sub">Last scan: {html.escape(str(when))} · '
     f'Scanner v{html.escape(str(payload.get("scanner_version","—")))}</div></div>',
     unsafe_allow_html=True,
 )
 
-summary = payload.get("summary") or {}
+summary = payload_summary
 records = payload.get("candidates") or []
 display_records = records[:15]
 full_table_records = records[:30]
