@@ -470,6 +470,50 @@ if view == "Stock Analyzer":
         .st-key-saved_stocks_top button span {
             font-size: 11px !important;
         }
+
+        /* CONSISTENT SECTION RHYTHM
+           Use explicit spacing between major blocks instead of inheriting
+           Streamlit's uneven default margins. */
+        .block-container [data-testid="stVerticalBlock"] {
+            gap: .22rem !important;
+        }
+
+        [data-testid="stElementContainer"]:has(.st-key-app_view) {
+            margin-bottom: 6px !important;
+        }
+
+        .st-key-saved_stocks_top {
+            margin: 0 0 7px !important;
+        }
+        .st-key-saved_stocks_top > [data-testid="stVerticalBlock"],
+        .st-key-saved_stocks_top [data-testid="stHorizontalBlock"] {
+            margin-top: 0 !important;
+            margin-bottom: 0 !important;
+        }
+
+        [data-testid="stElementContainer"]:has(.hero) {
+            margin: 0 0 6px !important;
+        }
+
+        .st-key-analyzer_controls {
+            margin: 0 0 6px !important;
+        }
+        .st-key-analyzer_controls > [data-testid="stVerticalBlock"] {
+            gap: .18rem !important;
+        }
+
+        .st-key-analyzer_metrics_top {
+            margin: 0 0 6px !important;
+        }
+        .st-key-analyzer_metrics_top > [data-testid="stVerticalBlock"] {
+            gap: 0 !important;
+        }
+
+        /* Keep alerts/expanders visually attached to the result section. */
+        .st-key-analyzer_metrics_top + div {
+            margin-top: 0 !important;
+        }
+
         </style>
         """,
         unsafe_allow_html=True,
