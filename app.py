@@ -53,7 +53,7 @@ st.markdown(
     .combined-ticker-row {
         min-height: 68px;
         display: grid;
-        grid-template-columns: minmax(125px, 1.45fr) repeat(3, minmax(105px, 1fr));
+        grid-template-columns: minmax(125px, 1.4fr) repeat(4, minmax(92px, 1fr));
         gap: 10px;
         align-items: stretch;
         border-bottom: 1px solid rgba(120,150,190,.18);
@@ -103,27 +103,31 @@ st.markdown(
         white-space: nowrap;
     }
     .combined-stat-value.grade-a,
-    .combined-stat-value.change-pos { color: #65e98d; }
-    .combined-stat-value.grade-b { color: #7dd3fc; }
+    .combined-stat-value.change-pos,
+    .combined-stat-value.volume-strong { color: #65e98d; }
+    .combined-stat-value.grade-b,
+    .combined-stat-value.volume-normal { color: #7dd3fc; }
     .combined-stat-value.grade-c { color: #ffd166; }
     .combined-stat-value.grade-reject,
     .combined-stat-value.change-neg { color: #ff8181; }
+    .combined-stat-value.volume-slow { color: #9fb0c9; }
 
-    /* Keep every one-click Analyze button readable.  Previously rows after
-       the first four used Streamlit's white secondary button style. */
+    /* Keep every one-click Analyze button readable. */
     div[data-testid="stButton"] button[kind="primary"] {
         font-weight: 900;
         min-height: 58px;
         border-radius: 12px;
     }
 
-    @media (max-width: 900px) {
+    @media (max-width: 1050px) {
         .combined-ticker-row {
-            grid-template-columns: minmax(110px, 1.2fr) repeat(3, minmax(88px, 1fr));
+            grid-template-columns: minmax(105px, 1.2fr) repeat(4, minmax(76px, 1fr));
             gap: 6px;
         }
-        .combined-stat-value { font-size: 18px; }
-        .combined-ticker-symbol { font-size: 21px; }
+        .combined-stat { padding: 7px 8px; }
+        .combined-stat-value { font-size: 17px; }
+        .combined-ticker-symbol { font-size: 20px; }
+        .combined-stat-label { font-size: 9px; }
     }
     </style>
     """,
@@ -171,6 +175,7 @@ def _latest_scan_candidates():
                 "grade": str(row.get("setup_grade") or "—"),
                 "score": row.get("score"),
                 "day_pct": row.get("day_pct"),
+                "volume_pace": row.get("volume_pace"),
             }
         )
     return out
@@ -214,6 +219,18 @@ def _change_class(value):
         return ""
 
 
+def _volume_class(value):
+    try:
+        pace = float(value)
+    except (TypeError, ValueError):
+        return "volume-slow"
+    if pace >= 1.5:
+        return "volume-strong"
+    if pace >= 1.0:
+        return "volume-normal"
+    return "volume-slow"
+
+
 if view == "Momentum Scanner":
     candidates = _latest_scan_candidates()
     if candidates:
@@ -225,17 +242,19 @@ if view == "Momentum Scanner":
             unsafe_allow_html=True,
         )
 
-        # Make each row useful at a glance: ticker, grade, score and today's move
-        # fill the available width, with a consistent Analyze button at the end.
+        # Make each row useful at a glance: ticker, grade, score, today's move,
+        # and current volume pace fill the width, with Analyze at the end.
         for idx, row in enumerate(candidates):
             symbol = row["symbol"]
             grade = row.get("grade") or "—"
             score_text = _fmt_num(row.get("score"), "{:.0f}")
             day_text = _fmt_num(row.get("day_pct"), "{:+.1f}%")
+            volume_text = _fmt_num(row.get("volume_pace"), "{:.2f}x")
             grade_cls = _grade_class(grade)
             change_cls = _change_class(row.get("day_pct"))
+            volume_cls = _volume_class(row.get("volume_pace"))
 
-            left, right = st.columns([6.1, 1.55], vertical_alignment="center")
+            left, right = st.columns([7.2, 1.55], vertical_alignment="center")
             with left:
                 st.markdown(
                     f'<div class="combined-ticker-row">'
@@ -254,6 +273,10 @@ if view == "Momentum Scanner":
                     f'  <div class="combined-stat">'
                     f'    <div class="combined-stat-label">Today</div>'
                     f'    <div class="combined-stat-value {change_cls}">{day_text}</div>'
+                    f'  </div>'
+                    f'  <div class="combined-stat">'
+                    f'    <div class="combined-stat-label">Volume Pace</div>'
+                    f'    <div class="combined-stat-value {volume_cls}">{volume_text}</div>'
                     f'  </div>'
                     f'</div>',
                     unsafe_allow_html=True,
