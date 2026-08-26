@@ -18,11 +18,22 @@ jobs:
       - name: Check US extended market hours
         id: market_time
         shell: bash
+        env:
+          ALPACA_LIVE_FEED: ${{ secrets.ALPACA_LIVE_FEED }}
         run: |
           NY_DAY=$(TZ=America/New_York date +%u)
           NY_HM=$(TZ=America/New_York date +%H%M)
+          FEED=$(printf '%s' "${ALPACA_LIVE_FEED:-iex}" | tr '[:upper:]' '[:lower:]')
 
-          if [ "$NY_DAY" -gt 5 ] || [ "$NY_HM" -lt 0400 ] || [ "$NY_HM" -ge 2000 ]; then
+          if [ "$FEED" = "sip" ]; then
+            START_HM=0400
+            END_HM=2000
+          else
+            START_HM=0800
+            END_HM=1700
+          fi
+
+          if [ "$NY_DAY" -gt 5 ] || [ "$NY_HM" -lt "$START_HM" ] || [ "$NY_HM" -ge "$END_HM" ]; then
             echo "in_market_hours=false" >> "$GITHUB_OUTPUT"
           else
             echo "in_market_hours=true" >> "$GITHUB_OUTPUT"
@@ -46,6 +57,7 @@ jobs:
         env:
           ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
           ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+          ALPACA_LIVE_FEED: ${{ secrets.ALPACA_LIVE_FEED }}
           GH_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: python stock_scanner.py
