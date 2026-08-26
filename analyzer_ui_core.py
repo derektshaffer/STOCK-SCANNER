@@ -412,7 +412,8 @@ if _COMBINED_WORKSPACE:
         unsafe_allow_html=True,
     )
 
-st.markdown('<div class="hero"><div class="title">Single Stock Analyzer</div><div class="sub">Live momentum, VWAP, volume, historical analogs, support/resistance and dynamic entry/exit planning.</div></div>',unsafe_allow_html=True)
+with st.container(key="analyzer_header"):
+    st.markdown('<div class="hero"><div class="title">Single Stock Analyzer</div><div class="sub">Live momentum, VWAP, volume, historical analogs, support/resistance and dynamic entry/exit planning.</div></div>',unsafe_allow_html=True)
 
 @st.fragment
 def render_ticker_search(asset_choices, current_symbol):
