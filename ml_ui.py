@@ -42,14 +42,24 @@ def render_ml_prediction(st, pd, result, card):
 
     cols = st.columns(6)
     edge = ml.get("ml_edge_score")
+    edge_count = int(ml.get("validated_edge_model_count") or 0)
+    coverage = ml.get("ml_edge_coverage") or "NONE"
     gate = ml.get("validation_gate") or "ADVISORY ONLY"
     edge_class = "good" if edge is not None and edge >= 65 else "bad" if edge is not None and edge <= 45 else "warn"
 
+    if edge is None:
+        edge_note = "no validated models yet · advisory predictions excluded"
+    else:
+        model_word = "model" if edge_count == 1 else "models"
+        edge_note = f'{ml.get("ml_lean") or "MIXED"} · {edge_count} validated {model_word} · {coverage.lower()} coverage'
+        if gate != "PASSED":
+            edge_note += " · advisory only"
+
     card(
         cols[0],
-        "ML EDGE",
+        "VALIDATED ML EDGE",
         f"{edge:.0f} / 100" if edge is not None else "—",
-        f'{ml.get("ml_lean") or "MIXED"} · {gate}',
+        edge_note,
         edge_class,
     )
     card(
@@ -88,6 +98,11 @@ def render_ml_prediction(st, pd, result, card):
         "good" if ml.get("gate_passed") else "warn",
     )
 
+    st.caption(
+        "The headline Validated ML Edge uses only models that passed walk-forward validation. "
+        "Unvalidated/advisory probabilities remain visible in their own cards but are excluded from the headline edge."
+    )
+
     with st.expander("ML v1 details / walk-forward validation"):
         st.write(
             "**What it predicts:** Target 1 before stop within the next 60 minutes, "
@@ -104,6 +119,10 @@ def render_ml_prediction(st, pd, result, card):
             "**Leakage protection:** Validation is expanding-window/walk-forward: older samples "
             "train the model and later samples are kept unseen for testing. A model must beat a "
             "naive baseline and meet a Brier-score threshold before it is marked validated."
+        )
+        st.write(
+            "**Headline edge rule:** Only validated models contribute to Validated ML Edge. "
+            "Advisory models can still be inspected individually, but they do not affect the headline score or ML confidence adjustment."
         )
 
         rows = []
