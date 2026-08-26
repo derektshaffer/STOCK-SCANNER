@@ -546,6 +546,20 @@ if view == "Stock Analyzer":
         }
 
 
+
+        /* Keep the ticker label clear of the Analyzer header border. */
+        .st-key-analyzer_header {
+            margin: 0 0 10px !important;
+            padding: 0 !important;
+        }
+        .st-key-analyzer_header > [data-testid="stVerticalBlock"] {
+            gap: 0 !important;
+        }
+        .st-key-analyzer_controls .search-label {
+            margin-top: 1px !important;
+            margin-bottom: 4px !important;
+        }
+
         /* FINAL LAYOUT RESET
            This is the single authoritative spacing layer for the combined
            Analyzer. Older child-module layout CSS has been removed. */
