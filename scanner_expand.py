@@ -118,43 +118,65 @@ def install_scanner_expander() -> None:
             const style = d.createElement('style');
             style.id = STYLE_ID;
             style.textContent = `
-              .scanner-expandable-ticker {{ cursor:pointer !important; user-select:none; }}
-              .scanner-expandable-ticker:hover {{ color:#7dd3fc !important; }}
-              .scanner-expandable-ticker:focus {{ outline:2px solid #4593ff; outline-offset:4px; border-radius:4px; }}
-              .scanner-expandable-ticker::after {{ content:'  ▾'; font-size:.58em; color:#8fa8c7; vertical-align:middle; }}
-              .scanner-expandable-ticker[aria-expanded="true"]::after {{ content:'  ▴'; }}
+              .scanner-expandable-ticker {{
+                display:inline-flex !important;align-items:center;gap:9px;
+                width:max-content;max-width:100%;box-sizing:border-box;
+                cursor:pointer !important;user-select:none;
+                padding:8px 11px;border:1px solid #355071;border-radius:10px;
+                background:#14233a;color:#f4f7fb !important;
+                transition:background .12s ease,border-color .12s ease,color .12s ease;
+              }}
+              .scanner-expandable-ticker:hover {{
+                color:#d9f3ff !important;background:#19304d;border-color:#4e749b;
+              }}
+              .scanner-expandable-ticker:focus {{outline:2px solid #4593ff;outline-offset:3px}}
+              .scanner-expandable-ticker::after {{
+                content:'VIEW DETAILS  ▾';
+                font-size:9px;font-weight:900;letter-spacing:.08em;
+                color:#7dd3fc;white-space:nowrap;
+                border-left:1px solid #355071;padding-left:9px;
+              }}
+              .scanner-expandable-ticker[aria-expanded="true"] {{
+                background:#19304d;border-color:#4e749b;
+              }}
+              .scanner-expandable-ticker[aria-expanded="true"]::after {{content:'HIDE DETAILS  ▴';color:#65e98d}}
               .scanner-inline-detail {{
                 --detail-accent:#38bdf8;
-                box-sizing:border-box;width:100%;margin:2px 0 15px;padding:24px 28px;
+                box-sizing:border-box;width:100%;margin:7px 0 15px;padding:24px 28px;
                 background:#111b2e;border:1px solid #31435f;border-top:4px solid var(--detail-accent);
                 border-radius:16px;color:#f4f7fb;
               }}
-              .scanner-inline-detail.grade-a {{ --detail-accent:#22c55e; }}
-              .scanner-inline-detail.grade-b {{ --detail-accent:#38bdf8; }}
-              .scanner-inline-detail.grade-c {{ --detail-accent:#f59e0b; }}
-              .sid-head {{ display:flex;justify-content:space-between;gap:18px;align-items:flex-start;margin-bottom:14px; }}
-              .sid-symbol {{ font-size:34px;font-weight:950;letter-spacing:-.02em; }}
-              .sid-price {{ font-size:20px;font-weight:900;margin-top:12px; }}
-              .sid-day-pos {{ color:#65e98d; }} .sid-day-neg {{ color:#ff8181; }}
-              .sid-score {{ font-size:32px;font-weight:950;color:#65e98d;text-align:right; }}
-              .sid-score small {{ display:block;color:#9fb0c9;font-size:11px;letter-spacing:.08em;margin-top:6px; }}
-              .sid-badges {{ display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 16px; }}
-              .sid-badge {{ border-radius:999px;padding:7px 11px;font-size:12px;font-weight:900;border:1px solid #355071;background:#16233a; }}
-              .sid-good {{ color:#b8f7ca;border-color:rgba(34,197,94,.48);background:rgba(34,197,94,.13); }}
-              .sid-warn {{ color:#ffe0a0;border-color:rgba(245,158,11,.46);background:rgba(245,158,11,.13); }}
-              .sid-bad {{ color:#ffc1c1;border-color:rgba(239,68,68,.46);background:rgba(239,68,68,.13); }}
-              .sid-grid {{ display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 14px;margin-top:8px; }}
-              .sid-metric {{ background:#16233a;border:1px solid #31435f;border-radius:12px;padding:14px 16px;min-width:0; }}
-              .sid-mk {{ color:#9fb0c9;font-size:11px;font-weight:900;letter-spacing:.07em;text-transform:uppercase; }}
-              .sid-mv {{ font-size:20px;font-weight:950;margin-top:8px; }}
-              .sid-note {{ background:#172238;border-left:4px solid #31435f;border-radius:8px;padding:13px 16px;margin-top:14px; }}
-              .sid-note-k {{ color:#9fb0c9;font-size:11px;font-weight:900;letter-spacing:.07em;text-transform:uppercase; }}
-              .sid-note-v {{ font-size:14px;line-height:1.45;margin-top:7px; }}
-              .sid-note-time {{ color:#9fb0c9;font-size:12px;font-weight:750;margin-top:7px; }}
+              .scanner-inline-detail::before {{
+                content:'EXPANDED SCANNER DETAILS';display:block;margin-bottom:15px;
+                color:#8fa8c7;font-size:10px;font-weight:900;letter-spacing:.10em;
+              }}
+              .scanner-inline-detail.grade-a {{--detail-accent:#22c55e}}
+              .scanner-inline-detail.grade-b {{--detail-accent:#38bdf8}}
+              .scanner-inline-detail.grade-c {{--detail-accent:#f59e0b}}
+              .sid-head {{display:flex;justify-content:space-between;gap:18px;align-items:flex-start;margin-bottom:14px}}
+              .sid-symbol {{font-size:34px;font-weight:950;letter-spacing:-.02em;color:#f4f7fb}}
+              .sid-price {{font-size:20px;font-weight:900;margin-top:12px}}
+              .sid-day-pos {{color:#65e98d}} .sid-day-neg {{color:#ff8181}}
+              .sid-score {{font-size:32px;font-weight:950;color:#65e98d;text-align:right}}
+              .sid-score small {{display:block;color:#9fb0c9;font-size:11px;letter-spacing:.08em;margin-top:6px}}
+              .sid-badges {{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 16px}}
+              .sid-badge {{border-radius:999px;padding:7px 11px;font-size:12px;font-weight:900;border:1px solid #355071;background:#16233a}}
+              .sid-good {{color:#b8f7ca;border-color:rgba(34,197,94,.48);background:rgba(34,197,94,.13)}}
+              .sid-warn {{color:#ffe0a0;border-color:rgba(245,158,11,.46);background:rgba(245,158,11,.13)}}
+              .sid-bad {{color:#ffc1c1;border-color:rgba(239,68,68,.46);background:rgba(239,68,68,.13)}}
+              .sid-grid {{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 14px;margin-top:8px}}
+              .sid-metric {{background:#16233a;border:1px solid #31435f;border-radius:12px;padding:14px 16px;min-width:0}}
+              .sid-mk {{color:#9fb0c9;font-size:11px;font-weight:900;letter-spacing:.07em;text-transform:uppercase}}
+              .sid-mv {{font-size:20px;font-weight:950;margin-top:8px}}
+              .sid-note {{background:#172238;border-left:4px solid #31435f;border-radius:8px;padding:13px 16px;margin-top:14px}}
+              .sid-note-k {{color:#9fb0c9;font-size:11px;font-weight:900;letter-spacing:.07em;text-transform:uppercase}}
+              .sid-note-v {{font-size:14px;line-height:1.45;margin-top:7px}}
+              .sid-note-time {{color:#9fb0c9;font-size:12px;font-weight:750;margin-top:7px}}
               @media(max-width:760px) {{
-                .scanner-inline-detail {{ padding:18px 16px; }}
-                .sid-grid {{ grid-template-columns:1fr; }}
-                .sid-symbol {{ font-size:28px; }}
+                .scanner-inline-detail {{padding:18px 16px}}
+                .sid-grid {{grid-template-columns:1fr}}
+                .sid-symbol {{font-size:28px}}
+                .scanner-expandable-ticker::after {{font-size:8px}}
               }}
             `;
             d.head.appendChild(style);
@@ -223,7 +245,7 @@ def install_scanner_expander() -> None:
             return el.closest('[data-testid="stHorizontalBlock"]') || el.parentElement;
           }}
 
-          function detailId(symbol) {{ return `scanner-detail-${{symbol.replace(/[^A-Z0-9_-]/g,'-')}}`; }}
+          function detailId(symbol) {{return `scanner-detail-${{symbol.replace(/[^A-Z0-9_-]/g,'-')}}`;}}
 
           function renderDetail(el, symbol) {{
             const data = p.__scannerDetailData && p.__scannerDetailData[symbol];
@@ -248,7 +270,7 @@ def install_scanner_expander() -> None:
           }}
 
           function toggle(el) {{
-            const symbol = String(el.textContent || '').replace(/[▾▴]/g,'').trim().toUpperCase();
+            const symbol = String(el.textContent || '').trim().toUpperCase();
             if (!symbol || !p.__scannerDetailData || !p.__scannerDetailData[symbol]) return;
             if (p.__scannerExpandedSymbols.has(symbol)) {{
               p.__scannerExpandedSymbols.delete(symbol);
@@ -260,23 +282,29 @@ def install_scanner_expander() -> None:
           }}
 
           function enhance() {{
-            d.querySelectorAll('.combined-ticker-symbol').forEach((el) => {{
-              const symbol = String(el.textContent || '').replace(/[▾▴]/g,'').trim().toUpperCase();
+            const tickers = d.querySelectorAll('.combined-ticker-symbol');
+            if (!tickers.length) {{
+              d.querySelectorAll('.scanner-inline-detail').forEach((node) => node.remove());
+              p.__scannerExpandedSymbols.clear();
+              return false;
+            }}
+            tickers.forEach((el) => {{
+              const symbol = String(el.textContent || '').trim().toUpperCase();
               if (!p.__scannerDetailData || !p.__scannerDetailData[symbol]) return;
               el.classList.add('scanner-expandable-ticker');
               el.setAttribute('role','button');
               el.setAttribute('tabindex','0');
-              el.setAttribute('aria-label', `${{symbol}} details; click to expand or collapse`);
+              el.setAttribute('aria-label', `${{symbol}} scanner details; click to show or hide details`);
               el.setAttribute('aria-expanded', p.__scannerExpandedSymbols.has(symbol) ? 'true' : 'false');
               if (p.__scannerExpandedSymbols.has(symbol) && !d.getElementById(detailId(symbol))) renderDetail(el, symbol);
             }});
+            return true;
           }}
 
           const old = p.__scannerExpandController;
           if (old) {{
-            try {{ d.removeEventListener('click', old.click); }} catch (_) {{}}
-            try {{ d.removeEventListener('keydown', old.keydown); }} catch (_) {{}}
-            try {{ old.observer.disconnect(); }} catch (_) {{}}
+            try {{d.removeEventListener('click', old.click)}} catch (_) {{}}
+            try {{d.removeEventListener('keydown', old.keydown)}} catch (_) {{}}
           }}
 
           const click = (event) => {{
@@ -291,15 +319,10 @@ def install_scanner_expander() -> None:
           }};
           d.addEventListener('click', click);
           d.addEventListener('keydown', keydown);
+          p.__scannerExpandController = {{click, keydown}};
 
-          let queued = false;
-          const observer = new MutationObserver(() => {{
-            if (queued) return;
-            queued = true;
-            p.requestAnimationFrame(() => {{ queued = false; enhance(); }});
-          }});
-          if (d.body) observer.observe(d.body, {{childList:true, subtree:true}});
-          p.__scannerExpandController = {{click, keydown, observer}};
+          // Run once per Streamlit render. No always-on MutationObserver is
+          // needed; this component itself is recreated on every app rerun.
           enhance();
         }})();
         </script>
