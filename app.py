@@ -316,9 +316,7 @@ def _latest_scan_candidates():
                 "volume_pace": row.get("volume_pace"),
             }
         )
-    return out
-
-
+    return out[:15]
 def _open_analyzer(symbol):
     """Build the selected analysis first, then switch to Analyzer view."""
     symbol = str(symbol or "").upper().strip()
