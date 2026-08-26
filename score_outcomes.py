@@ -15,7 +15,7 @@ from statistics import mean, median
 from zoneinfo import ZoneInfo
 
 # ============================================================
-# MOMENTUM SCANNER OUTCOME TRACKER - v2.7
+# MOMENTUM SCANNER OUTCOME TRACKER - v2.8
 #
 # Purpose:
 #   - Read saved GitHub Actions scan artifacts for one trading day.
@@ -27,7 +27,7 @@ from zoneinfo import ZoneInfo
 # This is research/performance measurement only. It does not trade.
 # ============================================================
 
-VERSION = "2.7"
+VERSION = "2.8"
 GITHUB_API = "https://api.github.com"
 ALPACA_DATA_BASE = "https://data.alpaca.markets"
 ET = ZoneInfo("America/New_York")
@@ -64,7 +64,7 @@ def github_headers():
         "Authorization": f"Bearer {GITHUB_TOKEN}",
         "Accept": "application/vnd.github+json",
         "X-GitHub-Api-Version": "2022-11-28",
-        "User-Agent": "momentum-scanner-outcome-tracker/2.7",
+        "User-Agent": "momentum-scanner-outcome-tracker/2.8",
     }
 
 
@@ -376,6 +376,17 @@ def build_observations(scans, target_date, bars_index):
                 "entry_price": float(entry_price),
                 "day_pct": c.get("day_pct"),
                 "score": c.get("score"),
+                "base_score": c.get("base_score"),
+                "live_bonus": c.get("live_bonus"),
+                "news_bonus": c.get("news_bonus"),
+                "opportunity_score": c.get("opportunity_score"),
+                "intraday_range_pct": c.get("intraday_range_pct"),
+                "expected_volume_fraction_pct": c.get("expected_volume_fraction_pct"),
+                "volume_vs_expected_pct": c.get("volume_vs_expected_pct"),
+                "live_confirmation_count": c.get("live_confirmation_count"),
+                "ml_continuation_prob_pct": c.get("ml_continuation_prob_pct"),
+                "ml_validated": c.get("ml_validated"),
+                "ml_status": c.get("ml_status"),
                 "setup_grade": c.get("setup_grade"),
                 "setup_label": c.get("setup_label"),
                 "alert_tier": c.get("alert_tier"),
@@ -563,7 +574,11 @@ def write_reports(target_date, discovery, rows, status, error=None):
 
     csv_fields = [
         "observation_id", "scan_id", "scan_time_et", "rank", "symbol",
-        "entry_price", "day_pct", "score", "setup_grade", "setup_label",
+        "entry_price", "day_pct", "score", "base_score", "live_bonus", "news_bonus",
+        "opportunity_score", "intraday_range_pct", "expected_volume_fraction_pct",
+        "volume_vs_expected_pct", "live_confirmation_count",
+        "ml_continuation_prob_pct", "ml_validated", "ml_status",
+        "setup_grade", "setup_label",
         "alert_tier", "alert_ready", "passed_base_filters",
         "momentum_5m", "momentum_15m", "volume_pace",
         "liquidity_dollar_volume", "iex_spread_pct",
