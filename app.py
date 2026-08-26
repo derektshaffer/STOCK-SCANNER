@@ -206,6 +206,13 @@ view = st.radio(
     label_visibility="collapsed",
 )
 
+# Real render slots for the Momentum Scanner controls. scanner_app.py fills
+# these later, but their position is fixed here directly under the workspace
+# selector, before the one-click candidate list or any other scanner content.
+if view == "Momentum Scanner":
+    st.session_state["_scanner_controls_mount"] = st.empty()
+    st.session_state["_scanner_status_mount"] = st.empty()
+
 
 def _latest_scan_candidates():
     path = Path("scan_logs/latest_scan.json")
