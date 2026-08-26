@@ -14,10 +14,12 @@ if not target.exists():
         "The combined Momentum Scanner + Stock Analyzer requires app.py."
     )
 
-# Install the client-side ticker disclosure behavior before rendering app.py.
-# The zero-height component attaches delegated click/keyboard listeners, so
-# clicking a ticker expands/collapses its scanner detail card instantly without
-# forcing a full Streamlit rerun. The separate Analyze buttons are untouched.
-install_scanner_expander()
-
+# Render the combined app first so app.py's st.set_page_config remains the
+# first Streamlit command on each rerun.
 runpy.run_path(str(target), run_name="__main__")
+
+# Then attach the client-side ticker disclosure behavior. The zero-height
+# component uses delegated click/keyboard listeners, so clicking a ticker
+# expands/collapses its detail card instantly without a full Streamlit rerun.
+# The separate Analyze buttons are untouched.
+install_scanner_expander()
