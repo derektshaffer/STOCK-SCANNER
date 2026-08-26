@@ -37,8 +37,34 @@ st.markdown(
         border: 1px solid rgba(120,150,190,.24);
         background: rgba(17,27,46,.62);
         border-radius: 12px;
-        padding: 10px 12px 2px;
+        padding: 12px 14px 10px;
         margin: 2px 0 14px;
+    }
+    .combined-quick-title {
+        font-size: 16px;
+        font-weight: 900;
+        margin-bottom: 2px;
+    }
+    .combined-quick-sub {
+        color: #91a7c2;
+        font-size: 13px;
+        margin-bottom: 9px;
+    }
+    .combined-ticker-row {
+        min-height: 46px;
+        display: flex;
+        align-items: center;
+        border-bottom: 1px solid rgba(120,150,190,.14);
+    }
+    .combined-ticker-symbol {
+        font-size: 18px;
+        font-weight: 950;
+        letter-spacing: .01em;
+    }
+    .combined-ticker-meta {
+        color: #91a7c2;
+        font-size: 12px;
+        margin-top: 1px;
     }
     </style>
     """,
@@ -104,40 +130,50 @@ def _open_analyzer(symbol):
     st.session_state["app_view"] = "Stock Analyzer"
 
 
+def _fmt_num(value, pattern, fallback="—"):
+    try:
+        return pattern.format(float(value))
+    except (TypeError, ValueError):
+        return fallback
+
+
 if view == "Momentum Scanner":
     candidates = _latest_scan_candidates()
     if candidates:
-        labels = {}
-        for row in candidates:
-            score = row.get("score")
-            day = row.get("day_pct")
-            score_text = f"{float(score):.0f}" if score is not None else "—"
-            day_text = f"{float(day):+.1f}%" if day is not None else "—"
-            label = f'{row["symbol"]}  ·  Grade {row["grade"]}  ·  Score {score_text}  ·  {day_text} today'
-            labels[label] = row["symbol"]
+        st.markdown(
+            '<div class="combined-quick">'
+            '<div class="combined-quick-title">🔎 One-click Stock Analyzer</div>'
+            '<div class="combined-quick-sub">Click Analyze beside any ticker from the latest momentum scan.</div>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
 
-        st.markdown('<div class="combined-quick">', unsafe_allow_html=True)
-        q1, q2 = st.columns([4, 1.25])
-        with q1:
-            quick_label = st.selectbox(
-                "Quick Analyze — choose a ticker from the latest momentum scan",
-                list(labels.keys()),
-                index=0,
-                key="combined_quick_analyze",
-            )
-        with q2:
-            st.write("")
-            st.write("")
-            st.button(
-                "🔎 Analyze Stock",
-                type="primary",
-                use_container_width=True,
-                on_click=_open_analyzer,
-                args=(labels.get(quick_label),),
-            )
-        st.markdown('</div>', unsafe_allow_html=True)
+        # Put an Analyze button directly beside every ticker from the current scan.
+        # This replaces the old dropdown so any stock is one click away.
+        for idx, row in enumerate(candidates):
+            symbol = row["symbol"]
+            score_text = _fmt_num(row.get("score"), "{:.0f}")
+            day_text = _fmt_num(row.get("day_pct"), "{:+.1f}%")
+            left, right = st.columns([5.2, 1.3], vertical_alignment="center")
+            with left:
+                st.markdown(
+                    f'<div class="combined-ticker-row"><div>'
+                    f'<div class="combined-ticker-symbol">{symbol}</div>'
+                    f'<div class="combined-ticker-meta">Grade {row["grade"]} · Score {score_text} · {day_text} today</div>'
+                    f'</div></div>',
+                    unsafe_allow_html=True,
+                )
+            with right:
+                st.button(
+                    f"Analyze {symbol}",
+                    key=f"combined_analyze_{idx}_{symbol}",
+                    type="primary" if idx < 4 else "secondary",
+                    use_container_width=True,
+                    on_click=_open_analyzer,
+                    args=(symbol,),
+                )
     else:
-        st.caption("Run a momentum scan to populate the Quick Analyze ticker picker.")
+        st.caption("Run a momentum scan to populate the one-click Analyze buttons.")
 
 
 # Both legacy child apps call st.set_page_config themselves. In the combined
