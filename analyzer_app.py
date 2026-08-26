@@ -414,6 +414,68 @@ st.markdown(
 )
 
 
+if view == "Stock Analyzer":
+    st.markdown(
+        """
+        <style>
+        /* Remove Streamlit's default top-level gaps between workspace sections. */
+        .block-container > div > [data-testid="stVerticalBlock"],
+        .block-container [data-testid="stVerticalBlock"] {
+            gap: .32rem !important;
+        }
+
+        .st-key-app_view [data-testid="stRadio"] > div[role="radiogroup"] {
+            margin-bottom: 3px !important;
+            padding: 2px !important;
+            gap: 4px !important;
+        }
+        .st-key-app_view [data-testid="stRadio"] > div[role="radiogroup"] > label {
+            min-height: 42px !important;
+            grid-template-columns: 27px minmax(0,1fr) !important;
+            column-gap: 7px !important;
+            padding: 5px 9px !important;
+        }
+        .st-key-app_view [data-testid="stRadio"] > div[role="radiogroup"] > label::before {
+            width: 24px !important;
+            height: 24px !important;
+            font-size: 14px !important;
+        }
+        .st-key-app_view [data-testid="stRadio"] > div[role="radiogroup"] > label:nth-child(2)::before {
+            font-size: 16px !important;
+        }
+        .st-key-app_view [data-testid="stRadio"] > div[role="radiogroup"] > label p {
+            font-size: 14px !important;
+        }
+
+        .st-key-saved_stocks_top {
+            margin: 0 !important;
+            padding: 0 !important;
+        }
+        .st-key-saved_stocks_top [data-testid="stVerticalBlock"] {
+            gap: .2rem !important;
+        }
+        .saved-stock-inline-title {
+            font-size: 13px !important;
+            font-weight: 900 !important;
+            color: #f4f8ff !important;
+            white-space: nowrap !important;
+        }
+        .st-key-saved_stocks_top button {
+            min-height: 32px !important;
+            height: 32px !important;
+            padding: 2px 8px !important;
+            border-radius: 7px !important;
+        }
+        .st-key-saved_stocks_top button p,
+        .st-key-saved_stocks_top button span {
+            font-size: 11px !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def _install_scanner_interactions():
     """Scanner detail-card behavior without a page-wide observer."""
     components.html(
