@@ -158,7 +158,7 @@ def _install_scanner_interactions():
 
 
 def _install_working_button_transition():
-    """Immediately show Working without interfering with Streamlit's click."""
+    """Keep Scanner visible while Analyze prepares the next page."""
     components.html(
         """
         <script>
@@ -175,8 +175,8 @@ def _install_working_button_transition():
           p.__stockWorkspaceTransition = null;
           const oldMask = d.getElementById('stock-workspace-transition-mask');
           if (oldMask) oldMask.remove();
-          const staleStyle = d.getElementById('stock-switch-hide-stale');
-          if (staleStyle) staleStyle.remove();
+          const oldHide = d.getElementById('stock-switch-hide-stale');
+          if (oldHide) oldHide.remove();
           try { d.body.style.overflow = ''; } catch (_) {}
 
           const old = p.__stockWorkingButtonTransition;
@@ -185,16 +185,34 @@ def _install_working_button_transition():
             try { old.click && d.removeEventListener('click', old.click); } catch (_) {}
           }
 
+          function preserveScannerDuringAnalysis() {
+            let style = d.getElementById('stock-analyze-preserve-scanner');
+            if (!style) {
+              style = d.createElement('style');
+              style.id = 'stock-analyze-preserve-scanner';
+              style.textContent = `
+                [data-stale="true"],
+                div[data-stale="true"],
+                .element-container[data-stale="true"] {
+                  opacity: 1 !important;
+                  filter: none !important;
+                  transition: none !important;
+                  animation: none !important;
+                }
+              `;
+              d.head.appendChild(style);
+            }
+          }
+
           function setWorking(button) {
             if (!button || button.dataset.stockWorking === '1') return;
             button.dataset.stockWorking = '1';
             button.setAttribute('aria-busy', 'true');
             button.style.cursor = 'wait';
-            // Prevent a second click without using the disabled attribute,
-            // because disabling during dispatch can block Streamlit's handler.
             button.style.pointerEvents = 'none';
             const textNode = button.querySelector('p') || button.querySelector('span') || button;
-            if (textNode) textNode.textContent = 'Working…';
+            if (textNode) textNode.textContent = 'Analyzing…';
+            preserveScannerDuringAnalysis();
           }
 
           const capture = (event) => {
@@ -203,8 +221,8 @@ def _install_working_button_transition():
             const text = String(button.textContent || '').trim();
             if (!/^Analyze\s+[A-Z0-9.\-]+/i.test(text)) return;
 
-            // Change only presentation. Do not preventDefault, stop propagation,
-            // or set disabled. Streamlit receives this same click normally.
+            // Presentation only: do not preventDefault, stop propagation, or
+            // set disabled. Streamlit receives this same click normally.
             setWorking(button);
           };
 
@@ -241,8 +259,10 @@ def _finish_transition_cleanup():
 
           const mask = d.getElementById('stock-workspace-transition-mask');
           if (mask) mask.remove();
-          const style = d.getElementById('stock-switch-hide-stale');
-          if (style) style.remove();
+          const staleStyle = d.getElementById('stock-switch-hide-stale');
+          if (staleStyle) staleStyle.remove();
+          const preserveStyle = d.getElementById('stock-analyze-preserve-scanner');
+          if (preserveStyle) preserveStyle.remove();
           try { d.body.style.overflow = ''; } catch (_) {}
         })();
         </script>
