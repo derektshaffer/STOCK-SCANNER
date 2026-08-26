@@ -446,7 +446,57 @@ def horizon_stats(rows, minutes):
     }
 
 
+def selection_stats(rows):
+    values = [
+        r.get("return_60m_pct")
+        for r in rows
+        if r.get("return_60m_pct") is not None
+    ]
+    if not values:
+        return {
+            "n": 0,
+            "hit_3pct_rate_pct": None,
+            "win_rate_pct": None,
+            "median_return_60m_pct": None,
+            "average_return_60m_pct": None,
+        }
+    return {
+        "n": len(values),
+        "hit_3pct_rate_pct": round(
+            sum(v >= 3.0 for v in values) / len(values) * 100.0, 1
+        ),
+        "win_rate_pct": round(
+            sum(v > 0 for v in values) / len(values) * 100.0, 1
+        ),
+        "median_return_60m_pct": round(median(values), 3),
+        "average_return_60m_pct": round(mean(values), 3),
+    }
+
+
+def top_per_scan(rows, key, n=5):
+    grouped = defaultdict(list)
+    for row in rows:
+        grouped[row.get("scan_id")].append(row)
+
+    selected = []
+    for scan_rows in grouped.values():
+        ranked = sorted(
+            scan_rows,
+            key=lambda r: (
+                float(r.get(key))
+                if r.get(key) is not None
+                else float("-inf")
+            ),
+            reverse=True,
+        )
+        selected.extend(ranked[:n])
+    return selected
+
+
 def summarize(rows):
+    scanner_top5 = top_per_scan(rows, "score", 5)
+    opportunity_top5 = top_per_scan(rows, "opportunity_score", 5)
+
     summary = {
         "observation_count": len(rows),
         "unique_symbols": len({r["symbol"] for r in rows}),
@@ -456,6 +506,10 @@ def summarize(rows):
         },
         "by_grade": {},
         "by_alert_tier": {},
+        "ranking_comparison": {
+            "scanner_score_top5": selection_stats(scanner_top5),
+            "opportunity_score_top5": selection_stats(opportunity_top5),
+        },
     }
 
     grades = sorted(
@@ -541,7 +595,33 @@ def render_markdown(target_date, discovery, summary, status, error=None):
             f"| {grade} | {group['n']} | {win(15)} | {win(30)} | {win(60)} | {fmt_pct(group['30m']['median_return_pct'])} |"
         )
 
+    comparison = summary.get("ranking_comparison") or {}
+    scanner_cmp = comparison.get("scanner_score_top5") or {}
+    ml_cmp = comparison.get("opportunity_score_top5") or {}
+
+    def pct_or_dash(value):
+        return "-" if value is None else f"{value:.1f}%"
+
     lines += [
+        "",
+        "## Scanner vs ML-enhanced ranking",
+        "",
+        "| Ranking method | N | +3% at 60m | Positive at 60m | Median 60m return |",
+        "|---|---:|---:|---:|---:|",
+        (
+            f"| Original scanner score — top 5 | {scanner_cmp.get('n', 0)} | "
+            f"{pct_or_dash(scanner_cmp.get('hit_3pct_rate_pct'))} | "
+            f"{pct_or_dash(scanner_cmp.get('win_rate_pct'))} | "
+            f"{fmt_pct(scanner_cmp.get('median_return_60m_pct'))} |"
+        ),
+        (
+            f"| ML Opportunity score — top 5 | {ml_cmp.get('n', 0)} | "
+            f"{pct_or_dash(ml_cmp.get('hit_3pct_rate_pct'))} | "
+            f"{pct_or_dash(ml_cmp.get('win_rate_pct'))} | "
+            f"{fmt_pct(ml_cmp.get('median_return_60m_pct'))} |"
+        ),
+        "",
+        "_The Opportunity score is identical to the original scanner score until the ML validation gate passes, so this comparison only becomes meaningful after validated ML is active._",
         "",
         "_Each row is a scanner observation at a specific scan time. Repeated appearances of the same ticker are intentionally retained for now; later versions can also evaluate deduplicated alert events._",
     ]
