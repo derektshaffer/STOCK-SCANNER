@@ -44,7 +44,9 @@ except Exception:
 # ============================================================
 
 DATA_BASE = "https://data.alpaca.markets"
-LIVE_FEED = "iex"
+LIVE_FEED = (os.environ.get("ALPACA_LIVE_FEED", "iex").strip().lower() or "iex")
+if LIVE_FEED not in {"iex", "sip"}:
+    LIVE_FEED = "iex"
 HISTORICAL_FEED = "sip"
 
 TOP_MOVERS = 50
@@ -455,8 +457,23 @@ def is_regular_session(now_et):
     return market_session_mode(now_et) == "regular"
 
 
+def live_feed_available(now_et):
+    """Whether the configured live feed is open for the current stock session."""
+    phase = market_session_mode(now_et)
+    if phase not in {"premarket", "regular", "afterhours"}:
+        return False
+
+    if LIVE_FEED == "sip":
+        return True
+
+    # IEX exchange hours are approximately 8:00 AM-5:00 PM ET, so Basic/IEX
+    # data only covers the last 90 minutes of pre-market and first hour after close.
+    minutes = now_et.hour * 60 + now_et.minute
+    return (8 * 60) <= minutes < (17 * 60)
+
+
 def is_active_market_session(now_et):
-    return market_session_mode(now_et) in {"premarket", "regular", "afterhours"}
+    return live_feed_available(now_et)
 
 
 def session_window_minutes(now_et):
@@ -1551,6 +1568,11 @@ def write_scan_logs(rows, now_utc, now_et, excluded_symbols, ml_summary=None):
                 "regular_market_session"
                 if market_session_mode(now_et) == "regular"
                 else "extended_market_session"
+                if (
+                    market_session_mode(now_et) in {"premarket", "afterhours"}
+                    and live_feed_available(now_et)
+                )
+                else "extended_data_unavailable"
                 if market_session_mode(now_et) in {"premarket", "afterhours"}
                 else "off_hours_test"
             ),
@@ -1564,6 +1586,7 @@ def write_scan_logs(rows, now_utc, now_et, excluded_symbols, ml_summary=None):
             },
             "data": {
                 "live_feed": LIVE_FEED,
+                "live_feed_available": live_feed_available(now_et),
                 "historical_feed": HISTORICAL_FEED,
                 "sip_liquidity_delay_minutes": SIP_LIQUIDITY_DELAY_MINUTES,
             },
@@ -1837,9 +1860,15 @@ def main():
     }[phase]
     print("Mode: " + phase_label)
     print(
-        "Data: live momentum = IEX; liquidity prefers consolidated SIP volume delayed ~15m; "
-        "2.5% IEX scaling is fallback only; IEX spread is a warning only."
+        f"Data: live momentum = {LIVE_FEED.upper()}; liquidity prefers consolidated SIP "
+        "volume delayed ~15m in regular hours; IEX scaling is fallback only."
     )
+    if phase in {"premarket", "afterhours"} and not live_feed_available(now_et):
+        print(
+            "WARN configured live feed is not available at this extended-hours time. "
+            "IEX live coverage is approximately 8:00 AM-5:00 PM ET; SIP is required "
+            "for full 4:00 AM-8:00 PM ET live coverage."
+        )
 
     candidates = get_candidate_universe(now_et)
     print(f"Alpaca discovery returned {len(candidates)} candidate symbols.")
@@ -1939,6 +1968,8 @@ def main():
         ml_summary = {
             "status": (
                 "paused_extended_hours"
+                if phase in {"premarket", "afterhours"} and live_feed_available(now_et)
+                else "extended_live_data_unavailable"
                 if phase in {"premarket", "afterhours"}
                 else "skipped_market_closed"
                 if phase == "closed"
