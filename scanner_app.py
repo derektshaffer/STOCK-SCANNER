@@ -750,6 +750,7 @@ st.markdown(
 summary = payload.get("summary") or {}
 records = payload.get("candidates") or []
 display_records = records[:15]
+full_table_records = records[:30]
 grades = summary.get("grade_counts") or {}
 
 vals = [
@@ -850,10 +851,10 @@ else:
 
 st.markdown(
     '<div class="section">📊 Full Ranked Table</div>'
-    '<div class="section-sub">Top 15 ranked scanner results.</div>',
+    '<div class="section-sub">Top 30 ranked scanner results.</div>',
     unsafe_allow_html=True,
 )
-df = to_df(display_records)
+df = to_df(full_table_records)
 if not df.empty:
     st.dataframe(
         styled(df),
