@@ -18,71 +18,242 @@ runpy.run_path(str(target), run_name="__main__")
 view = st.session_state.get("app_view", "Momentum Scanner")
 
 
-# Shared presentation polish for the combined workspace. Keep this CSS-only so
-# it cannot interfere with Scanner/Analyzer loading, session state, or reruns.
+# Presentation-only polish for the combined workspace. This intentionally does
+# not change navigation/session/loading behavior.
 st.markdown(
     """
     <style>
-    /* Turn the compact radio selector into two large dashboard-style tabs. */
+    /* app.py still emits its old Stock Workspace title box. Hide it so the
+       selector itself becomes the header, matching the approved mockup. */
+    .combined-nav-wrap { display: none !important; }
+
+    /* Force the workspace selector and all of its Streamlit wrappers to use
+       the full content width rather than shrinking to radio-label content. */
+    .st-key-app_view,
+    .st-key-app_view > div,
+    .st-key-app_view [data-testid="stRadio"],
+    .st-key-app_view [data-testid="stRadio"] > div,
+    [data-testid="stElementContainer"]:has(.st-key-app_view) {
+        width: 100% !important;
+        max-width: none !important;
+        min-width: 0 !important;
+    }
+
     .st-key-app_view [data-testid="stRadio"] > div[role="radiogroup"] {
         display: grid !important;
         grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-        gap: 14px !important;
+        gap: 10px !important;
         width: 100% !important;
-        margin: 4px 0 22px !important;
+        max-width: none !important;
+        box-sizing: border-box !important;
+        padding: 8px !important;
+        margin: 4px 0 28px !important;
+        border: 1px solid #33475f !important;
+        border-radius: 24px !important;
+        background: linear-gradient(135deg, rgba(12,23,39,.96), rgba(8,17,31,.96)) !important;
+        box-shadow: inset 0 0 0 1px rgba(255,255,255,.015), 0 10px 26px rgba(0,0,0,.18) !important;
     }
 
     .st-key-app_view [data-testid="stRadio"] label {
         position: relative !important;
-        display: flex !important;
+        display: grid !important;
+        grid-template-columns: 88px minmax(0,1fr) !important;
+        grid-template-rows: auto auto !important;
+        column-gap: 22px !important;
+        row-gap: 5px !important;
         align-items: center !important;
-        min-height: 92px !important;
+        min-height: 154px !important;
         width: 100% !important;
         box-sizing: border-box !important;
-        padding: 18px 24px !important;
-        border: 1px solid #2a405a !important;
-        border-radius: 18px !important;
-        background: linear-gradient(135deg, #0c1727, #0b1524) !important;
-        box-shadow: 0 8px 22px rgba(0,0,0,.16) !important;
+        padding: 25px 30px !important;
+        border: 1px solid transparent !important;
+        border-radius: 20px !important;
+        background: transparent !important;
+        box-shadow: none !important;
         cursor: pointer !important;
+        overflow: hidden !important;
         transition: border-color .15s ease, background .15s ease, box-shadow .15s ease, transform .15s ease !important;
     }
 
     .st-key-app_view [data-testid="stRadio"] label:hover {
-        border-color: #3f8b60 !important;
-        background: linear-gradient(135deg, #0f1d2c, #0c1a27) !important;
+        border-color: #3c5b77 !important;
+        background: linear-gradient(135deg, rgba(18,31,49,.92), rgba(12,25,40,.92)) !important;
         transform: translateY(-1px) !important;
     }
 
-    /* Current view: dark emerald rather than the old red accent. */
-    .st-key-app_view [data-testid="stRadio"] label:has(input:checked) {
-        border-color: #4fd06f !important;
-        background: linear-gradient(135deg, #123d27, #0c2d1c) !important;
-        box-shadow: 0 0 0 1px rgba(79,208,111,.18), 0 10px 28px rgba(28,132,65,.24) !important;
+    /* Hide the small native radio circle. The large icon circle below replaces
+       it visually while the original input remains clickable/accessibile. */
+    .st-key-app_view [data-testid="stRadio"] label > div:first-child {
+        position: absolute !important;
+        opacity: 0 !important;
+        pointer-events: none !important;
+        width: 1px !important;
+        height: 1px !important;
+        overflow: hidden !important;
+    }
+
+    .st-key-app_view [data-testid="stRadio"] label::before {
+        grid-column: 1 !important;
+        grid-row: 1 / 3 !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        width: 72px !important;
+        height: 72px !important;
+        border-radius: 999px !important;
+        border: 2px solid #2c4059 !important;
+        color: #f4f8ff !important;
+        background: rgba(11,22,37,.55) !important;
+        font-size: 40px !important;
+        line-height: 1 !important;
+        font-weight: 700 !important;
+        box-sizing: border-box !important;
+    }
+    .st-key-app_view [data-testid="stRadio"] label:nth-child(1)::before { content: "↗"; }
+    .st-key-app_view [data-testid="stRadio"] label:nth-child(2)::before { content: "⌕"; font-size: 46px !important; }
+
+    .st-key-app_view [data-testid="stRadio"] label [data-testid="stMarkdownContainer"] {
+        grid-column: 2 !important;
+        grid-row: 1 !important;
+        align-self: end !important;
+        margin: 0 !important;
+        padding: 0 !important;
     }
 
     .st-key-app_view [data-testid="stRadio"] label p {
+        margin: 0 !important;
         color: #f5f9ff !important;
-        font-size: 23px !important;
-        line-height: 1.15 !important;
-        font-weight: 900 !important;
-        letter-spacing: -.01em !important;
+        font-size: 30px !important;
+        line-height: 1.08 !important;
+        font-weight: 950 !important;
+        letter-spacing: -.025em !important;
     }
 
+    .st-key-app_view [data-testid="stRadio"] label::after {
+        grid-column: 2 !important;
+        grid-row: 2 !important;
+        align-self: start !important;
+        color: #b5c3d5 !important;
+        font-size: 18px !important;
+        line-height: 1.25 !important;
+        font-weight: 500 !important;
+        letter-spacing: 0 !important;
+    }
+    .st-key-app_view [data-testid="stRadio"] label:nth-child(1)::after {
+        content: "Discover high-momentum stocks";
+    }
+    .st-key-app_view [data-testid="stRadio"] label:nth-child(2)::after {
+        content: "Deep dive into any stock";
+    }
+
+    /* Approved active-state treatment: dark emerald panel with a restrained
+       green outline/glow instead of the old bright red radio styling. */
+    .st-key-app_view [data-testid="stRadio"] label:has(input:checked) {
+        border-color: #55cf70 !important;
+        background: linear-gradient(135deg, #124328 0%, #0d341f 58%, #0a2819 100%) !important;
+        box-shadow: 0 0 0 1px rgba(85,207,112,.18), 0 8px 28px rgba(32,139,67,.25) !important;
+    }
+    .st-key-app_view [data-testid="stRadio"] label:has(input:checked)::before {
+        border-color: #3b9d55 !important;
+        background: rgba(12,53,31,.72) !important;
+        box-shadow: inset 0 0 0 1px rgba(91,219,120,.08) !important;
+    }
     .st-key-app_view [data-testid="stRadio"] label:has(input:checked) p {
         color: #ffffff !important;
     }
-
-    /* Make the radio dot itself feel intentional and match the green theme. */
-    .st-key-app_view [data-testid="stRadio"] label [data-testid="stMarkdownContainer"] {
-        margin-left: 8px !important;
-    }
-    .st-key-app_view [data-testid="stRadio"] label:has(input:checked) > div:first-child {
-        filter: hue-rotate(85deg) saturate(.9) brightness(.95) !important;
+    .st-key-app_view [data-testid="stRadio"] label:has(input:checked)::after {
+        color: #d2ddda !important;
     }
 
-    /* Streamlit's default secondary buttons can render almost white against
-       this dark theme. Force a dark, readable treatment everywhere. */
+    /* Saved Stocks block: scale it to the same visual weight as the mockup. */
+    .st-key-saved_stocks_top .saved-stock-shell {
+        min-height: 132px !important;
+        box-sizing: border-box !important;
+        padding: 28px 30px 24px !important;
+        margin: 2px 0 20px !important;
+        border: 1px solid #2b4664 !important;
+        border-radius: 18px !important;
+        background: linear-gradient(135deg, #0d1a2d, #0b1728) !important;
+    }
+    .st-key-saved_stocks_top .saved-stock-title {
+        font-size: 28px !important;
+        line-height: 1.15 !important;
+        font-weight: 950 !important;
+        color: #f4f8ff !important;
+        letter-spacing: -.02em !important;
+    }
+    .st-key-saved_stocks_top .saved-stock-sub {
+        margin-top: 16px !important;
+        font-size: 18px !important;
+        line-height: 1.35 !important;
+        color: #adc0d7 !important;
+    }
+
+    /* Enlarge the Save / Remove action row and give both actions clear,
+       readable mockup-like treatments. */
+    .st-key-saved_stocks_top [data-testid="stHorizontalBlock"]:has(.st-key-save_current_stock) {
+        gap: 20px !important;
+        align-items: stretch !important;
+        margin-bottom: 16px !important;
+    }
+    .st-key-saved_stocks_top [data-testid="stHorizontalBlock"]:has(.st-key-save_current_stock) > [data-testid="stColumn"]:nth-child(1),
+    .st-key-saved_stocks_top [data-testid="stHorizontalBlock"]:has(.st-key-save_current_stock) > [data-testid="stColumn"]:nth-child(2) {
+        flex: 0 0 34% !important;
+        width: 34% !important;
+        max-width: 34% !important;
+    }
+    .st-key-saved_stocks_top [data-testid="stHorizontalBlock"]:has(.st-key-save_current_stock) > [data-testid="stColumn"]:nth-child(3) {
+        flex: 1 1 auto !important;
+        width: auto !important;
+    }
+
+    .st-key-saved_stocks_top .st-key-save_current_stock button,
+    .st-key-saved_stocks_top .st-key-remove_current_stock button {
+        min-height: 82px !important;
+        border-radius: 15px !important;
+        font-size: 21px !important;
+        font-weight: 900 !important;
+        box-shadow: none !important;
+    }
+    .st-key-saved_stocks_top .st-key-save_current_stock button:not(:disabled) {
+        background: linear-gradient(135deg, #255f35, #164726) !important;
+        border: 2px solid #59cc70 !important;
+        color: #ffffff !important;
+    }
+    .st-key-saved_stocks_top .st-key-save_current_stock button:not(:disabled):hover {
+        background: linear-gradient(135deg, #2b713e, #1a542d) !important;
+        border-color: #72df87 !important;
+    }
+    .st-key-saved_stocks_top .st-key-remove_current_stock button:not(:disabled) {
+        background: #0b1625 !important;
+        border: 2px solid #3e9e56 !important;
+        color: #58c66f !important;
+    }
+    .st-key-saved_stocks_top .st-key-remove_current_stock button:not(:disabled):hover {
+        background: #10241a !important;
+        border-color: #58c66f !important;
+        color: #78df8d !important;
+    }
+    .st-key-saved_stocks_top .st-key-save_current_stock button p,
+    .st-key-saved_stocks_top .st-key-save_current_stock button span {
+        color: inherit !important;
+        font-size: 21px !important;
+        font-weight: 900 !important;
+    }
+    .st-key-saved_stocks_top .st-key-remove_current_stock button p,
+    .st-key-saved_stocks_top .st-key-remove_current_stock button span {
+        color: inherit !important;
+        font-size: 21px !important;
+        font-weight: 900 !important;
+    }
+
+    .st-key-saved_stocks_top [data-testid="stCaptionContainer"] p {
+        font-size: 17px !important;
+        line-height: 1.45 !important;
+        color: #a6b5c8 !important;
+    }
+
+    /* Streamlit secondary buttons should never turn white on this dark app. */
     div[data-testid="stButton"] button[kind="secondary"] {
         background: #101b2d !important;
         border: 1px solid #36506d !important;
@@ -100,45 +271,45 @@ st.markdown(
         color: #ffffff !important;
     }
 
-    /* Disabled controls should still be legible, but clearly inactive. */
+    /* Disabled buttons remain dark and readable instead of white/washed out. */
     div[data-testid="stButton"] button:disabled {
         background: #0d1624 !important;
         border-color: #26384d !important;
         color: #8396ad !important;
-        opacity: .78 !important;
+        opacity: .82 !important;
     }
     div[data-testid="stButton"] button:disabled p,
     div[data-testid="stButton"] button:disabled span {
         color: #8396ad !important;
     }
 
-    /* Saved Stocks actions use the approved emerald palette. */
-    .st-key-saved_stocks_top div[data-testid="stButton"] button:not(:disabled) {
-        background: linear-gradient(135deg, #174a2d, #10371f) !important;
-        border-color: #42b965 !important;
-        color: #ffffff !important;
-    }
-    .st-key-saved_stocks_top div[data-testid="stButton"] button:not(:disabled) p,
-    .st-key-saved_stocks_top div[data-testid="stButton"] button:not(:disabled) span {
-        color: #ffffff !important;
-        font-weight: 850 !important;
-    }
-    .st-key-saved_stocks_top div[data-testid="stButton"] button:not(:disabled):hover {
-        background: linear-gradient(135deg, #1b5a35, #124225) !important;
-        border-color: #61dc80 !important;
-    }
-
-    @media (max-width: 760px) {
+    @media (max-width: 900px) {
         .st-key-app_view [data-testid="stRadio"] > div[role="radiogroup"] {
             grid-template-columns: 1fr !important;
-            gap: 9px !important;
+            gap: 8px !important;
         }
         .st-key-app_view [data-testid="stRadio"] label {
-            min-height: 72px !important;
-            padding: 14px 18px !important;
+            min-height: 118px !important;
+            grid-template-columns: 66px minmax(0,1fr) !important;
+            column-gap: 16px !important;
+            padding: 20px 22px !important;
+        }
+        .st-key-app_view [data-testid="stRadio"] label::before {
+            width: 58px !important;
+            height: 58px !important;
+            font-size: 32px !important;
         }
         .st-key-app_view [data-testid="stRadio"] label p {
-            font-size: 19px !important;
+            font-size: 23px !important;
+        }
+        .st-key-app_view [data-testid="stRadio"] label::after {
+            font-size: 15px !important;
+        }
+        .st-key-saved_stocks_top [data-testid="stHorizontalBlock"]:has(.st-key-save_current_stock) > [data-testid="stColumn"]:nth-child(1),
+        .st-key-saved_stocks_top [data-testid="stHorizontalBlock"]:has(.st-key-save_current_stock) > [data-testid="stColumn"]:nth-child(2) {
+            flex: 1 1 50% !important;
+            width: 50% !important;
+            max-width: none !important;
         }
     }
     </style>
@@ -295,8 +466,6 @@ def _install_working_button_transition():
           const p = window.parent;
           const d = p.document;
 
-          // Remove older transition implementations that may still be attached
-          // to this browser tab from previous deployments.
           const previous = p.__stockWorkspaceTransition;
           if (previous && previous.capture) {
             try { d.removeEventListener('click', previous.capture, true); } catch (_) {}
@@ -349,9 +518,6 @@ def _install_working_button_transition():
             if (!button) return;
             const text = String(button.textContent || '').trim();
             if (!/^Analyze\s+[A-Z0-9.\-]+/i.test(text)) return;
-
-            // Presentation only: do not preventDefault, stop propagation, or
-            // set disabled. Streamlit receives this same click normally.
             setWorking(button);
           };
 
