@@ -398,23 +398,24 @@ if "last_auto_message" not in st.session_state:
     st.session_state["last_auto_message"] = ""
 
 
-control_a, control_b, control_c = st.columns([2.2, 1.2, 1.2])
-with control_a:
-    st.toggle(
-        "Auto scan every 5 minutes",
-        key="auto_scan_enabled",
-        help="Runs while this dashboard tab/session is active. Automatic scans pause when the regular US market is closed.",
-    )
-with control_b:
-    clicked = st.button("▶ Run Fresh Scan", type="primary", use_container_width=True)
-with control_c:
-    market_open, now_et = market_is_open()
-    market_label = "🟢 MARKET OPEN" if market_open else "🟡 MARKET CLOSED"
-    st.markdown(
-        f'<div class="auto-box {"auto-on" if market_open else "auto-wait"}">'
-        f'<b>{market_label}</b><br><span class="sub">{now_et:%I:%M %p ET}</span></div>',
-        unsafe_allow_html=True,
-    )
+with st.container(key="scanner_controls_top"):
+    control_a, control_b, control_c = st.columns([2.2, 1.2, 1.2])
+    with control_a:
+        st.toggle(
+            "Auto scan every 5 minutes",
+            key="auto_scan_enabled",
+            help="Runs while this dashboard tab/session is active. Automatic scans pause when the regular US market is closed.",
+        )
+    with control_b:
+        clicked = st.button("▶ Run Fresh Scan", type="primary", use_container_width=True)
+    with control_c:
+        market_open, now_et = market_is_open()
+        market_label = "🟢 MARKET OPEN" if market_open else "🟡 MARKET CLOSED"
+        st.markdown(
+            f'<div class="auto-box {"auto-on" if market_open else "auto-wait"}">'
+            f'<b>{market_label}</b><br><span class="sub">{now_et:%I:%M %p ET}</span></div>',
+            unsafe_allow_html=True,
+        )
 
 if clicked:
     with st.spinner("Scanning Alpaca movers and ranking setups…"):
@@ -512,7 +513,8 @@ def auto_scan_controller():
     )
 
 
-auto_scan_controller()
+with st.container(key="scanner_auto_status_top"):
+    auto_scan_controller()
 
 payload = load_scan()
 
