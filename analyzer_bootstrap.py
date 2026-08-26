@@ -245,7 +245,7 @@ def _activate_saved_stock(symbol):
 
 
 def _render_saved_stocks():
-    """Session-persistent one-click stock list pinned to the top of Analyzer."""
+    """Compact session-persistent saved-stock toolbar."""
     if "saved_stocks" not in st.session_state:
         st.session_state["saved_stocks"] = []
 
@@ -263,26 +263,17 @@ def _render_saved_stocks():
         or "SDOT"
     ).upper().strip()
 
-    st.markdown(
-        """
-        <style>
-        .st-key-saved_stocks_top { order: -1000 !important; }
-        .saved-stock-shell{
-            border:1px solid #263e5c;background:#0d192a;border-radius:14px;
-            padding:12px 14px 9px;margin:4px 0 10px;
-        }
-        .saved-stock-title{font-size:15px;font-weight:900;color:#f2f7ff}
-        .saved-stock-sub{font-size:12px;color:#91a7c2;margin-top:3px}
-        </style>
-        <div class="saved-stock-shell">
-          <div class="saved-stock-title">★ Saved Stocks</div>
-          <div class="saved-stock-sub">Save tickers you want to revisit, then click one to analyze it immediately.</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
+    # One compact toolbar row instead of a header card + separate action row.
+    title_col, action_a, action_b, spacer = st.columns(
+        [1.15, 1.05, 1.05, 4.75],
+        vertical_alignment="center",
     )
+    with title_col:
+        st.markdown(
+            '<div class="saved-stock-inline-title">★ Saved Stocks</div>',
+            unsafe_allow_html=True,
+        )
 
-    action_a, action_b, spacer = st.columns([1.25, 1.35, 5.4])
     with action_a:
         can_save = bool(current) and current not in saved
         if st.button(
@@ -290,9 +281,11 @@ def _render_saved_stocks():
             key="save_current_stock",
             disabled=not can_save,
             use_container_width=True,
+            help="Save this ticker for quick access later.",
         ):
             st.session_state["saved_stocks"] = (saved + [current])[:24]
             st.rerun()
+
     with action_b:
         can_remove = bool(current) and current in saved
         if st.button(
@@ -300,18 +293,20 @@ def _render_saved_stocks():
             key="remove_current_stock",
             disabled=not can_remove,
             use_container_width=True,
+            help="Remove this ticker from Saved Stocks.",
         ):
             st.session_state["saved_stocks"] = [x for x in saved if x != current]
             st.rerun()
 
     saved = st.session_state.get("saved_stocks", [])
     if not saved:
-        st.caption("No saved stocks yet. Analyze a ticker, then click **Save** above.")
         return
 
-    for start in range(0, len(saved), 6):
-        chunk = saved[start : start + 6]
-        cols = st.columns(6)
+    # Saved ticker chips only add a second compact row when there are actually
+    # saved names to show.
+    for start in range(0, len(saved), 8):
+        chunk = saved[start : start + 8]
+        cols = st.columns(8)
         for i, col in enumerate(cols):
             if i >= len(chunk):
                 continue
@@ -326,7 +321,6 @@ def _render_saved_stocks():
                 ):
                     _activate_saved_stock(symbol)
                     st.rerun()
-
 
 def _prepare_combined_result(sa):
     """Calculate the selected ticker without rendering Analyzer UI."""
