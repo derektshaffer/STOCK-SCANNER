@@ -299,6 +299,115 @@ st.markdown(
             max-width: none !important;
         }
     }
+    
+    /* ABOVE-THE-FOLD OVERRIDES
+       The Analyzer's useful data should be visible immediately on desktop. */
+    .st-key-app_view [data-testid="stRadio"] > div[role="radiogroup"] {
+        padding: 3px !important;
+        gap: 5px !important;
+        margin: 0 0 8px !important;
+        border-radius: 12px !important;
+    }
+    .st-key-app_view [data-testid="stRadio"] > div[role="radiogroup"] > label {
+        min-height: 54px !important;
+        grid-template-columns: 34px minmax(0,1fr) !important;
+        grid-template-rows: 1fr !important;
+        column-gap: 9px !important;
+        padding: 8px 12px !important;
+        border-radius: 9px !important;
+    }
+    .st-key-app_view [data-testid="stRadio"] > div[role="radiogroup"] > label::before {
+        grid-row: 1 !important;
+        width: 30px !important;
+        height: 30px !important;
+        font-size: 17px !important;
+    }
+    .st-key-app_view [data-testid="stRadio"] > div[role="radiogroup"] > label:nth-child(2)::before {
+        font-size: 19px !important;
+    }
+    .st-key-app_view [data-testid="stRadio"] > div[role="radiogroup"] > label [data-testid="stMarkdownContainer"] {
+        grid-row: 1 !important;
+        align-self: center !important;
+    }
+    .st-key-app_view [data-testid="stRadio"] > div[role="radiogroup"] > label p {
+        font-size: 16px !important;
+        line-height: 1 !important;
+    }
+    .st-key-app_view [data-testid="stRadio"] > div[role="radiogroup"] > label::after {
+        display: none !important;
+        content: none !important;
+    }
+
+    /* Saved Stocks becomes a compact utility strip instead of a hero section. */
+    .st-key-saved_stocks_top .saved-stock-shell {
+        min-height: 0 !important;
+        padding: 8px 12px !important;
+        margin: 0 0 6px !important;
+        border-radius: 10px !important;
+    }
+    .st-key-saved_stocks_top .saved-stock-title {
+        font-size: 15px !important;
+        line-height: 1 !important;
+    }
+    .st-key-saved_stocks_top .saved-stock-sub {
+        display: none !important;
+    }
+    .st-key-saved_stocks_top [data-testid="stHorizontalBlock"]:has(.st-key-save_current_stock) {
+        gap: 8px !important;
+        margin-bottom: 3px !important;
+    }
+    .st-key-saved_stocks_top [data-testid="stHorizontalBlock"]:has(.st-key-save_current_stock) > [data-testid="stColumn"]:nth-child(1),
+    .st-key-saved_stocks_top [data-testid="stHorizontalBlock"]:has(.st-key-save_current_stock) > [data-testid="stColumn"]:nth-child(2) {
+        flex: 0 0 22% !important;
+        width: 22% !important;
+        max-width: 22% !important;
+    }
+    .st-key-saved_stocks_top .st-key-save_current_stock button,
+    .st-key-saved_stocks_top .st-key-remove_current_stock button {
+        min-height: 36px !important;
+        height: 36px !important;
+        border-radius: 8px !important;
+        padding: 4px 10px !important;
+    }
+    .st-key-saved_stocks_top .st-key-save_current_stock button p,
+    .st-key-saved_stocks_top .st-key-save_current_stock button span,
+    .st-key-saved_stocks_top .st-key-remove_current_stock button p,
+    .st-key-saved_stocks_top .st-key-remove_current_stock button span {
+        font-size: 12px !important;
+    }
+    .st-key-saved_stocks_top [data-testid="stCaptionContainer"] {
+        display: none !important;
+    }
+
+    /* Combined Analyzer: strip hero-size spacing and tighten search controls. */
+    .hero {
+        padding: 7px 10px !important;
+        margin-bottom: 5px !important;
+        border-radius: 9px !important;
+        min-height: 0 !important;
+    }
+    .hero .title {
+        font-size: 18px !important;
+        line-height: 1.05 !important;
+        letter-spacing: -.15px !important;
+    }
+    .hero .sub {
+        display: none !important;
+    }
+    .search-label {
+        font-size: 13px !important;
+        margin: 0 0 3px 1px !important;
+    }
+    [data-testid="stSelectbox"] {
+        margin-bottom: 0 !important;
+    }
+    [data-testid="stSelectbox"] > div > div {
+        min-height: 36px !important;
+    }
+    .block-container {
+        padding-top: .25rem !important;
+    }
+
     </style>
     """,
     unsafe_allow_html=True,
