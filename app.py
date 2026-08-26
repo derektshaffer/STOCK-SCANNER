@@ -77,7 +77,7 @@ st.markdown(
     .combined-ticker-row {
         min-height: 68px;
         display: grid;
-        grid-template-columns: minmax(125px, 1.4fr) repeat(4, minmax(92px, 1fr));
+        grid-template-columns: minmax(115px, 1.25fr) repeat(5, minmax(82px, 1fr));
         gap: 10px;
         align-items: stretch;
         border-bottom: 1px solid rgba(120,150,190,.18);
@@ -177,7 +177,7 @@ st.markdown(
 
     @media (max-width: 1050px) {
         .combined-ticker-row {
-            grid-template-columns: minmax(105px, 1.2fr) repeat(4, minmax(76px, 1fr));
+            grid-template-columns: minmax(98px, 1.1fr) repeat(5, minmax(68px, 1fr));
             gap: 6px;
         }
         .combined-stat { padding: 7px 8px; }
@@ -325,6 +325,10 @@ def _latest_scan_candidates():
                 "symbol": symbol,
                 "grade": str(row.get("setup_grade") or "—"),
                 "score": row.get("score"),
+                "ml_probability": row.get("ml_continuation_prob_pct"),
+                "ml_validated": bool(row.get("ml_validated")),
+                "ml_status": row.get("ml_status"),
+                "opportunity_score": row.get("opportunity_score"),
                 "day_pct": row.get("day_pct"),
                 "volume_pace": row.get("volume_pace"),
             }
@@ -397,6 +401,28 @@ def _volume_class(value):
     return "volume-slow"
 
 
+def _ml_display(row):
+    if not row.get("ml_validated"):
+        status = str(row.get("ml_status") or "").lower()
+        if status in {"failed_validation", "prediction_error", "error"}:
+            return "Not valid", "change-neg"
+        return "Learning", "volume-normal"
+
+    try:
+        probability = float(row.get("ml_probability"))
+    except (TypeError, ValueError):
+        return "—", ""
+
+    cls = (
+        "volume-strong"
+        if probability >= 65
+        else "grade-c"
+        if probability >= 50
+        else "change-neg"
+    )
+    return f"{probability:.0f}%", cls
+
+
 if view == "Momentum Scanner":
     launch_error = st.session_state.pop("_analyzer_launch_error", None)
     if launch_error:
@@ -418,6 +444,7 @@ if view == "Momentum Scanner":
             symbol = row["symbol"]
             grade = row.get("grade") or "—"
             score_text = _fmt_num(row.get("score"), "{:.0f}")
+            ml_text, ml_cls = _ml_display(row)
             day_text = _fmt_num(row.get("day_pct"), "{:+.1f}%")
             volume_text = _fmt_num(row.get("volume_pace"), "{:.2f}x")
             grade_cls = _grade_class(grade)
@@ -439,6 +466,10 @@ if view == "Momentum Scanner":
                     f'  <div class="combined-stat">'
                     f'    <div class="combined-stat-label">Score</div>'
                     f'    <div class="combined-stat-value">{score_text}</div>'
+                    f'  </div>'
+                    f'  <div class="combined-stat">'
+                    f'    <div class="combined-stat-label">ML 60M</div>'
+                    f'    <div class="combined-stat-value {ml_cls}">{ml_text}</div>'
                     f'  </div>'
                     f'  <div class="combined-stat">'
                     f'    <div class="combined-stat-label">Today</div>'
@@ -501,6 +532,8 @@ TECHNICAL_TOOLTIPS = {
     "MOMENTUM": "The speed and persistence of price movement. Stronger momentum means price is moving more decisively in one direction.",
     "SETUP SCORE": "A combined technical-quality score using factors such as momentum, VWAP, volume, liquidity and price location. It is not a probability of profit.",
     "SCORE": "A combined technical-quality score used to rank the scanner's setups. Higher is stronger, but it is not a guaranteed probability of success.",
+    "ML 60M": "Validated XGBoost estimate of the chance this scanner setup will be at least 3% higher 60 minutes later. It stays in Learning mode until chronological validation passes.",
+    "OPPORTUNITY": "Combined ranking score using 70% of the existing scanner score and 30% of validated ML probability. ML has no ranking weight until validation passes.",
     "GRADE": "A quick quality tier based on the scanner's rules. A is strongest, followed by B and C; the grade is not a guarantee of profit.",
     "DAY RANGE": "The lowest and highest prices traded during the current session.",
     "BASE SETUP": "The analyzer's overall read of the current technical setup before considering a specific entry, stop and targets.",
