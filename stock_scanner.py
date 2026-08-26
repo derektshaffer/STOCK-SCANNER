@@ -12,6 +12,11 @@ from statistics import median
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+try:
+    from scanner_ml_ranker import apply_scanner_ml
+except Exception:
+    apply_scanner_ml = None
+
 # ============================================================
 # MOMENTUM STOCK SCANNER - v2.7
 #
@@ -83,8 +88,8 @@ VOLUME_PROFILE_SESSIONS = 20
 VOLUME_PROFILE_MIN_SESSIONS = 7
 
 SCAN_LOG_DIR = os.environ.get("SCAN_LOG_DIR", "scan_logs").strip() or "scan_logs"
-SCAN_LOG_TOP = 25
-SCANNER_VERSION = "2.7"
+SCAN_LOG_TOP = 30
+SCANNER_VERSION = "2.8"
 
 API_KEY = os.environ.get("ALPACA_API_KEY", "").strip()
 API_SECRET = os.environ.get("ALPACA_SECRET_KEY", "").strip()
@@ -97,7 +102,7 @@ HEADERS = {
     "APCA-API-KEY-ID": API_KEY,
     "APCA-API-SECRET-KEY": API_SECRET,
     "Accept": "application/json",
-    "User-Agent": "github-stock-scanner/2.7",
+    "User-Agent": "github-stock-scanner/2.8",
 }
 
 # (category, base score, keywords)
@@ -462,6 +467,7 @@ def ranking_key(c):
         -c.get("failed_count", 99),
         -c.get("warning_count", 99),
         -len(c.get("setup_flags", [])),
+        c.get("opportunity_score", c.get("score", 0)),
         c.get("score", 0),
         c.get("day_pct") or -999,
     )
@@ -1292,6 +1298,14 @@ def candidate_log_record(c, rank):
         "volume_vs_expected_pct": c.get("volume_vs_expected_pct"),
         "volume_profile_samples": c.get("volume_profile_samples"),
         "live_confirmation_count": c.get("live_confirmation_count"),
+        "ml_model_version": c.get("ml_model_version"),
+        "ml_target": c.get("ml_target"),
+        "ml_validated": bool(c.get("ml_validated")),
+        "ml_status": c.get("ml_status"),
+        "ml_training_samples": c.get("ml_training_samples"),
+        "ml_validation_auc": c.get("ml_validation_auc"),
+        "ml_continuation_prob_pct": c.get("ml_continuation_prob_pct"),
+        "opportunity_score": c.get("opportunity_score", c.get("score")),
         "news": compact_catalyst(c),
         "historical": compact_historical(c.get("historical")),
         # Filled by a later outcome-tracking version after enough time has elapsed.
@@ -1303,7 +1317,7 @@ def candidate_log_record(c, rank):
     }
 
 
-def write_scan_logs(rows, now_utc, now_et, excluded_symbols):
+def write_scan_logs(rows, now_utc, now_et, excluded_symbols, ml_summary=None):
     """Write one JSON snapshot and one flat CSV. Logging failures never fail the scan."""
     try:
         out_dir = Path(SCAN_LOG_DIR)
@@ -1343,6 +1357,7 @@ def write_scan_logs(rows, now_utc, now_et, excluded_symbols):
                 "base_filter_passes": sum(bool(c.get("passed_base_filters")) for c in rows),
                 "grade_counts": dict(grade_counts),
                 "excluded_non_common_symbols": excluded_symbols,
+                "ml_model": ml_summary or {},
             },
             "candidates": records,
         }
@@ -1353,7 +1368,9 @@ def write_scan_logs(rows, now_utc, now_et, excluded_symbols):
         csv_path = out_dir / f"scan_{scan_id}.csv"
         csv_fields = [
             "scan_id", "scan_time_et", "rank", "symbol", "price", "day_pct",
-            "score", "setup_grade", "setup_label", "alert_tier", "alert_ready",
+            "score", "opportunity_score", "ml_continuation_prob_pct",
+            "ml_validated", "ml_status", "ml_training_samples", "ml_validation_auc",
+            "setup_grade", "setup_label", "alert_tier", "alert_ready",
             "passed_base_filters", "momentum_5m", "momentum_15m", "volume_pace",
             "volume_pace_source", "expected_volume_by_now",
             "expected_volume_fraction_pct", "volume_vs_expected_pct", "volume_profile_samples",
@@ -1377,6 +1394,12 @@ def write_scan_logs(rows, now_utc, now_et, excluded_symbols):
                     "price": r.get("price"),
                     "day_pct": r.get("day_pct"),
                     "score": r.get("score"),
+                    "opportunity_score": r.get("opportunity_score"),
+                    "ml_continuation_prob_pct": r.get("ml_continuation_prob_pct"),
+                    "ml_validated": r.get("ml_validated"),
+                    "ml_status": r.get("ml_status"),
+                    "ml_training_samples": r.get("ml_training_samples"),
+                    "ml_validation_auc": r.get("ml_validation_auc"),
                     "setup_grade": r.get("setup_grade"),
                     "setup_label": r.get("setup_label"),
                     "alert_tier": r.get("alert_tier"),
@@ -1588,7 +1611,7 @@ def main():
     now_utc = datetime.now(timezone.utc)
     now_et = now_utc.astimezone(ZoneInfo("America/New_York"))
 
-    print(f"Momentum scan v2.6 started: {now_et:%Y-%m-%d %H:%M:%S %Z}")
+    print(f"Momentum scan v{SCANNER_VERSION} started: {now_et:%Y-%m-%d %H:%M:%S %Z}")
     print(
         "Mode: "
         + ("REGULAR MARKET SESSION" if is_regular_session(now_et) else "OFF-HOURS / TEST")
@@ -1669,9 +1692,39 @@ def main():
 
         time.sleep(0.05)
 
-    # Grades are intentionally separate from historical continuation for now.
-    # Monday's live test will tell us whether history deserves score/grade weight.
+    # Rule-based setup grades remain the safety gate. ML is applied only after
+    # those rules are complete, and ranking only changes when the model passes
+    # chronological walk-forward validation.
     assign_setup_grades(rows, now_et)
+
+    if is_regular_session(now_et) and apply_scanner_ml is not None:
+        try:
+            ml_summary = apply_scanner_ml(rows, now_et)
+        except Exception as exc:
+            ml_summary = {
+                "status": "error",
+                "validated": False,
+                "version": "scanner-ml-v1",
+                "error": str(exc)[:240],
+            }
+            for row in rows:
+                row["ml_status"] = "error"
+                row["ml_validated"] = False
+                row["ml_continuation_prob_pct"] = None
+                row["opportunity_score"] = row.get("score")
+    else:
+        ml_summary = {
+            "status": "skipped_off_hours" if not is_regular_session(now_et) else "unavailable",
+            "validated": False,
+            "version": "scanner-ml-v1",
+            "target": ">= +3% at 60 minutes",
+        }
+        for row in rows:
+            row["ml_status"] = ml_summary["status"]
+            row["ml_validated"] = False
+            row["ml_continuation_prob_pct"] = None
+            row["opportunity_score"] = row.get("score")
+
     rows.sort(key=ranking_key, reverse=True)
 
     print_watchlist(rows)
@@ -1679,6 +1732,19 @@ def main():
     print_setup_grades(rows, now_et)
     print_passers(rows)
     print_historical(rows)
+
+    print("\nSCANNER ML")
+    print(
+        f"Status: {ml_summary.get('status')} | "
+        f"validated={ml_summary.get('validated')} | "
+        f"samples={ml_summary.get('samples', 0)} | "
+        f"days={ml_summary.get('trading_days', 0)} | "
+        f"AUC={ml_summary.get('walk_forward_auc')}"
+    )
+    print(
+        "Target: "
+        + str(ml_summary.get("target") or ">= +3% at 60 minutes")
+    )
 
     print("\nSCAN SUMMARY")
     print(f"Analyzed common-stock candidates: {len(rows)}")
@@ -1713,7 +1779,13 @@ def main():
         for warning, count in warning_counts.most_common():
             print(f"  - {warning}: {count}")
 
-    write_scan_logs(rows, now_utc, now_et, excluded_symbols)
+    write_scan_logs(
+        rows,
+        now_utc,
+        now_et,
+        excluded_symbols,
+        ml_summary=ml_summary,
+    )
 
     print("\nJSON RESULTS - TOP WATCHLIST")
     print(json.dumps(rows[:WATCHLIST_SIZE], indent=2))
