@@ -545,6 +545,115 @@ if view == "Stock Analyzer":
             margin-bottom: 2px !important;
         }
 
+
+        /* FINAL LAYOUT RESET
+           This is the single authoritative spacing layer for the combined
+           Analyzer. Older child-module layout CSS has been removed. */
+        .block-container [data-testid="stVerticalBlock"] {
+            gap: .50rem !important;
+        }
+
+        /* Workspace selector */
+        [data-testid="stElementContainer"]:has(.st-key-app_view) {
+            margin: 0 0 8px !important;
+        }
+        .st-key-app_view [data-testid="stRadio"] > div[role="radiogroup"] {
+            margin: 0 !important;
+        }
+
+        /* Saved Stocks toolbar: one compact, balanced row. */
+        .st-key-saved_stocks_top {
+            margin: 0 0 10px !important;
+            padding: 0 !important;
+        }
+        .st-key-saved_stocks_top > [data-testid="stVerticalBlock"] {
+            gap: 5px !important;
+        }
+        .st-key-saved_stocks_top [data-testid="stHorizontalBlock"]:has(.saved-stock-inline-title) {
+            gap: 8px !important;
+            align-items: center !important;
+            margin: 0 !important;
+        }
+        .st-key-saved_stocks_top [data-testid="stHorizontalBlock"]:has(.saved-stock-inline-title)
+          > [data-testid="stColumn"]:nth-child(1) {
+            flex: 0 0 145px !important;
+            width: 145px !important;
+            max-width: 145px !important;
+        }
+        .st-key-saved_stocks_top [data-testid="stHorizontalBlock"]:has(.saved-stock-inline-title)
+          > [data-testid="stColumn"]:nth-child(2),
+        .st-key-saved_stocks_top [data-testid="stHorizontalBlock"]:has(.saved-stock-inline-title)
+          > [data-testid="stColumn"]:nth-child(3) {
+            flex: 0 0 180px !important;
+            width: 180px !important;
+            max-width: 180px !important;
+        }
+        .st-key-saved_stocks_top [data-testid="stHorizontalBlock"]:has(.saved-stock-inline-title)
+          > [data-testid="stColumn"]:nth-child(4) {
+            flex: 1 1 auto !important;
+            width: auto !important;
+            max-width: none !important;
+        }
+        .st-key-saved_stocks_top button {
+            min-height: 34px !important;
+            height: 34px !important;
+        }
+
+        /* Analyzer title and controls */
+        [data-testid="stElementContainer"]:has(.hero) {
+            margin: 0 0 8px !important;
+        }
+        .hero {
+            margin: 0 !important;
+        }
+        .st-key-analyzer_controls {
+            margin: 0 0 10px !important;
+        }
+        .st-key-analyzer_controls > [data-testid="stVerticalBlock"] {
+            gap: 4px !important;
+        }
+
+        /* First metrics and subsequent sections */
+        .st-key-analyzer_metrics_top {
+            margin: 0 0 10px !important;
+        }
+        .st-key-analyzer_metrics_top > [data-testid="stVerticalBlock"] {
+            gap: 0 !important;
+        }
+
+        [data-testid="stElementContainer"]:has(.section) {
+            margin-top: 10px !important;
+            margin-bottom: 6px !important;
+        }
+        .section {
+            margin: 0 !important;
+            line-height: 1.25 !important;
+        }
+
+        /* Keep explanatory elements attached to their section without overlap. */
+        [data-testid="stExpander"] {
+            margin: 6px 0 9px !important;
+        }
+        div[data-testid="stAlert"] {
+            margin: 7px 0 10px !important;
+        }
+        .tradeplan {
+            margin: 10px 0 8px !important;
+        }
+        [data-testid="stCaptionContainer"] {
+            margin-top: 4px !important;
+            margin-bottom: 5px !important;
+        }
+
+        @media (max-width: 900px) {
+            .st-key-saved_stocks_top [data-testid="stHorizontalBlock"]:has(.saved-stock-inline-title)
+              > [data-testid="stColumn"] {
+                flex: 1 1 auto !important;
+                width: auto !important;
+                max-width: none !important;
+            }
+        }
+
         </style>
         """,
         unsafe_allow_html=True,
