@@ -167,11 +167,12 @@ st.markdown(
         white-space: normal;
     }
 
-    /* Keep every one-click Analyze button readable. */
-    div[data-testid="stButton"] button[kind="primary"] {
-        font-weight: 900;
-        min-height: 58px;
-        border-radius: 12px;
+    /* Keep one-click scanner Analyze buttons readable without forcing every
+       primary control (such as Run Fresh Scan) to be oversized. */
+    [class*="st-key-combined_analyze_"] button {
+        font-weight: 900 !important;
+        min-height: 58px !important;
+        border-radius: 12px !important;
     }
 
     @media (max-width: 1050px) {
