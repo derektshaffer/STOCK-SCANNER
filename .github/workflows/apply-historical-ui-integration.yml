@@ -1,0 +1,29 @@
+name: Apply Historical Setup UI Integration
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/apply-historical-ui-integration.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply-integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Patch analyzer entrypoint
+        shell: bash
+        run: |
+          python -c "import base64; exec(base64.b64decode('ZnJvbSBwYXRobGliIGltcG9ydCBQYXRoCgpwYXRoID0gUGF0aCgiYW5hbHl6ZXJfYXBwLnB5IikKdGV4dCA9IHBhdGgucmVhZF90ZXh0KCkKCm9sZF9pbXBvcnQgPSAnZnJvbSBzdG9ja19hbmFseXplciBpbXBvcnQgYW5hbHl6ZVxuJwpuZXdfaW1wb3J0ID0gIiIiaW1wb3J0IHN0b2NrX2FuYWx5emVyIGFzIF9zYQpmcm9tIGhpc3RvcmljYWxfaW50ZWdyYXRpb24gaW1wb3J0IGluc3RhbGxfaGlzdG9yaWNhbF9hbmFseXNpcwpmcm9tIGhpc3RvcmljYWxfdWkgaW1wb3J0IHJlbmRlcl9oaXN0b3JpY2FsX3NldHVwCmFuYWx5emU9aW5zdGFsbF9oaXN0b3JpY2FsX2FuYWx5c2lzKF9zYSkKIiIiCmlmIHRleHQuY291bnQob2xkX2ltcG9ydCkgIT0gMToKICAgIHJhaXNlIFN5c3RlbUV4aXQoZiJhbmFseXplciBpbXBvcnQ6IGV4cGVjdGVkIDEgbWF0Y2gsIGZvdW5kIHt0ZXh0LmNvdW50KG9sZF9pbXBvcnQpfSIpCnRleHQgPSB0ZXh0LnJlcGxhY2Uob2xkX2ltcG9ydCwgbmV3X2ltcG9ydCwgMSkKCm9sZF91aSA9ICIiImVsc2U6IHN0LmluZm8oIk5vdCBlbm91Z2ggaGlzdG9yaWNhbCBkYXRhIGZvciBzcGlrZSBhbmFsb2dzIHlldC4iKQoKc3QubWFya2Rvd24oJzxkaXYgY2xhc3M9InNlY3Rpb24iPlJlY2VudCBjYXRhbHlzdC9uZXdzIGNvbnRleHQ8L2Rpdj4nLHVuc2FmZV9hbGxvd19odG1sPVRydWUpCiIiIgpuZXdfdWkgPSAiIiJlbHNlOiBzdC5pbmZvKCJOb3QgZW5vdWdoIGhpc3RvcmljYWwgZGF0YSBmb3Igc3Bpa2UgYW5hbG9ncyB5ZXQuIikKCnJlbmRlcl9oaXN0b3JpY2FsX3NldHVwKHN0LCBwZCwgciwgY2FyZCwgcHApCgpzdC5tYXJrZG93bignPGRpdiBjbGFzcz0ic2VjdGlvbiI+UmVjZW50IGNhdGFseXN0L25ld3MgY29udGV4dDwvZGl2PicsdW5zYWZlX2FsbG93X2h0bWw9VHJ1ZSkKIiIiCmlmIHRleHQuY291bnQob2xkX3VpKSAhPSAxOgogICAgcmFpc2UgU3lzdGVtRXhpdChmImhpc3RvcmljYWwgVUkgaW5zZXJ0aW9uOiBleHBlY3RlZCAxIG1hdGNoLCBmb3VuZCB7dGV4dC5jb3VudChvbGRfdWkpfSIpCnRleHQgPSB0ZXh0LnJlcGxhY2Uob2xkX3VpLCBuZXdfdWksIDEpCgpwYXRoLndyaXRlX3RleHQodGV4dCkK'))"
+          python -m py_compile analyzer_app.py historical_integration.py historical_ui.py historical_patterns.py
+          rm -f .github/workflows/apply-historical-ui-integration.yml
+          git config user.name 'ChatGPT'
+          git config user.email 'actions@users.noreply.github.com'
+          git add analyzer_app.py .github/workflows/apply-historical-ui-integration.yml
+          git commit -m 'Show historical setup match in analyzer UI'
+          git push origin HEAD:main
