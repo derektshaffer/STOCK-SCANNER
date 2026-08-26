@@ -674,6 +674,31 @@ if view == "Stock Analyzer":
     )
 
 
+if view == "Momentum Scanner":
+    st.markdown(
+        """
+        <style>
+        /* Keep scanner controls directly below the workspace selector. */
+        .st-key-app_view {
+            order: -1000 !important;
+        }
+        .st-key-scanner_controls_top {
+            order: -900 !important;
+            margin: 0 0 4px !important;
+        }
+        .st-key-scanner_auto_status_top {
+            order: -890 !important;
+            margin: 0 0 6px !important;
+        }
+        .st-key-scanner_controls_top [data-testid="stHorizontalBlock"] {
+            align-items: center !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def _install_scanner_interactions():
     """Scanner detail-card behavior without a page-wide observer."""
     components.html(
