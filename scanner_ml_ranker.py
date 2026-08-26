@@ -143,6 +143,13 @@ def _extract_observations(payload):
         if dt is None:
             continue
 
+        features = _feature_dict(row, scan_time)
+        if any(
+            features.get(name) is None
+            for name in ("momentum_5m", "momentum_15m", "volume_pace")
+        ):
+            continue
+
         out.append(
             {
                 "observation_id": (
@@ -154,7 +161,7 @@ def _extract_observations(payload):
                 "trading_date": dt.date().isoformat(),
                 "scan_id": row.get("scan_id"),
                 "label": int(return_60 >= 3.0),
-                "features": _feature_dict(row, scan_time),
+                "features": features,
             }
         )
     return out
@@ -630,13 +637,22 @@ def apply_scanner_ml(rows, now_et):
         import numpy as np
         import xgboost as xgb
 
-        feature_rows = [
-            _feature_dict(
+        eligible = []
+        for row in rows:
+            feature = _feature_dict(
                 row,
                 now_et.isoformat(),
             )
-            for row in rows
-        ]
+            if any(
+                feature.get(name) is None
+                for name in ("momentum_5m", "momentum_15m", "volume_pace")
+            ):
+                continue
+            eligible.append((row, feature))
+
+        if not eligible:
+            return meta
+
         X = np.array(
             [
                 [
@@ -645,7 +661,7 @@ def apply_scanner_ml(rows, now_et):
                     else float(feature.get(name))
                     for name in FEATURES
                 ]
-                for feature in feature_rows
+                for _, feature in eligible
             ],
             dtype=float,
         )
@@ -664,8 +680,8 @@ def apply_scanner_ml(rows, now_et):
             row["ml_status"] = "prediction_error"
         return meta
 
-    for row, probability in zip(
-        rows, probabilities
+    for (row, _), probability in zip(
+        eligible, probabilities
     ):
         probability_pct = round(
             float(probability) * 100.0,
