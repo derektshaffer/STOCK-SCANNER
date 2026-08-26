@@ -51,20 +51,79 @@ st.markdown(
         margin-bottom: 9px;
     }
     .combined-ticker-row {
-        min-height: 46px;
+        min-height: 68px;
+        display: grid;
+        grid-template-columns: minmax(125px, 1.45fr) repeat(3, minmax(105px, 1fr));
+        gap: 10px;
+        align-items: stretch;
+        border-bottom: 1px solid rgba(120,150,190,.18);
+        padding: 7px 0;
+    }
+    .combined-ticker-symbol-wrap,
+    .combined-stat {
         display: flex;
-        align-items: center;
-        border-bottom: 1px solid rgba(120,150,190,.14);
+        flex-direction: column;
+        justify-content: center;
+        min-width: 0;
     }
     .combined-ticker-symbol {
-        font-size: 18px;
+        font-size: 24px;
+        line-height: 1.05;
         font-weight: 950;
         letter-spacing: .01em;
+        color: #f4f7fb;
     }
-    .combined-ticker-meta {
+    .combined-ticker-caption {
         color: #91a7c2;
-        font-size: 12px;
-        margin-top: 1px;
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: .07em;
+        margin-top: 5px;
+    }
+    .combined-stat {
+        background: rgba(22,35,58,.72);
+        border: 1px solid rgba(120,150,190,.20);
+        border-radius: 10px;
+        padding: 8px 12px;
+    }
+    .combined-stat-label {
+        color: #91a7c2;
+        font-size: 10px;
+        font-weight: 900;
+        letter-spacing: .09em;
+        text-transform: uppercase;
+        line-height: 1;
+    }
+    .combined-stat-value {
+        color: #f4f7fb;
+        font-size: 22px;
+        font-weight: 950;
+        line-height: 1.1;
+        margin-top: 5px;
+        white-space: nowrap;
+    }
+    .combined-stat-value.grade-a,
+    .combined-stat-value.change-pos { color: #65e98d; }
+    .combined-stat-value.grade-b { color: #7dd3fc; }
+    .combined-stat-value.grade-c { color: #ffd166; }
+    .combined-stat-value.grade-reject,
+    .combined-stat-value.change-neg { color: #ff8181; }
+
+    /* Keep every one-click Analyze button readable.  Previously rows after
+       the first four used Streamlit's white secondary button style. */
+    div[data-testid="stButton"] button[kind="primary"] {
+        font-weight: 900;
+        min-height: 58px;
+        border-radius: 12px;
+    }
+
+    @media (max-width: 900px) {
+        .combined-ticker-row {
+            grid-template-columns: minmax(110px, 1.2fr) repeat(3, minmax(88px, 1fr));
+            gap: 6px;
+        }
+        .combined-stat-value { font-size: 18px; }
+        .combined-ticker-symbol { font-size: 21px; }
     }
     </style>
     """,
@@ -137,6 +196,24 @@ def _fmt_num(value, pattern, fallback="—"):
         return fallback
 
 
+def _grade_class(grade):
+    grade = str(grade or "").upper()
+    if grade == "A":
+        return "grade-a"
+    if grade == "B":
+        return "grade-b"
+    if grade == "C":
+        return "grade-c"
+    return "grade-reject"
+
+
+def _change_class(value):
+    try:
+        return "change-pos" if float(value) >= 0 else "change-neg"
+    except (TypeError, ValueError):
+        return ""
+
+
 if view == "Momentum Scanner":
     candidates = _latest_scan_candidates()
     if candidates:
@@ -148,26 +225,44 @@ if view == "Momentum Scanner":
             unsafe_allow_html=True,
         )
 
-        # Put an Analyze button directly beside every ticker from the current scan.
-        # This replaces the old dropdown so any stock is one click away.
+        # Make each row useful at a glance: ticker, grade, score and today's move
+        # fill the available width, with a consistent Analyze button at the end.
         for idx, row in enumerate(candidates):
             symbol = row["symbol"]
+            grade = row.get("grade") or "—"
             score_text = _fmt_num(row.get("score"), "{:.0f}")
             day_text = _fmt_num(row.get("day_pct"), "{:+.1f}%")
-            left, right = st.columns([5.2, 1.3], vertical_alignment="center")
+            grade_cls = _grade_class(grade)
+            change_cls = _change_class(row.get("day_pct"))
+
+            left, right = st.columns([6.1, 1.55], vertical_alignment="center")
             with left:
                 st.markdown(
-                    f'<div class="combined-ticker-row"><div>'
-                    f'<div class="combined-ticker-symbol">{symbol}</div>'
-                    f'<div class="combined-ticker-meta">Grade {row["grade"]} · Score {score_text} · {day_text} today</div>'
-                    f'</div></div>',
+                    f'<div class="combined-ticker-row">'
+                    f'  <div class="combined-ticker-symbol-wrap">'
+                    f'    <div class="combined-ticker-symbol">{symbol}</div>'
+                    f'    <div class="combined-ticker-caption">MOMENTUM CANDIDATE</div>'
+                    f'  </div>'
+                    f'  <div class="combined-stat">'
+                    f'    <div class="combined-stat-label">Grade</div>'
+                    f'    <div class="combined-stat-value {grade_cls}">{grade}</div>'
+                    f'  </div>'
+                    f'  <div class="combined-stat">'
+                    f'    <div class="combined-stat-label">Score</div>'
+                    f'    <div class="combined-stat-value">{score_text}</div>'
+                    f'  </div>'
+                    f'  <div class="combined-stat">'
+                    f'    <div class="combined-stat-label">Today</div>'
+                    f'    <div class="combined-stat-value {change_cls}">{day_text}</div>'
+                    f'  </div>'
+                    f'</div>',
                     unsafe_allow_html=True,
                 )
             with right:
                 st.button(
                     f"Analyze {symbol}",
                     key=f"combined_analyze_{idx}_{symbol}",
-                    type="primary" if idx < 4 else "secondary",
+                    type="primary",
                     use_container_width=True,
                     on_click=_open_analyzer,
                     args=(symbol,),
