@@ -5,6 +5,8 @@ import streamlit as st
 
 st.set_page_config(page_title="Single Stock Analyzer", page_icon="📈", layout="wide")
 
+_COMBINED_WORKSPACE = st.session_state.get("app_view") == "Stock Analyzer"
+
 # Make Streamlit Cloud secrets available to the analyzer module without
 # placing credentials in GitHub. This deliberately happens BEFORE importing
 # stock_analyzer because that module reads its configuration at import time.
@@ -349,9 +351,10 @@ def render_ticker_search(asset_choices, current_symbol):
         st.session_state["ticker_search_request"] = selected_symbol
         st.rerun(scope="app")
 
-    st.caption(f"Currently analyzed: **{current_symbol}**")
+    if not _COMBINED_WORKSPACE:
+        st.caption(f"Currently analyzed: **{current_symbol}**")
 
-    if asset_choices:
+    if asset_choices and not _COMBINED_WORKSPACE:
         st.caption(
             f"Search ready · {len(asset_choices):,} active US equities loaded from Alpaca. "
             "Type a symbol or company name; press Enter to choose the highlighted match."
@@ -381,7 +384,8 @@ with c2:
     run=st.button("Analyze",type="primary",width="stretch")
 with c3:
     st.toggle("Auto-refresh", value=True, key="auto_refresh_enabled")
-    st.caption(f"Refresh every {AUTO_REFRESH_SECONDS}s · use `ALPACA_LIVE_FEED=\"sip\"` for consolidated real-time data when your Alpaca plan supports SIP.")
+    if not _COMBINED_WORKSPACE:
+        st.caption(f"Refresh every {AUTO_REFRESH_SECONDS}s · use `ALPACA_LIVE_FEED=\"sip\"` for consolidated real-time data when your Alpaca plan supports SIP.")
 
 @st.fragment(run_every=f"{AUTO_REFRESH_SECONDS}s")
 def _auto_refresh_driver():
@@ -416,6 +420,36 @@ if run or "result" not in st.session_state or st.session_state.get("ticker")!=ti
     except Exception as e:
         st.error(str(e)); st.stop()
 r=st.session_state["result"]
+
+def money(x): return "—" if x is None else f"${x:,.2f}"
+def pp(x): return "—" if x is None else f"{x:+.2f}%"
+def multiple(x): return "—" if x is None else f"{x:.2f}x"
+def rr(x): return "—" if x is None else f"{x:.2f}:1"
+def dollars_compact(x):
+    if x is None: return "—"
+    x=float(x)
+    if abs(x)>=1_000_000_000:return f"${x/1_000_000_000:.1f}B"
+    if abs(x)>=1_000_000:return f"${x/1_000_000:.1f}M"
+    if abs(x)>=1_000:return f"${x/1_000:.1f}K"
+    return f"${x:,.0f}"
+def zone_text(plan):
+    if not plan:return "—"
+    lo=plan.get("entry_low"); hi=plan.get("entry_high")
+    return f"{money(lo)}–{money(hi)}" if lo is not None and hi is not None else "—"
+
+def card(col,k,v,n="",cls=""):
+    with col: st.markdown(f'<div class="card"><div class="k">{html.escape(k)}</div><div class="v {cls}">{html.escape(str(v))}</div><div class="n">{html.escape(str(n))}</div></div>',unsafe_allow_html=True)
+
+cols=st.columns(6)
+_trade_age=r.get("trade_age_seconds")
+_price_note=f'{pp(r.get("day_pct"))} · trade {_age_text(_trade_age)} · {r.get("live_feed")}'
+card(cols[0],"PRICE",money(r.get("price")),_price_note,"good" if (r.get("day_pct") or 0)>=0 else "bad")
+card(cols[1],"VWAP",money(r.get("vwap")),f'{r.get("vwap_position")} · {pp(r.get("vwap_extension_pct"))}',"good" if r.get("vwap_position")=="ABOVE" else "bad")
+card(cols[2],"DAY RANGE",f'{money(r.get("day_low"))}–{money(r.get("day_high"))}',f'{r.get("from_high_pct",0):.1f}% below high')
+card(cols[3],"VOL PACE",multiple(r.get("volume_pace")),f'{r.get("volume",0):,.0f} shown · {r.get("volume_source")}')
+card(cols[4],"SETUP SCORE",f'{r.get("score"):.1f} / 100',f'Grade {r.get("grade")}',"good" if r.get("grade") in ("A","B") else "warn")
+card(cols[5],"BASE SETUP",r.get("entry_quality"),f'Live feed: {r.get("live_feed")}',"good" if r.get("entry_quality")=="FAVORABLE" else "warn")
+
 
 with st.expander("📘 Trading term lookup / Ask AI", expanded=False):
     st.caption("Search common analyzer terms. Built-in definitions work without an AI key; optional OpenAI answers can use the current ticker's metrics for context.")
@@ -455,35 +489,6 @@ with st.expander("📘 Trading term lookup / Ask AI", expanded=False):
         else:
             st.caption("Optional: add `OPENAI_API_KEY` to Streamlit Secrets to get AI explanations inside the analyzer. This is separate from your ChatGPT subscription.")
             st.link_button("Open ChatGPT", "https://chatgpt.com/", width="content")
-
-def money(x): return "—" if x is None else f"${x:,.2f}"
-def pp(x): return "—" if x is None else f"{x:+.2f}%"
-def multiple(x): return "—" if x is None else f"{x:.2f}x"
-def rr(x): return "—" if x is None else f"{x:.2f}:1"
-def dollars_compact(x):
-    if x is None: return "—"
-    x=float(x)
-    if abs(x)>=1_000_000_000:return f"${x/1_000_000_000:.1f}B"
-    if abs(x)>=1_000_000:return f"${x/1_000_000:.1f}M"
-    if abs(x)>=1_000:return f"${x/1_000:.1f}K"
-    return f"${x:,.0f}"
-def zone_text(plan):
-    if not plan:return "—"
-    lo=plan.get("entry_low"); hi=plan.get("entry_high")
-    return f"{money(lo)}–{money(hi)}" if lo is not None and hi is not None else "—"
-
-def card(col,k,v,n="",cls=""):
-    with col: st.markdown(f'<div class="card"><div class="k">{html.escape(k)}</div><div class="v {cls}">{html.escape(str(v))}</div><div class="n">{html.escape(str(n))}</div></div>',unsafe_allow_html=True)
-
-cols=st.columns(6)
-_trade_age=r.get("trade_age_seconds")
-_price_note=f'{pp(r.get("day_pct"))} · trade {_age_text(_trade_age)} · {r.get("live_feed")}'
-card(cols[0],"PRICE",money(r.get("price")),_price_note,"good" if (r.get("day_pct") or 0)>=0 else "bad")
-card(cols[1],"VWAP",money(r.get("vwap")),f'{r.get("vwap_position")} · {pp(r.get("vwap_extension_pct"))}',"good" if r.get("vwap_position")=="ABOVE" else "bad")
-card(cols[2],"DAY RANGE",f'{money(r.get("day_low"))}–{money(r.get("day_high"))}',f'{r.get("from_high_pct",0):.1f}% below high')
-card(cols[3],"VOL PACE",multiple(r.get("volume_pace")),f'{r.get("volume",0):,.0f} shown · {r.get("volume_source")}')
-card(cols[4],"SETUP SCORE",f'{r.get("score"):.1f} / 100',f'Grade {r.get("grade")}',"good" if r.get("grade") in ("A","B") else "warn")
-card(cols[5],"BASE SETUP",r.get("entry_quality"),f'Live feed: {r.get("live_feed")}',"good" if r.get("entry_quality")=="FAVORABLE" else "warn")
 
 if _trade_age is not None and float(_trade_age) > max(30, AUTO_REFRESH_SECONDS*2):
     feed_name=str(r.get("live_feed") or "").upper()
