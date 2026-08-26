@@ -2,6 +2,7 @@ from pathlib import Path
 import runpy
 
 from scanner_expand import install_scanner_expander
+from scanner_single_open import install_single_open_scanner_details
 
 # Compatibility entrypoint for Streamlit deployments that were originally
 # configured to launch analyzer_app.py. Re-execute the combined app on every
@@ -18,8 +19,10 @@ if not target.exists():
 # first Streamlit command on each rerun.
 runpy.run_path(str(target), run_name="__main__")
 
-# Then attach the client-side ticker disclosure behavior. The zero-height
-# component uses delegated click/keyboard listeners, so clicking a ticker
+# Then attach the client-side ticker disclosure behavior. Clicking a ticker
 # expands/collapses its detail card instantly without a full Streamlit rerun.
-# The separate Analyze buttons are untouched.
 install_scanner_expander()
+
+# Accordion behavior: when a different ticker is opened, automatically close
+# the previously expanded ticker so only one detail card is visible at a time.
+install_single_open_scanner_details()
