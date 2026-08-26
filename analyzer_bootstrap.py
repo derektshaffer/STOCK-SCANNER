@@ -26,8 +26,46 @@ def _preload_secrets():
             os.environ[key] = str(value).strip()
 
 
+def _install_no_fade_css():
+    """Keep Streamlit's existing UI fully opaque while an app rerun is active.
+
+    Streamlit intentionally marks old elements as data-stale=true during a
+    rerun and lowers their opacity. That is useful for ordinary forms, but it
+    makes a polling market dashboard visibly flash every refresh. The old
+    values remain on screen until their replacements arrive; this CSS simply
+    prevents the stale-state dimming/transition.
+    """
+    st.markdown(
+        """
+        <style>
+        /* Prevent full-page dim/fade during Streamlit reruns. */
+        [data-stale="true"],
+        div[data-stale="true"],
+        .element-container[data-stale="true"] {
+            opacity: 1 !important;
+            filter: none !important;
+            transition: none !important;
+            animation: none !important;
+        }
+
+        /* Keep the main dashboard container steady while results refresh. */
+        [data-testid="stAppViewBlockContainer"],
+        [data-testid="stAppViewContainer"],
+        [data-testid="stMain"],
+        .stApp,
+        .stApp > div,
+        .element-container {
+            transition: none !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def run():
     _preload_secrets()
+    _install_no_fade_css()
 
     import stock_analyzer as sa
     from historical_integration import install_historical_analysis
