@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from ml_predictor import predict_ml
 
@@ -14,6 +14,49 @@ def _clamp(value, lo, hi):
     return max(lo, min(hi, value))
 
 
+def _expanded_history_fetch(sa, symbol, timeframe, start, end, limit=10000):
+    """Fetch a deeper 5-minute history for ML without one oversized request.
+
+    ML v1 originally asked for ~95 calendar days. Some tickers only produced a
+    few dozen usable labeled observations after warm-up/future-window filters.
+    For 5-minute ML data we expand to ~240 calendar days and request it in
+    40-day chunks, then de-duplicate by timestamp. Other timeframes keep the
+    analyzer's normal historical fetch behavior.
+    """
+    if timeframe != "5Min":
+        return sa.try_sip_delayed_bars(symbol, timeframe, start, end, limit)
+
+    expanded_start = min(start, end - timedelta(days=240))
+    cursor = expanded_start
+    step = timedelta(days=40)
+    merged = {}
+    sources = []
+
+    while cursor < end:
+        chunk_end = min(end, cursor + step)
+        try:
+            chunk, source = sa.try_sip_delayed_bars(
+                symbol,
+                timeframe,
+                cursor,
+                chunk_end,
+                10000,
+            )
+        except Exception:
+            chunk, source = [], "unavailable"
+
+        if source and source not in sources:
+            sources.append(source)
+        for bar in chunk or []:
+            ts = str(bar.get("t") or "")
+            if ts:
+                merged[ts] = bar
+        cursor = chunk_end
+
+    rows = [merged[k] for k in sorted(merged)]
+    return rows, " + ".join(sources) if sources else "unavailable"
+
+
 def install_ml_analysis(sa):
     """Wrap stock_analyzer.analyze with the experimental ML v1 layer."""
     if hasattr(sa, "_ml_enhanced_analyze"):
@@ -25,12 +68,22 @@ def install_ml_analysis(sa):
         metrics = base_analyze(symbol)
         now = datetime.now(timezone.utc)
 
+        def ml_fetch_bars(sym, timeframe, start, end, limit=10000):
+            return _expanded_history_fetch(
+                sa,
+                sym,
+                timeframe,
+                start,
+                end,
+                limit,
+            )
+
         try:
             ml = predict_ml(
                 symbol=symbol,
                 now=now,
                 metrics=metrics,
-                fetch_bars=sa.try_sip_delayed_bars,
+                fetch_bars=ml_fetch_bars,
                 et=sa.ET,
             )
         except Exception as exc:
