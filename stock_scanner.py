@@ -18,7 +18,7 @@ except Exception:
     apply_scanner_ml = None
 
 # ============================================================
-# MOMENTUM STOCK SCANNER - v2.7
+# MOMENTUM STOCK SCANNER - v2.8
 #
 # v2.5 includes:
 #   1) Near-miss / watchlist ranking even when nothing fully passes.
@@ -48,9 +48,9 @@ LIVE_FEED = "iex"
 HISTORICAL_FEED = "sip"
 
 TOP_MOVERS = 50
-WATCHLIST_SIZE = 10
+WATCHLIST_SIZE = 15
 ENRICH_TOP = WATCHLIST_SIZE
-NEWS_TOP = 10
+NEWS_TOP = 15
 HISTORICAL_TOP = 5
 
 MIN_PRICE = 1.00
