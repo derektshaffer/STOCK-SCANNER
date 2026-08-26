@@ -324,6 +324,94 @@ st.markdown("""
 </style>
 """,unsafe_allow_html=True)
 
+if _COMBINED_WORKSPACE:
+    st.markdown(
+        """
+        <style>
+        /* Compact vertical rhythm for the combined workspace. */
+        .block-container {
+            padding-top: .08rem !important;
+            padding-bottom: .5rem !important;
+        }
+        .block-container [data-testid="stVerticalBlock"] {
+            gap: .34rem !important;
+        }
+        .block-container [data-testid="stHorizontalBlock"] {
+            gap: .55rem !important;
+        }
+        .hero {
+            padding: 4px 8px !important;
+            margin: 0 0 3px !important;
+            border-radius: 8px !important;
+            min-height: 0 !important;
+        }
+        .hero .title {
+            font-size: 15px !important;
+            line-height: 1.05 !important;
+        }
+        .hero .sub { display: none !important; }
+        .search-label {
+            font-size: 12px !important;
+            margin: 0 0 2px 1px !important;
+            line-height: 1.05 !important;
+        }
+        [data-testid="stSelectbox"] > div > div {
+            min-height: 34px !important;
+        }
+        div[data-testid="stButton"] button[kind="primary"] {
+            min-height: 36px !important;
+            height: 36px !important;
+            border-radius: 8px !important;
+        }
+        .card {
+            min-height: 76px !important;
+            padding: 8px 10px !important;
+            border-radius: 10px !important;
+        }
+        .k { font-size: 9px !important; line-height: 1.05 !important; }
+        .v { font-size: 20px !important; margin-top: 2px !important; line-height: 1.08 !important; }
+        .n { font-size: 10px !important; margin-top: 1px !important; line-height: 1.18 !important; }
+        .tradeplan {
+            padding: 9px 11px !important;
+            margin: 6px 0 4px !important;
+            border-radius: 10px !important;
+        }
+        .tradeaction { font-size: 19px !important; margin-bottom: 2px !important; }
+        .tradewhy { font-size: 11px !important; line-height: 1.25 !important; }
+        .section {
+            font-size: 15px !important;
+            margin: 9px 0 4px !important;
+        }
+        .callout {
+            padding: 8px 10px !important;
+            margin-top: 4px !important;
+        }
+        div[data-testid="stAlert"] {
+            padding: 7px 10px !important;
+            margin: 2px 0 !important;
+            min-height: 0 !important;
+        }
+        div[data-testid="stAlert"] p {
+            font-size: 11px !important;
+            line-height: 1.3 !important;
+        }
+        [data-testid="stExpander"] {
+            margin: 2px 0 !important;
+        }
+        [data-testid="stExpander"] details summary {
+            min-height: 32px !important;
+            padding-top: 3px !important;
+            padding-bottom: 3px !important;
+        }
+        [data-testid="stSpinner"] {
+            margin: 1px 0 !important;
+            min-height: 18px !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
 st.markdown('<div class="hero"><div class="title">Single Stock Analyzer</div><div class="sub">Live momentum, VWAP, volume, historical analogs, support/resistance and dynamic entry/exit planning.</div></div>',unsafe_allow_html=True)
 
 @st.fragment
@@ -354,11 +442,12 @@ def render_ticker_search(asset_choices, current_symbol):
     if not _COMBINED_WORKSPACE:
         st.caption(f"Currently analyzed: **{current_symbol}**")
 
-    if asset_choices and not _COMBINED_WORKSPACE:
-        st.caption(
-            f"Search ready · {len(asset_choices):,} active US equities loaded from Alpaca. "
-            "Type a symbol or company name; press Enter to choose the highlighted match."
-        )
+    if asset_choices:
+        if not _COMBINED_WORKSPACE:
+            st.caption(
+                f"Search ready · {len(asset_choices):,} active US equities loaded from Alpaca. "
+                "Type a symbol or company name; press Enter to choose the highlighted match."
+            )
     else:
         load_error = st.session_state.get("_ticker_asset_load_error")
         detail = f" ({load_error})" if load_error else ""
