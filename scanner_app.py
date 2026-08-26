@@ -849,9 +849,7 @@ if not top:
 top = top[:4]
 
 st.markdown(
-    '<div class="section">🔥 Top Candidates</div>'
-    '<div class="section-sub">Highest-ranked setups first. Color is backed up by text labels '
-    "so you never have to rely on color alone.</div>",
+    '<div class="section">🔥 Top Candidates</div>',
     unsafe_allow_html=True,
 )
 
