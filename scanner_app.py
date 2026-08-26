@@ -298,6 +298,11 @@ def secret(name):
         return os.environ.get(name, "").strip()
 
 
+def configured_live_feed():
+    feed = (secret("ALPACA_LIVE_FEED") or "iex").strip().lower()
+    return feed if feed in {"iex", "sip"} else "iex"
+
+
 def market_session_phase(now_et=None):
     now_et = now_et or datetime.now(ZoneInfo("America/New_York"))
     if now_et.weekday() >= 5:
@@ -312,9 +317,19 @@ def market_session_phase(now_et=None):
     return "closed"
 
 
+def live_feed_available(now_et):
+    phase = market_session_phase(now_et)
+    if phase == "closed":
+        return False
+    if configured_live_feed() == "sip":
+        return True
+    minutes = now_et.hour * 60 + now_et.minute
+    return (8 * 60) <= minutes < (17 * 60)
+
+
 def market_is_open():
     now_et = datetime.now(ZoneInfo("America/New_York"))
-    return market_session_phase(now_et) != "closed", now_et
+    return live_feed_available(now_et), now_et
 
 
 def run_scanner():
@@ -330,6 +345,7 @@ def run_scanner():
     env = os.environ.copy()
     env["ALPACA_API_KEY"] = key
     env["ALPACA_SECRET_KEY"] = sec
+    env["ALPACA_LIVE_FEED"] = configured_live_feed()
 
     try:
         p = subprocess.run(
@@ -662,20 +678,30 @@ with controls_context:
                 key="scan_working_button",
             )
     with auto_col:
+        feed_name = configured_live_feed().upper()
+        coverage = "4:00 AM–8:00 PM ET" if feed_name == "SIP" else "8:00 AM–5:00 PM ET"
         st.toggle(
             "Auto scan every 5 minutes",
             key="auto_scan_enabled",
-            help="Runs while this dashboard tab/session is active during pre-market, regular hours, and after-hours (4:00 AM–8:00 PM ET, weekdays).",
+            help=(
+                f"Runs while this dashboard tab/session is active. Current live feed: "
+                f"{feed_name}; live scanner coverage: {coverage} on weekdays."
+            ),
         )
     with market_col:
         market_open, now_et = market_is_open()
         phase = market_session_phase(now_et)
-        market_label = {
-            "premarket": "🔵 PRE-MARKET",
-            "regular": "🟢 MARKET OPEN",
-            "afterhours": "🟣 AFTER-HOURS",
-            "closed": "🟡 MARKET CLOSED",
-        }[phase]
+        if phase == "premarket" and not market_open:
+            market_label = "🟡 PRE-MKT · LIVE DATA OFF"
+        elif phase == "afterhours" and not market_open:
+            market_label = "🟡 AFTER-HRS · LIVE DATA OFF"
+        else:
+            market_label = {
+                "premarket": "🔵 PRE-MARKET",
+                "regular": "🟢 MARKET OPEN",
+                "afterhours": "🟣 AFTER-HOURS",
+                "closed": "🟡 MARKET CLOSED",
+            }[phase]
         st.markdown(
             f'<div class="market-box {"open" if market_open else "closed"}">'
             f'<span class="market-main">{market_label}</span>'
@@ -713,10 +739,12 @@ def auto_scan_controller():
         return
 
     if not open_now:
+        feed_name = configured_live_feed().upper()
+        coverage = "4:00 AM–8:00 PM ET" if feed_name == "SIP" else "8:00 AM–5:00 PM ET"
         st.markdown(
             '<div class="auto-box auto-wait"><b>🟡 AUTO SCAN ARMED</b><br>'
-            '<span class="sub">Paused outside the supported stock session. '
-            'It will scan automatically while this app is open from 4:00 AM–8:00 PM ET on weekdays.</span></div>',
+            f'<span class="sub">Paused because the {feed_name} live feed is outside its '
+            f'supported scanner window. Current coverage: {coverage} on weekdays.</span></div>',
             unsafe_allow_html=True,
         )
         return
@@ -817,6 +845,10 @@ elif session_phase == "afterhours":
 elif mode == "regular_market_session":
     pill_cls = "green"
     pill_text = "● REGULAR MARKET SESSION"
+elif mode == "extended_data_unavailable":
+    pill_cls = "amber"
+    feed_name = str((payload.get("data") or {}).get("live_feed") or "iex").upper()
+    pill_text = f"● EXTENDED HOURS · {feed_name} LIVE DATA UNAVAILABLE"
 else:
     pill_cls = "amber"
     pill_text = "● MARKET CLOSED / PREVIEW"
@@ -837,6 +869,9 @@ elif ml_status == "failed_validation":
 elif ml_status == "paused_extended_hours":
     ml_pill_cls = "amber"
     ml_pill_text = "ML REGULAR-HOURS MODEL PAUSED"
+elif ml_status == "extended_live_data_unavailable":
+    ml_pill_cls = "amber"
+    ml_pill_text = "ML PAUSED · extended live data unavailable"
 elif ml_status in {"skipped_off_hours", "skipped_market_closed"}:
     ml_pill_cls = "amber"
     ml_pill_text = "ML PAUSED · market closed"
