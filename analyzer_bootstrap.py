@@ -27,19 +27,16 @@ def _preload_secrets():
             os.environ[key] = str(value).strip()
 
 
-def _install_no_fade_css():
-    """Keep Streamlit's existing UI fully opaque while an app rerun is active.
+def _combined_workspace():
+    """True when analyzer_bootstrap is being rendered inside app.py."""
+    return st.session_state.get("app_view") in ("Momentum Scanner", "Stock Analyzer")
 
-    Streamlit intentionally marks old elements as data-stale=true during a
-    rerun and lowers their opacity. That is useful for ordinary forms, but it
-    makes a polling market dashboard visibly flash every refresh. The old
-    values remain on screen until their replacements arrive; this CSS simply
-    prevents the stale-state dimming/transition.
-    """
+
+def _install_no_fade_css():
+    """Keep a standalone analyzer fully opaque while a rerun is active."""
     st.markdown(
         """
         <style>
-        /* Prevent full-page dim/fade during Streamlit reruns. */
         [data-stale="true"],
         div[data-stale="true"],
         .element-container[data-stale="true"] {
@@ -48,8 +45,6 @@ def _install_no_fade_css():
             transition: none !important;
             animation: none !important;
         }
-
-        /* Keep the main dashboard container steady while results refresh. */
         [data-testid="stAppViewBlockContainer"],
         [data-testid="stAppViewContainer"],
         [data-testid="stMain"],
@@ -64,15 +59,36 @@ def _install_no_fade_css():
     )
 
 
-def _install_scroll_keeper():
-    """Preserve the user's viewport across Streamlit full-app reruns.
+def _cleanup_combined_browser_helpers():
+    """Remove the old analyzer scroll helper when using the combined app.
 
-    The dashboard still performs a full rerun for fresh analysis, but this
-    browser-side helper captures the scroll position as soon as Streamlit marks
-    the old DOM stale. It then ignores the automatic jump-to-top while the
-    rerun is in progress and restores the saved position when the new DOM is
-    ready. No market-data or refresh behavior is changed.
+    The scroll keeper was useful when the analyzer was a standalone dashboard,
+    but in the combined scanner/analyzer workspace it can fight Streamlit's
+    view replacement and leave stale content visible for too long.
     """
+    components.html(
+        """
+        <script>
+        (() => {
+          const p = window.parent;
+          const old = p.__ssaScrollKeeper;
+          if (old) {
+            try { old.observer && old.observer.disconnect(); } catch (_) {}
+            try { old.scroller && old.onScroll && old.scroller.removeEventListener('scroll', old.onScroll); } catch (_) {}
+            try { old.onWindowScroll && p.removeEventListener('scroll', old.onWindowScroll); } catch (_) {}
+          }
+          p.__ssaScrollKeeper = null;
+          p.__ssaRerunPending = false;
+        })();
+        </script>
+        """,
+        height=0,
+        scrolling=False,
+    )
+
+
+def _install_scroll_keeper():
+    """Preserve viewport across full-app reruns in the standalone analyzer."""
     components.html(
         """
         <script>
@@ -104,10 +120,7 @@ def _install_scroll_keeper():
 
           function savePosition() {
             try {
-              p.sessionStorage.setItem(
-                KEY,
-                JSON.stringify({ y: getY(), t: Date.now() })
-              );
+              p.sessionStorage.setItem(KEY, JSON.stringify({ y: getY(), t: Date.now() }));
             } catch (_) {}
           }
 
@@ -122,8 +135,6 @@ def _install_scroll_keeper():
             } catch (_) {}
           }
 
-          // Remove the previous helper before installing the replacement from
-          // this rerun. Parent-window references survive component replacement.
           const old = p.__ssaScrollKeeper;
           if (old) {
             try { old.observer && old.observer.disconnect(); } catch (_) {}
@@ -137,8 +148,6 @@ def _install_scroll_keeper():
             saved = raw ? JSON.parse(raw) : null;
           } catch (_) {}
 
-          // A new component means the new Streamlit DOM is arriving. Restore
-          // several times because tables/cards may finish sizing a little later.
           if (saved && Number.isFinite(saved.y) && Date.now() - saved.t < 120000) {
             const y = saved.y;
             p.requestAnimationFrame(() => restorePosition(y));
@@ -149,16 +158,12 @@ def _install_scroll_keeper():
 
           const scroller = findScroller();
           const onScroll = () => {
-            // Streamlit's own full rerun can force scrollTop to zero. Do not let
-            // that programmatic jump overwrite the position captured at stale.
             if (p.__ssaRerunPending) return;
             savePosition();
           };
           if (scroller) scroller.addEventListener("scroll", onScroll, { passive: true });
           p.addEventListener("scroll", onScroll, { passive: true });
 
-          // data-stale=true is set at the beginning of a Streamlit rerun, while
-          // the user's current scroll position is still intact. Capture it once.
           const observer = new MutationObserver((mutations) => {
             for (const m of mutations) {
               if (
@@ -190,8 +195,6 @@ def _install_scroll_keeper():
             onWindowScroll: onScroll
           };
 
-          // Once the replacement DOM has settled, ordinary user scrolling may
-          // update the saved position again.
           p.setTimeout(() => {
             p.__ssaRerunPending = false;
             savePosition();
@@ -204,9 +207,109 @@ def _install_scroll_keeper():
     )
 
 
+def _activate_saved_stock(symbol):
+    symbol = str(symbol or "").upper().strip()
+    if not symbol:
+        return
+    st.session_state["ticker"] = symbol
+    st.session_state["ticker_search_request"] = symbol
+    st.session_state.pop("ticker_picker", None)
+    st.session_state.pop("result", None)
+
+
+def _render_saved_stocks():
+    """Session-persistent one-click stock list for the analyzer."""
+    if "saved_stocks" not in st.session_state:
+        st.session_state["saved_stocks"] = []
+
+    saved = [
+        str(x).upper().strip()
+        for x in st.session_state.get("saved_stocks", [])
+        if str(x).strip()
+    ]
+    # Preserve order while de-duplicating.
+    saved = list(dict.fromkeys(saved))[:24]
+    st.session_state["saved_stocks"] = saved
+
+    current = str(
+        st.session_state.get("ticker_search_request")
+        or st.session_state.get("ticker")
+        or "SDOT"
+    ).upper().strip()
+
+    st.markdown(
+        """
+        <style>
+        .saved-stock-shell{
+            border:1px solid #263e5c;background:#0d192a;border-radius:14px;
+            padding:12px 14px 9px;margin:4px 0 14px;
+        }
+        .saved-stock-title{font-size:15px;font-weight:900;color:#f2f7ff}
+        .saved-stock-sub{font-size:12px;color:#91a7c2;margin-top:3px}
+        </style>
+        <div class="saved-stock-shell">
+          <div class="saved-stock-title">★ Saved Stocks</div>
+          <div class="saved-stock-sub">Save tickers you want to revisit, then click one to analyze it immediately.</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    action_a, action_b, spacer = st.columns([1.25, 1.35, 5.4])
+    with action_a:
+        can_save = bool(current) and current not in saved
+        if st.button(
+            f"☆ Save {current}" if current else "☆ Save current",
+            key="save_current_stock",
+            disabled=not can_save,
+            use_container_width=True,
+        ):
+            st.session_state["saved_stocks"] = (saved + [current])[:24]
+            st.rerun()
+    with action_b:
+        can_remove = bool(current) and current in saved
+        if st.button(
+            f"Remove {current}",
+            key="remove_current_stock",
+            disabled=not can_remove,
+            use_container_width=True,
+        ):
+            st.session_state["saved_stocks"] = [x for x in saved if x != current]
+            st.rerun()
+
+    saved = st.session_state.get("saved_stocks", [])
+    if not saved:
+        st.caption("No saved stocks yet. Analyze a ticker, then click **Save** above.")
+        return
+
+    for start in range(0, len(saved), 6):
+        chunk = saved[start : start + 6]
+        cols = st.columns(6)
+        for i, col in enumerate(cols):
+            if i >= len(chunk):
+                continue
+            symbol = chunk[i]
+            with col:
+                if st.button(
+                    f"● {symbol}" if symbol == current else symbol,
+                    key=f"saved_stock_{start+i}_{symbol}",
+                    type="primary" if symbol == current else "secondary",
+                    use_container_width=True,
+                    help=f"Analyze {symbol}",
+                ):
+                    _activate_saved_stock(symbol)
+                    st.rerun()
+
+
 def run():
     _preload_secrets()
-    _install_no_fade_css()
+    combined = _combined_workspace()
+    if combined:
+        # In the combined app, let Streamlit replace stale Scanner/Analyzer DOM
+        # normally. Keeping stale elements opaque caused visible page holdovers.
+        _cleanup_combined_browser_helpers()
+    else:
+        _install_no_fade_css()
 
     import stock_analyzer as sa
     from historical_integration import install_historical_analysis
@@ -214,8 +317,6 @@ def run():
     from ml_integration import install_ml_analysis
     from ml_ui import render_ml_prediction
 
-    # Layer order matters: the rule-based analyzer runs first, historical setup
-    # matching enhances it second, and ML v1 reads that completed trade plan.
     install_historical_analysis(sa)
     install_ml_analysis(sa)
 
@@ -223,9 +324,9 @@ def run():
     if not target.exists():
         raise FileNotFoundError("analyzer_ui_core.py is missing from the repository root.")
 
-    # Reserve a slot immediately before the existing Trade plan details
-    # expander. ML v1 and Historical Setup Match are populated there after the
-    # core UI finishes and its result/card helpers become available.
+    if combined:
+        _render_saved_stocks()
+
     original_expander = st.expander
     analysis_slot = {"placeholder": None}
 
@@ -254,9 +355,8 @@ def run():
                 render_ml_prediction(st, pd, result, card)
                 render_historical_setup(st, pd, result, card, pp)
         else:
-            # Fallback if the core UI changes and the expander label no longer
-            # matches. Better to show the analysis layers at the end than hide them.
             render_ml_prediction(st, pd, result, card)
             render_historical_setup(st, pd, result, card, pp)
 
-    _install_scroll_keeper()
+    if not combined:
+        _install_scroll_keeper()
