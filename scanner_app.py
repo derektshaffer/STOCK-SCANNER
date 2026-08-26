@@ -242,6 +242,42 @@ div[data-testid="stAlert"]{
   margin:4px 0 !important;
 }
 
+
+/* SECOND COMPACT PASS */
+.header{
+  padding:8px 12px !important;
+  margin-bottom:5px !important;
+}
+.stat{
+  padding:7px 9px !important;
+  min-height:64px !important;
+}
+.card{
+  padding:9px !important;
+  margin-bottom:5px !important;
+}
+.grid{
+  margin:5px 0 !important;
+  gap:5px !important;
+}
+.metric{
+  padding:5px 7px !important;
+}
+.note{
+  padding:5px 7px !important;
+  margin-top:5px !important;
+}
+.section{
+  margin:10px 0 2px !important;
+}
+.section-sub{
+  margin-bottom:4px !important;
+}
+.legend-box{
+  margin:6px 0 8px !important;
+  padding:7px 8px !important;
+}
+
 </style>
 """,
     unsafe_allow_html=True,
@@ -713,6 +749,7 @@ st.markdown(
 
 summary = payload.get("summary") or {}
 records = payload.get("candidates") or []
+display_records = records[:15]
 grades = summary.get("grade_counts") or {}
 
 vals = [
@@ -733,11 +770,11 @@ for col, (k, v, n) in zip(cols, vals):
 
 top = [
     c
-    for c in records
+    for c in display_records
     if c.get("setup_grade") in {"A", "B"} and c.get("passed_base_filters")
 ]
 if not top:
-    top = [c for c in records if c.get("setup_grade") in {"A", "B"}]
+    top = [c for c in display_records if c.get("setup_grade") in {"A", "B"}]
 top = top[:4]
 
 st.markdown(
@@ -795,7 +832,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-near = [c for c in records if c.get("setup_grade") == "C"][:8]
+near = [c for c in display_records if c.get("setup_grade") == "C"][:8]
 st.markdown(
     '<div class="section">🟡 Near Misses</div>'
     '<div class="section-sub">Close enough to watch, but one base rule still failed.</div>',
@@ -813,10 +850,10 @@ else:
 
 st.markdown(
     '<div class="section">📊 Full Ranked Table</div>'
-    '<div class="section-sub">Complete at-a-glance comparison of the saved watchlist.</div>',
+    '<div class="section-sub">Top 15 ranked scanner results.</div>',
     unsafe_allow_html=True,
 )
-df = to_df(records)
+df = to_df(display_records)
 if not df.empty:
     st.dataframe(
         styled(df),
@@ -827,7 +864,7 @@ if not df.empty:
 else:
     st.info("No ranked candidates were logged.")
 
-rej = Counter(r for c in records for r in (c.get("failed_filters") or []))
+rej = Counter(r for c in display_records for r in (c.get("failed_filters") or []))
 st.markdown(
     '<div class="section">🚫 Rejection Pattern</div>'
     '<div class="section-sub">Counts below come from the candidates saved in this dashboard snapshot.</div>',
