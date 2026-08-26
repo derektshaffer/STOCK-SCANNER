@@ -19,6 +19,29 @@ st.set_page_config(
 st.markdown(
     """
     <style>
+
+    /* Hide Streamlit Cloud's built-in white header/toolbar so the dashboard
+       begins at the top of the viewport. This removes Share/menu/manage-app
+       controls from the normal app view. */
+    header[data-testid="stHeader"],
+    [data-testid="stHeader"] {
+        display: none !important;
+        height: 0 !important;
+        min-height: 0 !important;
+        visibility: hidden !important;
+    }
+    [data-testid="stToolbar"],
+    [data-testid="stDecoration"],
+    [data-testid="stStatusWidget"] {
+        display: none !important;
+    }
+    [data-testid="stAppViewContainer"] {
+        padding-top: 0 !important;
+    }
+    .block-container {
+        padding-top: .35rem !important;
+    }
+
     .combined-nav-wrap {
         border: 1px solid rgba(120,150,190,.28);
         background: rgba(17,27,46,.92);
