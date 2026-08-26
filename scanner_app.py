@@ -99,6 +99,149 @@ st.markdown(
 div[data-testid="stDataFrame"]{border:1px solid var(--line);border-radius:12px;overflow:hidden}
 .stButton button{border-radius:8px;font-weight:850;min-height:38px;height:38px;padding-top:4px;padding-bottom:4px}
 @media(max-width:900px){.title{font-size:28px}.ticker{font-size:27px}.grid{grid-template-columns:1fr}.legend-grid{grid-template-columns:1fr}}
+
+/* COMPACT MOMENTUM SCANNER LAYOUT */
+.block-container{
+  padding-top:.35rem !important;
+  padding-bottom:1.25rem !important;
+}
+.block-container [data-testid="stVerticalBlock"]{
+  gap:.42rem !important;
+}
+.header{
+  padding:10px 14px !important;
+  border-radius:12px !important;
+  margin-bottom:7px !important;
+}
+.title{
+  font-size:25px !important;
+}
+.sub{
+  font-size:12px !important;
+  margin-top:3px !important;
+}
+.pill,.badge{
+  font-size:10px !important;
+  padding:4px 7px !important;
+  margin:2px 4px 2px 0 !important;
+}
+.section{
+  font-size:18px !important;
+  margin:13px 0 2px !important;
+}
+.section-sub{
+  font-size:12px !important;
+  line-height:1.25 !important;
+  margin-bottom:6px !important;
+}
+.stat{
+  padding:9px 11px !important;
+  min-height:72px !important;
+  border-radius:10px !important;
+}
+.stat-k{
+  font-size:9px !important;
+}
+.stat-v{
+  font-size:24px !important;
+  margin-top:2px !important;
+}
+.stat-n{
+  font-size:10px !important;
+  margin-top:3px !important;
+}
+.card{
+  padding:11px !important;
+  margin-bottom:7px !important;
+  min-height:0 !important;
+  border-radius:11px !important;
+}
+.card-a,.card-b,.card-c,.card-r{
+  border-top-width:3px !important;
+}
+.ticker{
+  font-size:24px !important;
+}
+.score{
+  font-size:23px !important;
+}
+.score small{
+  font-size:9px !important;
+}
+.price{
+  font-size:15px !important;
+  margin:2px 0 6px !important;
+}
+.grid{
+  gap:6px !important;
+  margin:7px 0 !important;
+}
+.metric{
+  padding:6px 8px !important;
+  border-radius:8px !important;
+}
+.mk{
+  font-size:9px !important;
+}
+.mv{
+  font-size:15px !important;
+  margin-top:1px !important;
+}
+.note{
+  padding:6px 8px !important;
+  margin-top:6px !important;
+}
+.nk{
+  font-size:9px !important;
+}
+.nv{
+  font-size:11.5px !important;
+  line-height:1.3 !important;
+  margin-top:2px !important;
+}
+.news-time{
+  font-size:10px !important;
+  margin-top:3px !important;
+}
+.legend-box{
+  padding:9px 10px !important;
+  margin:8px 0 10px !important;
+  border-radius:10px !important;
+}
+.legend-title{
+  margin-bottom:6px !important;
+}
+.legend-grid{
+  gap:6px !important;
+}
+.legend-item{
+  padding:7px 8px !important;
+  border-radius:8px !important;
+}
+.legend-term{
+  font-size:11px !important;
+  margin-bottom:2px !important;
+}
+.legend-def{
+  font-size:11px !important;
+  line-height:1.3 !important;
+}
+.bar-row{
+  margin:6px 0 8px !important;
+}
+.bar-track{
+  height:7px !important;
+  margin-top:3px !important;
+}
+[data-testid="stExpander"]{
+  margin:4px 0 !important;
+}
+div[data-testid="stAlert"]{
+  padding-top:6px !important;
+  padding-bottom:6px !important;
+  margin:4px 0 !important;
+}
+
 </style>
 """,
     unsafe_allow_html=True,
@@ -663,7 +806,7 @@ if near:
         styled(to_df(near)),
         use_container_width=True,
         hide_index=True,
-        height=min(390, 42 + 35 * len(near)),
+        height=min(300, 38 + 30 * len(near)),
     )
 else:
     st.info("No Grade C near misses in this scan.")
@@ -679,7 +822,7 @@ if not df.empty:
         styled(df),
         use_container_width=True,
         hide_index=True,
-        height=min(720, 42 + 35 * len(df)),
+        height=min(520, 38 + 30 * len(df)),
     )
 else:
     st.info("No ranked candidates were logged.")
