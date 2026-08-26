@@ -214,15 +214,32 @@ def _latest_scan_candidates():
 
 
 def _open_analyzer(symbol):
+    """Build the selected analysis first, then switch to Analyzer view."""
     symbol = str(symbol or "").upper().strip()
     if not symbol:
         return
 
-    # Preload the analyzer with the scanner selection and force a fresh result.
     st.session_state["ticker"] = symbol
     st.session_state["ticker_search_request"] = symbol
     st.session_state.pop("ticker_picker", None)
     st.session_state.pop("result", None)
+
+    # Streamlit runs button callbacks before the rest of the rerun. Do all of
+    # the expensive market/history/ML work here while the existing Scanner is
+    # still the page in the browser. Only after the result is ready do we flip
+    # app_view, so Analyzer renders already populated instead of progressively.
+    try:
+        from analyzer_bootstrap import prepare_analyzer_result
+
+        launch_error = prepare_analyzer_result(symbol)
+    except Exception as exc:
+        launch_error = str(exc)
+
+    if launch_error:
+        st.session_state["_analyzer_launch_error"] = launch_error
+        return
+
+    st.session_state.pop("_analyzer_launch_error", None)
     st.session_state["app_view"] = "Stock Analyzer"
 
 
@@ -264,6 +281,10 @@ def _volume_class(value):
 
 
 if view == "Momentum Scanner":
+    launch_error = st.session_state.pop("_analyzer_launch_error", None)
+    if launch_error:
+        st.error(f"Could not analyze the selected ticker: {launch_error}")
+
     candidates = _latest_scan_candidates()
     if candidates:
         st.markdown(
