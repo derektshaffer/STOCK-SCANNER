@@ -224,7 +224,7 @@ def run():
         raise FileNotFoundError("analyzer_ui_core.py is missing from the repository root.")
 
     # Reserve a slot immediately before the existing Trade plan details
-    # expander. Historical Setup Match and ML v1 are populated there after the
+    # expander. ML v1 and Historical Setup Match are populated there after the
     # core UI finishes and its result/card helpers become available.
     original_expander = st.expander
     analysis_slot = {"placeholder": None}
@@ -251,12 +251,12 @@ def run():
         slot = analysis_slot.get("placeholder")
         if slot is not None:
             with slot.container():
-                render_historical_setup(st, pd, result, card, pp)
                 render_ml_prediction(st, pd, result, card)
+                render_historical_setup(st, pd, result, card, pp)
         else:
             # Fallback if the core UI changes and the expander label no longer
             # matches. Better to show the analysis layers at the end than hide them.
-            render_historical_setup(st, pd, result, card, pp)
             render_ml_prediction(st, pd, result, card)
+            render_historical_setup(st, pd, result, card, pp)
 
     _install_scroll_keeper()
