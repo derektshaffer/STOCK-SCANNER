@@ -17,15 +17,13 @@ if not target.exists():
         "The combined Momentum Scanner + Stock Analyzer requires app.py."
     )
 
-# app.py owns st.set_page_config, so let it render the complete requested view
-# first. A browser loading mask from the previous view (when present) remains
-# visible while this heavy rerun is happening and is removed only afterward.
+# app.py owns st.set_page_config and renders the selected workspace view.
 runpy.run_path(str(target), run_name="__main__")
 view = st.session_state.get("app_view", "Momentum Scanner")
 
 
 def _install_scanner_interactions():
-    """Scanner card behavior without a page-wide DOM observer."""
+    """Scanner card behavior without another page-wide DOM observer."""
     components.html(
         """
         <script>
@@ -163,103 +161,74 @@ def _install_scanner_interactions():
     )
 
 
-def _finish_transition_and_prepare_next(view_name):
-    """Remove the loading mask after the new page is complete and arm the next transition."""
-    mode = "scanner" if view_name == "Momentum Scanner" else "analyzer"
+def _install_working_button_transition():
+    """Use an inline Working state instead of a full-screen loading overlay.
+
+    Streamlit leaves previous elements in the DOM briefly while a rerun is
+    building. During a Scanner -> Analyzer transition, hide only elements that
+    Streamlit has explicitly marked stale so the two pages cannot visually mix.
+    """
     components.html(
-        f"""
+        """
         <script>
-        (() => {{
+        (() => {
           const p = window.parent;
           const d = p.document;
-          const mode = {mode!r};
 
-          // app.py has now completed the requested view. Only now reveal it.
-          const existing = d.getElementById('stock-workspace-transition-mask');
-          if (existing) existing.remove();
-          try {{ d.body.style.overflow = ''; }} catch (_) {{}}
+          // Remove the old full-screen transition implementation, including a
+          // mask/listener that may still exist in a browser tab from an older
+          // app version.
+          const previous = p.__stockWorkspaceTransition;
+          if (previous && previous.capture) {
+            try { d.removeEventListener('click', previous.capture, true); } catch (_) {}
+          }
+          p.__stockWorkspaceTransition = null;
+          const oldMask = d.getElementById('stock-workspace-transition-mask');
+          if (oldMask) oldMask.remove();
+          try { d.body.style.overflow = ''; } catch (_) {}
 
-          // The glossary has already annotated the completed page. Its
-          // full-page MutationObserver is unnecessary between reruns and adds
-          // noticeable work while Streamlit replaces large dashboards.
-          const tech = p.__stockTechnicalTooltips;
-          if (tech && tech.observer) {{
-            try {{ tech.observer.disconnect(); }} catch (_) {{}}
-          }}
+          const old = p.__stockWorkingButtonTransition;
+          if (old && old.capture) {
+            try { d.removeEventListener('click', old.capture, true); } catch (_) {}
+          }
 
-          const old = p.__stockWorkspaceTransition;
-          if (old && old.capture) {{
-            try {{ d.removeEventListener('click', old.capture, true); }} catch (_) {{}}
-          }}
-
-          function showMask(label) {{
-            let mask = d.getElementById('stock-workspace-transition-mask');
-            if (!mask) {{
-              mask = d.createElement('div');
-              mask.id = 'stock-workspace-transition-mask';
-              mask.style.cssText = [
-                'position:fixed','inset:0','z-index:2147482500',
-                'background:#07111f','display:flex','align-items:flex-start',
-                'justify-content:center','padding:120px 24px 40px','box-sizing:border-box'
-              ].join(';');
-              d.body.appendChild(mask);
-            }}
-            const safe = String(label || 'Stock Analyzer').replace(/[<>&]/g, '');
-            mask.innerHTML = `
-              <div style="width:min(560px,100%);background:#101b2d;border:1px solid #304865;border-radius:18px;padding:28px 30px;color:#f4f7fb;box-shadow:0 18px 50px rgba(0,0,0,.35);font-family:inherit">
-                <div style="display:flex;align-items:center;gap:16px">
-                  <div style="width:24px;height:24px;border:3px solid #355071;border-top-color:#65e98d;border-radius:50%;animation:stockSpin .8s linear infinite"></div>
-                  <div>
-                    <div style="font-size:20px;font-weight:900">Loading ${{safe}}…</div>
-                    <div style="font-size:13px;color:#91a7c2;margin-top:5px">Clearing the previous view and building fresh market data.</div>
-                  </div>
-                </div>
-              </div>`;
-            if (!d.getElementById('stock-workspace-transition-style')) {{
-              const style = d.createElement('style');
-              style.id = 'stock-workspace-transition-style';
-              style.textContent = '@keyframes stockSpin{{to{{transform:rotate(360deg)}}}}';
+          function installHideStaleStyle() {
+            let style = d.getElementById('stock-switch-hide-stale');
+            if (!style) {
+              style = d.createElement('style');
+              style.id = 'stock-switch-hide-stale';
+              style.textContent = `
+                [data-stale="true"] {
+                  visibility: hidden !important;
+                  pointer-events: none !important;
+                }
+              `;
               d.head.appendChild(style);
-            }}
-            try {{ d.body.style.overflow = 'hidden'; }} catch (_) {{}}
-          }}
+            }
+          }
 
-          const capture = (event) => {{
-            if (mode === 'scanner') {{
-              const button = event.target.closest && event.target.closest('button');
-              if (button) {{
-                const text = String(button.textContent || '').trim();
-                const match = text.match(/^Analyze\s+([A-Z0-9.\-]+)/i);
-                if (match) {{
-                  showMask(`${{match[1].toUpperCase()}} Analyzer`);
-                  return;
-                }}
-              }}
-              const label = event.target.closest && event.target.closest('label');
-              if (label && String(label.textContent || '').trim() === 'Stock Analyzer') {{
-                showMask('Stock Analyzer');
-              }}
-            }} else {{
-              const label = event.target.closest && event.target.closest('label');
-              if (label && String(label.textContent || '').trim() === 'Momentum Scanner') {{
-                showMask('Momentum Scanner');
-                return;
-              }}
+          function setWorking(button) {
+            if (!button || button.dataset.stockWorking === '1') return;
+            button.dataset.stockWorking = '1';
+            button.setAttribute('aria-busy', 'true');
+            button.disabled = true;
+            const textNode = button.querySelector('p') || button.querySelector('span') || button;
+            if (textNode) textNode.textContent = 'Working…';
+            installHideStaleStyle();
+          }
 
-              // Clicking a saved ticker triggers a fresh Analyzer rerun too.
-              const saved = event.target.closest && event.target.closest('.st-key-saved_stocks_top button');
-              if (saved) {{
-                const text = String(saved.textContent || '').trim();
-                if (text && !/^Remove\b/i.test(text) && !/^☆\s*Save\b/i.test(text)) {{
-                  showMask(`${{text.replace(/^●\s*/, '')}} Analyzer`);
-                }}
-              }}
-            }}
-          }};
+          const capture = (event) => {
+            const button = event.target.closest && event.target.closest('button');
+            if (!button) return;
+            const text = String(button.textContent || '').trim();
+            if (/^Analyze\s+[A-Z0-9.\-]+/i.test(text)) {
+              setWorking(button);
+            }
+          };
 
           d.addEventListener('click', capture, true);
-          p.__stockWorkspaceTransition = {{capture, mode}};
-        }})();
+          p.__stockWorkingButtonTransition = {capture};
+        })();
         </script>
         """,
         height=0,
@@ -267,11 +236,39 @@ def _finish_transition_and_prepare_next(view_name):
     )
 
 
-# Scanner-only browser helpers must never be installed on the Analyzer page.
+def _finish_transition_cleanup():
+    """Remove temporary transition CSS once the requested view is complete."""
+    components.html(
+        """
+        <script>
+        (() => {
+          const p = window.parent;
+          const d = p.document;
+
+          const previous = p.__stockWorkspaceTransition;
+          if (previous && previous.capture) {
+            try { d.removeEventListener('click', previous.capture, true); } catch (_) {}
+          }
+          p.__stockWorkspaceTransition = null;
+
+          const mask = d.getElementById('stock-workspace-transition-mask');
+          if (mask) mask.remove();
+          const style = d.getElementById('stock-switch-hide-stale');
+          if (style) style.remove();
+          try { d.body.style.overflow = ''; } catch (_) {}
+        })();
+        </script>
+        """,
+        height=0,
+        scrolling=False,
+    )
+
+
 if view == "Momentum Scanner":
     install_scanner_expander()
     _install_scanner_interactions()
-
-# Remove any transition mask only after the selected view has fully rendered,
-# then install the lightweight click listener used for the next navigation.
-_finish_transition_and_prepare_next(view)
+    _install_working_button_transition()
+else:
+    # The Analyzer has finished rendering at this point, so reveal all new
+    # elements and discard any temporary transition state from the Scanner.
+    _finish_transition_cleanup()
