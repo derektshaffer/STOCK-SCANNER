@@ -298,12 +298,23 @@ def secret(name):
         return os.environ.get(name, "").strip()
 
 
+def market_session_phase(now_et=None):
+    now_et = now_et or datetime.now(ZoneInfo("America/New_York"))
+    if now_et.weekday() >= 5:
+        return "closed"
+    minutes = now_et.hour * 60 + now_et.minute
+    if (4 * 60) <= minutes < (9 * 60 + 30):
+        return "premarket"
+    if (9 * 60 + 30) <= minutes < (16 * 60):
+        return "regular"
+    if (16 * 60) <= minutes < (20 * 60):
+        return "afterhours"
+    return "closed"
+
+
 def market_is_open():
     now_et = datetime.now(ZoneInfo("America/New_York"))
-    if now_et.weekday() >= 5:
-        return False, now_et
-    minutes = now_et.hour * 60 + now_et.minute
-    return (9 * 60 + 30) <= minutes < (16 * 60), now_et
+    return market_session_phase(now_et) != "closed", now_et
 
 
 def run_scanner():
@@ -654,11 +665,17 @@ with controls_context:
         st.toggle(
             "Auto scan every 5 minutes",
             key="auto_scan_enabled",
-            help="Runs while this dashboard tab/session is active. Automatic scans pause when the regular US market is closed.",
+            help="Runs while this dashboard tab/session is active during pre-market, regular hours, and after-hours (4:00 AM–8:00 PM ET, weekdays).",
         )
     with market_col:
         market_open, now_et = market_is_open()
-        market_label = "🟢 MARKET OPEN" if market_open else "🟡 MARKET CLOSED"
+        phase = market_session_phase(now_et)
+        market_label = {
+            "premarket": "🔵 PRE-MARKET",
+            "regular": "🟢 MARKET OPEN",
+            "afterhours": "🟣 AFTER-HOURS",
+            "closed": "🟡 MARKET CLOSED",
+        }[phase]
         st.markdown(
             f'<div class="market-box {"open" if market_open else "closed"}">'
             f'<span class="market-main">{market_label}</span>'
@@ -698,8 +715,8 @@ def auto_scan_controller():
     if not open_now:
         st.markdown(
             '<div class="auto-box auto-wait"><b>🟡 AUTO SCAN ARMED</b><br>'
-            '<span class="sub">Paused while the regular market is closed. '
-            'It will scan automatically while this app is open during 9:30 AM–4:00 PM ET.</span></div>',
+            '<span class="sub">Paused outside the supported stock session. '
+            'It will scan automatically while this app is open from 4:00 AM–8:00 PM ET on weekdays.</span></div>',
             unsafe_allow_html=True,
         )
         return
@@ -777,12 +794,13 @@ if payload is None:
     )
     st.info(
         "Click **Run Fresh Scan**. Automatic scanning will also start on its own "
-        "during regular market hours while this app is open."
+        "during pre-market, regular hours, and after-hours while this app is open."
     )
     st.stop()
 
 mode = payload.get("mode", "off_hours_test")
-live = mode == "regular_market_session"
+session_phase = str(payload.get("session_phase") or "")
+live = mode in {"regular_market_session", "extended_market_session"}
 scan_et = payload.get("scan_time_et")
 
 try:
@@ -790,8 +808,18 @@ try:
 except Exception:
     when = scan_et or "Unknown"
 
-pill_cls = "green" if live else "amber"
-pill_text = "● REGULAR MARKET SESSION" if live else "● OFF-HOURS PREVIEW"
+if session_phase == "premarket":
+    pill_cls = "blue"
+    pill_text = "● PRE-MARKET SESSION"
+elif session_phase == "afterhours":
+    pill_cls = "blue"
+    pill_text = "● AFTER-HOURS SESSION"
+elif mode == "regular_market_session":
+    pill_cls = "green"
+    pill_text = "● REGULAR MARKET SESSION"
+else:
+    pill_cls = "amber"
+    pill_text = "● MARKET CLOSED / PREVIEW"
 
 payload_summary = payload.get("summary") or {}
 ml_model = payload_summary.get("ml_model") or {}
@@ -806,9 +834,12 @@ if ml_model.get("validated"):
 elif ml_status == "failed_validation":
     ml_pill_cls = "amber"
     ml_pill_text = f"ML NOT VALIDATED · AUC {ml_auc if ml_auc is not None else '—'} · n={ml_samples}"
-elif ml_status == "skipped_off_hours":
+elif ml_status == "paused_extended_hours":
     ml_pill_cls = "amber"
-    ml_pill_text = "ML OFF-HOURS · live prediction paused"
+    ml_pill_text = "ML REGULAR-HOURS MODEL PAUSED"
+elif ml_status in {"skipped_off_hours", "skipped_market_closed"}:
+    ml_pill_cls = "amber"
+    ml_pill_text = "ML PAUSED · market closed"
 else:
     ml_pill_cls = "blue"
     ml_pill_text = f"ML LEARNING · {ml_days}/3 days · n={ml_samples}"
