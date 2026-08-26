@@ -60,7 +60,7 @@ def _install_no_fade_css():
 
 
 def _cleanup_combined_browser_helpers():
-    """Retire the old Scanner DOM immediately before Analyzer UI is rendered."""
+    """Retire Scanner-only browser helpers without mutating Streamlit nodes."""
     components.html(
         """
         <script>
@@ -91,6 +91,10 @@ def _cleanup_combined_browser_helpers():
           }
           p.__scannerUXPatch = null;
 
+          // Expanded scanner cards are browser-injected and are not owned by
+          // Streamlit, so removing those is safe. Do NOT set inline display or
+          // visibility styles on Streamlit's stale nodes: React can recycle
+          // them for the Analyzer, which caused missing cards and blank areas.
           d.querySelectorAll('.scanner-inline-detail').forEach((node) => node.remove());
           if (p.__scannerExpandedSymbols && p.__scannerExpandedSymbols.clear) {
             p.__scannerExpandedSymbols.clear();
@@ -102,19 +106,6 @@ def _cleanup_combined_browser_helpers():
           }
           const tipBox = d.getElementById('stock-tech-tooltip');
           if (tipBox) tipBox.style.display = 'none';
-
-          // The Scanner was intentionally kept fully visible while the server
-          // calculated the requested analysis. The result is ready now, so
-          // remove that protection and hide only Streamlit's old stale nodes
-          // before any Analyzer widgets are emitted.
-          const preserve = d.getElementById('stock-analyze-preserve-scanner');
-          if (preserve) preserve.remove();
-          d.querySelectorAll('[data-stale="true"]').forEach((node) => {
-            try {
-              node.style.display = 'none';
-              node.style.pointerEvents = 'none';
-            } catch (_) {}
-          });
         })();
         </script>
         """,
@@ -338,13 +329,7 @@ def _render_saved_stocks():
 
 
 def _prepare_combined_result(sa):
-    """Calculate a requested ticker before any Analyzer UI is rendered.
-
-    Scanner Analyze buttons intentionally clear ``result``. Doing the expensive
-    work here keeps the Scanner as the only visible page until the result is
-    ready. analyzer_ui_core.py then consumes this fresh result without showing
-    its own spinner or calling the market APIs again.
-    """
+    """Calculate the selected ticker without rendering Analyzer UI."""
     ticker = str(
         st.session_state.get("ticker_search_request")
         or st.session_state.get("ticker")
@@ -372,6 +357,33 @@ def _prepare_combined_result(sa):
     return None
 
 
+def prepare_analyzer_result(symbol):
+    """Pre-calculate a scanner-launched analysis before switching views.
+
+    This function is called from the Scanner button callback. Because Streamlit
+    runs callbacks before the rest of the app rerun, the current Scanner stays
+    on screen while the market/history/ML analysis completes. Only after this
+    returns does app.py switch ``app_view`` to the Analyzer.
+    """
+    symbol = str(symbol or "").upper().strip()
+    if not symbol:
+        return "No ticker was selected."
+
+    _preload_secrets()
+    st.session_state["ticker"] = symbol
+    st.session_state["ticker_search_request"] = symbol
+    st.session_state.pop("ticker_picker", None)
+    st.session_state.pop("result", None)
+
+    import stock_analyzer as sa
+    from historical_integration import install_historical_analysis
+    from ml_integration import install_ml_analysis
+
+    install_historical_analysis(sa)
+    install_ml_analysis(sa)
+    return _prepare_combined_result(sa)
+
+
 def run():
     _preload_secrets()
     combined = _combined_workspace()
@@ -382,20 +394,15 @@ def run():
     from historical_integration import install_historical_analysis
     from ml_integration import install_ml_analysis
 
-    # Install the exact same enhanced analyzer used by the final dashboard
-    # before pre-calculating a Scanner-launched result.
     install_historical_analysis(sa)
     install_ml_analysis(sa)
 
     launch_error = None
     if combined:
-        # Important ordering: do the expensive API/history/ML work first while
-        # the previous Scanner remains the only visible page. Do not emit the
-        # Analyzer header, Saved Stocks, or spinner until this finishes.
+        # Scanner-launched analyses are normally already calculated by the
+        # button callback. This is a fast no-op in that case and remains a
+        # fallback for direct/manual switches to the Analyzer.
         launch_error = _prepare_combined_result(sa)
-
-        # The result is ready. Retire old Scanner DOM immediately, then render
-        # the Analyzer from the already-populated session result.
         _cleanup_combined_browser_helpers()
         with st.container(key="saved_stocks_top"):
             _render_saved_stocks()
