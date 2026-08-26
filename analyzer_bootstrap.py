@@ -32,31 +32,33 @@ def run():
     import stock_analyzer as sa
     from historical_integration import install_historical_analysis
     from historical_ui import render_historical_setup
+    from ml_integration import install_ml_analysis
+    from ml_ui import render_ml_prediction
 
-    # Install the setup-specific historical layer before the UI imports
-    # `analyze` from stock_analyzer.
+    # Layer order matters: the rule-based analyzer runs first, historical setup
+    # matching enhances it second, and ML v1 reads that completed trade plan.
     install_historical_analysis(sa)
+    install_ml_analysis(sa)
 
     target = Path(__file__).with_name("analyzer_ui_core.py")
     if not target.exists():
         raise FileNotFoundError("analyzer_ui_core.py is missing from the repository root.")
 
     # Reserve a slot immediately before the existing Trade plan details
-    # expander. The historical section is populated after analyzer_ui_core.py
-    # finishes, when its result/card/format helpers are available. This moves
-    # Historical setup match up without duplicating or rewriting the core UI.
+    # expander. Historical Setup Match and ML v1 are populated there after the
+    # core UI finishes and its result/card helpers become available.
     original_expander = st.expander
-    history_slot = {"placeholder": None}
+    analysis_slot = {"placeholder": None}
 
-    def _expander_with_history_slot(label, *args, **kwargs):
+    def _expander_with_analysis_slot(label, *args, **kwargs):
         if (
-            history_slot["placeholder"] is None
+            analysis_slot["placeholder"] is None
             and str(label).startswith("Trade plan details")
         ):
-            history_slot["placeholder"] = st.empty()
+            analysis_slot["placeholder"] = st.empty()
         return original_expander(label, *args, **kwargs)
 
-    st.expander = _expander_with_history_slot
+    st.expander = _expander_with_analysis_slot
     try:
         ns = runpy.run_path(str(target), run_name="__main__")
     finally:
@@ -66,14 +68,14 @@ def run():
     card = ns.get("card")
     pp = ns.get("pp")
 
-    # Always render the section, even when a ticker has too little history;
-    # in that case the UI clearly says there are not enough comparable days.
     if card and pp:
-        slot = history_slot.get("placeholder")
+        slot = analysis_slot.get("placeholder")
         if slot is not None:
             with slot.container():
                 render_historical_setup(st, pd, result, card, pp)
+                render_ml_prediction(st, pd, result, card)
         else:
             # Fallback if the core UI changes and the expander label no longer
-            # matches. Better to show the section at the end than hide it.
+            # matches. Better to show the analysis layers at the end than hide them.
             render_historical_setup(st, pd, result, card, pp)
+            render_ml_prediction(st, pd, result, card)
