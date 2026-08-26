@@ -629,7 +629,20 @@ with controls_context:
         vertical_alignment="center",
     )
     with scan_col:
-        clicked = st.button("▶ Run Fresh Scan", type="primary", use_container_width=True)
+        scan_button_slot = st.empty()
+        clicked = scan_button_slot.button(
+            "▶ Run Fresh Scan",
+            type="primary",
+            use_container_width=True,
+        )
+        if clicked:
+            scan_button_slot.button(
+                "Working…",
+                type="primary",
+                use_container_width=True,
+                disabled=True,
+                key="scan_working_button",
+            )
     with auto_col:
         st.toggle(
             "Auto scan every 5 minutes",
