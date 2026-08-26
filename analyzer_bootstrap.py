@@ -4,6 +4,7 @@ import runpy
 
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
 
 
 def _preload_secrets():
@@ -63,6 +64,146 @@ def _install_no_fade_css():
     )
 
 
+def _install_scroll_keeper():
+    """Preserve the user's viewport across Streamlit full-app reruns.
+
+    The dashboard still performs a full rerun for fresh analysis, but this
+    browser-side helper captures the scroll position as soon as Streamlit marks
+    the old DOM stale. It then ignores the automatic jump-to-top while the
+    rerun is in progress and restores the saved position when the new DOM is
+    ready. No market-data or refresh behavior is changed.
+    """
+    components.html(
+        """
+        <script>
+        (() => {
+          const p = window.parent;
+          const d = p.document;
+          const KEY = "ssa-scroll-position-v2";
+
+          function findScroller() {
+            const selectors = [
+              '[data-testid="stAppViewContainer"]',
+              '[data-testid="stMain"]',
+              'section.main'
+            ];
+            for (const selector of selectors) {
+              const el = d.querySelector(selector);
+              if (el && el.scrollHeight > el.clientHeight + 20) return el;
+            }
+            return d.scrollingElement || d.documentElement;
+          }
+
+          function getY() {
+            const scroller = findScroller();
+            if (scroller && typeof scroller.scrollTop === "number") {
+              return Math.max(0, scroller.scrollTop);
+            }
+            return Math.max(0, p.scrollY || d.documentElement.scrollTop || 0);
+          }
+
+          function savePosition() {
+            try {
+              p.sessionStorage.setItem(
+                KEY,
+                JSON.stringify({ y: getY(), t: Date.now() })
+              );
+            } catch (_) {}
+          }
+
+          function restorePosition(y) {
+            const scroller = findScroller();
+            try {
+              if (scroller && scroller !== d.scrollingElement && scroller !== d.documentElement) {
+                scroller.scrollTop = y;
+              } else {
+                p.scrollTo(0, y);
+              }
+            } catch (_) {}
+          }
+
+          // Remove the previous helper before installing the replacement from
+          // this rerun. Parent-window references survive component replacement.
+          const old = p.__ssaScrollKeeper;
+          if (old) {
+            try { old.observer && old.observer.disconnect(); } catch (_) {}
+            try { old.scroller && old.onScroll && old.scroller.removeEventListener("scroll", old.onScroll); } catch (_) {}
+            try { old.onWindowScroll && p.removeEventListener("scroll", old.onWindowScroll); } catch (_) {}
+          }
+
+          let saved = null;
+          try {
+            const raw = p.sessionStorage.getItem(KEY);
+            saved = raw ? JSON.parse(raw) : null;
+          } catch (_) {}
+
+          // A new component means the new Streamlit DOM is arriving. Restore
+          // several times because tables/cards may finish sizing a little later.
+          if (saved && Number.isFinite(saved.y) && Date.now() - saved.t < 120000) {
+            const y = saved.y;
+            p.requestAnimationFrame(() => restorePosition(y));
+            p.setTimeout(() => restorePosition(y), 60);
+            p.setTimeout(() => restorePosition(y), 180);
+            p.setTimeout(() => restorePosition(y), 450);
+          }
+
+          const scroller = findScroller();
+          const onScroll = () => {
+            // Streamlit's own full rerun can force scrollTop to zero. Do not let
+            // that programmatic jump overwrite the position captured at stale.
+            if (p.__ssaRerunPending) return;
+            savePosition();
+          };
+          if (scroller) scroller.addEventListener("scroll", onScroll, { passive: true });
+          p.addEventListener("scroll", onScroll, { passive: true });
+
+          // data-stale=true is set at the beginning of a Streamlit rerun, while
+          // the user's current scroll position is still intact. Capture it once.
+          const observer = new MutationObserver((mutations) => {
+            for (const m of mutations) {
+              if (
+                m.type === "attributes" &&
+                m.attributeName === "data-stale" &&
+                m.target &&
+                m.target.getAttribute("data-stale") === "true"
+              ) {
+                if (!p.__ssaRerunPending) {
+                  savePosition();
+                  p.__ssaRerunPending = true;
+                }
+                break;
+              }
+            }
+          });
+          if (d.body) {
+            observer.observe(d.body, {
+              subtree: true,
+              attributes: true,
+              attributeFilter: ["data-stale"]
+            });
+          }
+
+          p.__ssaScrollKeeper = {
+            observer,
+            scroller,
+            onScroll,
+            onWindowScroll: onScroll
+          };
+
+          // Once the replacement DOM has settled, ordinary user scrolling may
+          // update the saved position again.
+          p.setTimeout(() => {
+            p.__ssaRerunPending = false;
+            savePosition();
+          }, 700);
+        })();
+        </script>
+        """,
+        height=0,
+        scrolling=False,
+    )
+
+
 def run():
     _preload_secrets()
     _install_no_fade_css()
@@ -117,3 +258,5 @@ def run():
             # matches. Better to show the analysis layers at the end than hide them.
             render_historical_setup(st, pd, result, card, pp)
             render_ml_prediction(st, pd, result, card)
+
+    _install_scroll_keeper()
