@@ -6,24 +6,20 @@ import streamlit.components.v1 as components
 
 from scanner_expand import install_scanner_expander
 
-# Compatibility entrypoint for Streamlit deployments that were originally
-# configured to launch analyzer_app.py. Re-execute the combined app on every
-# Streamlit rerun instead of importing it as a cached Python module.
+# Compatibility entrypoint for deployments configured to launch analyzer_app.py.
 target = Path(__file__).with_name("app.py")
-
 if not target.exists():
     raise FileNotFoundError(
         "app.py was not found in the repository root. "
         "The combined Momentum Scanner + Stock Analyzer requires app.py."
     )
 
-# app.py owns st.set_page_config and renders the selected workspace view.
 runpy.run_path(str(target), run_name="__main__")
 view = st.session_state.get("app_view", "Momentum Scanner")
 
 
 def _install_scanner_interactions():
-    """Scanner card behavior without another page-wide DOM observer."""
+    """Scanner detail-card behavior without a page-wide observer."""
     components.html(
         """
         <script>
@@ -162,12 +158,7 @@ def _install_scanner_interactions():
 
 
 def _install_working_button_transition():
-    """Use an inline Working state instead of a full-screen loading overlay.
-
-    Streamlit leaves previous elements in the DOM briefly while a rerun is
-    building. During a Scanner -> Analyzer transition, hide only elements that
-    Streamlit has explicitly marked stale so the two pages cannot visually mix.
-    """
+    """Change Analyze to Working only after Streamlit receives the click."""
     components.html(
         """
         <script>
@@ -175,9 +166,8 @@ def _install_working_button_transition():
           const p = window.parent;
           const d = p.document;
 
-          // Remove the old full-screen transition implementation, including a
-          // mask/listener that may still exist in a browser tab from an older
-          // app version.
+          // Clean up the older full-screen loading implementation if this tab
+          // still has it from a previous deployment.
           const previous = p.__stockWorkspaceTransition;
           if (previous && previous.capture) {
             try { d.removeEventListener('click', previous.capture, true); } catch (_) {}
@@ -187,47 +177,42 @@ def _install_working_button_transition():
           if (oldMask) oldMask.remove();
           try { d.body.style.overflow = ''; } catch (_) {}
 
-          const old = p.__stockWorkingButtonTransition;
-          if (old && old.capture) {
-            try { d.removeEventListener('click', old.capture, true); } catch (_) {}
-          }
+          const staleStyle = d.getElementById('stock-switch-hide-stale');
+          if (staleStyle) staleStyle.remove();
 
-          function installHideStaleStyle() {
-            let style = d.getElementById('stock-switch-hide-stale');
-            if (!style) {
-              style = d.createElement('style');
-              style.id = 'stock-switch-hide-stale';
-              style.textContent = `
-                [data-stale="true"] {
-                  visibility: hidden !important;
-                  pointer-events: none !important;
-                }
-              `;
-              d.head.appendChild(style);
-            }
+          const old = p.__stockWorkingButtonTransition;
+          if (old && old.click) {
+            try { d.removeEventListener('click', old.click); } catch (_) {}
           }
 
           function setWorking(button) {
-            if (!button || button.dataset.stockWorking === '1') return;
+            if (!button || !button.isConnected || button.dataset.stockWorking === '1') return;
             button.dataset.stockWorking = '1';
             button.setAttribute('aria-busy', 'true');
-            button.disabled = true;
             const textNode = button.querySelector('p') || button.querySelector('span') || button;
             if (textNode) textNode.textContent = 'Working…';
-            installHideStaleStyle();
+            // Disable only after the original click event has completely
+            // finished, so Streamlit's React handler has already received it.
+            button.disabled = true;
+            button.style.cursor = 'wait';
           }
 
-          const capture = (event) => {
+          const click = (event) => {
             const button = event.target.closest && event.target.closest('button');
             if (!button) return;
             const text = String(button.textContent || '').trim();
-            if (/^Analyze\s+[A-Z0-9.\-]+/i.test(text)) {
-              setWorking(button);
-            }
+            if (!/^Analyze\s+[A-Z0-9.\-]+/i.test(text)) return;
+
+            // Important: do not alter/disable the button during this click.
+            // Streamlit must process the event first. A zero-delay timer runs
+            // only after the current event dispatch has completed.
+            p.setTimeout(() => setWorking(button), 0);
           };
 
-          d.addEventListener('click', capture, true);
-          p.__stockWorkingButtonTransition = {capture};
+          // Bubble phase rather than capture phase, so Streamlit's own button
+          // handler gets priority.
+          d.addEventListener('click', click);
+          p.__stockWorkingButtonTransition = {click};
         })();
         </script>
         """,
@@ -237,20 +222,17 @@ def _install_working_button_transition():
 
 
 def _finish_transition_cleanup():
-    """Remove temporary transition CSS once the requested view is complete."""
     components.html(
         """
         <script>
         (() => {
           const p = window.parent;
           const d = p.document;
-
           const previous = p.__stockWorkspaceTransition;
           if (previous && previous.capture) {
             try { d.removeEventListener('click', previous.capture, true); } catch (_) {}
           }
           p.__stockWorkspaceTransition = null;
-
           const mask = d.getElementById('stock-workspace-transition-mask');
           if (mask) mask.remove();
           const style = d.getElementById('stock-switch-hide-stale');
@@ -269,6 +251,4 @@ if view == "Momentum Scanner":
     _install_scanner_interactions()
     _install_working_button_transition()
 else:
-    # The Analyzer has finished rendering at this point, so reveal all new
-    # elements and discard any temporary transition state from the Scanner.
     _finish_transition_cleanup()
