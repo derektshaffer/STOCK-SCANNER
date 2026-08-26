@@ -856,6 +856,7 @@ st.markdown(
 )
 df = to_df(full_table_records)
 if not df.empty:
+    df.insert(0, "#", range(1, len(df) + 1))
     st.dataframe(
         styled(df),
         use_container_width=True,
