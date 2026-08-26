@@ -2,7 +2,8 @@ name: Momentum Stock Scanner
 
 on:
   schedule:
-    - cron: '*/5 13-21 * * 1-5'
+    - cron: '*/5 8-23 * * 1-5'
+    - cron: '*/5 0-1 * * 2-6'
   workflow_dispatch:
 
 jobs:
@@ -10,14 +11,14 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Check US market hours
+      - name: Check US extended market hours
         id: market_time
         shell: bash
         run: |
           NY_DAY=$(TZ=America/New_York date +%u)
           NY_HM=$(TZ=America/New_York date +%H%M)
 
-          if [ "$NY_DAY" -gt 5 ] || [ "$NY_HM" -lt 0930 ] || [ "$NY_HM" -gt 1600 ]; then
+          if [ "$NY_DAY" -gt 5 ] || [ "$NY_HM" -lt 0400 ] || [ "$NY_HM" -ge 2000 ]; then
             echo "in_market_hours=false" >> "$GITHUB_OUTPUT"
           else
             echo "in_market_hours=true" >> "$GITHUB_OUTPUT"
