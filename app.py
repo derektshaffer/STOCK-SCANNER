@@ -430,14 +430,6 @@ if view == "Momentum Scanner":
 
     candidates = _latest_scan_candidates()
     if candidates:
-        st.markdown(
-            '<div class="combined-quick">'
-            '<div class="combined-quick-title">🔎 One-click Stock Analyzer</div>'
-            '<div class="combined-quick-sub">Click Analyze beside any ticker from the latest momentum scan.</div>'
-            '</div>',
-            unsafe_allow_html=True,
-        )
-
         # Make each row useful at a glance: ticker, grade, score, today's move,
         # and current volume pace fill the width, with Analyze at the end.
         for idx, row in enumerate(candidates):
