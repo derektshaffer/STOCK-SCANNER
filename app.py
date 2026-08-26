@@ -222,9 +222,9 @@ if view == "Momentum Scanner":
         /* Compact the combined one-click scanner section without affecting
            the Stock Analyzer page. */
         .combined-quick {
-            padding: 7px 10px 6px !important;
-            margin: 0 0 7px !important;
-            border-radius: 9px !important;
+            padding: 5px 9px 4px !important;
+            margin: 0 0 5px !important;
+            border-radius: 8px !important;
         }
         .combined-quick-title {
             font-size: 14px !important;
@@ -237,9 +237,9 @@ if view == "Momentum Scanner":
             margin-bottom: 3px !important;
         }
         .combined-ticker-row {
-            min-height: 50px !important;
-            gap: 6px !important;
-            padding: 4px 0 !important;
+            min-height: 44px !important;
+            gap: 5px !important;
+            padding: 3px 0 !important;
         }
         .combined-ticker-symbol {
             font-size: 20px !important;
@@ -249,20 +249,20 @@ if view == "Momentum Scanner":
             margin-top: 2px !important;
         }
         .combined-stat {
-            padding: 5px 8px !important;
-            border-radius: 8px !important;
+            padding: 4px 7px !important;
+            border-radius: 7px !important;
         }
         .combined-stat-label {
             font-size: 8.5px !important;
         }
         .combined-stat-value {
-            font-size: 17px !important;
-            margin-top: 2px !important;
+            font-size: 16px !important;
+            margin-top: 1px !important;
         }
         [class*="st-key-combined_analyze_"] button {
-            min-height: 46px !important;
-            height: 46px !important;
-            border-radius: 9px !important;
+            min-height: 42px !important;
+            height: 42px !important;
+            border-radius: 8px !important;
         }
         </style>
         """,
