@@ -5,6 +5,10 @@ on:
     - cron: '*/5 13-21 * * 1-5'
   workflow_dispatch:
 
+permissions:
+  contents: read
+  actions: read
+
 jobs:
   scan:
     runs-on: ubuntu-latest
@@ -30,12 +34,19 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install scanner ML dependency
+        if: github.event_name == 'workflow_dispatch' || steps.market_time.outputs.in_market_hours == 'true'
+        run: python -m pip install --disable-pip-version-check -q "xgboost>=2.1"
 
       - name: Run momentum scanner
         if: github.event_name == 'workflow_dispatch' || steps.market_time.outputs.in_market_hours == 'true'
         env:
           ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
           ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
         run: python stock_scanner.py
 
       - name: Preserve scan logs
