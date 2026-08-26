@@ -514,6 +514,37 @@ if view == "Stock Analyzer":
             margin-top: 0 !important;
         }
 
+        /* Major analysis sections need breathing room even though the rest of
+           the combined workspace is intentionally compact. */
+        .st-key-ml_prediction_section {
+            margin-top: 12px !important;
+            margin-bottom: 12px !important;
+            padding-top: 2px !important;
+        }
+        .st-key-historical_match_section {
+            margin-top: 12px !important;
+            margin-bottom: 12px !important;
+            padding-top: 2px !important;
+        }
+        .st-key-ml_prediction_section > [data-testid="stVerticalBlock"],
+        .st-key-historical_match_section > [data-testid="stVerticalBlock"] {
+            gap: .48rem !important;
+        }
+        .st-key-ml_prediction_section .section,
+        .st-key-historical_match_section .section {
+            margin: 0 0 8px !important;
+            line-height: 1.2 !important;
+        }
+        .st-key-ml_prediction_section [data-testid="stHorizontalBlock"],
+        .st-key-historical_match_section [data-testid="stHorizontalBlock"] {
+            margin-top: 0 !important;
+            margin-bottom: 4px !important;
+        }
+        .st-key-ml_prediction_section [data-testid="stExpander"] {
+            margin-top: 6px !important;
+            margin-bottom: 2px !important;
+        }
+
         </style>
         """,
         unsafe_allow_html=True,
