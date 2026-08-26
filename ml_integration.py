@@ -14,6 +14,69 @@ def _clamp(value, lo, hi):
     return max(lo, min(hi, value))
 
 
+def _validated_edge_only(ml):
+    """Replace the headline ML edge with a validated-model-only consensus.
+
+    Individual advisory/unvalidated probabilities stay visible in the UI, but
+    they are excluded from the headline edge and therefore cannot influence the
+    trade-plan confidence adjustment. This keeps the prominent score tied only
+    to models that beat their walk-forward validation gate.
+    """
+    if not isinstance(ml, dict) or ml.get("status") != "ok":
+        return ml
+
+    models = ml.get("models") or {}
+    weights = {
+        "target_before_stop": 0.45,
+        "higher_60": 0.25,
+        "higher_30": 0.15,
+        "breakout_hold": 0.15,
+    }
+    used = []
+    weighted = []
+
+    for name, weight in weights.items():
+        model = models.get(name) or {}
+        if model.get("status") != "ok" or not model.get("validated"):
+            continue
+        if name == "breakout_hold" and not ml.get("breakout_relevant"):
+            continue
+        probability = _num(model.get("probability_pct"))
+        if probability is None:
+            continue
+        used.append(name)
+        weighted.append((probability, weight))
+
+    if weighted:
+        total_weight = sum(weight for _, weight in weighted)
+        edge = sum(probability * weight for probability, weight in weighted) / total_weight
+        if edge >= 65:
+            lean = "BULLISH / SUPPORTS ENTRY"
+        elif edge <= 45:
+            lean = "BEARISH / CAUTION"
+        else:
+            lean = "MIXED"
+    else:
+        edge = None
+        lean = "NO VALIDATED EDGE"
+
+    count = len(used)
+    coverage = (
+        "NONE" if count == 0 else
+        "LIMITED" if count == 1 else
+        "MODERATE" if count == 2 else
+        "STRONG"
+    )
+
+    ml["ml_edge_score"] = round(edge, 1) if edge is not None else None
+    ml["ml_lean"] = lean
+    ml["validated_edge_models"] = used
+    ml["validated_edge_model_count"] = count
+    ml["ml_edge_coverage"] = coverage
+    ml["edge_method"] = "validated_models_only"
+    return ml
+
+
 def _expanded_history_fetch(sa, symbol, timeframe, start, end, limit=10000):
     """Fetch a deeper 5-minute history for ML without one oversized request.
 
@@ -95,11 +158,13 @@ def install_ml_analysis(sa):
                 "error": str(exc)[:180],
             }
 
+        ml = _validated_edge_only(ml)
         metrics["ml_prediction"] = ml
 
         # Validation gate: only a model that beats naive baselines on unseen,
-        # chronological walk-forward samples may influence confidence. It never
-        # overrides the rule-based entry/stop/target decision in ML v1.
+        # chronological walk-forward samples may influence confidence. The edge
+        # used here is now composed ONLY of validated models. ML v1 still never
+        # overrides the rule-based entry/stop/target decision.
         plan = metrics.get("trade_plan") or {}
         if plan and ml.get("status") == "ok" and ml.get("gate_passed"):
             edge = _num(ml.get("ml_edge_score"))
