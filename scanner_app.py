@@ -1026,6 +1026,98 @@ if rej:
 else:
     st.success("No rejection reasons were logged for the displayed candidates.")
 
+with st.expander("Tradier vs Alpaca IEX test"):
+    tradier_token = secret("TRADIER_ACCESS_TOKEN")
+    if not tradier_token:
+        st.caption(
+            "Tradier live comparison is ready, but TRADIER_ACCESS_TOKEN is not configured yet. "
+            "A live Tradier Brokerage token is required for real-time consolidated data."
+        )
+    else:
+        st.caption(
+            "Compares the same top 15 scanner symbols using Tradier consolidated data "
+            "versus Alpaca IEX. This test does not change scanner rankings."
+        )
+        if st.button(
+            "Run Tradier vs IEX comparison",
+            key="run_tradier_compare",
+            use_container_width=False,
+        ):
+            os.environ["TRADIER_ACCESS_TOKEN"] = tradier_token
+            os.environ["ALPACA_API_KEY"] = secret("ALPACA_API_KEY")
+            os.environ["ALPACA_SECRET_KEY"] = secret("ALPACA_SECRET_KEY")
+
+            from tradier_compare import run_provider_comparison
+
+            compare_symbols = [
+                str(row.get("symbol") or "").upper().strip()
+                for row in display_records[:15]
+                if row.get("symbol")
+            ]
+            with st.spinner("Comparing Tradier consolidated data with Alpaca IEX…"):
+                st.session_state["provider_compare_result"] = run_provider_comparison(
+                    compare_symbols
+                )
+
+        comparison = st.session_state.get("provider_compare_result")
+        if comparison:
+            status = comparison.get("status")
+            if status != "ok":
+                st.warning(comparison.get("message") or f"Comparison status: {status}")
+            else:
+                summary_cmp = comparison.get("summary") or {}
+                c1, c2, c3 = st.columns(3)
+                c1.metric(
+                    "Symbols compared",
+                    summary_cmp.get("symbols_compared", 0),
+                )
+                volume_mult = summary_cmp.get(
+                    "avg_consolidated_to_iex_session_volume_multiple"
+                )
+                c2.metric(
+                    "Tradier / IEX volume",
+                    "—" if volume_mult is None else f"{volume_mult:.2f}x",
+                )
+                spread_gain = summary_cmp.get("avg_spread_improvement_pct_points")
+                c3.metric(
+                    "Avg spread difference",
+                    "—" if spread_gain is None else f"{spread_gain:+.3f} pts",
+                )
+
+                rows_cmp = []
+                for item in comparison.get("rows") or []:
+                    t = item.get("tradier") or {}
+                    a = item.get("alpaca_iex") or {}
+                    d = item.get("difference") or {}
+                    rows_cmp.append(
+                        {
+                            "Ticker": item.get("symbol"),
+                            "Tradier Price": t.get("price"),
+                            "IEX Price": a.get("price"),
+                            "Price Δ %": d.get("price_diff_pct"),
+                            "Tradier Vol": t.get("session_volume_70m"),
+                            "IEX Vol": a.get("session_volume_70m"),
+                            "Vol Δ %": d.get("session_volume_diff_pct"),
+                            "Tradier Spread %": t.get("spread_pct"),
+                            "IEX Spread %": a.get("spread_pct"),
+                            "Tradier 5m %": t.get("momentum_5m"),
+                            "IEX 5m %": a.get("momentum_5m"),
+                            "Tradier 15m %": t.get("momentum_15m"),
+                            "IEX 15m %": a.get("momentum_15m"),
+                        }
+                    )
+
+                if rows_cmp:
+                    st.dataframe(
+                        pd.DataFrame(rows_cmp),
+                        use_container_width=True,
+                        hide_index=True,
+                    )
+                if comparison.get("errors"):
+                    st.caption(
+                        f"{len(comparison['errors'])} symbol(s) could not be compared."
+                    )
+
 with st.expander("What the colors mean"):
     st.markdown(
         "**Green — strong/pass.**  **Blue — watch/neutral.**  "
