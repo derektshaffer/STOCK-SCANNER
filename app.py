@@ -275,6 +275,19 @@ if view == "Momentum Scanner":
             height: 100% !important;
             line-height: 1 !important;
         }
+        .combined-ticker-symbol-wrap {
+            flex-direction: row !important;
+            align-items: center !important;
+            gap: 8px !important;
+        }
+        .combined-rank {
+            min-width: 20px !important;
+            text-align: right !important;
+            color: #91a7c2 !important;
+            font-size: 12px !important;
+            font-weight: 900 !important;
+            line-height: 1 !important;
+        }
         .combined-ticker-caption {
             display: none !important;
         }
@@ -416,6 +429,7 @@ if view == "Momentum Scanner":
                 st.markdown(
                     f'<div class="combined-ticker-row">'
                     f'  <div class="combined-ticker-symbol-wrap">'
+                    f'    <div class="combined-rank">{idx + 1}.</div>'
                     f'    <div class="combined-ticker-symbol">{symbol}</div>'
                     f'  </div>'
                     f'  <div class="combined-stat">'
