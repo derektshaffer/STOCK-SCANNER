@@ -238,6 +238,7 @@ def test_scanner_outcome_metadata():
     assert len(rows) == 1, rows
     row = rows[0]
     assert row["feature_version"] == so.SCANNER_FEATURE_VERSION, row
+    assert row["observation_source"] == "live_scan", row
     assert row["market_provider"] == "tradier", row
     assert row["live_feed"] == "consolidated", row
     assert row["spread_pct"] == 0.11, row
@@ -678,6 +679,73 @@ def test_scanner_ui_auto_surfaces_validated_ml():
     assert "combined-action-value" in source
 
 
+def test_historical_replay_universe_uses_prior_days_only():
+    import historical_scanner_replay as replay
+
+    replay_day = datetime(2026, 8, 20, tzinfo=ET).date()
+    prior_days = [
+        datetime(2026, 8, day, tzinfo=ET).date()
+        for day in range(10, 20)
+    ]
+    quiet_prior = [
+        (day, {"c": 10.0, "v": 20_000})
+        for day in prior_days
+    ]
+    liquid_prior = [
+        (day, {"c": 10.0, "v": 2_000_000})
+        for day in prior_days
+    ]
+    # Huge volume on the replay day itself must NOT influence universe choice.
+    quiet_prior.append(
+        (replay_day, {"c": 20.0, "v": 100_000_000})
+    )
+    daily_index = {
+        "QUIET": quiet_prior,
+        "LIQUID": liquid_prior,
+    }
+
+    selected, metrics = replay.select_daily_universe(
+        daily_index,
+        replay_day,
+        1,
+    )
+    assert selected == ["LIQUID"], (selected, metrics)
+
+
+def test_historical_replay_source_survives_ml_extraction():
+    import scanner_ml_ranker as sm
+
+    payload = {
+        "source": "historical_scanner_replay",
+        "observations": [
+            {
+                "observation_id": "replay:test",
+                "observation_source": "historical_replay",
+                "feature_version": sm.CURRENT_FEATURE_VERSION,
+                "scan_id": "historical-replay:2026-08-20:1005",
+                "scan_time_et": "2026-08-20T10:05:00-04:00",
+                "symbol": "TEST",
+                "return_60m_pct": 4.0,
+                "momentum_5m": 1.0,
+                "momentum_15m": 2.0,
+                "volume_pace": 2.5,
+            }
+        ],
+    }
+    rows = sm._extract_observations(payload)
+    assert len(rows) == 1, rows
+    assert rows[0]["observation_source"] == "historical_replay", rows
+    assert rows[0]["trading_date"] == "2026-08-20", rows
+
+
+def test_replay_requires_live_confirmation_before_full_badge():
+    import scanner_ml_ranker as sm
+
+    assert sm.MIN_LIVE_CONFIRMATION_SAMPLES >= 30
+    assert sm.MIN_LIVE_CONFIRMATION_DAYS >= 2
+    assert sm.MIN_LIVE_CONFIRMATION_CLASS_COUNT >= 5
+
+
 if __name__ == "__main__":
     tests = [
         test_analyzer_prefers_tradier,
@@ -704,6 +772,9 @@ if __name__ == "__main__":
         test_scanner_action_breakout_watch_near_high,
         test_scanner_action_reject_stays_no_trade,
         test_scanner_ui_auto_surfaces_validated_ml,
+        test_historical_replay_universe_uses_prior_days_only,
+        test_historical_replay_source_survives_ml_extraction,
+        test_replay_requires_live_confirmation_before_full_badge,
     ]
     for test in tests:
         test()
