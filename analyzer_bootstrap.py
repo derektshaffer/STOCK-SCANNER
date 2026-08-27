@@ -22,6 +22,10 @@ def _preload_secrets():
         "OPENAI_MODEL",
         "ANALYZER_REFRESH_SECONDS",
         "SEC_USER_AGENT",
+        "ANALYZER_GITHUB_TOKEN",
+        "ANALYZER_GITHUB_REPO",
+        "ANALYZER_GITHUB_BRANCH",
+        "ANALYZER_REMOTE_SYNC_SECONDS",
     ):
         value = secrets.get(key)
         if value is not None and str(value).strip():
