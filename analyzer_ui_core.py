@@ -635,12 +635,16 @@ with st.container(key="analyzer_decision_v2"):
 
 if _trade_age is not None and float(_trade_age) > max(30, AUTO_REFRESH_SECONDS*2):
     feed_name=str(r.get("live_feed") or "").upper()
-    extra=(
-        " IEX is a single exchange, so its most recent trade can lag the consolidated market for some stocks. "
-        "If your Alpaca subscription includes SIP, set ALPACA_LIVE_FEED=\"sip\" in Streamlit Secrets."
-        if feed_name=="IEX" else
-        " The upstream Alpaca feed itself has not reported a newer eligible trade yet."
-    )
+    provider=str(r.get("market_provider") or r.get("live_provider") or "alpaca").lower()
+    if provider=="tradier":
+        extra=" Tradier consolidated data has not reported a newer eligible trade yet."
+    elif feed_name=="IEX":
+        extra=(
+            " IEX is a single exchange, so its most recent trade can lag the consolidated market for some stocks. "
+            "If your Alpaca subscription includes SIP, set ALPACA_LIVE_FEED=\"sip\" in Streamlit Secrets."
+        )
+    else:
+        extra=" The upstream Alpaca feed itself has not reported a newer eligible trade yet."
     st.warning(f"Latest {feed_name or 'market'} trade is {_age_text(_trade_age)}.{extra}")
 
 # Dynamic decision-support trade plan. This can explicitly return WAIT or
