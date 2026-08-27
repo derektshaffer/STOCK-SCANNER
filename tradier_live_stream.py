@@ -108,12 +108,16 @@ class _TradierStream:
             "authenticated": False,
             "error": None,
             "last_message_at": None,
+            "last_trade_at": None,
+            "last_quote_at": None,
             "last_trade": None,
             "last_quote": None,
             "session_volume": None,
+            "vwap_volume": None,
             "session_pv": None,
             "session_vwap": None,
             "seed_cutoff": None,
+            "seed_provider": None,
             "day_high": None,
             "day_low": None,
         }
@@ -121,25 +125,61 @@ class _TradierStream:
     def _public(self):
         out = dict(self.state)
         out.pop("session_pv", None)
+        out.pop("vwap_volume", None)
+        now_ts = time.time()
         last = out.get("last_message_at")
+        trade_at = out.get("last_trade_at")
+        quote_at = out.get("last_quote_at")
         out["message_age_seconds"] = (
-            round(max(0.0, time.time() - last), 2) if last else None
+            round(max(0.0, now_ts - last), 2) if last else None
+        )
+        out["trade_age_seconds"] = (
+            round(max(0.0, now_ts - trade_at), 2) if trade_at else None
+        )
+        out["quote_age_seconds"] = (
+            round(max(0.0, now_ts - quote_at), 2) if quote_at else None
         )
         return out
 
     def _seed(self, metrics):
+        """Seed live calculations only from Tradier-origin Analyzer metrics.
+
+        If the deep Analyzer temporarily falls back to Alpaca, the Tradier
+        socket starts unseeded rather than silently mixing providers.
+        """
         if not isinstance(metrics, dict):
             return
+        provider = str(
+            metrics.get("market_provider")
+            or metrics.get("live_provider")
+            or ""
+        ).lower()
+        feed = str(metrics.get("live_feed") or "").upper()
+        if provider != "tradier" and "TRADIER" not in feed:
+            return
+
         volume = _num(metrics.get("session_volume"))
         if volume is None:
             volume = _num(metrics.get("volume"))
         vwap = _num(metrics.get("vwap"))
+
         self.state["session_volume"] = volume
-        self.state["session_pv"] = (volume * vwap) if volume and vwap else None
+        self.state["vwap_volume"] = volume
+        self.state["session_pv"] = (
+            volume * vwap if volume is not None and vwap is not None else None
+        )
         self.state["session_vwap"] = vwap
         self.state["day_high"] = _num(metrics.get("day_high"))
         self.state["day_low"] = _num(metrics.get("day_low"))
         self.state["seed_cutoff"] = _parse_iso(metrics.get("as_of")) or time.time()
+        self.state["seed_provider"] = "tradier"
+
+        trade_at = _parse_iso(metrics.get("latest_trade_time"))
+        quote_at = _parse_iso(metrics.get("latest_quote_time"))
+        if trade_at:
+            self.state["last_trade_at"] = trade_at
+        if quote_at:
+            self.state["last_quote_at"] = quote_at
 
     def get(self, symbol=None):
         with self.lock:
@@ -388,18 +428,24 @@ class _TradierStream:
                     price = _num(msg.get("price"))
                     if price is None:
                         price = _num(msg.get("last"))
+                    trade_at = _epoch_ms(msg.get("date")) or now_ts
+                    self.state["last_trade_at"] = trade_at
                     self.state["last_trade"] = {
                         "price": price,
                         "size": _num(msg.get("size")),
                         "timestamp": msg.get("date"),
                         "exchange": msg.get("exch"),
                     }
-                    cvol = _num(msg.get("cvol"))
-                    if cvol is not None:
-                        self.state["session_volume"] = cvol
                     self._accumulate_trade(msg, price)
 
                 elif kind == "quote":
+                    quote_times = [
+                        _epoch_ms(msg.get("askdate")),
+                        _epoch_ms(msg.get("biddate")),
+                        _epoch_ms(msg.get("date")),
+                    ]
+                    quote_times = [value for value in quote_times if value is not None]
+                    self.state["last_quote_at"] = max(quote_times) if quote_times else now_ts
                     self.state["last_quote"] = {
                         "bid": _num(msg.get("bid")),
                         "ask": _num(msg.get("ask")),
@@ -412,6 +458,8 @@ class _TradierStream:
                     price = _num(msg.get("last"))
                     if price is None:
                         price = _num(msg.get("price"))
+                    trade_at = _epoch_ms(msg.get("date")) or now_ts
+                    self.state["last_trade_at"] = trade_at
                     self.state["last_trade"] = {
                         "price": price,
                         "size": _num(msg.get("size")),
@@ -438,18 +486,24 @@ class _TradierStream:
         if ts is not None and cutoff is not None and ts <= cutoff:
             return
 
-        volume = _num(self.state.get("session_volume")) or 0.0
-        pv = _num(self.state.get("session_pv")) or 0.0
+        # Session volume may use Tradier's authoritative cumulative volume.
+        # VWAP uses its own denominator so a cvol jump cannot dilute PV with
+        # trades the socket never actually accumulated.
+        session_volume = _num(self.state.get("session_volume")) or 0.0
+        cvol = _num(msg.get("cvol"))
+        if cvol is not None:
+            self.state["session_volume"] = max(session_volume, cvol)
+        else:
+            self.state["session_volume"] = session_volume + size
 
-        # When cvol is present, session_volume is already authoritative. Avoid
-        # double-adding size; only add size for events without cumulative volume.
-        if _num(msg.get("cvol")) is None:
-            volume += size
-            self.state["session_volume"] = volume
+        vwap_volume = _num(self.state.get("vwap_volume")) or 0.0
+        pv = _num(self.state.get("session_pv")) or 0.0
+        vwap_volume += size
         pv += price * size
+        self.state["vwap_volume"] = vwap_volume
         self.state["session_pv"] = pv
-        if volume > 0:
-            self.state["session_vwap"] = pv / volume
+        if vwap_volume > 0:
+            self.state["session_vwap"] = pv / vwap_volume
 
         high = _num(self.state.get("day_high"))
         low = _num(self.state.get("day_low"))
@@ -475,14 +529,24 @@ def get_live_overlay(metrics):
     trade = state.get("last_trade") or {}
     quote = state.get("last_quote") or {}
 
+    metrics_provider = str(
+        metrics.get("market_provider")
+        or metrics.get("live_provider")
+        or ""
+    ).lower()
+    metrics_are_tradier = (
+        metrics_provider == "tradier"
+        or "TRADIER" in str(metrics.get("live_feed") or "").upper()
+    )
+
     price = _num(trade.get("price"))
-    if price is None:
+    if price is None and metrics_are_tradier:
         price = _num(metrics.get("price"))
     bid = _num(quote.get("bid"))
-    if bid is None:
+    if bid is None and metrics_are_tradier:
         bid = _num(metrics.get("bid"))
     ask = _num(quote.get("ask"))
-    if ask is None:
+    if ask is None and metrics_are_tradier:
         ask = _num(metrics.get("ask"))
 
     spread_pct = None
@@ -492,13 +556,13 @@ def get_live_overlay(metrics):
             spread_pct = (ask - bid) / mid * 100.0
 
     vwap = _num(state.get("session_vwap"))
-    if vwap is None:
+    if vwap is None and metrics_are_tradier:
         vwap = _num(metrics.get("vwap"))
 
     volume = _num(state.get("session_volume"))
-    if volume is None:
+    if volume is None and metrics_are_tradier:
         volume = _num(metrics.get("session_volume"))
-    if volume is None:
+    if volume is None and metrics_are_tradier:
         volume = _num(metrics.get("volume"))
 
     plan = metrics.get("trade_plan") or {}
