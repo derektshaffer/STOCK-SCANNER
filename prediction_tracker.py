@@ -13,6 +13,7 @@ from zoneinfo import ZoneInfo
 LOG_PATH = Path(os.environ.get("ANALYZER_PREDICTION_LOG", "analysis_logs/analyzer_predictions.json"))
 BUCKET_MINUTES = 5
 ET = ZoneInfo("America/New_York")
+ANALYZER_FEATURE_VERSION = "analyzer-features-v2-consolidated"
 
 GITHUB_TOKEN = (
     os.environ.get("ANALYZER_GITHUB_TOKEN", "").strip()
@@ -273,6 +274,15 @@ def record_prediction(metrics, now=None):
         "bucket_key": key,
         "symbol": symbol,
         "timestamp": now.isoformat(),
+        "feature_version": (
+            metrics.get("feature_version")
+            or ANALYZER_FEATURE_VERSION
+        ),
+        "market_provider": (
+            metrics.get("market_provider")
+            or metrics.get("live_provider")
+            or "alpaca"
+        ),
         "price": _num(metrics.get("price")),
         "day_pct": _num(metrics.get("day_pct")),
         "vwap": _num(metrics.get("vwap")),
@@ -580,16 +590,23 @@ def _bucket_calibration(rows, score_field):
 
 def tracker_summary(rows=None, symbol=None, current_metrics=None):
     all_rows = rows if rows is not None else _load()
-    symbol_rows = all_rows
+    current_rows = [
+        r for r in all_rows
+        if r.get("feature_version") == ANALYZER_FEATURE_VERSION
+    ]
+    legacy_excluded = len(all_rows) - len(current_rows)
+
+    symbol_rows = current_rows
     if symbol:
         symbol_rows = [
-            r for r in all_rows
+            r for r in current_rows
             if r.get("symbol") == str(symbol).upper().strip()
         ]
 
-    # Calibration is global across all tracked tickers. Only lifecycle/history
-    # display is scoped to the ticker currently being analyzed.
-    calibration_rows = _independent_calibration_rows(all_rows)
+    # Calibration is global across all tracked tickers, but only the current
+    # feature version is eligible. This prevents pre-Tradier/IEX observations
+    # from inflating or biasing the consolidated-data calibration.
+    calibration_rows = _independent_calibration_rows(current_rows)
     resolved_60 = [
         r for r in calibration_rows
         if (r.get("outcomes") or {}).get("return_60m_pct") is not None
@@ -609,6 +626,8 @@ def tracker_summary(rows=None, symbol=None, current_metrics=None):
     ]
 
     durable = _load_durable_calibration()
+    if durable.get("feature_version") != ANALYZER_FEATURE_VERSION:
+        durable = {}
     durable_resolved = int(durable.get("resolved_60m") or 0)
     effective_resolved = max(durable_resolved, len(resolved_60))
     progress = durable.get("calibration_progress")
@@ -644,7 +663,9 @@ def tracker_summary(rows=None, symbol=None, current_metrics=None):
     )
 
     return {
-        "total_predictions": len(all_rows),
+        "feature_version": ANALYZER_FEATURE_VERSION,
+        "total_predictions": len(current_rows),
+        "legacy_predictions_excluded": legacy_excluded,
         "calibration_rows": len(calibration_rows),
         "calibration_sampling": "one observation per ticker per hour",
         "signal_lifecycle": lifecycle,
