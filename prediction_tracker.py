@@ -564,6 +564,34 @@ def tracker_summary(rows=None, symbol=None, current_metrics=None):
     ]
 
     durable = _load_durable_calibration()
+    durable_resolved = int(durable.get("resolved_60m") or 0)
+    effective_resolved = max(durable_resolved, len(resolved_60))
+    progress = durable.get("calibration_progress")
+    if not isinstance(progress, dict):
+        if effective_resolved < 30:
+            progress = {
+                "stage": "COLLECTING",
+                "next_threshold": 30,
+                "remaining": 30 - effective_resolved,
+            }
+        elif effective_resolved < 100:
+            progress = {
+                "stage": "EARLY READ",
+                "next_threshold": 100,
+                "remaining": 100 - effective_resolved,
+            }
+        elif effective_resolved < 300:
+            progress = {
+                "stage": "USEFUL",
+                "next_threshold": 300,
+                "remaining": 300 - effective_resolved,
+            }
+        else:
+            progress = {
+                "stage": "STRONGER SAMPLE",
+                "next_threshold": None,
+                "remaining": 0,
+            }
 
     lifecycle = signal_lifecycle(symbol, current_metrics=current_metrics, rows=rows) if symbol else None
 
@@ -592,9 +620,9 @@ def tracker_summary(rows=None, symbol=None, current_metrics=None):
             bool(durable.get("calibration_ready"))
             or len(resolved_60) >= 30
         ),
-        "durable_resolved_60m": int(
-            durable.get("resolved_60m") or 0
-        ),
+        "durable_resolved_60m": durable_resolved,
+        "effective_resolved_60m": effective_resolved,
+        "calibration_progress": progress,
         "storage": str(LOG_PATH),
         "persistence": "github+local" if GITHUB_TOKEN else "runtime-local",
         "durable_enabled": bool(GITHUB_TOKEN),
