@@ -510,6 +510,38 @@ def test_position_exit_profit_floor():
     assert plan["protective_exit_return_pct"] > 0, plan
 
 
+def test_position_live_overlay_recomputes_derived_fields():
+    from position_exit import merge_live_position_metrics
+
+    metrics = {
+        "price": 10.0,
+        "prev_close": 9.0,
+        "vwap": 9.5,
+        "vwap_position": "ABOVE",
+        "vwap_extension_pct": 5.26,
+        "day_high": 10.5,
+        "from_high_pct": 4.76,
+        "day_pct": 11.11,
+    }
+    overlay = {
+        "provider": "tradier",
+        "status": "streaming",
+        "price": 11.0,
+        "vwap": 10.0,
+        "day_high": 11.2,
+        "quote_age_seconds": 0.4,
+        "trade_age_seconds": 1.2,
+    }
+    merged = merge_live_position_metrics(metrics, overlay)
+    assert merged["position_live_provider"] == "tradier", merged
+    assert merged["position_live_status"] == "streaming", merged
+    assert merged["vwap_position"] == "ABOVE", merged
+    assert abs(merged["vwap_extension_pct"] - 10.0) < 0.01, merged
+    assert abs(merged["day_pct"] - 22.222) < 0.01, merged
+    assert abs(merged["from_high_pct"] - 1.786) < 0.01, merged
+    assert merged["quote_age_seconds"] == 0.4, merged
+
+
 if __name__ == "__main__":
     tests = [
         test_analyzer_prefers_tradier,
@@ -527,6 +559,7 @@ if __name__ == "__main__":
         test_position_exit_profitable_hold,
         test_position_exit_underwater_weakness,
         test_position_exit_profit_floor,
+        test_position_live_overlay_recomputes_derived_fields,
     ]
     for test in tests:
         test()
