@@ -69,6 +69,7 @@ LIVE_PROVIDER = "tradier" if USE_TRADIER else "alpaca"
 TOP_MOVERS = 50
 WATCHLIST_SIZE = 15
 ENRICH_TOP = WATCHLIST_SIZE
+EXTENDED_ENRICH_TOP = WATCHLIST_SIZE * 2
 NEWS_TOP = 15
 HISTORICAL_TOP = 5
 
@@ -106,6 +107,8 @@ VOLUME_PROFILE_TIMEFRAME = "5Min"
 VOLUME_PROFILE_LOOKBACK_DAYS = 50
 VOLUME_PROFILE_SESSIONS = 20
 VOLUME_PROFILE_MIN_SESSIONS = 7
+EXTENDED_VOLUME_PROFILE_MIN_SESSIONS = 3
+TRADIER_VOLUME_PROFILE_LOOKBACK_DAYS = 39
 
 SCAN_LOG_DIR = os.environ.get("SCAN_LOG_DIR", "scan_logs").strip() or "scan_logs"
 SCAN_LOG_TOP = 30
@@ -1186,30 +1189,48 @@ def avg_daily_volume(symbol, now_utc):
 def historical_volume_profile(symbol, now_utc, now_et):
     """Return this ticker's typical cumulative volume fraction for this time of day.
 
-    Uses recent completed regular sessions only. Each day's cumulative fraction is
-    measured at the current clock time, then the median is used so one huge spike
-    day does not distort the baseline. The typical daily volume is also a median.
+    Regular-hours profiles prefer Alpaca historical SIP. In pre/post-market,
+    Tradier consolidated Time & Sales is preferred because it covers the full
+    extended session while Alpaca IEX fallback coverage is much narrower.
+    Each day's cumulative fraction is measured at the current clock time and
+    medians are used so one abnormal spike does not dominate the baseline.
     """
+    phase = market_session_mode(now_et)
     profile_feed = HISTORICAL_FEED
-    try:
-        bars = get_bars(
-            symbol,
-            VOLUME_PROFILE_TIMEFRAME,
-            now_utc - timedelta(days=VOLUME_PROFILE_LOOKBACK_DAYS),
-            now_utc,
-            10000,
-            feed=profile_feed,
-        )
-    except Exception:
-        profile_feed = LIVE_FEED
-        bars = get_bars(
-            symbol,
-            VOLUME_PROFILE_TIMEFRAME,
-            now_utc - timedelta(days=VOLUME_PROFILE_LOOKBACK_DAYS),
-            now_utc,
-            10000,
-            feed=profile_feed,
-        )
+
+    if USE_TRADIER and phase in {"premarket", "afterhours"}:
+        profile_feed = "tradier_consolidated"
+        try:
+            bars = get_tradier_timesales_bars(
+                symbol,
+                TRADIER_TOKEN,
+                now_utc - timedelta(days=TRADIER_VOLUME_PROFILE_LOOKBACK_DAYS),
+                now_utc,
+                interval="5min",
+                session_filter="all",
+            )
+        except Exception:
+            bars = []
+    else:
+        try:
+            bars = get_bars(
+                symbol,
+                VOLUME_PROFILE_TIMEFRAME,
+                now_utc - timedelta(days=VOLUME_PROFILE_LOOKBACK_DAYS),
+                now_utc,
+                10000,
+                feed=profile_feed,
+            )
+        except Exception:
+            profile_feed = LIVE_FEED
+            bars = get_bars(
+                symbol,
+                VOLUME_PROFILE_TIMEFRAME,
+                now_utc - timedelta(days=VOLUME_PROFILE_LOOKBACK_DAYS),
+                now_utc,
+                10000,
+                feed=profile_feed,
+            )
     if not bars:
         return None
 
@@ -1256,7 +1277,12 @@ def historical_volume_profile(symbol, now_utc, now_et):
         fraction = min(1.0, max(0.0, expected_so_far / total))
         sessions.append((total, fraction))
 
-    if len(sessions) < VOLUME_PROFILE_MIN_SESSIONS:
+    min_sessions = (
+        EXTENDED_VOLUME_PROFILE_MIN_SESSIONS
+        if phase in {"premarket", "afterhours"}
+        else VOLUME_PROFILE_MIN_SESSIONS
+    )
+    if len(sessions) < min_sessions:
         return None
 
     typical_daily_volume = median(total for total, _ in sessions)
@@ -1268,7 +1294,12 @@ def historical_volume_profile(symbol, now_utc, now_et):
         "typical_daily_volume": typical_daily_volume,
         "expected_fraction": expected_fraction,
         "expected_volume": expected_volume,
-        "source": f"ticker_historical_{market_session_mode(now_et)}_tod_{profile_feed}",
+        "source": f"ticker_historical_{phase}_tod_{profile_feed}",
+        "confidence": (
+            "full"
+            if len(sessions) >= VOLUME_PROFILE_MIN_SESSIONS
+            else "limited"
+        ),
     }
 
 
@@ -2321,7 +2352,12 @@ def main():
     rows.sort(key=ranking_key, reverse=True)
 
     if is_active_market_session(now_et):
-        for c in rows[:ENRICH_TOP]:
+        enrich_top = (
+            EXTENDED_ENRICH_TOP
+            if phase in {"premarket", "afterhours"}
+            else ENRICH_TOP
+        )
+        for c in rows[:enrich_top]:
             enrich_live(c, now_utc, now_et)
             time.sleep(0.05)
     else:
