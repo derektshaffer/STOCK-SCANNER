@@ -21,6 +21,7 @@ jobs:
         env:
           ALPACA_LIVE_FEED: ${{ secrets.ALPACA_LIVE_FEED }}
           TRADIER_ACCESS_TOKEN: ${{ secrets.TRADIER_ACCESS_TOKEN }}
+          TRADIER_TOKEN: ${{ secrets.TRADIER_TOKEN }}
         run: |
           NY_DAY=$(TZ=America/New_York date +%u)
           NY_HM=$(TZ=America/New_York date +%H%M)
@@ -29,7 +30,7 @@ jobs:
           # Tradier consolidated live data is the preferred scanner source and
           # supports the full extended-hours window. If the GitHub secret is
           # absent, preserve the existing Alpaca feed-specific fallback window.
-          if [ -n "$TRADIER_ACCESS_TOKEN" ] || [ "$FEED" = "sip" ]; then
+          if [ -n "$TRADIER_ACCESS_TOKEN" ] || [ -n "$TRADIER_TOKEN" ] || [ "$FEED" = "sip" ]; then
             START_HM=0400
             END_HM=2000
           else
@@ -62,6 +63,7 @@ jobs:
           ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
           ALPACA_LIVE_FEED: ${{ secrets.ALPACA_LIVE_FEED }}
           TRADIER_ACCESS_TOKEN: ${{ secrets.TRADIER_ACCESS_TOKEN }}
+          TRADIER_TOKEN: ${{ secrets.TRADIER_TOKEN }}
           GH_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: python stock_scanner.py
