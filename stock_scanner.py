@@ -7,6 +7,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from collections import Counter, defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 from statistics import median
 from pathlib import Path
@@ -69,7 +70,9 @@ LIVE_PROVIDER = "tradier" if USE_TRADIER else "alpaca"
 TOP_MOVERS = 50
 WATCHLIST_SIZE = 15
 ENRICH_TOP = WATCHLIST_SIZE
-EXTENDED_ENRICH_TOP = WATCHLIST_SIZE * 2
+EXTENDED_ENRICH_TOP = WATCHLIST_SIZE + 5
+MAX_ENRICH_WORKERS = 6
+MAX_HISTORY_WORKERS = 5
 NEWS_TOP = 15
 HISTORICAL_TOP = 5
 
@@ -387,6 +390,32 @@ def get_snapshot(symbol):
     q = urllib.parse.urlencode({"feed": LIVE_FEED})
     url = f"{DATA_BASE}/v2/stocks/{urllib.parse.quote(symbol)}/snapshot?{q}"
     return get_json(url)
+
+
+def get_multi_snapshots(symbols, feed=None):
+    """Fetch Alpaca snapshots in batches instead of one HTTP request per ticker."""
+    symbols = [
+        str(symbol).upper().strip()
+        for symbol in symbols
+        if str(symbol).strip()
+    ]
+    merged = {}
+    for start in range(0, len(symbols), 100):
+        chunk = symbols[start : start + 100]
+        params = urllib.parse.urlencode(
+            {
+                "symbols": ",".join(chunk),
+                "feed": feed or LIVE_FEED,
+            }
+        )
+        payload = get_json(f"{DATA_BASE}/v2/stocks/snapshots?{params}")
+        data = payload.get("snapshots") if isinstance(payload, dict) else None
+        if not isinstance(data, dict):
+            data = payload if isinstance(payload, dict) else {}
+        for symbol, snapshot in data.items():
+            if isinstance(snapshot, dict):
+                merged[str(symbol).upper()] = snapshot
+    return merged
 
 
 def get_bars(symbol, timeframe, start, end, limit, feed=None):
@@ -1041,11 +1070,15 @@ def enrich_delayed_sip_liquidity(rows, now_utc, now_et):
         refresh_quality(c)
 
 
-def analyze_snapshot(symbol, tradier_quote=None):
-    # Alpaca remains the discovery/history/news source. Its snapshot also
-    # supplies a VWAP fallback until Tradier intraday Time & Sales enrichment
-    # runs for the highest-ranked symbols.
-    snap = get_snapshot(symbol)
+def analyze_snapshot(symbol, tradier_quote=None, alpaca_snapshot=None):
+    # Alpaca remains the discovery/history/news source. Broad scans pass a
+    # batched snapshot here so this function does not create one HTTP request
+    # per ticker. Extended-hours Tradier rows can skip Alpaca snapshots entirely.
+    snap = (
+        get_snapshot(symbol)
+        if alpaca_snapshot is None
+        else (alpaca_snapshot or {})
+    )
     trade = snap.get("latestTrade") or {}
     quote = snap.get("latestQuote") or {}
     daily = snap.get("dailyBar") or {}
@@ -1061,6 +1094,7 @@ def analyze_snapshot(symbol, tradier_quote=None):
     ask = float(quote.get("ap") or 0)
     live_quote_source = f"alpaca_{LIVE_FEED}"
     liquidity_source = "iex_estimate"
+    quote_avg_volume = None
 
     if tradier_quote:
         def tnum(name):
@@ -1076,6 +1110,7 @@ def analyze_snapshot(symbol, tradier_quote=None):
         low = tnum("low") or low
         bid = tnum("bid") or bid
         ask = tnum("ask") or ask
+        quote_avg_volume = tnum("average_volume") or None
         live_quote_source = "tradier_consolidated"
         liquidity_source = "tradier_consolidated"
 
@@ -1144,6 +1179,11 @@ def analyze_snapshot(symbol, tradier_quote=None):
         if distance_from_vwap_pct is not None
         else None,
         "above_vwap": above_vwap,
+        "avg_20d_volume": (
+            round(quote_avg_volume, 0)
+            if quote_avg_volume is not None and quote_avg_volume > 0
+            else None
+        ),
     }
 
     c["live_bonus"] = 0.0
@@ -1206,7 +1246,7 @@ def historical_volume_profile(symbol, now_utc, now_et):
                 TRADIER_TOKEN,
                 now_utc - timedelta(days=TRADIER_VOLUME_PROFILE_LOOKBACK_DAYS),
                 now_utc,
-                interval="5min",
+                interval="15min",
                 session_filter="all",
             )
         except Exception:
@@ -1268,8 +1308,24 @@ def historical_volume_profile(symbol, now_utc, now_et):
     # it contributes ~50%. This keeps the expected curve aligned with a live
     # cumulative-volume snapshot rather than jumping in 5-minute steps.
     now_minute = now_et.hour * 60 + now_et.minute
-    bucket_start = now_minute - (now_minute % 5)
-    bucket_progress = min(1.0, max(0.0, ((now_minute - bucket_start) * 60 + now_et.second) / 300.0))
+    bucket_minutes = (
+        15
+        if profile_feed == "tradier_consolidated"
+        and phase in {"premarket", "afterhours"}
+        else 5
+    )
+    bucket_start = now_minute - (now_minute % bucket_minutes)
+    bucket_progress = min(
+        1.0,
+        max(
+            0.0,
+            (
+                (now_minute - bucket_start) * 60
+                + now_et.second
+            )
+            / float(bucket_minutes * 60),
+        ),
+    )
 
     by_day = defaultdict(dict)
     for bar in bars:
@@ -1355,6 +1411,76 @@ def get_live_bars(symbol, timeframe, start, end, limit=10000):
     )
 
 
+def current_session_live_metrics(symbol, now_utc, now_et, current_price):
+    """Get momentum and session stats from one intraday request per ticker."""
+    phase = market_session_mode(now_et)
+    if phase == "closed":
+        return None
+
+    open_minute, _ = session_window_minutes(now_et)
+    start_et = now_et.replace(
+        hour=open_minute // 60,
+        minute=open_minute % 60,
+        second=0,
+        microsecond=0,
+    )
+    bars = get_live_bars(
+        symbol,
+        "1Min",
+        start_et.astimezone(timezone.utc),
+        now_utc,
+        10000,
+    )
+    if not bars:
+        return None
+
+    high = None
+    low = None
+    volume = 0.0
+    dollar = 0.0
+    for bar in bars:
+        h = float(bar.get("h") or 0)
+        l = float(bar.get("l") or 0)
+        v = float(bar.get("v") or 0)
+        px = float(bar.get("vw") or bar.get("c") or 0)
+        if h > 0:
+            high = h if high is None else max(high, h)
+        if l > 0:
+            low = l if low is None else min(low, l)
+        if v > 0 and px > 0:
+            volume += v
+            dollar += v * px
+
+    if high is None or low is None:
+        return None
+
+    last_price = float(bars[-1].get("c") or 0) if bars else 0.0
+    reference_price = float(current_price or 0) or last_price
+    m5 = None
+    m15 = None
+    if len(bars) >= 6 and bars[-6].get("c"):
+        m5 = pct_change(reference_price, float(bars[-6]["c"]))
+    if len(bars) >= 16 and bars[-16].get("c"):
+        m15 = pct_change(reference_price, float(bars[-16]["c"]))
+
+    return {
+        "phase": phase,
+        "volume": volume,
+        "dollar_volume": dollar,
+        "high": high,
+        "low": low,
+        "vwap": (dollar / volume) if volume > 0 else None,
+        "last_price": last_price or None,
+        "momentum_5m": m5,
+        "momentum_15m": m15,
+        "live_source": (
+            "tradier_consolidated"
+            if USE_TRADIER
+            else f"alpaca_{LIVE_FEED}"
+        ),
+    }
+
+
 def current_session_stats(symbol, now_utc, now_et):
     """Build current pre-market/regular/after-hours stats from the configured live feed."""
     phase = market_session_mode(now_et)
@@ -1433,14 +1559,50 @@ def recent_momentum(symbol, now_utc, current_price):
 
 def enrich_live(c, now_utc, now_et):
     phase = market_session_mode(now_et)
+
+    session_stats = None
     try:
-        m5, m15 = recent_momentum(c["symbol"], now_utc, c["price"])
-        avg_vol = avg_daily_volume(c["symbol"], now_utc)
-        volume_profile = historical_volume_profile(c["symbol"], now_utc, now_et)
-        session_stats = current_session_stats(c["symbol"], now_utc, now_et)
+        session_stats = current_session_live_metrics(
+            c["symbol"],
+            now_utc,
+            now_et,
+            c.get("price"),
+        )
     except Exception as exc:
-        c["enrichment_error"] = str(exc)
-        return c
+        c["intraday_enrichment_error"] = str(exc)
+
+    m5 = (
+        session_stats.get("momentum_5m")
+        if session_stats
+        else None
+    )
+    m15 = (
+        session_stats.get("momentum_15m")
+        if session_stats
+        else None
+    )
+
+    avg_vol = c.get("avg_20d_volume")
+    try:
+        avg_vol = float(avg_vol) if avg_vol is not None else None
+    except (TypeError, ValueError):
+        avg_vol = None
+    if not avg_vol or avg_vol <= 0:
+        try:
+            avg_vol = avg_daily_volume(c["symbol"], now_utc)
+        except Exception as exc:
+            c["avg_volume_error"] = str(exc)
+            avg_vol = None
+
+    try:
+        volume_profile = historical_volume_profile(
+            c["symbol"],
+            now_utc,
+            now_et,
+        )
+    except Exception as exc:
+        c["volume_profile_error"] = str(exc)
+        volume_profile = None
 
     if session_stats:
         session_volume = float(session_stats.get("volume") or 0)
@@ -2336,6 +2498,31 @@ def main():
             print(f"WARN Tradier quote batch failed; using Alpaca fallback: {exc}")
             tradier_quotes = {}
 
+    quote_symbols = [
+        str(row.get("symbol") or "").upper().strip()
+        for row in candidates
+        if row.get("symbol")
+    ]
+    alpaca_snapshots = {}
+    needs_alpaca_snapshots = (
+        not USE_TRADIER
+        or phase == "regular"
+        or len(tradier_quotes) < len(quote_symbols)
+    )
+    if needs_alpaca_snapshots:
+        try:
+            alpaca_snapshots = get_multi_snapshots(
+                quote_symbols,
+                feed=LIVE_FEED,
+            )
+            print(
+                f"Alpaca batched snapshots loaded for "
+                f"{len(alpaca_snapshots)}/{len(quote_symbols)} candidates."
+            )
+        except Exception as exc:
+            print(f"WARN Alpaca batch snapshots failed: {exc}")
+            alpaca_snapshots = {}
+
     rows = []
     rejection_counts = Counter()
     excluded_symbols = []
@@ -2350,7 +2537,11 @@ def main():
             continue
 
         try:
-            c = analyze_snapshot(symbol, tradier_quotes.get(symbol))
+            c = analyze_snapshot(
+                symbol,
+                tradier_quotes.get(symbol),
+                alpaca_snapshots.get(symbol, {}),
+            )
         except Exception as exc:
             print(f"WARN {symbol}: snapshot error: {exc}")
             rejection_counts["API/data error"] += 1
@@ -2364,7 +2555,6 @@ def main():
         c["session_date"] = now_et.date().isoformat()
         refresh_quality(c)
         rows.append(c)
-        time.sleep(0.03)
 
     # Tradier rows already carry consolidated live liquidity. Alpaca fallback
     # rows still use the delayed-SIP enrichment path when it is available.
@@ -2382,9 +2572,27 @@ def main():
             if phase in {"premarket", "afterhours"}
             else ENRICH_TOP
         )
-        for c in rows[:enrich_top]:
-            enrich_live(c, now_utc, now_et)
-            time.sleep(0.05)
+        enrich_targets = rows[:enrich_top]
+        worker_count = max(
+            1,
+            min(MAX_ENRICH_WORKERS, len(enrich_targets)),
+        )
+        with ThreadPoolExecutor(max_workers=worker_count) as executor:
+            futures = {
+                executor.submit(
+                    enrich_live,
+                    c,
+                    now_utc,
+                    now_et,
+                ): c
+                for c in enrich_targets
+            }
+            for future in as_completed(futures):
+                c = futures[future]
+                try:
+                    future.result()
+                except Exception as exc:
+                    c["enrichment_error"] = str(exc)
     else:
         for c in rows:
             c["live_data_status"] = "skipped_market_closed"
@@ -2396,21 +2604,41 @@ def main():
 
     rows.sort(key=ranking_key, reverse=True)
 
-    for c in rows[:HISTORICAL_TOP]:
-        try:
-            c["historical"] = historical_continuation(
-                c["symbol"],
-                c.get("day_pct"),
-                now_utc,
-                now_et,
-            )
-        except Exception as exc:
-            c["historical"] = {"status": "error", "message": str(exc)}
-
-        if c["historical"].get("status") == "skipped_off_hours":
-            break
-
-        time.sleep(0.05)
+    historical_targets = rows[:HISTORICAL_TOP]
+    if is_regular_session(now_et) and historical_targets:
+        worker_count = max(
+            1,
+            min(MAX_HISTORY_WORKERS, len(historical_targets)),
+        )
+        with ThreadPoolExecutor(max_workers=worker_count) as executor:
+            futures = {
+                executor.submit(
+                    historical_continuation,
+                    c["symbol"],
+                    c.get("day_pct"),
+                    now_utc,
+                    now_et,
+                ): c
+                for c in historical_targets
+            }
+            for future in as_completed(futures):
+                c = futures[future]
+                try:
+                    c["historical"] = future.result()
+                except Exception as exc:
+                    c["historical"] = {
+                        "status": "error",
+                        "message": str(exc),
+                    }
+    else:
+        for c in historical_targets:
+            c["historical"] = {
+                "status": "skipped_off_hours",
+                "message": (
+                    "Historical intraday comparison activates during "
+                    "regular market hours."
+                ),
+            }
 
     # Rule-based setup grades remain the safety gate. ML is applied only after
     # those rules are complete, and ranking only changes when the model passes
