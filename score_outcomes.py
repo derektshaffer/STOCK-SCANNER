@@ -396,6 +396,15 @@ def build_observations(scans, target_date, bars_index):
                 "momentum_15m": c.get("momentum_15m"),
                 "volume_pace": c.get("volume_pace"),
                 "liquidity_dollar_volume": c.get("liquidity_dollar_volume"),
+                "liquidity_source": c.get("liquidity_source"),
+                "live_quote_source": c.get("live_quote_source"),
+                "live_intraday_source": c.get("live_intraday_source"),
+                "spread_pct": (
+                    c.get("live_spread_pct")
+                    if c.get("live_spread_pct") is not None
+                    else c.get("iex_spread_pct")
+                ),
+                # Retained for compatibility with older reports/models only.
                 "iex_spread_pct": c.get("iex_spread_pct"),
                 "distance_from_high_pct": c.get("distance_from_high_pct"),
                 "distance_from_vwap_pct": c.get("distance_from_vwap_pct"),
