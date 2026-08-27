@@ -17,6 +17,50 @@ def _clamp(value, lo, hi):
     return max(lo, min(hi, value))
 
 
+def merge_live_position_metrics(metrics, overlay):
+    """Apply a same-symbol live overlay and recompute price-derived fields."""
+    out = dict(metrics or {})
+    overlay = overlay or {}
+
+    for key in (
+        "price",
+        "bid",
+        "ask",
+        "spread_pct",
+        "vwap",
+        "session_volume",
+        "day_high",
+        "day_low",
+        "trade_age_seconds",
+        "quote_age_seconds",
+    ):
+        if overlay.get(key) is not None:
+            out[key] = overlay.get(key)
+
+    price = _num(out.get("price"))
+    vwap = _num(out.get("vwap"))
+    prev_close = _num(out.get("prev_close"))
+    day_high = _num(out.get("day_high"))
+
+    if price is not None and vwap is not None and vwap > 0:
+        out["vwap_position"] = "ABOVE" if price >= vwap else "BELOW"
+        out["vwap_extension_pct"] = round((price / vwap - 1.0) * 100.0, 3)
+
+    if price is not None and prev_close is not None and prev_close > 0:
+        out["day_pct"] = round((price / prev_close - 1.0) * 100.0, 3)
+
+    if price is not None and day_high is not None and day_high > 0:
+        out["from_high_pct"] = round((day_high - price) / day_high * 100.0, 3)
+
+    provider = overlay.get("provider")
+    if provider:
+        out["position_live_provider"] = provider
+    status = overlay.get("status")
+    if status:
+        out["position_live_status"] = status
+    return out
+
+
 def _level_price(level):
     if not isinstance(level, dict):
         return None
