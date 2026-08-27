@@ -223,6 +223,26 @@ def _horizon_stats(values):
     }
 
 
+def _independent_calibration_rows(rows):
+    """Keep one observation per ticker per clock hour for calibration.
+
+    Raw 5-minute predictions remain in the durable files for lifecycle and
+    path analysis. Calibration uses a less-correlated sample so the apparent
+    n is not inflated by overlapping 60-minute outcome windows.
+    """
+    chosen = {}
+    ordered = sorted(rows, key=lambda row: str(row.get("timestamp") or ""))
+    for row in ordered:
+        symbol = str(row.get("symbol") or "").upper().strip()
+        dt = _parse_dt(row.get("timestamp"))
+        if not symbol or dt is None:
+            continue
+        key = (symbol, dt.date().isoformat(), dt.hour)
+        if key not in chosen:
+            chosen[key] = row
+    return list(chosen.values())
+
+
 def _calibrate(rows, score_field):
     groups = {}
     for row in rows:
@@ -324,12 +344,13 @@ def _all_rows():
 
 def _write_calibration():
     rows = _all_rows()
+    calibration_rows = _independent_calibration_rows(rows)
     resolved = [
-        row for row in rows
+        row for row in calibration_rows
         if _num((row.get("outcomes") or {}).get("return_60m_pct")) is not None
     ]
     touches = [
-        row for row in rows
+        row for row in calibration_rows
         if (row.get("outcomes") or {}).get("target1_first_touch") in {"target", "stop"}
     ]
     target_wins = [
@@ -341,12 +362,14 @@ def _write_calibration():
         "schema_version": 1,
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
         "prediction_rows": len(rows),
+        "calibration_rows": len(calibration_rows),
+        "calibration_sampling": "one observation per ticker per hour",
         "resolved_60m": len(resolved),
         "calibration_ready": len(resolved) >= 30,
         "calibration_progress": _calibration_stage(len(resolved)),
-        "potential_calibration": _calibrate(rows, "potential_score"),
-        "entry_calibration": _calibrate(rows, "entry_readiness"),
-        "evidence_calibration": _calibrate(rows, "evidence_strength"),
+        "potential_calibration": _calibrate(calibration_rows, "potential_score"),
+        "entry_calibration": _calibrate(calibration_rows, "entry_readiness"),
+        "evidence_calibration": _calibrate(calibration_rows, "evidence_strength"),
         "target_before_stop_rate": (
             round(len(target_wins) / len(touches) * 100.0, 1)
             if touches else None
