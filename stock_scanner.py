@@ -1211,6 +1211,31 @@ def historical_volume_profile(symbol, now_utc, now_et):
             )
         except Exception:
             bars = []
+
+        # Tradier is the preferred extended-hours history source, but preserve
+        # the prior Alpaca fallback so one provider hiccup does not erase the
+        # metric entirely.
+        if not bars:
+            profile_feed = HISTORICAL_FEED
+            try:
+                bars = get_bars(
+                    symbol,
+                    VOLUME_PROFILE_TIMEFRAME,
+                    now_utc - timedelta(days=VOLUME_PROFILE_LOOKBACK_DAYS),
+                    now_utc,
+                    10000,
+                    feed=profile_feed,
+                )
+            except Exception:
+                profile_feed = LIVE_FEED
+                bars = get_bars(
+                    symbol,
+                    VOLUME_PROFILE_TIMEFRAME,
+                    now_utc - timedelta(days=VOLUME_PROFILE_LOOKBACK_DAYS),
+                    now_utc,
+                    10000,
+                    feed=profile_feed,
+                )
     else:
         try:
             bars = get_bars(
