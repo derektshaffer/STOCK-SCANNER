@@ -212,8 +212,9 @@ def _build_dataset(bars5, et, target_pct, stop_pct):
         avg20 = sum(vols) / len(vols) if vols else None
         atr_pct = _atr_pct(daily, i)
 
-        # Sample every 15 minutes after the first 30 minutes, leaving a full
-        # 60-minute future window for labels.
+        # Sample every 15 minutes after the first 30 minutes. Keep a full
+        # 60-minute future window for the 30m/60m continuation labels; the
+        # Target 1 first-touch label separately uses the rest of the session.
         for idx in range(6, len(bars) - 12, 3):
             feat = _feature_row(day, prev_close, avg20, atr_pct, idx)
             if not feat:
