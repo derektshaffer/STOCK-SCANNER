@@ -13,11 +13,23 @@ def _validation_note(model):
         if status == "insufficient_samples":
             n = int(model.get("samples") or 0)
             positives = int(model.get("positives") or 0)
-            negatives = max(0, n - positives)
+            negatives = int(model.get("negatives") or max(0, n - positives))
+            outcomes = model.get("outcome_summary") or {}
+            unresolved = int(outcomes.get("unresolved") or 0)
+            ambiguous = int(outcomes.get("ambiguous") or 0)
+            if model.get("label") == "target_before_stop":
+                extra = ""
+                if unresolved or ambiguous:
+                    extra = f" · {unresolved} unresolved / {ambiguous} ambiguous excluded"
+                return (
+                    "insufficient outcome balance"
+                    f" · {positives} target-first / {negatives} stop-first"
+                    + extra
+                )
             if n >= 180:
                 return (
                     "insufficient outcome balance"
-                    + (f" · {positives} target wins / {negatives} non-wins" if n else "")
+                    + (f" · {positives} positive / {negatives} negative" if n else "")
                 )
         n = model.get("samples") or model.get("validation_samples")
         return f"{status.replace('_', ' ')}" + (f" · n={n}" if n else "")
@@ -33,7 +45,8 @@ def _validation_note(model):
 def render_ml_prediction(st, pd, result, card):
     ml = result.get("ml_prediction") or {}
 
-    st.markdown('<div class="section">Machine-learning probability model <span style="font-size:12px;color:#91a7c2">ML v1</span></div>', unsafe_allow_html=True)
+    version = str(ml.get("version") or "ml-v1").replace("ml-", "ML ")
+    st.markdown(f'<div class="section">Machine-learning probability model <span style="font-size:12px;color:#91a7c2">{version}</span></div>', unsafe_allow_html=True)
 
     if ml.get("status") != "ok":
         if ml.get("status") == "insufficient_history":
@@ -71,11 +84,14 @@ def render_ml_prediction(st, pd, result, card):
         edge_note,
         edge_class,
     )
+    target_note = _validation_note(target)
+    if target.get("horizon") == "same_session" and target.get("status") == "ok":
+        target_note += " · same-session first touch"
     card(
         cols[1],
         "TARGET 1 BEFORE STOP",
         _pct_value(target),
-        _validation_note(target),
+        target_note,
         "good" if (target.get("probability_pct") or 0) >= 65 else "warn",
     )
     card(
