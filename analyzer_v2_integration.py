@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 from functools import lru_cache
 
 from prediction_tracker import record_prediction, resolve_symbol_predictions
+from alpaca_live_stream import ensure_live_stream, get_live_overlay
 
 
 SEC_BASE = "https://data.sec.gov"
@@ -589,6 +590,13 @@ def install_v2_analysis(sa):
         metrics = base_analyze(symbol)
         now = datetime.now(timezone.utc)
 
+        stream_status = ensure_live_stream(
+            symbol_clean,
+            str(sa.LIVE_FEED or "iex").lower(),
+            metrics=metrics,
+        )
+        live_overlay = get_live_overlay(metrics)
+
         sec = _recent_sec_risk(symbol_clean)
         market = _market_context(sa, sec.get("sector_etf"))
         catalyst = _catalyst_strength(metrics.get("news") or [])
@@ -614,6 +622,8 @@ def install_v2_analysis(sa):
             "fundamental_context": sec,
             "turnover_context": turnover,
             "sip_status": sip_status,
+            "live_stream_status": stream_status,
+            "live_overlay": live_overlay,
         }
 
         try:
