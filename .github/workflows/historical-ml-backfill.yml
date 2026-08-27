@@ -1,5 +1,6 @@
 name: Historical Scanner ML Backfill
 
+# One-time replay trigger marker; future runs remain manual unless explicitly triggered.
 on:
   workflow_dispatch:
     inputs:
