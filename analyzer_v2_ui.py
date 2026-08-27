@@ -145,13 +145,21 @@ def render_v2_decision(st, metrics):
                     f"{_fmt_pct(market.get('sector_move_pct'))}"
                 )
 
-            sip = v2.get("sip_status") or {}
-            if sip.get("available") and str(sip.get("active_feed") or "").upper() == "SIP":
-                st.write("**Live market feed: SIP ACTIVE** · consolidated real-time feed")
+            stream = v2.get("live_stream_status") or {}
+            provider = str(stream.get("provider") or "").lower()
+            if provider == "tradier":
+                stream_status = str(stream.get("status") or "").upper()
+                st.write(
+                    f"**Live market stream: TRADIER CONSOLIDATED** · {stream_status}"
+                )
             else:
-                st.write("**Live market feed: IEX fallback**")
-                if sip.get("error"):
-                    st.caption("SIP entitlement check: " + str(sip.get("error"))[:160])
+                sip = v2.get("sip_status") or {}
+                if sip.get("available") and str(sip.get("active_feed") or "").upper() == "SIP":
+                    st.write("**Live market feed: SIP ACTIVE** · consolidated real-time feed")
+                else:
+                    st.write("**Live market feed: IEX fallback**")
+                    if sip.get("error"):
+                        st.caption("SIP entitlement check: " + str(sip.get("error"))[:160])
 
         catalyst = v2.get("catalyst_strength") or {}
         sec = v2.get("fundamental_context") or {}
