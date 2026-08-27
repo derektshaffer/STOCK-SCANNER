@@ -15,6 +15,7 @@ API_SECRET = os.environ.get("ALPACA_SECRET_KEY", "").strip()
 OUTCOME_DATE = os.environ.get("OUTCOME_DATE", "").strip()
 OUT_DIR = Path(os.environ.get("ANALYZER_OUTCOME_DIR", "analyzer_outcomes"))
 ANALYZER_FEATURE_VERSION = "analyzer-features-v2-consolidated"
+DECISION_SCORE_VERSION = "decision-v2.1-deduped"
 
 
 def _headers():
@@ -345,11 +346,16 @@ def _all_rows():
 
 def _write_calibration():
     all_rows = _all_rows()
-    rows = [
+    feature_rows = [
         row for row in all_rows
         if row.get("feature_version") == ANALYZER_FEATURE_VERSION
     ]
-    legacy_rows_excluded = len(all_rows) - len(rows)
+    legacy_rows_excluded = len(all_rows) - len(feature_rows)
+    rows = [
+        row for row in feature_rows
+        if row.get("decision_score_version") == DECISION_SCORE_VERSION
+    ]
+    legacy_decision_rows_excluded = len(feature_rows) - len(rows)
     calibration_rows = _independent_calibration_rows(rows)
     resolved = [
         row for row in calibration_rows
@@ -385,9 +391,11 @@ def _write_calibration():
     payload = {
         "schema_version": 2,
         "feature_version": ANALYZER_FEATURE_VERSION,
+        "decision_score_version": DECISION_SCORE_VERSION,
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
         "prediction_rows": len(rows),
         "legacy_prediction_rows_excluded": legacy_rows_excluded,
+        "legacy_decision_rows_excluded": legacy_decision_rows_excluded,
         "calibration_rows": len(calibration_rows),
         "calibration_sampling": "one observation per ticker per hour",
         "resolved_60m": len(resolved),
@@ -425,7 +433,8 @@ def _write_calibration():
         encoding="utf-8",
     )
     print(
-        f"Analyzer calibration: rows={len(rows)} legacy_excluded={legacy_rows_excluded} "
+        f"Analyzer calibration: rows={len(rows)} legacy_feature={legacy_rows_excluded} "
+        f"legacy_decision={legacy_decision_rows_excluded} "
         f"resolved60={len(resolved)} ready={payload['calibration_ready']}"
     )
 
