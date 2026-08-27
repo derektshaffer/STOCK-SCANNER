@@ -39,6 +39,8 @@ _load_streamlit_secrets_into_env()
 
 from stock_analyzer import analyze
 from analyzer_v2_ui import render_v2_decision
+from position_exit import build_position_exit_plan
+from live_market_stream import get_live_overlay
 
 AUTO_REFRESH_SECONDS = max(30, int(os.environ.get("ANALYZER_REFRESH_SECONDS", "60") or 60))
 
@@ -512,6 +514,39 @@ with st.container(key="analyzer_controls"):
         if not _COMBINED_WORKSPACE:
             st.caption(f"Refresh every {AUTO_REFRESH_SECONDS}s · use `ALPACA_LIVE_FEED=\"sip\"` for consolidated real-time data when your Alpaca plan supports SIP.")
 
+_position_enabled = st.toggle(
+    "I already own this stock",
+    value=False,
+    key=f"position_owned_{ticker}",
+)
+_position_avg_cost = 0.0
+_position_shares = 0.0
+if _position_enabled:
+    _pc1, _pc2, _pc3 = st.columns([1, 1, 3.2], vertical_alignment="bottom")
+    with _pc1:
+        _position_avg_cost = st.number_input(
+            "Average cost",
+            min_value=0.0,
+            value=0.0,
+            step=0.01,
+            format="%.4f",
+            key=f"position_avg_cost_{ticker}",
+        )
+    with _pc2:
+        _position_shares = st.number_input(
+            "Shares (optional)",
+            min_value=0.0,
+            value=0.0,
+            step=1.0,
+            format="%.4f",
+            key=f"position_shares_{ticker}",
+        )
+    with _pc3:
+        st.caption(
+            "Position mode reuses the trade-plan area below for exit management. "
+            "These inputs stay local to this browser session."
+        )
+
 _existing_result=st.session_state.get("result")
 _result_age=_result_age_seconds(_existing_result)
 _refresh_due=(
@@ -647,8 +682,8 @@ if _trade_age is not None and float(_trade_age) > max(30, AUTO_REFRESH_SECONDS*2
         extra=" The upstream Alpaca feed itself has not reported a newer eligible trade yet."
     st.warning(f"Latest {feed_name or 'market'} trade is {_age_text(_trade_age)}.{extra}")
 
-# Dynamic decision-support trade plan. This can explicitly return WAIT or
-# NO TRADE instead of manufacturing an entry for every ticker.
+# Dynamic decision-support trade plan. Position mode replaces the visible
+# entry plan with an exit-management plan while leaving the entry engine intact.
 plan=r.get("trade_plan") or {}
 if not plan:
     st.error(
@@ -657,121 +692,196 @@ if not plan:
         "Upload the matched trade-plan version of stock_analyzer.py."
     )
     st.stop()
-selected=plan.get("selected") or {}
-status=plan.get("status") or "WAIT"
-status_cls="good" if status=="ENTRY AVAILABLE" else "bad" if status=="NO TRADE" else "warn"
-why=" ".join(plan.get("reasons") or [])
-st.markdown(
-    f'<div class="tradeplan"><div class="k">SUGGESTED TRADE PLAN</div>'
-    f'<div class="tradeaction {status_cls}">{html.escape(plan.get("action") or status)}</div>'
-    f'<div class="tradewhy">{html.escape(why)}</div></div>',
-    unsafe_allow_html=True,
-)
 
-tp=st.columns(7)
-card(tp[0],"ENTRY ZONE",zone_text(selected),str(selected.get("entry_source") or selected.get("breakout_source") or plan.get("preferred_plan") or ""),status_cls)
-card(tp[1],"STOP / INVALIDATION",money(selected.get("stop")),selected.get("stop_reason") or "")
-card(tp[2],"TARGET 1",money(selected.get("target1")),selected.get("target1_reason") or "","good")
-card(tp[3],"TARGET 2",money(selected.get("target2")),selected.get("target2_reason") or "","good")
-card(tp[4],"STRETCH",money(selected.get("stretch_target")),selected.get("stretch_reason") or "")
-card(tp[5],"REWARD / RISK",rr(selected.get("risk_reward")),"to Target 1","good" if (selected.get("risk_reward") or 0)>=1.5 else "warn")
-card(tp[6],"PLAN CONFIDENCE",f'{plan.get("confidence","—")} / 100',plan.get("confidence_label") or "","good" if (plan.get("confidence") or 0)>=75 else "warn")
-
-with st.expander("Trade plan details — pullback vs breakout"):
-    pc1,pc2=st.columns(2)
-    pull=plan.get("pullback") or {}
-    brk=plan.get("breakout") or {}
-    with pc1:
-        st.markdown("#### Pullback plan")
-        st.write(f'**Entry zone:** {zone_text(pull)}')
-        st.write(f'**Entry basis:** {pull.get("entry_source") or "—"}')
-        st.write(f'**Stop / invalidation:** {money(pull.get("stop"))}')
-        st.write(f'**Target 1:** {money(pull.get("target1"))} — {pull.get("target1_reason") or "—"}')
-        st.write(f'**Target 2:** {money(pull.get("target2"))} — {pull.get("target2_reason") or "—"}')
-        st.write(f'**Stretch:** {money(pull.get("stretch_target"))} — {pull.get("stretch_reason") or "—"}')
-        st.write(f'**Reward/risk to T1:** {rr(pull.get("risk_reward"))}')
-    with pc2:
-        st.markdown("#### Breakout plan")
-        st.write(f'**Breakout trigger:** {money(brk.get("breakout_level"))} ({brk.get("breakout_source") or "level"})')
-        st.write(f'**Confirmed entry zone:** {zone_text(brk)}')
-        st.write(f'**Stop / invalidation:** {money(brk.get("stop"))}')
-        st.write(f'**Target 1:** {money(brk.get("target1"))} — {brk.get("target1_reason") or "—"}')
-        st.write(f'**Target 2:** {money(brk.get("target2"))} — {brk.get("target2_reason") or "—"}')
-        st.write(f'**Stretch:** {money(brk.get("stretch_target"))} — {brk.get("stretch_reason") or "—"}')
-        st.write(f'**Reward/risk to T1:** {rr(brk.get("risk_reward"))}')
-        st.caption(brk.get("confirmation") or "")
-
-    histctx=plan.get("historical") or {}
-    cat=plan.get("catalyst") or {}
-    liq=plan.get("liquidity") or {}
-    st.markdown("#### Inputs affecting the plan")
-    ddf=pd.DataFrame([{
-        "ATR 14":money(plan.get("atr")),
-        "ATR %":pp(plan.get("atr_pct")),
-        "Liquidity":liq.get("label"),
-        "Avg $ volume":dollars_compact(liq.get("avg_dollar_volume")),
-        "Nearest support":money(plan.get("nearest_support")),
-        "Support quality":plan.get("nearest_support_quality") or "—",
-        "Nearest resistance":money(plan.get("nearest_resistance")),
-        "Historical analogs":histctx.get("sample_count",0),
-        "Analog relevance":histctx.get("relevance") or "—",
-        "Analog next-day higher":f'{histctx.get("next_day_up_pct"):.1f}%' if histctx.get("next_day_up_pct") is not None else "—",
-        "Median 1d run-up":pp(histctx.get("median_mfe_1d")),
-        "Median 3d run-up":pp(histctx.get("median_mfe_3d")),
-        "Median 1d drawdown":pp(histctx.get("median_mae_1d")),
-        "Catalyst bias":cat.get("label") or "NEUTRAL",
-    }])
-    st.dataframe(ddf,width="stretch",hide_index=True)
-    st.caption(plan.get("method_note") or "")
-
-st.markdown('<div class="section">Momentum & liquidity</div>',unsafe_allow_html=True)
-liq=r.get("liquidity") or {}
-df=pd.DataFrame([{
-    "5m %":r.get("momentum_5m"),"15m %":r.get("momentum_15m"),"30m %":r.get("momentum_30m"),
-    "VWAP Ext %":r.get("vwap_extension_pct"),"From High %":r.get("from_high_pct"),"ATR 14 %":r.get("atr_14_pct"),
-    "Spread %":r.get("spread_pct"),"Volume Pace":r.get("volume_pace"),"Liquidity":liq.get("label"),
-    "Avg $ Volume":dollars_compact(liq.get("avg_dollar_volume"))
-}])
-st.dataframe(df,width="stretch",hide_index=True)
-
-def level_table(rows):
-    columns=["Price","Touches","Last touch","Age","Quality","Side"]
-    if not rows:
-        return pd.DataFrame(columns=columns)
-    out=[]
-    for row in rows:
-        out.append({
-            "Price":row.get("price"),
-            "Touches":row.get("touches"),
-            "Last touch":row.get("last_touch_label") or "—",
-            "Age":row.get("age") or "—",
-            "Quality":f'{row.get("quality") or "—"} ({row.get("quality_score",0)}/100)',
-            "Side":str(row.get("side") or "").title(),
-        })
-    return pd.DataFrame(out,columns=columns)
-
-scol,rcol=st.columns(2)
-with scol:
-    st.markdown('<div class="section">Support</div>',unsafe_allow_html=True)
-    sup=r.get("supports") or []
-    st.dataframe(
-        level_table(sup),
-        width="stretch",
-        hide_index=True,
-        column_config={"Price":st.column_config.NumberColumn(format="$%.2f")},
+_position_plan = None
+if _position_enabled and float(_position_avg_cost or 0) > 0:
+    _position_metrics = dict(r)
+    try:
+        _position_overlay = get_live_overlay(r) or {}
+    except Exception:
+        _position_overlay = {}
+    for _key in ("price", "bid", "ask", "spread_pct", "vwap", "session_volume"):
+        if _position_overlay.get(_key) is not None:
+            _position_metrics[_key] = _position_overlay.get(_key)
+    _position_plan = build_position_exit_plan(
+        _position_metrics,
+        _position_avg_cost,
+        _position_shares if float(_position_shares or 0) > 0 else None,
     )
-with rcol:
-    st.markdown('<div class="section">Resistance</div>',unsafe_allow_html=True)
-    res=r.get("resistances") or []
-    st.dataframe(
-        level_table(res),
-        width="stretch",
-        hide_index=True,
-        column_config={"Price":st.column_config.NumberColumn(format="$%.2f")},
-    )
-st.caption("Last touch = most recent regular-session test of the level. Recent tests use 1-minute bars; older tests use 5-minute bars as a fallback. Times are Eastern (ET).")
 
-h=r.get("historical_analogs") or {}
+if _position_enabled and not _position_plan:
+    st.info("Enter your average cost above to build a position exit plan.")
+
+if _position_plan and _position_plan.get("status") == "ok":
+    _pread = str(_position_plan.get("read") or "WATCH")
+    _pcls = (
+        "good" if _pread == "HOLD"
+        else "bad" if _pread in {"EXIT", "REDUCE"}
+        else "warn"
+    )
+    _pwhy = " ".join(_position_plan.get("reasons") or [])
+    st.markdown(
+        f'<div class="tradeplan"><div class="k">POSITION EXIT PLAN</div>'
+        f'<div class="tradeaction {_pcls}">{html.escape(_position_plan.get("action") or _pread)}</div>'
+        f'<div class="tradewhy">{html.escape(_pwhy)}</div></div>',
+        unsafe_allow_html=True,
+    )
+
+    _pnl_note = f'{pp(_position_plan.get("pnl_pct"))} vs avg cost'
+    if _position_plan.get("total_pnl") is not None:
+        _pnl_note += f' · total {money(_position_plan.get("total_pnl"))}'
+    _protect_note = (
+        f'{pp(_position_plan.get("protective_exit_return_pct"))} vs cost · '
+        f'{_position_plan.get("room_to_protective_pct", 0):.1f}% below current'
+    )
+    _trail_note = (
+        f'{pp(_position_plan.get("trailing_exit_return_pct"))} vs cost · '
+        f'{_position_plan.get("room_to_trailing_pct", 0):.1f}% below current'
+    )
+
+    _pcards = st.columns(5)
+    card(
+        _pcards[0],
+        "POSITION P/L",
+        pp(_position_plan.get("pnl_pct")),
+        f'Avg cost {money(_position_plan.get("average_cost"))}'
+        + (
+            f' · {float(_position_plan.get("shares")):,.0f} shares'
+            if _position_plan.get("shares") is not None else ""
+        ),
+        "good" if (_position_plan.get("pnl_pct") or 0) >= 0 else "bad",
+    )
+    card(
+        _pcards[1],
+        "PROTECTIVE EXIT",
+        money(_position_plan.get("protective_exit")),
+        _protect_note,
+        "warn",
+    )
+    card(
+        _pcards[2],
+        "FIRST TRIM",
+        money(_position_plan.get("first_trim")),
+        str(_position_plan.get("first_trim_reason") or ""),
+        "good",
+    )
+    card(
+        _pcards[3],
+        "STRETCH EXIT",
+        money(_position_plan.get("stretch_target")),
+        str(_position_plan.get("stretch_reason") or ""),
+        "good",
+    )
+    card(
+        _pcards[4],
+        "TRAILING EXIT",
+        money(_position_plan.get("trailing_exit")),
+        _trail_note,
+        "warn",
+    )
+
+    with st.expander("Exit plan details"):
+        _ec1, _ec2 = st.columns(2)
+        with _ec1:
+            st.markdown("#### Position")
+            st.write(f'**Current price:** {money(_position_plan.get("price"))}')
+            st.write(f'**Average cost:** {money(_position_plan.get("average_cost"))}')
+            st.write(f'**P/L per share:** {money(_position_plan.get("pnl_per_share"))}')
+            if _position_plan.get("shares") is not None:
+                st.write(f'**Shares:** {float(_position_plan.get("shares")):,.0f}')
+                st.write(f'**Market value:** {money(_position_plan.get("market_value"))}')
+                st.write(f'**Estimated P/L:** {money(_position_plan.get("total_pnl"))}')
+        with _ec2:
+            st.markdown("#### Exit levels")
+            st.write(
+                f'**Protective exit:** {money(_position_plan.get("protective_exit"))} '
+                f'({_position_plan.get("room_to_protective_pct", 0):.1f}% below current)'
+            )
+            st.write(
+                f'**Trailing exit:** {money(_position_plan.get("trailing_exit"))} '
+                f'({_position_plan.get("room_to_trailing_pct", 0):.1f}% below current)'
+            )
+            st.write(
+                f'**First trim:** {money(_position_plan.get("first_trim"))} — '
+                f'{_position_plan.get("first_trim_reason") or "—"}'
+            )
+            st.write(
+                f'**Second target:** {money(_position_plan.get("second_target"))} — '
+                f'{_position_plan.get("second_target_reason") or "—"}'
+            )
+            st.write(
+                f'**Stretch exit:** {money(_position_plan.get("stretch_target"))} — '
+                f'{_position_plan.get("stretch_reason") or "—"}'
+            )
+        st.caption(_position_plan.get("method_note") or "")
+else:
+    selected=plan.get("selected") or {}
+    status=plan.get("status") or "WAIT"
+    status_cls="good" if status=="ENTRY AVAILABLE" else "bad" if status=="NO TRADE" else "warn"
+    why=" ".join(plan.get("reasons") or [])
+    st.markdown(
+        f'<div class="tradeplan"><div class="k">SUGGESTED TRADE PLAN</div>'
+        f'<div class="tradeaction {status_cls}">{html.escape(plan.get("action") or status)}</div>'
+        f'<div class="tradewhy">{html.escape(why)}</div></div>',
+        unsafe_allow_html=True,
+    )
+
+    tp=st.columns(7)
+    card(tp[0],"ENTRY ZONE",zone_text(selected),str(selected.get("entry_source") or selected.get("breakout_source") or plan.get("preferred_plan") or ""),status_cls)
+    card(tp[1],"STOP / INVALIDATION",money(selected.get("stop")),selected.get("stop_reason") or "")
+    card(tp[2],"TARGET 1",money(selected.get("target1")),selected.get("target1_reason") or "","good")
+    card(tp[3],"TARGET 2",money(selected.get("target2")),selected.get("target2_reason") or "","good")
+    card(tp[4],"STRETCH",money(selected.get("stretch_target")),selected.get("stretch_reason") or "")
+    card(tp[5],"REWARD / RISK",rr(selected.get("risk_reward")),"to Target 1","good" if (selected.get("risk_reward") or 0)>=1.5 else "warn")
+    card(tp[6],"PLAN CONFIDENCE",f'{plan.get("confidence","—")} / 100',plan.get("confidence_label") or "","good" if (plan.get("confidence") or 0)>=75 else "warn")
+
+    with st.expander("Trade plan details — pullback vs breakout"):
+        pc1,pc2=st.columns(2)
+        pull=plan.get("pullback") or {}
+        brk=plan.get("breakout") or {}
+        with pc1:
+            st.markdown("#### Pullback plan")
+            st.write(f'**Entry zone:** {zone_text(pull)}')
+            st.write(f'**Entry basis:** {pull.get("entry_source") or "—"}')
+            st.write(f'**Stop / invalidation:** {money(pull.get("stop"))}')
+            st.write(f'**Target 1:** {money(pull.get("target1"))} — {pull.get("target1_reason") or "—"}')
+            st.write(f'**Target 2:** {money(pull.get("target2"))} — {pull.get("target2_reason") or "—"}')
+            st.write(f'**Stretch:** {money(pull.get("stretch_target"))} — {pull.get("stretch_reason") or "—"}')
+            st.write(f'**Reward/risk to T1:** {rr(pull.get("risk_reward"))}')
+        with pc2:
+            st.markdown("#### Breakout plan")
+            st.write(f'**Breakout trigger:** {money(brk.get("breakout_level"))} ({brk.get("breakout_source") or "level"})')
+            st.write(f'**Confirmed entry zone:** {zone_text(brk)}')
+            st.write(f'**Stop / invalidation:** {money(brk.get("stop"))}')
+            st.write(f'**Target 1:** {money(brk.get("target1"))} — {brk.get("target1_reason") or "—"}')
+            st.write(f'**Target 2:** {money(brk.get("target2"))} — {brk.get("target2_reason") or "—"}')
+            st.write(f'**Stretch:** {money(brk.get("stretch_target"))} — {brk.get("stretch_reason") or "—"}')
+            st.write(f'**Reward/risk to T1:** {rr(brk.get("risk_reward"))}')
+            st.caption(brk.get("confirmation") or "")
+
+        histctx=plan.get("historical") or {}
+        cat=plan.get("catalyst") or {}
+        liq=plan.get("liquidity") or {}
+        st.markdown("#### Inputs affecting the plan")
+        ddf=pd.DataFrame([{
+            "ATR 14":money(plan.get("atr")),
+            "ATR %":pp(plan.get("atr_pct")),
+            "Liquidity":liq.get("label"),
+            "Avg $ volume":dollars_compact(liq.get("avg_dollar_volume")),
+            "Nearest support":money(plan.get("nearest_support")),
+            "Support quality":plan.get("nearest_support_quality") or "—",
+            "Nearest resistance":money(plan.get("nearest_resistance")),
+            "Historical analogs":histctx.get("sample_count",0),
+            "Analog relevance":histctx.get("relevance") or "—",
+            "Analog next-day higher":f'{histctx.get("next_day_up_pct"):.1f}%' if histctx.get("next_day_up_pct") is not None else "—",
+            "Median 1d run-up":pp(histctx.get("median_mfe_1d")),
+            "Median 3d run-up":pp(histctx.get("median_mfe_3d")),
+            "Median 1d drawdown":pp(histctx.get("median_mae_1d")),
+            "Catalyst bias":cat.get("label") or "NEUTRAL",
+        }])
+        st.dataframe(ddf,width="stretch",hide_index=True)
+        st.caption(plan.get("method_note") or "")
+
 st.markdown('<div class="section">Historical spike analogs</div>',unsafe_allow_html=True)
 if h.get("status")=="ok":
     sm=h.get("summary") or {}; hc=st.columns(4)
