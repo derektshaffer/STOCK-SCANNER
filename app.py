@@ -223,7 +223,7 @@ workspace_now_et, workspace_live, workspace_session = _workspace_market_status()
 brand_col, nav_col, status_col = st.columns(
     [1.0, 2.35, 1.15],
     gap="small",
-    vertical_alignment="center",
+    vertical_alignment="top",
 )
 with brand_col:
     st.markdown(
@@ -255,6 +255,63 @@ with status_col:
         '</div>',
         unsafe_allow_html=True,
     )
+
+
+def _install_workspace_selector_cleanup():
+    """Hide Streamlit's native radio indicator; the segment highlight is enough."""
+    components.html(
+        """
+        <script>
+        (() => {
+          const p = window.parent;
+          const d = p.document;
+
+          function clean() {
+            d.querySelectorAll('.st-key-app_view label').forEach((label) => {
+              const input = label.querySelector('input[type="radio"]');
+              if (!input) return;
+
+              // Hide the entire native BaseWeb radio-control branch, not only
+              // the input node. Streamlit currently renders the visible dot in
+              // a sibling inside this branch.
+              let node = input;
+              while (node.parentElement && node.parentElement !== label) {
+                node = node.parentElement;
+              }
+              if (node && node !== label) {
+                node.style.setProperty('display', 'none', 'important');
+                node.style.setProperty('width', '0', 'important');
+                node.style.setProperty('height', '0', 'important');
+                node.style.setProperty('margin', '0', 'important');
+                node.style.setProperty('padding', '0', 'important');
+                node.style.setProperty('gap', '0', 'important');
+              }
+
+              input.style.setProperty('position', 'absolute', 'important');
+              input.style.setProperty('opacity', '0', 'important');
+              input.style.setProperty('width', '1px', 'important');
+              input.style.setProperty('height', '1px', 'important');
+            });
+          }
+
+          const old = p.__workspaceSelectorCleanup;
+          if (old && old.observer) {
+            try { old.observer.disconnect(); } catch (_) {}
+          }
+
+          clean();
+          const observer = new MutationObserver(() => p.requestAnimationFrame(clean));
+          if (d.body) observer.observe(d.body, {childList: true, subtree: true});
+          p.__workspaceSelectorCleanup = {observer};
+        })();
+        </script>
+        """,
+        height=0,
+        scrolling=False,
+    )
+
+
+_install_workspace_selector_cleanup()
 
 # Returning from the Analyzer should be an instant view switch. Do not let an
 # overdue automatic scan run inside this same full-app rerun; give Streamlit a
