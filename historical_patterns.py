@@ -70,7 +70,7 @@ def _label(gap_pct, close_from_open, close_location, day_pct):
 
 def _intraday_stats(symbol, now, candidate_dates, fetch_bars, et):
     try:
-        bars5, source = _cached(fetch_bars, symbol, "5Min", now, 70, 10000)
+        bars5, source = _cached(fetch_bars, symbol, "5Min", now, 540, 10000)
     except Exception:
         return {"status": "unavailable", "sample_count": 0}
 
@@ -160,7 +160,7 @@ def _intraday_stats(symbol, now, candidate_dates, fetch_bars, et):
             "opening_breakout_failed": breakout_failed,
             "session_high_bucket": high_bucket,
         })
-        if len(rows) >= 12:
+        if len(rows) >= 24:
             break
 
     if len(rows) < 3:
@@ -200,7 +200,7 @@ def analyze_historical_patterns(symbol, now, current_day_pct, current_gap_pct, c
     and when matched sessions most often made their high.
     """
     try:
-        daily, source = _cached(fetch_bars, symbol, "1Day", now, 450, 450)
+        daily, source = _cached(fetch_bars, symbol, "1Day", now, 900, 1000)
     except Exception:
         return {"status": "unavailable", "sample_count": 0, "matches": []}
 
@@ -272,9 +272,27 @@ def analyze_historical_patterns(symbol, now, current_day_pct, current_gap_pct, c
         })
 
     candidates.sort(key=lambda r: r["similarity_score"])
-    matches = candidates[:15]
+
+    # Use a larger analog sample only when the additional days are still
+    # reasonably close to today's setup. Otherwise keep the sample tighter
+    # instead of diluting it with weak comparisons.
+    close_candidates = [
+        r for r in candidates
+        if r.get("similarity_score") is not None and r["similarity_score"] <= 1.35
+    ]
+    matches = close_candidates[:30] if len(close_candidates) >= 12 else candidates[:15]
     if len(matches) < 4:
         return {"status": "insufficient_history", "source": source, "sample_count": len(matches), "matches": matches}
+
+    sample_quality = (
+        "HIGH" if len(matches) >= 25
+        else "MODERATE" if len(matches) >= 15
+        else "LOW"
+    )
+    median_similarity = (
+        round(median([r["similarity_score"] for r in matches]), 3)
+        if matches else None
+    )
 
     gap_rows = [r for r in matches if (r.get("gap_pct") or 0) >= 2]
     tested = [r for r in matches if r.get("breakout_tested")]
@@ -286,7 +304,7 @@ def analyze_historical_patterns(symbol, now, current_day_pct, current_gap_pct, c
     breakout_follow = _rate(tested, "breakout_follow")
     breakout_failure = _rate(tested, "breakout_failed")
 
-    intraday = _intraday_stats(symbol, now, [r["date"] for r in candidates[:40]], fetch_bars, et)
+    intraday = _intraday_stats(symbol, now, [r["date"] for r in candidates[:60]], fetch_bars, et)
 
     setup_label = _label(current_gap, current_move - current_gap, None, current_move)
     bias = 0.0
@@ -330,6 +348,9 @@ def analyze_historical_patterns(symbol, now, current_day_pct, current_gap_pct, c
         "bias_label": bias_label,
         "bias_score": bias,
         "sample_count": len(matches),
+        "sample_quality": sample_quality,
+        "median_similarity_score": median_similarity,
+        "history_lookback_days": 900,
         "gap_sample_count": len(gap_rows),
         "breakout_test_count": len(tested),
         "next_day_up_pct": next_up,
@@ -343,5 +364,5 @@ def analyze_historical_patterns(symbol, now, current_day_pct, current_gap_pct, c
         "median_same_day_pullback_pct": _median(matches, "same_day_pullback_pct"),
         "intraday": intraday,
         "notes": notes,
-        "matches": matches[:10],
+        "matches": matches[:15],
     }
