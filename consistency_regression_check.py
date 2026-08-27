@@ -429,6 +429,87 @@ def test_entry_plan_status_is_safety_cap_not_double_count():
     assert components.get("plan_status_cap", 0) < 0, components
 
 
+def _position_metrics(**overrides):
+    metrics = {
+        "price": 10.0,
+        "vwap": 9.8,
+        "vwap_position": "ABOVE",
+        "vwap_extension_pct": 2.04,
+        "momentum_5m": 0.5,
+        "momentum_15m": 1.0,
+        "day_pct": 18.0,
+        "from_high_pct": 2.0,
+        "score": 72.0,
+        "atr_14": 0.50,
+        "atr_14_pct": 5.0,
+        "liquidity": {"label": "HIGH"},
+        "supports": [
+            {"price": 9.45, "quality": "Strong", "quality_score": 78},
+            {"price": 8.90, "quality": "Moderate", "quality_score": 50},
+        ],
+        "resistances": [
+            {"price": 10.55, "quality": "Moderate", "quality_score": 58},
+            {"price": 11.20, "quality": "Strong", "quality_score": 75},
+        ],
+        "day_high": 10.60,
+        "trade_plan": {
+            "selected": {
+                "target1": 10.60,
+                "target2": 11.15,
+                "stretch_target": 11.80,
+            }
+        },
+        "decision_v2": {"potential_score": 70},
+    }
+    metrics.update(overrides)
+    return metrics
+
+
+def test_position_exit_profitable_hold():
+    from position_exit import build_position_exit_plan
+
+    plan = build_position_exit_plan(_position_metrics(), 8.50, 100)
+    assert plan["status"] == "ok", plan
+    assert plan["read"] in {"HOLD", "TRIM"}, plan
+    assert plan["pnl_pct"] > 0, plan
+    assert plan["total_pnl"] == 150.0, plan
+    assert plan["protective_exit"] < plan["price"], plan
+    assert plan["trailing_exit"] < plan["price"], plan
+    assert plan["trailing_exit"] >= plan["protective_exit"], plan
+    assert plan["first_trim"] > plan["price"], plan
+
+
+def test_position_exit_underwater_weakness():
+    from position_exit import build_position_exit_plan
+
+    metrics = _position_metrics(
+        price=9.0,
+        vwap=9.4,
+        vwap_position="BELOW",
+        vwap_extension_pct=-4.26,
+        momentum_5m=-1.0,
+        momentum_15m=-2.0,
+        score=44.0,
+        supports=[{"price": 8.75, "quality": "Moderate", "quality_score": 50}],
+        resistances=[{"price": 9.60, "quality": "Moderate", "quality_score": 55}],
+        day_high=9.7,
+    )
+    plan = build_position_exit_plan(metrics, 10.0)
+    assert plan["status"] == "ok", plan
+    assert plan["read"] in {"EXIT", "REDUCE"}, plan
+    assert plan["pnl_pct"] < 0, plan
+    assert "EXIT" in plan["action"] or "REDUCE" in plan["action"], plan
+
+
+def test_position_exit_profit_floor():
+    from position_exit import build_position_exit_plan
+
+    plan = build_position_exit_plan(_position_metrics(price=12.0), 9.0)
+    assert plan["status"] == "ok", plan
+    assert plan["protective_exit"] > 9.0, plan
+    assert plan["protective_exit_return_pct"] > 0, plan
+
+
 if __name__ == "__main__":
     tests = [
         test_analyzer_prefers_tradier,
@@ -443,6 +524,9 @@ if __name__ == "__main__":
         test_potential_does_not_recount_setup_score,
         test_entry_does_not_recount_spread_after_liquidity,
         test_entry_plan_status_is_safety_cap_not_double_count,
+        test_position_exit_profitable_hold,
+        test_position_exit_underwater_weakness,
+        test_position_exit_profit_floor,
     ]
     for test in tests:
         test()
