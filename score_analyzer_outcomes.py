@@ -205,26 +205,106 @@ def _bucket(value):
     return "0-49"
 
 
+def _horizon_stats(values):
+    if not values:
+        return {
+            "n": 0,
+            "higher_rate": None,
+            "hit_3pct_rate": None,
+            "avg_return_pct": None,
+            "median_return_pct": None,
+        }
+    return {
+        "n": len(values),
+        "higher_rate": round(sum(v > 0 for v in values) / len(values) * 100.0, 1),
+        "hit_3pct_rate": round(sum(v >= 3 for v in values) / len(values) * 100.0, 1),
+        "avg_return_pct": round(sum(values) / len(values), 3),
+        "median_return_pct": round(statistics.median(values), 3),
+    }
+
+
 def _calibrate(rows, score_field):
     groups = {}
     for row in rows:
-        ret = _num((row.get("outcomes") or {}).get("return_60m_pct"))
         bucket = _bucket(row.get(score_field))
-        if ret is None or bucket is None:
+        if bucket is None:
             continue
-        g = groups.setdefault(bucket, [])
-        g.append(ret)
+        g = groups.setdefault(
+            bucket,
+            {
+                "15m": [],
+                "30m": [],
+                "60m": [],
+                "target_wins": 0,
+                "target_losses": 0,
+            },
+        )
+        outcomes = row.get("outcomes") or {}
+        for mins in (15, 30, 60):
+            value = _num(outcomes.get(f"return_{mins}m_pct"))
+            if value is not None:
+                g[f"{mins}m"].append(value)
+        touch = outcomes.get("target1_first_touch")
+        if touch == "target":
+            g["target_wins"] += 1
+        elif touch == "stop":
+            g["target_losses"] += 1
 
     out = {}
-    for bucket, values in groups.items():
+    for bucket, g in groups.items():
+        s15 = _horizon_stats(g["15m"])
+        s30 = _horizon_stats(g["30m"])
+        s60 = _horizon_stats(g["60m"])
+        target_n = g["target_wins"] + g["target_losses"]
         out[bucket] = {
-            "n": len(values),
-            "higher_60m_rate": round(sum(v > 0 for v in values) / len(values) * 100.0, 1),
-            "hit_3pct_60m_rate": round(sum(v >= 3 for v in values) / len(values) * 100.0, 1),
-            "avg_return_60m_pct": round(sum(values) / len(values), 3),
-            "median_return_60m_pct": round(statistics.median(values), 3),
+            # Backward-compatible headline fields.
+            "n": s60["n"],
+            "higher_60m_rate": s60["higher_rate"],
+            "hit_3pct_60m_rate": s60["hit_3pct_rate"],
+            "avg_return_60m_pct": s60["avg_return_pct"],
+            "median_return_60m_pct": s60["median_return_pct"],
+            # Richer calibration for deciding whether a score is genuinely useful.
+            "return_15m": s15,
+            "return_30m": s30,
+            "return_60m": s60,
+            "target_stop_n": target_n,
+            "target_before_stop_rate": (
+                round(g["target_wins"] / target_n * 100.0, 1)
+                if target_n else None
+            ),
         }
     return out
+
+
+def _calibration_stage(resolved_60m):
+    n = int(resolved_60m or 0)
+    if n < 30:
+        return {
+            "stage": "COLLECTING",
+            "next_threshold": 30,
+            "remaining": 30 - n,
+            "message": "Not enough resolved observations to tune score weights yet.",
+        }
+    if n < 100:
+        return {
+            "stage": "EARLY READ",
+            "next_threshold": 100,
+            "remaining": 100 - n,
+            "message": "Enough for an early read, but keep weights unchanged unless separation is very clear.",
+        }
+    if n < 300:
+        return {
+            "stage": "USEFUL",
+            "next_threshold": 300,
+            "remaining": 300 - n,
+            "message": "Useful calibration sample; score-band comparisons are becoming meaningful.",
+        }
+    return {
+        "stage": "STRONGER SAMPLE",
+        "next_threshold": None,
+        "remaining": 0,
+        "message": "Several hundred resolved observations are available for evidence-based tuning.",
+    }
 
 
 def _all_rows():
@@ -263,6 +343,7 @@ def _write_calibration():
         "prediction_rows": len(rows),
         "resolved_60m": len(resolved),
         "calibration_ready": len(resolved) >= 30,
+        "calibration_progress": _calibration_stage(len(resolved)),
         "potential_calibration": _calibrate(rows, "potential_score"),
         "entry_calibration": _calibrate(rows, "entry_readiness"),
         "evidence_calibration": _calibrate(rows, "evidence_strength"),
