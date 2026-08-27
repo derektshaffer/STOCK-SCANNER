@@ -435,8 +435,9 @@ def render_ticker_search(asset_choices, current_symbol):
     # In Streamlit's native selectbox, typing filters the options and Enter
     # accepts the currently highlighted match (normally the first result).
     if selected_symbol and selected_symbol != st.session_state.get("ticker_search_request"):
+        # This core now runs inside the Analyzer fragment. Updating the request
+        # is enough; the remainder of this same fragment pass analyzes it.
         st.session_state["ticker_search_request"] = selected_symbol
-        st.rerun(scope="app")
 
     if not _COMBINED_WORKSPACE:
         st.caption(f"Currently analyzed: **{current_symbol}**")
@@ -476,22 +477,6 @@ with st.container(key="analyzer_controls"):
         if not _COMBINED_WORKSPACE:
             st.caption(f"Refresh every {AUTO_REFRESH_SECONDS}s · use `ALPACA_LIVE_FEED=\"sip\"` for consolidated real-time data when your Alpaca plan supports SIP.")
 
-@st.fragment(run_every=f"{AUTO_REFRESH_SECONDS}s")
-def _auto_refresh_driver():
-    """Trigger a full app rerun on the refresh interval without looping on first render."""
-    if not st.session_state.get("auto_refresh_enabled", True):
-        return
-    now_ts=time.time()
-    last=st.session_state.get("_auto_refresh_last_rerun")
-    if last is None or now_ts < float(last):
-        st.session_state["_auto_refresh_last_rerun"]=now_ts
-        return
-    if now_ts-float(last) >= max(1, AUTO_REFRESH_SECONDS-0.75):
-        st.session_state["_auto_refresh_last_rerun"]=now_ts
-        st.rerun(scope="app")
-
-_auto_refresh_driver()
-
 _existing_result=st.session_state.get("result")
 _result_age=_result_age_seconds(_existing_result)
 _refresh_due=(
@@ -500,14 +485,29 @@ _refresh_due=(
     and _result_age >= max(1, AUTO_REFRESH_SECONDS-1)
 )
 
-if run or "result" not in st.session_state or st.session_state.get("ticker")!=ticker or _refresh_due:
+_ticker_changed = st.session_state.get("ticker") != ticker
+_initial_analysis = "result" not in st.session_state
+_needs_analysis = run or _initial_analysis or _ticker_changed or _refresh_due
+
+if _needs_analysis:
     try:
-        with st.spinner(f"Analyzing {ticker}…"):
-            st.session_state["result"]=analyze(ticker)
-            st.session_state["ticker"]=ticker
-            st.session_state["ticker_search_request"]=ticker
+        # Background timed refreshes are intentionally silent so the Analyzer
+        # looks like live numbers changing in place. Show a spinner only when
+        # the user explicitly requests/analyzes a ticker.
+        if run or _initial_analysis or _ticker_changed:
+            with st.spinner(f"Analyzing {ticker}…"):
+                _new_result = analyze(ticker)
+        else:
+            _new_result = analyze(ticker)
+        st.session_state["result"] = _new_result
+        st.session_state["ticker"] = ticker
+        st.session_state["ticker_search_request"] = ticker
     except Exception as e:
-        st.error(str(e)); st.stop()
+        # Keep the last good analysis visible if a background refresh fails.
+        if _refresh_due and st.session_state.get("result"):
+            st.session_state["_analyzer_refresh_error"] = str(e)
+        else:
+            st.error(str(e)); st.stop()
 r=st.session_state["result"]
 
 def money(x): return "—" if x is None else f"${x:,.2f}"
