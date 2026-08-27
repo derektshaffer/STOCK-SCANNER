@@ -50,7 +50,6 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-          cache: 'pip'
 
       - name: Install scanner ML dependency
         if: github.event_name == 'workflow_dispatch' || steps.market_time.outputs.in_market_hours == 'true'
