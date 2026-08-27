@@ -281,7 +281,6 @@ def _render_saved_stocks():
             key="save_current_stock",
             disabled=not can_save,
             use_container_width=True,
-            help="Save this ticker for quick access later.",
         ):
             st.session_state["saved_stocks"] = (saved + [current])[:24]
             st.rerun()
@@ -293,7 +292,6 @@ def _render_saved_stocks():
             key="remove_current_stock",
             disabled=not can_remove,
             use_container_width=True,
-            help="Remove this ticker from Saved Stocks.",
         ):
             st.session_state["saved_stocks"] = [x for x in saved if x != current]
             st.rerun()
@@ -317,7 +315,6 @@ def _render_saved_stocks():
                     key=f"saved_stock_{start+i}_{symbol}",
                     type="primary" if symbol == current else "secondary",
                     use_container_width=True,
-                    help=f"Analyze {symbol}",
                 ):
                     _activate_saved_stock(symbol)
                     st.rerun()
