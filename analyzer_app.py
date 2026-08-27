@@ -4,6 +4,7 @@ import runpy
 import streamlit as st
 import streamlit.components.v1 as components
 
+from glass_theme import inject_glass_theme
 from scanner_expand import install_scanner_expander
 
 # Compatibility entrypoint for deployments configured to launch analyzer_app.py.
@@ -948,23 +949,37 @@ def _install_working_button_transition():
             }
           }
 
-          function setWorking(button) {
+          function setWorking(button, preserveScanner) {
             if (!button || button.dataset.stockWorking === '1') return;
             button.dataset.stockWorking = '1';
             button.setAttribute('aria-busy', 'true');
-            button.style.cursor = 'wait';
-            button.style.pointerEvents = 'none';
+            button.classList.add('stock-analyze-loading');
+            button.style.setProperty('cursor', 'wait', 'important');
+            button.style.setProperty('pointer-events', 'none', 'important');
+            button.style.setProperty(
+              'background',
+              'linear-gradient(145deg, #ffd75b 0%, #e7a928 100%)',
+              'important'
+            );
+            button.style.setProperty('border-color', 'rgba(255,214,91,.92)', 'important');
+            button.style.setProperty('color', '#211800', 'important');
+            button.querySelectorAll('*').forEach((node) => {
+              node.style.setProperty('color', '#211800', 'important');
+              node.style.setProperty('fill', '#211800', 'important');
+            });
             const textNode = button.querySelector('p') || button.querySelector('span') || button;
-            if (textNode) textNode.textContent = 'Working...';
-            preserveScannerDuringAnalysis();
+            if (textNode) textNode.textContent = 'Analyzing...';
+            if (preserveScanner) preserveScannerDuringAnalysis();
           }
 
           const capture = (event) => {
             const button = event.target.closest && event.target.closest('button');
             if (!button) return;
             const text = String(button.textContent || '').trim();
-            if (!/^Analyze\s+[A-Z0-9.\-]+/i.test(text)) return;
-            setWorking(button);
+            const scannerAnalyze = /^Analyze\s+[A-Z0-9.\-]+/i.test(text);
+            const manualAnalyze = /^Analyze$/i.test(text);
+            if (!scannerAnalyze && !manualAnalyze) return;
+            setWorking(button, scannerAnalyze);
           };
 
           d.addEventListener('click', capture, true);
@@ -1013,9 +1028,15 @@ def _finish_transition_cleanup():
     )
 
 
+# analyzer_app.py is the Streamlit Cloud compatibility entrypoint. Its legacy
+# presentation CSS is emitted after app.py, so re-apply the shared glass theme
+# here to guarantee the new workspace theme wins in the final cascade.
+inject_glass_theme()
+
 if view == "Momentum Scanner":
     install_scanner_expander()
     _install_scanner_interactions()
     _install_working_button_transition()
 else:
     _finish_transition_cleanup()
+    _install_working_button_transition()
