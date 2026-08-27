@@ -11,7 +11,8 @@ from datetime import datetime
 from pathlib import Path
 from statistics import mean
 
-MODEL_VERSION = "scanner-ml-v1"
+MODEL_VERSION = "scanner-ml-v2"
+CURRENT_FEATURE_VERSION = "scanner-features-v2-consolidated"
 MODEL_TYPE = "XGBoost"
 TARGET_DESCRIPTION = ">= +3% at 60 minutes"
 
@@ -41,7 +42,7 @@ FEATURES = [
     "distance_from_vwap_pct",
     "above_vwap",
     "log_liquidity",
-    "iex_spread_pct",
+    "spread_pct",
     "expected_volume_fraction_pct",
     "volume_vs_expected_pct",
     "live_confirmation_count",
@@ -102,10 +103,10 @@ def _feature_dict(row, scan_time=None):
         "log_liquidity": (
             math.log1p(max(0.0, liquidity)) if liquidity is not None else None
         ),
-        "iex_spread_pct": _num(
-            row.get("iex_spread_pct")
-            if row.get("iex_spread_pct") is not None
-            else row.get("spread_pct")
+        "spread_pct": _num(
+            row.get("spread_pct")
+            if row.get("spread_pct") is not None
+            else row.get("iex_spread_pct")
         ),
         "expected_volume_fraction_pct": _num(
             row.get("expected_volume_fraction_pct")
@@ -134,6 +135,8 @@ def _extract_observations(payload):
 
     out = []
     for row in payload.get("observations") or []:
+        if row.get("feature_version") != CURRENT_FEATURE_VERSION:
+            continue
         return_60 = _num(row.get("return_60m_pct"))
         if return_60 is None:
             continue
@@ -609,8 +612,10 @@ def apply_scanner_ml(rows, now_et):
         training_rows
     )
     meta.update(source_meta)
+    meta["feature_version"] = CURRENT_FEATURE_VERSION
 
     for row in rows:
+        row["feature_version"] = CURRENT_FEATURE_VERSION
         row["ml_model_version"] = MODEL_VERSION
         row["ml_target"] = TARGET_DESCRIPTION
         row["ml_validated"] = bool(
