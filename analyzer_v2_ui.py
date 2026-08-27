@@ -15,6 +15,23 @@ def _fmt_int(value):
     except Exception:
         return "—"
 
+def _component_line(components, ordered_labels):
+    if not isinstance(components, dict):
+        return None
+    parts = []
+    for key, label in ordered_labels:
+        value = components.get(key)
+        try:
+            value = float(value)
+        except Exception:
+            continue
+        if key != "base" and abs(value) < 0.05:
+            continue
+        text = f"{value:.1f}" if key == "base" else f"{value:+.1f}"
+        parts.append(f"{label} {text}")
+    return " · ".join(parts) if parts else None
+
+
 def _signal_time(value):
     try:
         dt = datetime.fromisoformat(str(value))
@@ -116,6 +133,20 @@ def render_v2_decision(st, metrics):
                     st.write(f"• {reason}")
             else:
                 st.write("• No strong upside drivers identified yet.")
+            potential_makeup = _component_line(
+                v2.get("potential_components"),
+                [
+                    ("base", "Base"),
+                    ("technical_momentum", "Technical"),
+                    ("historical_analogs", "History"),
+                    ("validated_ml", "ML"),
+                    ("catalyst", "Catalyst"),
+                    ("market_sector", "Market"),
+                    ("dilution", "Dilution"),
+                ],
+            )
+            if potential_makeup:
+                st.caption("Score makeup · " + potential_makeup)
 
             blockers = v2.get("entry_blockers") or []
             st.markdown("#### Entry timing")
@@ -124,6 +155,21 @@ def render_v2_decision(st, metrics):
                     st.write(f"• {blocker}")
             else:
                 st.write("• No major entry blockers detected.")
+            entry_makeup = _component_line(
+                v2.get("entry_components"),
+                [
+                    ("base", "Base"),
+                    ("trigger_proximity", "Trigger"),
+                    ("reward_risk", "R/R"),
+                    ("vwap", "VWAP"),
+                    ("momentum", "Momentum"),
+                    ("execution_quality", "Execution"),
+                    ("extension", "Extension"),
+                    ("plan_status_cap", "Plan cap"),
+                ],
+            )
+            if entry_makeup:
+                st.caption("Score makeup · " + entry_makeup)
 
         with ec:
             st.markdown("#### Evidence quality")
