@@ -366,6 +366,7 @@ def run_scanner():
     if tradier_token:
         env["TRADIER_ACCESS_TOKEN"] = tradier_token
 
+    started = time.perf_counter()
     try:
         p = subprocess.run(
             [sys.executable, "stock_scanner.py"],
@@ -384,11 +385,17 @@ def run_scanner():
         error = p.stderr.strip() or p.stdout.strip() or "Unknown scanner error"
         return False, error[-3000:]
 
+    elapsed = time.perf_counter() - started
+    st.session_state["scanner_last_runtime_seconds"] = round(elapsed, 1)
+
     return (
         SCAN_FILE.exists(),
-        "Fresh scan complete."
+        f"Fresh scan complete in {elapsed:.1f}s."
         if SCAN_FILE.exists()
-        else "Scanner ran, but latest_scan.json was not created.",
+        else (
+            "Scanner ran, but latest_scan.json was not created "
+            f"(runtime {elapsed:.1f}s)."
+        ),
     )
 
 
