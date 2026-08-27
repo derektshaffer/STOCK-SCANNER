@@ -14,6 +14,7 @@ import json
 import math
 import os
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from collections import Counter, defaultdict
@@ -22,20 +23,26 @@ from pathlib import Path
 from statistics import median
 from zoneinfo import ZoneInfo
 
+from tradier_live import get_history_bars, get_timesales_bars, post_quotes
+
 REPLAY_VERSION = "historical-scanner-replay-v1"
 ET = ZoneInfo("America/New_York")
 
-DEFAULT_TRADING_DAYS = int(os.environ.get("REPLAY_TRADING_DAYS", "30") or 30)
-DEFAULT_UNIVERSE_SIZE = int(os.environ.get("REPLAY_UNIVERSE_SIZE", "450") or 450)
+DEFAULT_TRADING_DAYS = int(os.environ.get("REPLAY_TRADING_DAYS", "20") or 20)
+DEFAULT_UNIVERSE_SIZE = int(os.environ.get("REPLAY_UNIVERSE_SIZE", "300") or 300)
 DEFAULT_CANDIDATES_PER_SCAN = int(
     os.environ.get("REPLAY_CANDIDATES_PER_SCAN", "20") or 20
 )
 DEFAULT_SCAN_STEP_MINUTES = int(
     os.environ.get("REPLAY_SCAN_STEP_MINUTES", "10") or 10
 )
-MAX_UNION_SYMBOLS = int(os.environ.get("REPLAY_MAX_UNION_SYMBOLS", "1000") or 1000)
-BAR_CHUNK_SIZE = int(os.environ.get("REPLAY_BAR_CHUNK_SIZE", "20") or 20)
-DAILY_CHUNK_SIZE = int(os.environ.get("REPLAY_DAILY_CHUNK_SIZE", "100") or 100)
+MAX_UNION_SYMBOLS = int(os.environ.get("REPLAY_MAX_UNION_SYMBOLS", "450") or 450)
+TRADIER_QUOTE_BATCH_SIZE = int(
+    os.environ.get("REPLAY_TRADIER_QUOTE_BATCH_SIZE", "300") or 300
+)
+TRADIER_REQUEST_DELAY_SECONDS = float(
+    os.environ.get("REPLAY_TRADIER_REQUEST_DELAY_SECONDS", "0.55") or 0.55
+)
 OUTPUT_PATH = Path(
     os.environ.get(
         "REPLAY_OUTPUT_PATH",
@@ -215,6 +222,152 @@ def load_active_assets(ss):
             f"public exchange directory. Alpaca: {last_error}; "
             f"public directory: {public_exc}"
         ) from public_exc
+
+
+def _tradier_call(fn, *args, **kwargs):
+    """Retry rate-limit/transient Tradier failures without hiding auth errors."""
+    delay = 1.5
+    for attempt in range(5):
+        try:
+            return fn(*args, **kwargs)
+        except urllib.error.HTTPError as exc:
+            if exc.code not in {429, 500, 502, 503, 504} or attempt >= 4:
+                raise
+        except urllib.error.URLError:
+            if attempt >= 4:
+                raise
+        time.sleep(delay)
+        delay = min(12.0, delay * 2.0)
+    return None
+
+
+def _select_seed_universe_from_tradier(symbols, token, target_size):
+    """Choose a broad current stock universe without using future replay-day data.
+
+    Current quote metadata is used only to control request volume. Replay-day
+    ranking still uses only information from days before each historical date.
+    """
+    quote_rows = {}
+    batches = list(_chunks(symbols, TRADIER_QUOTE_BATCH_SIZE))
+    for index, batch in enumerate(batches, start=1):
+        result = _tradier_call(post_quotes, batch, token) or {}
+        quote_rows.update(result)
+        if index % 5 == 0 or index == len(batches):
+            print(
+                f"Tradier quote screening: {index}/{len(batches)} batches "
+                f"({len(quote_rows)} quotes)."
+            )
+        time.sleep(TRADIER_REQUEST_DELAY_SECONDS)
+
+    eligible = []
+    for symbol, row in quote_rows.items():
+        if str(row.get("type") or "").lower() != "stock":
+            continue
+        price = (
+            _num(row.get("last"))
+            or _num(row.get("close"))
+            or _num(row.get("prevclose"))
+        )
+        avg_volume = _num(row.get("average_volume"))
+        if price is None or avg_volume is None:
+            continue
+        if not 0.50 <= price <= 60.0 or avg_volume <= 0:
+            continue
+        eligible.append(
+            {
+                "symbol": symbol,
+                "price": price,
+                "average_volume": avg_volume,
+                "average_dollar_volume": price * avg_volume,
+            }
+        )
+
+    # Preserve small/mid-price momentum names instead of letting mega-caps fill
+    # a pure dollar-volume ranking.
+    bands = (
+        (0.50, 5.0, 0.40),
+        (5.0, 20.0, 0.35),
+        (20.0, 60.01, 0.25),
+    )
+    selected = []
+    seen = set()
+    for low, high, share in bands:
+        band = [
+            row for row in eligible
+            if low <= row["price"] < high
+        ]
+        band.sort(
+            key=lambda row: row["average_dollar_volume"],
+            reverse=True,
+        )
+        quota = max(1, int(round(target_size * share)))
+        for row in band[:quota]:
+            if row["symbol"] in seen:
+                continue
+            seen.add(row["symbol"])
+            selected.append(row["symbol"])
+
+    if len(selected) < target_size:
+        eligible.sort(
+            key=lambda row: row["average_dollar_volume"],
+            reverse=True,
+        )
+        for row in eligible:
+            if row["symbol"] in seen:
+                continue
+            seen.add(row["symbol"])
+            selected.append(row["symbol"])
+            if len(selected) >= target_size:
+                break
+
+    return selected[:target_size], len(eligible)
+
+
+def _fetch_tradier_daily_history(symbols, token, start, end):
+    merged = {}
+    total = len(symbols)
+    for index, symbol in enumerate(symbols, start=1):
+        bars = _tradier_call(
+            get_history_bars,
+            symbol,
+            token,
+            start,
+            end,
+            "daily",
+        ) or []
+        if bars:
+            merged[symbol] = bars
+        if index % 25 == 0 or index == total:
+            print(
+                f"Tradier daily history: {index}/{total} symbols "
+                f"({len(merged)} with data)."
+            )
+        time.sleep(TRADIER_REQUEST_DELAY_SECONDS)
+    return merged
+
+
+def _fetch_tradier_intraday_history(symbols, token, start, end):
+    merged = {}
+    total = len(symbols)
+    for index, symbol in enumerate(symbols, start=1):
+        bars = _tradier_call(
+            get_timesales_bars,
+            symbol,
+            token,
+            start,
+            end,
+            interval="5min",
+            session_filter="open",
+        ) or []
+        if bars:
+            merged[symbol] = bars
+        if index % 25 == 0 or index == total:
+            print(
+                f"Tradier 5-minute history: {index}/{total} symbols "
+                f"({len(merged)} with data)."
+            )
+        time.sleep(TRADIER_REQUEST_DELAY_SECONDS)
+    return merged
 
 
 def fetch_multi_bars_complete(
@@ -488,10 +641,10 @@ def _current_snapshot(ss, symbol, rows, idx, prev_close, avg_daily, day_map, rep
         "prev_close": round(prev_close, 4),
         "day_pct": round((price / prev_close - 1.0) * 100.0, 3),
         "dollar_volume": round(session_dollar, 2),
-        "liquidity_source": "historical_sip_replay",
+        "liquidity_source": "historical_tradier_replay",
         "liquidity_dollar_volume": round(session_dollar, 2),
         "live_quote_source": "historical_replay_no_quote",
-        "live_intraday_source": "alpaca_historical_sip_5min",
+        "live_intraday_source": "tradier_historical_5min_open",
         "spread_pct": None,
         "intraday_range_pct": round(
             (session_high / session_low - 1.0) * 100.0, 3
@@ -555,11 +708,13 @@ def _current_snapshot(ss, symbol, rows, idx, prev_close, avg_daily, day_map, rep
 
 
 def _future_price(rows, idx, minutes=60):
-    bars_forward = int(minutes / 5)
-    target_idx = idx + bars_forward
-    if target_idx >= len(rows):
+    if idx < 0 or idx >= len(rows):
         return None
-    return _num(rows[target_idx][1].get("c"))
+    target_minute = rows[idx][0] + minutes
+    for minute, bar in rows[idx + 1 :]:
+        if minute >= target_minute:
+            return _num(bar.get("c"))
+    return None
 
 
 def build_replay_observations(
@@ -699,9 +854,9 @@ def build_replay_observations(
                         "liquidity_dollar_volume": snap[
                             "liquidity_dollar_volume"
                         ],
-                        "liquidity_source": "historical_sip_replay",
+                        "liquidity_source": "historical_tradier_replay",
                         "live_quote_source": "historical_replay_no_quote",
-                        "live_intraday_source": "alpaca_historical_sip_5min",
+                        "live_intraday_source": "tradier_historical_5min_open",
                         "spread_pct": None,
                         "distance_from_high_pct": snap[
                             "distance_from_high_pct"
@@ -747,23 +902,51 @@ def main():
         f"candidates/scan={candidates_per_scan} step={scan_step}m"
     )
 
-    symbols, asset_base = load_active_assets(ss)
-    print(f"Active Alpaca US-equity universe: {len(symbols)} symbols.")
+    token = (
+        os.environ.get("TRADIER_ACCESS_TOKEN", "").strip()
+        or os.environ.get("TRADIER_TOKEN", "").strip()
+    )
+    if not token:
+        raise RuntimeError(
+            "Historical replay requires TRADIER_ACCESS_TOKEN or TRADIER_TOKEN."
+        )
+
+    symbols, asset_base = _load_nasdaq_symbol_directory(ss)
+    print(f"Public US-stock directory: {len(symbols)} candidate symbols.")
+
+    seed_size = min(
+        MAX_UNION_SYMBOLS,
+        max(universe_size, int(round(universe_size * 1.35))),
+    )
+    seed_symbols, quote_eligible = _select_seed_universe_from_tradier(
+        symbols,
+        token,
+        seed_size,
+    )
+    if len(seed_symbols) < 100:
+        raise RuntimeError(
+            f"Tradier quote screening returned only {len(seed_symbols)} usable stocks."
+        )
+    print(
+        f"Tradier replay seed universe: {len(seed_symbols)} stocks "
+        f"from {quote_eligible} quote-eligible common stocks."
+    )
 
     now_et = datetime.now(ET)
-    daily_start = now_et - timedelta(days=max(150, trading_days * 4 + 70))
+    daily_start = now_et - timedelta(days=max(120, trading_days * 4 + 50))
     daily_end = now_et
-    daily_bars = fetch_multi_bars_complete(
-        ss,
-        symbols,
-        "1Day",
+    daily_bars = _fetch_tradier_daily_history(
+        seed_symbols,
+        token,
         daily_start,
         daily_end,
-        feed=ss.HISTORICAL_FEED,
-        chunk_size=DAILY_CHUNK_SIZE,
     )
     daily_index = _daily_index(daily_bars)
-    replay_dates = replay_trading_dates(daily_index, trading_days, now_et.date())
+    replay_dates = replay_trading_dates(
+        daily_index,
+        trading_days,
+        now_et.date(),
+    )
     if len(replay_dates) < 3:
         raise RuntimeError("Insufficient historical trading dates for replay.")
 
@@ -787,7 +970,9 @@ def main():
     allowed = set(union)
     for day in replay_dates:
         daily_universes[day] = [
-            symbol for symbol in daily_universes[day] if symbol in allowed
+            symbol
+            for symbol in daily_universes[day]
+            if symbol in allowed
         ]
 
     all_dates = sorted(
@@ -798,12 +983,18 @@ def main():
             if day < replay_dates[0]
         }
     )
-    warmup_candidates = all_dates[-25:]
+    # Seven prior sessions are required by the volume-profile logic. Keep one
+    # extra session when available while staying inside Tradier's 40-day 5m window.
+    warmup_candidates = all_dates[-8:]
     warmup_day = (
         warmup_candidates[0]
         if warmup_candidates
-        else replay_dates[0] - timedelta(days=45)
+        else replay_dates[0] - timedelta(days=12)
     )
+    earliest_allowed = (now_et - timedelta(days=39)).date()
+    if warmup_day < earliest_allowed:
+        warmup_day = earliest_allowed
+
     intraday_start = datetime.combine(
         warmup_day,
         dtime(9, 30),
@@ -813,20 +1004,17 @@ def main():
         replay_dates[-1],
         dtime(16, 0),
         tzinfo=ET,
-    ) + timedelta(minutes=1)
+    )
 
     print(
-        f"Fetching 5-minute SIP bars for {len(union)} replay symbols "
-        f"from {warmup_day} through {replay_dates[-1]}."
+        f"Fetching Tradier 5-minute open-session bars for {len(union)} "
+        f"replay symbols from {warmup_day} through {replay_dates[-1]}."
     )
-    intraday_bars = fetch_multi_bars_complete(
-        ss,
+    intraday_bars = _fetch_tradier_intraday_history(
         union,
-        "5Min",
+        token,
         intraday_start,
         intraday_end,
-        feed=ss.HISTORICAL_FEED,
-        chunk_size=BAR_CHUNK_SIZE,
     )
     intraday = group_intraday(intraday_bars)
 
@@ -863,14 +1051,15 @@ def main():
             "candidates_per_scan": candidates_per_scan,
             "scan_step_minutes": scan_step,
             "bar_resolution": "5Min",
-            "historical_feed": ss.HISTORICAL_FEED,
+            "historical_feed": "TRADIER CONSOLIDATED HISTORICAL",
             "asset_universe_source": asset_base,
             "universe_method": (
-                "current active assets; each replay day selected using only "
-                "prior-day liquidity, prior-day momentum and prior-day relative volume"
+                "public exchange symbol directory narrowed by current Tradier "
+                "stock/liquidity metadata; each replay day then selected using "
+                "only prior-day liquidity, prior-day momentum and prior-day relative volume"
             ),
             "known_limitations": [
-                "current-active-asset survivorship bias",
+                "current listed/liquid stock survivorship bias",
                 "historical bid/ask spread not reconstructed",
                 "historical news/catalyst score not reconstructed",
                 "5-minute bars approximate live 1-minute momentum inputs",
