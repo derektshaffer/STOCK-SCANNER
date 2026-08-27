@@ -168,6 +168,7 @@ def test_analyzer_calibration_version_gate():
         "symbol": "TEST",
         "timestamp": "2026-08-27T14:00:00+00:00",
         "feature_version": pt.ANALYZER_FEATURE_VERSION,
+        "decision_score_version": pt.DECISION_SCORE_VERSION,
         "potential_score": 75,
         "entry_readiness": 65,
         "outcomes": {"return_60m_pct": 3.0},
@@ -342,6 +343,92 @@ def test_evidence_recognizes_tradier_consolidated():
     assert "IEX-only live feed" not in reasons, reasons
 
 
+def test_potential_does_not_recount_setup_score():
+    import analyzer_v2_integration as v2
+
+    metrics = {
+        "score": 20,
+        "day_pct": 18,
+        "volume_pace": 2.5,
+        "vwap_position": "ABOVE",
+        "from_high_pct": 2.0,
+        "historical_setup": {
+            "status": "ok",
+            "bias_score": 6,
+            "sample_count": 20,
+        },
+        "ml_prediction": {
+            "ml_edge_score": 68,
+            "validated_edge_model_count": 2,
+        },
+    }
+    sec = {"dilution_risk": "LOW"}
+    market = {"label": "MIXED", "sector_move_pct": 0.5}
+    catalyst = {"score": 3.0}
+
+    low_setup = v2._potential_score(metrics, sec, market, catalyst)
+    metrics["score"] = 95
+    high_setup = v2._potential_score(metrics, sec, market, catalyst)
+
+    assert low_setup[0] == high_setup[0], (low_setup, high_setup)
+    assert low_setup[2] == high_setup[2], (low_setup, high_setup)
+    assert "technical_momentum" in low_setup[2], low_setup
+
+
+def test_entry_does_not_recount_spread_after_liquidity():
+    import analyzer_v2_integration as v2
+
+    metrics = {
+        "price": 10.0,
+        "vwap_position": "ABOVE",
+        "momentum_5m": 0.5,
+        "momentum_15m": 1.0,
+        "vwap_extension_pct": 2.0,
+        "spread_pct": 0.1,
+        "liquidity": {"label": "HIGH"},
+        "trade_plan": {
+            "status": "ENTRY AVAILABLE",
+            "action": "ENTRY AVAILABLE — pullback zone",
+            "selected": {
+                "entry_low": 9.95,
+                "entry_high": 10.05,
+                "risk_reward": 2.1,
+            },
+        },
+    }
+    tight = v2._entry_readiness(metrics)
+    metrics["spread_pct"] = 4.9
+    same_liquidity = v2._entry_readiness(metrics)
+
+    assert tight[0] == same_liquidity[0], (tight, same_liquidity)
+    assert tight[2] == same_liquidity[2], (tight, same_liquidity)
+
+
+def test_entry_plan_status_is_safety_cap_not_double_count():
+    import analyzer_v2_integration as v2
+
+    metrics = {
+        "price": 10.0,
+        "vwap_position": "ABOVE",
+        "momentum_5m": 1.0,
+        "momentum_15m": 2.0,
+        "vwap_extension_pct": 1.0,
+        "liquidity": {"label": "HIGH"},
+        "trade_plan": {
+            "status": "NO TRADE",
+            "action": "NO TRADE — external risk",
+            "selected": {
+                "entry_low": 9.95,
+                "entry_high": 10.05,
+                "risk_reward": 3.0,
+            },
+        },
+    }
+    score, blockers, components = v2._entry_readiness(metrics)
+    assert score == 35.0, (score, blockers, components)
+    assert components.get("plan_status_cap", 0) < 0, components
+
+
 if __name__ == "__main__":
     tests = [
         test_analyzer_prefers_tradier,
@@ -353,6 +440,9 @@ if __name__ == "__main__":
         test_stream_vwap_ignores_cvol_as_denominator,
         test_stream_reports_trade_and_quote_freshness,
         test_evidence_recognizes_tradier_consolidated,
+        test_potential_does_not_recount_setup_score,
+        test_entry_does_not_recount_spread_after_liquidity,
+        test_entry_plan_status_is_safety_cap_not_double_count,
     ]
     for test in tests:
         test()
