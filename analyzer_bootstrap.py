@@ -267,8 +267,13 @@ def _activate_saved_stock(symbol):
     st.session_state.pop("result", None)
 
 
-def _render_saved_stocks():
-    """Compact session-persistent saved-stock toolbar."""
+def _render_saved_stocks(key_prefix="saved"):
+    """Compact session-persistent saved-stock toolbar.
+
+    key_prefix keeps the temporary pre-analysis toolbar and the completed
+    post-analysis toolbar from registering duplicate Streamlit widget keys
+    during the same script run.
+    """
     if "saved_stocks" not in st.session_state:
         st.session_state["saved_stocks"] = []
 
@@ -301,7 +306,7 @@ def _render_saved_stocks():
         can_save = bool(current) and current not in saved
         if st.button(
             f"☆ Save {current}" if current else "☆ Save current",
-            key="save_current_stock",
+            key=f"{key_prefix}_save_current_stock",
             disabled=not can_save,
             use_container_width=True,
         ):
@@ -312,7 +317,7 @@ def _render_saved_stocks():
         can_remove = bool(current) and current in saved
         if st.button(
             f"Remove {current}",
-            key="remove_current_stock",
+            key=f"{key_prefix}_remove_current_stock",
             disabled=not can_remove,
             use_container_width=True,
         ):
@@ -341,7 +346,7 @@ def _render_saved_stocks():
                     "Analyzing..." if is_loading else (
                         f"● {symbol}" if symbol == current else symbol
                     ),
-                    key=f"saved_stock_{start+i}_{symbol}",
+                    key=f"{key_prefix}_saved_stock_{start+i}_{symbol}",
                     type="primary" if symbol == current else "secondary",
                     disabled=bool(is_loading),
                     use_container_width=True,
@@ -434,7 +439,7 @@ def run():
         saved_toolbar = st.empty()
         with saved_toolbar.container():
             with st.container(key="saved_stocks_top"):
-                _render_saved_stocks()
+                _render_saved_stocks("loading")
 
         # Scanner-launched analyses are normally already calculated by the
         # button callback. This is a fast no-op in that case and remains a
@@ -445,7 +450,7 @@ def run():
         saved_toolbar.empty()
         with saved_toolbar.container():
             with st.container(key="saved_stocks_top_done"):
-                _render_saved_stocks()
+                _render_saved_stocks("ready")
 
         if launch_error:
             st.error(f"Could not analyze the selected ticker: {launch_error}")
