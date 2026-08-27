@@ -561,11 +561,17 @@ def _bucket_calibration(rows, score_field):
 
 
 def tracker_summary(rows=None, symbol=None, current_metrics=None):
-    rows = rows if rows is not None else _load()
+    all_rows = rows if rows is not None else _load()
+    symbol_rows = all_rows
     if symbol:
-        rows = [r for r in rows if r.get("symbol") == str(symbol).upper().strip()]
+        symbol_rows = [
+            r for r in all_rows
+            if r.get("symbol") == str(symbol).upper().strip()
+        ]
 
-    calibration_rows = _independent_calibration_rows(rows)
+    # Calibration is global across all tracked tickers. Only lifecycle/history
+    # display is scoped to the ticker currently being analyzed.
+    calibration_rows = _independent_calibration_rows(all_rows)
     resolved_60 = [
         r for r in calibration_rows
         if (r.get("outcomes") or {}).get("return_60m_pct") is not None
@@ -614,10 +620,13 @@ def tracker_summary(rows=None, symbol=None, current_metrics=None):
                 "remaining": 0,
             }
 
-    lifecycle = signal_lifecycle(symbol, current_metrics=current_metrics, rows=rows) if symbol else None
+    lifecycle = (
+        signal_lifecycle(symbol, current_metrics=current_metrics, rows=symbol_rows)
+        if symbol else None
+    )
 
     return {
-        "total_predictions": len(rows),
+        "total_predictions": len(all_rows),
         "calibration_rows": len(calibration_rows),
         "calibration_sampling": "one observation per ticker per hour",
         "signal_lifecycle": lifecycle,
