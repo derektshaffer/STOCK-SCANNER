@@ -229,6 +229,18 @@ if view == "Momentum Scanner":
     st.markdown(
         """
         <style>
+        /* Never leave detached Analyzer widgets visible/clickable while the
+           Scanner is active. These can briefly remain in Streamlit's DOM
+           during a full view switch, but their widget handlers are already
+           gone, which creates "dead" buttons. */
+        .st-key-saved_stocks_top,
+        .st-key-analyzer_header,
+        .st-key-analyzer_controls,
+        .st-key-analyzer_live_fragment {
+            display: none !important;
+            pointer-events: none !important;
+        }
+
         /* Compact the combined one-click scanner section without affecting
            the Stock Analyzer page. */
         .combined-quick {
