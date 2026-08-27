@@ -238,6 +238,110 @@ def test_scanner_outcome_metadata():
     assert row["live_quote_source"] == "tradier_consolidated", row
 
 
+def test_stream_seed_rejects_non_tradier_metrics():
+    import tradier_live_stream as tls
+
+    stream = tls._TradierStream()
+    stream.state = stream._blank()
+    stream.state["symbol"] = "TEST"
+    stream._seed(
+        {
+            "symbol": "TEST",
+            "market_provider": "alpaca",
+            "live_feed": "IEX",
+            "session_volume": 999999,
+            "vwap": 7.77,
+            "day_high": 8.0,
+            "day_low": 7.0,
+            "as_of": "2026-08-27T14:00:00+00:00",
+        }
+    )
+    assert stream.state["session_volume"] is None, stream.state
+    assert stream.state["session_vwap"] is None, stream.state
+    assert stream.state["seed_provider"] is None, stream.state
+
+    stream._seed(
+        {
+            "symbol": "TEST",
+            "market_provider": "tradier",
+            "live_feed": "TRADIER CONSOLIDATED",
+            "session_volume": 1000,
+            "vwap": 10.0,
+            "day_high": 10.5,
+            "day_low": 9.5,
+            "as_of": "2026-08-27T14:00:00+00:00",
+            "latest_trade_time": "2026-08-27T13:59:59+00:00",
+            "latest_quote_time": "2026-08-27T13:59:59.500000+00:00",
+        }
+    )
+    assert stream.state["session_volume"] == 1000, stream.state
+    assert stream.state["vwap_volume"] == 1000, stream.state
+    assert stream.state["session_vwap"] == 10.0, stream.state
+    assert stream.state["seed_provider"] == "tradier", stream.state
+
+
+def test_stream_vwap_ignores_cvol_as_denominator():
+    import tradier_live_stream as tls
+
+    stream = tls._TradierStream()
+    stream.state = stream._blank()
+    stream.state.update(
+        {
+            "symbol": "TEST",
+            "session_volume": 1000.0,
+            "vwap_volume": 1000.0,
+            "session_pv": 10000.0,
+            "session_vwap": 10.0,
+            "seed_cutoff": 100.0,
+            "seed_provider": "tradier",
+        }
+    )
+    stream._accumulate_trade(
+        {"size": 10, "date": 101000, "cvol": 5000},
+        11.0,
+    )
+    assert stream.state["session_volume"] == 5000.0, stream.state
+    assert stream.state["vwap_volume"] == 1010.0, stream.state
+    expected = (10000.0 + 110.0) / 1010.0
+    assert abs(stream.state["session_vwap"] - expected) < 1e-9, stream.state
+
+
+def test_stream_reports_trade_and_quote_freshness():
+    import time
+    import tradier_live_stream as tls
+
+    stream = tls._TradierStream()
+    stream.state = stream._blank()
+    now = time.time()
+    stream.state["last_trade_at"] = now - 2.0
+    stream.state["last_quote_at"] = now - 0.25
+    public = stream._public()
+    assert public["trade_age_seconds"] is not None, public
+    assert public["quote_age_seconds"] is not None, public
+    assert public["trade_age_seconds"] > public["quote_age_seconds"], public
+
+
+def test_evidence_recognizes_tradier_consolidated():
+    import analyzer_v2_integration as v2
+
+    metrics = {
+        "market_provider": "tradier",
+        "live_feed": "TRADIER CONSOLIDATED",
+        "trade_age_seconds": 1.0,
+        "historical_setup": {"sample_count": 0},
+        "ml_prediction": {"validated_edge_model_count": 0},
+    }
+    score, reasons = v2._evidence_strength(
+        metrics,
+        {"status": "unavailable"},
+        {"label": "UNKNOWN"},
+        {"article_count": 0},
+    )
+    assert score >= 20.0, (score, reasons)
+    assert "Tradier consolidated live feed" in reasons, reasons
+    assert "IEX-only live feed" not in reasons, reasons
+
+
 if __name__ == "__main__":
     tests = [
         test_analyzer_prefers_tradier,
@@ -245,6 +349,10 @@ if __name__ == "__main__":
         test_scanner_ml_version_gate,
         test_analyzer_calibration_version_gate,
         test_scanner_outcome_metadata,
+        test_stream_seed_rejects_non_tradier_metrics,
+        test_stream_vwap_ignores_cvol_as_denominator,
+        test_stream_reports_trade_and_quote_freshness,
+        test_evidence_recognizes_tradier_consolidated,
     ]
     for test in tests:
         test()
