@@ -1,0 +1,116 @@
+name: Historical Scanner ML Backfill
+
+on:
+  workflow_dispatch:
+    inputs:
+      trading_days:
+        description: "Trading days to replay"
+        required: false
+        default: "30"
+        type: string
+      universe_size:
+        description: "Prior-information symbols per replay day"
+        required: false
+        default: "450"
+        type: string
+      candidates_per_scan:
+        description: "Historical candidates kept per checkpoint"
+        required: false
+        default: "20"
+        type: string
+      scan_step_minutes:
+        description: "Minutes between replay checkpoints"
+        required: false
+        default: "10"
+        type: string
+  push:
+    branches: [main]
+    paths:
+      - "historical_scanner_replay.py"
+      - ".github/workflows/historical-ml-backfill.yml"
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  backfill:
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, 'Run historical ML backfill')
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run leakage-aware historical replay
+        env:
+          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+          ALPACA_LIVE_FEED: ${{ secrets.ALPACA_LIVE_FEED }}
+          REPLAY_TRADING_DAYS: ${{ inputs.trading_days }}
+          REPLAY_UNIVERSE_SIZE: ${{ inputs.universe_size }}
+          REPLAY_CANDIDATES_PER_SCAN: ${{ inputs.candidates_per_scan }}
+          REPLAY_SCAN_STEP_MINUTES: ${{ inputs.scan_step_minutes }}
+        run: python historical_scanner_replay.py
+
+      - name: Validate replay dataset and ML bootstrap
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          python -m pip install --disable-pip-version-check -q "xgboost>=2.1" "numpy>=1.26"
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          import scanner_ml_ranker as sm
+
+          path = Path("outcome_reports/outcomes_historical_replay.json")
+          payload = json.loads(path.read_text(encoding="utf-8"))
+          summary = payload.get("summary") or {}
+          print("REPLAY_OBSERVATIONS=" + str(summary.get("observations", 0)))
+          print("REPLAY_UNIQUE_SCANS=" + str(summary.get("unique_scans", 0)))
+          print("REPLAY_POSITIVE_60M=" + str(summary.get("positive_3pct_60m", 0)))
+          print("REPLAY_NEGATIVE_60M=" + str(summary.get("non_positive_3pct_60m", 0)))
+
+          rows, source = sm.load_training_observations()
+          _, meta = sm._validation_and_model(rows)
+          print("ML_TOTAL_SAMPLES=" + str(meta.get("samples", 0)))
+          print("ML_REPLAY_SAMPLES=" + str(meta.get("historical_replay_samples", 0)))
+          print("ML_LIVE_SAMPLES=" + str(meta.get("live_samples", 0)))
+          print("ML_HISTORICAL_VALIDATED=" + str(bool(meta.get("historical_validated"))).lower())
+          print("ML_FULLY_VALIDATED=" + str(bool(meta.get("validated"))).lower())
+          print("ML_STATUS=" + str(meta.get("status")))
+          print("ML_WALK_FORWARD_AUC=" + str(meta.get("walk_forward_auc")))
+          print("ML_LIVE_CONFIRMATION_AUC=" + str(meta.get("live_confirmation_auc")))
+          PY
+
+      - name: Commit durable replay dataset
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add outcome_reports/outcomes_historical_replay.json
+          if git diff --cached --quiet; then
+            echo "Historical replay dataset is unchanged."
+          else
+            git commit -m "Add historical scanner ML replay dataset"
+            git pull --rebase origin "${GITHUB_REF_NAME}"
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+          fi
+
+      - name: Preserve replay as ML artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: outcome-report-historical-${{ github.run_id }}-${{ github.run_attempt }}
+          path: outcome_reports/outcomes_historical_replay.json
+          if-no-files-found: warn
+          retention-days: 90
