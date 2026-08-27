@@ -2122,7 +2122,14 @@ def candidate_log_record(c, rank):
     }
 
 
-def write_scan_logs(rows, now_utc, now_et, excluded_symbols, ml_summary=None):
+def write_scan_logs(
+    rows,
+    now_utc,
+    now_et,
+    excluded_symbols,
+    ml_summary=None,
+    performance=None,
+):
     """Write one JSON snapshot and one flat CSV. Logging failures never fail the scan."""
     try:
         out_dir = Path(SCAN_LOG_DIR)
@@ -2179,6 +2186,7 @@ def write_scan_logs(rows, now_utc, now_et, excluded_symbols, ml_summary=None):
                 "grade_counts": dict(grade_counts),
                 "excluded_non_common_symbols": excluded_symbols,
                 "ml_model": ml_summary or {},
+                "performance_seconds": performance or {},
             },
             "candidates": records,
         }
@@ -2449,6 +2457,16 @@ def print_historical(rows):
 
 
 def main():
+    scan_started = time.perf_counter()
+    stage_started = scan_started
+    performance = {}
+
+    def mark_stage(name):
+        nonlocal stage_started
+        current = time.perf_counter()
+        performance[name] = round(current - stage_started, 2)
+        stage_started = current
+
     now_utc = datetime.now(timezone.utc)
     now_et = now_utc.astimezone(ZoneInfo("America/New_York"))
 
@@ -2559,6 +2577,7 @@ def main():
     # Tradier rows already carry consolidated live liquidity. Alpaca fallback
     # rows still use the delayed-SIP enrichment path when it is available.
     enrich_delayed_sip_liquidity(rows, now_utc, now_et)
+    mark_stage("discovery_and_base")
 
     rejection_counts = Counter(
         reason for c in rows for reason in c.get("failed_filters", [])
@@ -2598,11 +2617,13 @@ def main():
             c["live_data_status"] = "skipped_market_closed"
 
     rows.sort(key=ranking_key, reverse=True)
+    mark_stage("live_enrichment")
 
     # One batched news call for the displayed watchlist.
     enrich_news(rows, now_utc)
 
     rows.sort(key=ranking_key, reverse=True)
+    mark_stage("news")
 
     historical_targets = rows[:HISTORICAL_TOP]
     if is_regular_session(now_et) and historical_targets:
@@ -2639,6 +2660,8 @@ def main():
                     "regular market hours."
                 ),
             }
+
+    mark_stage("historical")
 
     # Rule-based setup grades remain the safety gate. ML is applied only after
     # those rules are complete, and ranking only changes when the model passes
@@ -2686,6 +2709,11 @@ def main():
     assign_scanner_actions(rows, now_et)
 
     rows.sort(key=ranking_key, reverse=True)
+    mark_stage("grading_and_ml")
+    performance["total_before_logging"] = round(
+        time.perf_counter() - scan_started,
+        2,
+    )
 
     print_watchlist(rows)
     print_catalysts(rows)
@@ -2741,12 +2769,17 @@ def main():
         for warning, count in warning_counts.most_common():
             print(f"  - {warning}: {count}")
 
+    print("\nPERFORMANCE")
+    for stage_name, seconds in performance.items():
+        print(f"{stage_name}: {seconds:.2f}s")
+
     write_scan_logs(
         rows,
         now_utc,
         now_et,
         excluded_symbols,
         ml_summary=ml_summary,
+        performance=performance,
     )
 
     print("\nJSON RESULTS - TOP WATCHLIST")
