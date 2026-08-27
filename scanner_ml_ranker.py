@@ -476,10 +476,18 @@ def _validation_and_model(rows):
         return None, base_meta
 
     X, y = _matrix(rows, np)
-    unique_times = sorted(
-        {row["timestamp"] for row in rows}
-    )
-    if len(unique_times) < MIN_UNIQUE_SCANS:
+
+    # Validate on whole trading days, not intraday timestamps. The target uses
+    # the price 60 minutes after each observation, so an intraday cutoff can
+    # leak outcome information from the validation period into training labels.
+    # Whole-day boundaries provide a natural embargo because replay targets are
+    # resolved within the same regular-market session.
+    validation_days = [
+        day
+        for day in days
+        if day
+    ]
+    if len(validation_days) < MIN_TRADING_DAYS:
         return None, base_meta
 
     fold_bounds = (
@@ -493,24 +501,28 @@ def _validation_and_model(rows):
 
     for train_frac, val_frac in fold_bounds:
         train_pos = min(
-            len(unique_times) - 1,
-            max(0, int(len(unique_times) * train_frac) - 1),
+            len(validation_days) - 1,
+            max(0, int(len(validation_days) * train_frac) - 1),
         )
         val_pos = min(
-            len(unique_times) - 1,
-            max(0, int(len(unique_times) * val_frac) - 1),
+            len(validation_days) - 1,
+            max(0, int(len(validation_days) * val_frac) - 1),
         )
-        train_cut = unique_times[train_pos]
-        val_cut = unique_times[val_pos]
+        train_cut_day = validation_days[train_pos]
+        val_cut_day = validation_days[val_pos]
+        if val_cut_day <= train_cut_day:
+            continue
         train_idx = [
             i
             for i, row in enumerate(rows)
-            if row["timestamp"] <= train_cut
+            if row.get("trading_date")
+            and row["trading_date"] <= train_cut_day
         ]
         val_idx = [
             i
             for i, row in enumerate(rows)
-            if train_cut < row["timestamp"] <= val_cut
+            if row.get("trading_date")
+            and train_cut_day < row["trading_date"] <= val_cut_day
         ]
         if len(train_idx) < 100 or len(val_idx) < 20:
             continue
@@ -597,6 +609,8 @@ def _validation_and_model(rows):
         "baseline_accuracy_pct": round(
             baseline_accuracy * 100.0, 1
         ),
+        "validation_split_unit": "trading_day",
+        "validation_target_horizon_minutes": 60,
     }
 
     if not historical_validated:
