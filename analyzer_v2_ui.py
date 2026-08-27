@@ -1,4 +1,5 @@
 import html
+from datetime import datetime
 
 
 def _fmt_pct(value, digits=1):
@@ -13,6 +14,45 @@ def _fmt_int(value):
         return f"{float(value):,.0f}"
     except Exception:
         return "—"
+
+def _signal_time(value):
+    try:
+        dt = datetime.fromisoformat(str(value))
+        return dt.strftime("%-I:%M %p ET")
+    except Exception:
+        return "—"
+
+
+def _signal_progression_html(lifecycle):
+    if not isinstance(lifecycle, dict) or lifecycle.get("status") != "ok":
+        return None
+
+    signal_price = lifecycle.get("signal_price")
+    current_price = lifecycle.get("current_price")
+    change = lifecycle.get("change_since_signal_pct")
+    thesis = str(lifecycle.get("thesis_status") or "ACTIVE")
+    current_state = str(lifecycle.get("current_state") or "Current setup unavailable")
+    when = _signal_time(lifecycle.get("signal_time"))
+
+    signal_text = f"${float(signal_price):.2f}" if signal_price is not None else "—"
+    current_text = f"${float(current_price):.2f}" if current_price is not None else "—"
+    change_text = f"{float(change):+.1f}%" if change is not None else "—"
+    thesis_cls = (
+        "#63e58b" if "SUCCEEDED" in thesis
+        else "#ff8585" if thesis in {"FAILED", "AT RISK"}
+        else "#ffd166"
+    )
+    return (
+        '<div style="margin:3px 0 5px;padding:7px 10px;border:1px solid #28425f;'
+        'border-radius:9px;background:#0c1828;font-size:12px;line-height:1.35;">'
+        '<b style="color:#dce9f8;">Signal progression</b>'
+        f' &nbsp; Original entry <b>{html.escape(signal_text)}</b> at {html.escape(when)}'
+        f' &nbsp;→&nbsp; Now <b>{html.escape(current_text)}</b> '
+        f'(<b>{html.escape(change_text)}</b>)'
+        f' &nbsp;·&nbsp; Thesis: <b style="color:{thesis_cls};">{html.escape(thesis)}</b>'
+        f' &nbsp;·&nbsp; Current: <b>{html.escape(current_state)}</b>'
+        '</div>'
+    )
 
 
 def _score_card(st, col, title, score, label, note):
@@ -60,6 +100,11 @@ def render_v2_decision(st, metrics):
         str(v2.get("evidence_label") or "—"),
         "how much reliable data supports the read",
     )
+
+    tracking = v2.get("tracking") or {}
+    lifecycle_html = _signal_progression_html(tracking.get("signal_lifecycle"))
+    if lifecycle_html:
+        st.markdown(lifecycle_html, unsafe_allow_html=True)
 
     with details_slot.popover("Why these scores"):
         pc, ec = st.columns(2)
@@ -150,7 +195,6 @@ def render_v2_decision(st, metrics):
             if kws:
                 st.caption("Detected filing terms: " + ", ".join(kws[:5]))
 
-        tracking = v2.get("tracking") or {}
         st.markdown("#### Prediction tracking")
         st.write(
             f"Recorded: **{int(tracking.get('total_predictions') or 0)}** · "
