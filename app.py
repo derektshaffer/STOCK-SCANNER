@@ -127,6 +127,9 @@ st.markdown(
         margin-top: 5px;
         white-space: nowrap;
     }
+    .combined-action-value {
+        font-size: 16px;
+    }
     .combined-stat-value.grade-a,
     .combined-stat-value.change-pos,
     .combined-stat-value.volume-strong { color: #65e98d; }
@@ -281,6 +284,9 @@ if view == "Momentum Scanner":
             font-size: 16px !important;
             margin-top: 1px !important;
         }
+        .combined-action-value {
+            font-size: 13px !important;
+        }
 
         /* Align ticker cells with metric rows */
         .combined-ticker-row {
@@ -351,8 +357,12 @@ def _latest_scan_candidates():
                 "ml_validated": bool(row.get("ml_validated")),
                 "ml_status": row.get("ml_status"),
                 "opportunity_score": row.get("opportunity_score"),
+                "scanner_action": row.get("scanner_action"),
+                "scanner_action_tier": row.get("scanner_action_tier"),
+                "scanner_action_reason": row.get("scanner_action_reason"),
                 "day_pct": row.get("day_pct"),
                 "volume_pace": row.get("volume_pace"),
+                "volume_pace_display": row.get("volume_pace_display"),
             }
         )
     return out[:15]
@@ -423,26 +433,43 @@ def _volume_class(value):
     return "volume-slow"
 
 
-def _ml_display(row):
-    if not row.get("ml_validated"):
-        status = str(row.get("ml_status") or "").lower()
-        if status in {"failed_validation", "prediction_error", "error"}:
-            return "Not valid", "change-neg"
-        return "Learning", "volume-normal"
+def _action_display(row):
+    action = str(row.get("scanner_action") or "WATCH").upper()
+    tier = str(row.get("scanner_action_tier") or "watch").lower()
+    cls = {
+        "ready": "volume-strong",
+        "breakout": "grade-b",
+        "pullback": "grade-c",
+        "avoid": "change-neg",
+        "caution": "grade-c",
+        "watch": "volume-normal",
+    }.get(tier, "volume-normal")
 
-    try:
-        probability = float(row.get("ml_probability"))
-    except (TypeError, ValueError):
-        return "—", ""
+    label = "ACTION"
+    if row.get("ml_validated"):
+        try:
+            probability = float(row.get("ml_probability"))
+            label += f" · ML {probability:.0f}%"
+        except (TypeError, ValueError):
+            pass
+    return action, cls, label
 
-    cls = (
-        "volume-strong"
-        if probability >= 65
-        else "grade-c"
-        if probability >= 50
-        else "change-neg"
+
+def _volume_pace_display(row):
+    value = (
+        row.get("volume_pace_display")
+        if row.get("volume_pace_display") is not None
+        else row.get("volume_pace")
     )
-    return f"{probability:.0f}%", cls
+    try:
+        pace = float(value)
+    except (TypeError, ValueError):
+        return "—", None
+    if pace >= 100:
+        return "100x+", pace
+    if pace >= 10:
+        return f"{pace:.1f}x", pace
+    return f"{pace:.2f}x", pace
 
 
 if view == "Momentum Scanner":
@@ -452,18 +479,18 @@ if view == "Momentum Scanner":
 
     candidates = _latest_scan_candidates()
     if candidates:
-        # Make each row useful at a glance: ticker, grade, score, today's move,
-        # and current volume pace fill the width, with Analyze at the end.
+        # Make each row useful at a glance: ticker, grade, score, scanner ACTION,
+        # today's move and Analyzer-aligned volume pace, with Analyze at the end.
         for idx, row in enumerate(candidates):
             symbol = row["symbol"]
             grade = row.get("grade") or "—"
             score_text = _fmt_num(row.get("score"), "{:.0f}")
-            ml_text, ml_cls = _ml_display(row)
+            action_text, action_cls, action_label = _action_display(row)
             day_text = _fmt_num(row.get("day_pct"), "{:+.1f}%")
-            volume_text = _fmt_num(row.get("volume_pace"), "{:.2f}x")
+            volume_text, volume_value = _volume_pace_display(row)
             grade_cls = _grade_class(grade)
             change_cls = _change_class(row.get("day_pct"))
-            volume_cls = _volume_class(row.get("volume_pace"))
+            volume_cls = _volume_class(volume_value)
 
             left, right = st.columns([7.2, 1.55], vertical_alignment="center")
             with left:
@@ -481,9 +508,9 @@ if view == "Momentum Scanner":
                     f'    <div class="combined-stat-label">Score</div>'
                     f'    <div class="combined-stat-value">{score_text}</div>'
                     f'  </div>'
-                    f'  <div class="combined-stat">'
-                    f'    <div class="combined-stat-label">ML 60M</div>'
-                    f'    <div class="combined-stat-value {ml_cls}">{ml_text}</div>'
+                    f'  <div class="combined-stat" title="{html.escape(str(row.get("scanner_action_reason") or ""))}">'
+                    f'    <div class="combined-stat-label">{action_label}</div>'
+                    f'    <div class="combined-stat-value combined-action-value {action_cls}">{action_text}</div>'
                     f'  </div>'
                     f'  <div class="combined-stat">'
                     f'    <div class="combined-stat-label">Today</div>'
@@ -546,6 +573,10 @@ TECHNICAL_TOOLTIPS = {
     "MOMENTUM": "The speed and persistence of price movement. Stronger momentum means price is moving more decisively in one direction.",
     "SETUP SCORE": "A combined technical-quality score using factors such as momentum, VWAP, volume, liquidity and price location. It is not a probability of profit.",
     "SCORE": "A combined technical-quality score used to rank the scanner's setups. Higher is stronger, but it is not a guaranteed probability of success.",
+    "ACTION": "A scanner-level entry cue. ENTRY READY means momentum, participation, VWAP and execution checks align; still open Analyzer for the exact entry zone, stop and targets.",
+    "ENTRY READY": "The scanner's strongest current entry cue. It means the scanner conditions align now, but the Analyzer should still confirm the exact trade plan.",
+    "WAIT PULLBACK": "Momentum may remain attractive, but the current price looks too stretched to chase. Wait for a better pullback area and confirm it in Analyzer.",
+    "BREAKOUT WATCH": "Price is pressing the session high with constructive momentum. Wait for breakout confirmation and check the exact trigger in Analyzer.",
     "ML 60M": "Validated XGBoost estimate of the chance this scanner setup will be at least 3% higher 60 minutes later. It stays in Learning mode until chronological validation passes.",
     "OPPORTUNITY": "Combined ranking score using 70% of the existing scanner score and 30% of validated ML probability. ML has no ranking weight until validation passes.",
     "GRADE": "A quick quality tier based on the scanner's rules. A is strongest, followed by B and C; the grade is not a guarantee of profit.",
