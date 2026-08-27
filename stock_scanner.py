@@ -1889,6 +1889,7 @@ def candidate_log_record(c, rank):
         "ml_training_samples": c.get("ml_training_samples"),
         "ml_validation_auc": c.get("ml_validation_auc"),
         "ml_continuation_prob_pct": c.get("ml_continuation_prob_pct"),
+        "ml_advisory_prob_pct": c.get("ml_advisory_prob_pct"),
         "opportunity_score": c.get("opportunity_score", c.get("score")),
         "news": compact_catalyst(c),
         "historical": compact_historical(c.get("historical")),
@@ -1969,7 +1970,8 @@ def write_scan_logs(rows, now_utc, now_et, excluded_symbols, ml_summary=None):
         csv_fields = [
             "scan_id", "scan_time_et", "rank", "symbol", "price", "day_pct",
             "score", "opportunity_score", "ml_continuation_prob_pct",
-            "ml_validated", "ml_status", "ml_training_samples", "ml_validation_auc",
+            "ml_advisory_prob_pct", "ml_validated", "ml_status",
+            "ml_training_samples", "ml_validation_auc",
             "setup_grade", "setup_label", "alert_tier", "alert_ready",
             "scanner_action", "scanner_action_tier", "scanner_action_reason",
             "passed_base_filters", "momentum_5m", "momentum_15m", "volume_pace",
@@ -1999,6 +2001,7 @@ def write_scan_logs(rows, now_utc, now_et, excluded_symbols, ml_summary=None):
                     "score": r.get("score"),
                     "opportunity_score": r.get("opportunity_score"),
                     "ml_continuation_prob_pct": r.get("ml_continuation_prob_pct"),
+                    "ml_advisory_prob_pct": r.get("ml_advisory_prob_pct"),
                     "ml_validated": r.get("ml_validated"),
                     "ml_status": r.get("ml_status"),
                     "ml_training_samples": r.get("ml_training_samples"),
@@ -2404,6 +2407,8 @@ def main():
         f"Status: {ml_summary.get('status')} | "
         f"validated={ml_summary.get('validated')} | "
         f"samples={ml_summary.get('samples', 0)} | "
+        f"replay={ml_summary.get('historical_replay_samples', 0)} | "
+        f"live={ml_summary.get('live_samples', 0)} | "
         f"days={ml_summary.get('trading_days', 0)} | "
         f"AUC={ml_summary.get('walk_forward_auc')}"
     )
