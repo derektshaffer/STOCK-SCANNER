@@ -1,0 +1,36 @@
+name: Analyzer v2 validation
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "analyzer_v2_integration.py"
+      - "analyzer_v2_ui.py"
+      - "prediction_tracker.py"
+      - "analyzer_bootstrap.py"
+      - "analyzer_ui_core.py"
+      - ".github/workflows/analyzer-v2-check.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Compile Analyzer v2
+        run: |
+          python -m py_compile             analyzer_v2_integration.py             analyzer_v2_ui.py             prediction_tracker.py             analyzer_bootstrap.py             analyzer_ui_core.py
+      - name: Import standalone v2 modules
+        run: |
+          python - <<'PY'
+          import analyzer_v2_integration
+          import analyzer_v2_ui
+          import prediction_tracker
+          print("Analyzer v2 imports passed")
+          PY
