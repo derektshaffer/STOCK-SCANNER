@@ -34,12 +34,16 @@ def render_live_tape(st, overlay):
     if status == "streaming":
         dot = "#35e06f"
         label = f"{feed} LIVE"
+    elif status == "rest_fallback":
+        dot = "#ffd166"
+        label = f"{feed} REST FALLBACK"
     elif status in {
         "connecting",
         "authenticating",
         "subscribing",
         "switching",
         "reconnecting",
+        "connection_limit",
     }:
         dot = "#ffd166"
         label = status.upper()
@@ -87,5 +91,13 @@ def render_live_tape(st, overlay):
         unsafe_allow_html=True,
     )
 
-    if overlay.get("error"):
+    if status == "rest_fallback":
+        st.caption(
+            "Alpaca's WebSocket connection is already in use, so this ticker is "
+            "temporarily updating from REST snapshots instead. The app will retry "
+            "the single live socket automatically."
+        )
+        if overlay.get("rest_error"):
+            st.caption("REST fallback issue: " + str(overlay.get("rest_error"))[:180])
+    elif overlay.get("error"):
         st.caption("Live stream: " + str(overlay.get("error"))[:180])
