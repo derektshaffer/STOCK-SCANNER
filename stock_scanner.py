@@ -55,7 +55,10 @@ LIVE_FEED = (os.environ.get("ALPACA_LIVE_FEED", "iex").strip().lower() or "iex")
 if LIVE_FEED not in {"iex", "sip"}:
     LIVE_FEED = "iex"
 HISTORICAL_FEED = "sip"
-TRADIER_TOKEN = os.environ.get("TRADIER_ACCESS_TOKEN", "").strip()
+TRADIER_TOKEN = (
+    os.environ.get("TRADIER_ACCESS_TOKEN", "").strip()
+    or os.environ.get("TRADIER_TOKEN", "").strip()
+)
 USE_TRADIER = bool(
     TRADIER_TOKEN
     and get_tradier_quotes is not None
