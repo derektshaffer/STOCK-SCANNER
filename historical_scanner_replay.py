@@ -99,8 +99,85 @@ def _request_json(url, headers, timeout=45):
         return json.loads(response.read().decode("utf-8"))
 
 
+def _security_name_looks_common(name):
+    text = str(name or "").upper()
+    excluded = (
+        " WARRANT",
+        " WARRANTS",
+        " WT EXP",
+        " UNIT",
+        " UNITS",
+        " RIGHT",
+        " RIGHTS",
+        " PREFERRED",
+        " PREFERENCE",
+    )
+    return not any(marker in text for marker in excluded)
+
+
+def _load_nasdaq_symbol_directory(ss):
+    """Public exchange symbol directory fallback; no brokerage permission needed."""
+    sources = (
+        (
+            "https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt",
+            "nasdaqlisted",
+        ),
+        (
+            "https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt",
+            "otherlisted",
+        ),
+    )
+    symbols = []
+    seen = set()
+    for url, kind in sources:
+        req = urllib.request.Request(
+            url,
+            headers={"User-Agent": "stock-scanner-historical-replay/1.0"},
+        )
+        with urllib.request.urlopen(req, timeout=30) as response:
+            text = response.read().decode("utf-8", errors="replace")
+        lines = [line for line in text.splitlines() if "|" in line]
+        if not lines:
+            continue
+        header = lines[0].split("|")
+        index = {name: i for i, name in enumerate(header)}
+
+        for line in lines[1:]:
+            if line.startswith("File Creation Time"):
+                continue
+            fields = line.split("|")
+            try:
+                if kind == "nasdaqlisted":
+                    symbol = fields[index["Symbol"]].strip().upper()
+                    name = fields[index["Security Name"]].strip()
+                    test_issue = fields[index["Test Issue"]].strip().upper()
+                    etf = fields[index["ETF"]].strip().upper()
+                else:
+                    symbol = fields[index["ACT Symbol"]].strip().upper()
+                    name = fields[index["Security Name"]].strip()
+                    test_issue = fields[index["Test Issue"]].strip().upper()
+                    etf = fields[index["ETF"]].strip().upper()
+            except (KeyError, IndexError):
+                continue
+
+            if test_issue == "Y" or etf == "Y":
+                continue
+            if not symbol or symbol in seen:
+                continue
+            if not _security_name_looks_common(name):
+                continue
+            if not ss.likely_common_stock(symbol):
+                continue
+            seen.add(symbol)
+            symbols.append(symbol)
+
+    if not symbols:
+        raise RuntimeError("Nasdaq Trader symbol directory returned no usable symbols.")
+    return sorted(symbols), "nasdaqtrader_public_symbol_directory"
+
+
 def load_active_assets(ss):
-    """Load today's active US-equity universe; replay metadata records survivorship."""
+    """Load a broad US-equity universe without requiring a trading-account key."""
     last_error = None
     params = urllib.parse.urlencode(
         {"status": "active", "asset_class": "us_equity"}
@@ -129,7 +206,15 @@ def load_active_assets(ss):
                 return sorted(symbols), base
         except Exception as exc:
             last_error = exc
-    raise RuntimeError(f"Could not load Alpaca active assets: {last_error}")
+
+    try:
+        return _load_nasdaq_symbol_directory(ss)
+    except Exception as public_exc:
+        raise RuntimeError(
+            "Could not load an active stock universe from Alpaca or the "
+            f"public exchange directory. Alpaca: {last_error}; "
+            f"public directory: {public_exc}"
+        ) from public_exc
 
 
 def fetch_multi_bars_complete(
