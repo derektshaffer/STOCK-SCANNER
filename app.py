@@ -1,6 +1,7 @@
 import json
 import os
 import runpy
+import time
 from pathlib import Path
 
 import streamlit as st
@@ -199,6 +200,7 @@ st.markdown(
     '<div class="combined-nav-wrap"><div class="combined-nav-title">Stock Workspace</div></div>',
     unsafe_allow_html=True,
 )
+previous_rendered_view = st.session_state.get("_rendered_app_view")
 view = st.radio(
     "Stock Workspace",
     VIEWS,
@@ -206,6 +208,14 @@ view = st.radio(
     horizontal=True,
     label_visibility="collapsed",
 )
+
+# Returning from the Analyzer should be an instant view switch. Do not let an
+# overdue automatic scan run inside this same full-app rerun; give Streamlit a
+# moment to finish replacing the Analyzer DOM with the cached Scanner view.
+if view != previous_rendered_view:
+    if view == "Momentum Scanner" and previous_rendered_view == "Stock Analyzer":
+        st.session_state["_scanner_return_grace_until"] = time.time() + 2.5
+    st.session_state["_rendered_app_view"] = view
 
 # Real render slots for the Momentum Scanner controls. scanner_app.py fills
 # these later, but their position is fixed here directly under the workspace
