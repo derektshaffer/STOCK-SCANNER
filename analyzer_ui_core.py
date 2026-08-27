@@ -38,6 +38,7 @@ def _load_streamlit_secrets_into_env():
 _load_streamlit_secrets_into_env()
 
 from stock_analyzer import analyze
+from analyzer_v2_ui import render_v2_decision
 
 AUTO_REFRESH_SECONDS = max(5, int(os.environ.get("ANALYZER_REFRESH_SECONDS", "15") or 15))
 
@@ -539,6 +540,9 @@ with st.container(key="analyzer_metrics_top"):
     card(cols[3],"VOL PACE",multiple(r.get("volume_pace")),f'{r.get("volume",0):,.0f} shown · {r.get("volume_source")}')
     card(cols[4],"SETUP SCORE",f'{r.get("score"):.1f} / 100',f'Grade {r.get("grade")}',"good" if r.get("grade") in ("A","B") else "warn")
     card(cols[5],"BASE SETUP",r.get("entry_quality"),f'Live feed: {r.get("live_feed")}',"good" if r.get("entry_quality")=="FAVORABLE" else "warn")
+
+with st.container(key="analyzer_decision_v2"):
+    render_v2_decision(st, r)
 
 
 with st.expander("📘 Trading term lookup / Ask AI", expanded=False):
