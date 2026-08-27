@@ -4,12 +4,31 @@ from datetime import datetime, timedelta, timezone
 from statistics import median
 from zoneinfo import ZoneInfo
 
+try:
+    from tradier_live import get_quotes as get_tradier_quotes
+    from tradier_live import get_timesales_bars as get_tradier_timesales_bars
+except Exception:
+    get_tradier_quotes = None
+    get_tradier_timesales_bars = None
+
 DATA_BASE = "https://data.alpaca.markets"
 API_KEY = os.environ.get("ALPACA_API_KEY", "").strip()
 API_SECRET = os.environ.get("ALPACA_SECRET_KEY", "").strip()
 LIVE_FEED = os.environ.get("ALPACA_LIVE_FEED", "iex").strip().lower() or "iex"
 HISTORICAL_FEED = os.environ.get("ALPACA_HISTORICAL_FEED", "sip").strip().lower() or "sip"
-ANALYZER_ENGINE_VERSION = "trade-plan-v2"
+TRADIER_TOKEN = (
+    os.environ.get("TRADIER_ACCESS_TOKEN", "").strip()
+    or os.environ.get("TRADIER_TOKEN", "").strip()
+)
+USE_TRADIER = bool(
+    TRADIER_TOKEN
+    and get_tradier_quotes is not None
+    and get_tradier_timesales_bars is not None
+)
+LIVE_MARKET_PROVIDER = "tradier" if USE_TRADIER else "alpaca"
+LIVE_MARKET_LABEL = "TRADIER CONSOLIDATED" if USE_TRADIER else LIVE_FEED.upper()
+ANALYZER_FEATURE_VERSION = "analyzer-features-v2-consolidated"
+ANALYZER_ENGINE_VERSION = "trade-plan-v3-consolidated-live"
 ET = ZoneInfo("America/New_York")
 
 CATALYST_RULES = [
@@ -106,7 +125,10 @@ def session_vwap_from_bars(bs):
     pv=v=0.0
     for b in bs:
         vol=fnum(b.get("v")) or 0
-        typical=((fnum(b.get("h")) or 0)+(fnum(b.get("l")) or 0)+(fnum(b.get("c")) or 0))/3
+        bar_vwap=fnum(b.get("vw"))
+        typical=bar_vwap if bar_vwap is not None else (
+            ((fnum(b.get("h")) or 0)+(fnum(b.get("l")) or 0)+(fnum(b.get("c")) or 0))/3
+        )
         pv += typical*vol; v += vol
     return pv/v if v else None
 
@@ -136,6 +158,62 @@ def latest_session_bars(symbol, now):
     return out
 
 
+def _tradier_timestamp(value):
+    if value in (None, ""):
+        return None
+    try:
+        ts=float(value)
+        if ts > 10_000_000_000:
+            ts /= 1000.0
+        return datetime.fromtimestamp(ts, tz=timezone.utc).isoformat().replace("+00:00", "Z")
+    except Exception:
+        pass
+    try:
+        dt=datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt=dt.replace(tzinfo=ET)
+        return dt.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+    except Exception:
+        return None
+
+
+def _tradier_quote_timestamp(quote):
+    values=[]
+    for key in ("bid_date", "ask_date", "trade_date", "timestamp"):
+        parsed=_parse_market_timestamp(_tradier_timestamp((quote or {}).get(key)))
+        if parsed is not None:
+            values.append(parsed)
+    if not values:
+        return None
+    return max(values).isoformat().replace("+00:00", "Z")
+
+
+def _tradier_trade_timestamp(quote):
+    for key in ("trade_date", "timestamp"):
+        parsed=_tradier_timestamp((quote or {}).get(key))
+        if parsed:
+            return parsed
+    return None
+
+
+def _tradier_regular_session_bars(symbol, now):
+    raw=get_tradier_timesales_bars(
+        symbol,
+        TRADIER_TOKEN,
+        now-timedelta(hours=10),
+        now,
+        interval="1min",
+        session_filter="all",
+    )
+    today=now.astimezone(ET).date()
+    return [
+        b for b in raw
+        if (_bar_time_et(b) is not None)
+        and _bar_time_et(b).date()==today
+        and _regular_session_bar(b)
+    ]
+
+
 def support_resistance_touch_bars(symbol, now, live_session_bars=None):
     """Return regular-session intraday bars used to timestamp level tests.
 
@@ -162,7 +240,7 @@ def support_resistance_touch_bars(symbol, now, live_session_bars=None):
     for precision, source, collection in (
         (5, older_src, older),
         (1, recent_src, recent),
-        (1, LIVE_FEED.upper(), live),
+        (1, LIVE_MARKET_LABEL, live),
     ):
         for b in collection:
             if not _regular_session_bar(b):
@@ -768,31 +846,106 @@ def analyze(symbol):
     symbol=symbol.upper().strip()
     if not symbol or len(symbol)>10: raise ValueError("Enter a valid ticker symbol")
     now=datetime.now(timezone.utc); now_et=now.astimezone(ET)
+
+    # Alpaca remains the history/news/fallback source. When Tradier is
+    # configured, all CURRENT decision inputs come from one consolidated
+    # Tradier quote + Time & Sales bundle so the tape and trade plan agree.
     snap=snapshot(symbol,LIVE_FEED)
-    trade=snap.get("latestTrade") or {}; quote=snap.get("latestQuote") or {}; day=snap.get("dailyBar") or {}; prev=snap.get("prevDailyBar") or {}
-    trade_ts=trade.get("t"); quote_ts=quote.get("t")
-    trade_age=_market_age_seconds(trade_ts,now); quote_age=_market_age_seconds(quote_ts,now)
+    trade=snap.get("latestTrade") or {}
+    quote=snap.get("latestQuote") or {}
+    day=snap.get("dailyBar") or {}
+    prev=snap.get("prevDailyBar") or {}
+
+    live_provider="alpaca"
+    live_feed_label=LIVE_FEED.upper()
+    live_provider_error=None
+    trade_ts=trade.get("t")
+    quote_ts=quote.get("t")
     price=fnum(trade.get("p")) or fnum(day.get("c"))
+    prev_close=fnum(prev.get("c"))
+    bid=fnum(quote.get("bp"))
+    ask=fnum(quote.get("ap"))
+    intraday=None
+    provider_day_high=None
+    provider_day_low=None
+
+    if USE_TRADIER:
+        try:
+            tradier_quote=(get_tradier_quotes([symbol],TRADIER_TOKEN) or {}).get(symbol)
+            if not tradier_quote:
+                raise RuntimeError("Tradier returned no quote")
+            tradier_intraday=_tradier_regular_session_bars(symbol,now)
+            if is_regular(now_et) and not tradier_intraday:
+                raise RuntimeError("Tradier returned no regular-session Time & Sales bars")
+
+            tprice=(
+                fnum(tradier_quote.get("last"))
+                or fnum(tradier_quote.get("close"))
+                or (fnum(tradier_intraday[-1].get("c")) if tradier_intraday else None)
+            )
+            if not tprice:
+                raise RuntimeError("Tradier returned no current price")
+
+            price=tprice
+            prev_close=fnum(tradier_quote.get("prevclose")) or prev_close
+            bid=fnum(tradier_quote.get("bid"))
+            ask=fnum(tradier_quote.get("ask"))
+            provider_day_high=fnum(tradier_quote.get("high"))
+            provider_day_low=fnum(tradier_quote.get("low"))
+            intraday=tradier_intraday
+            trade_ts=_tradier_trade_timestamp(tradier_quote)
+            quote_ts=_tradier_quote_timestamp(tradier_quote)
+            live_provider="tradier"
+            live_feed_label="TRADIER CONSOLIDATED"
+        except Exception as exc:
+            # Explicit fallback keeps the Analyzer usable during a provider
+            # outage while making the source change visible in the metrics.
+            live_provider_error=str(exc)[:180]
+
+    if intraday is None:
+        intraday=latest_session_bars(symbol,now)
+
     if not price: raise RuntimeError("No current price returned")
-    prev_close=fnum(prev.get("c")); day_pct=pct(price,prev_close) if prev_close else None
-    bid=fnum(quote.get("bp")); ask=fnum(quote.get("ap")); spread_pct=pct(ask,bid) if bid and ask else None
-    if spread_pct is not None: spread_pct=spread_pct/(1+spread_pct/100) # approx spread / ask, percentage
-    intraday=latest_session_bars(symbol,now)
+    day_pct=pct(price,prev_close) if prev_close else None
+
+    spread_pct=pct(ask,bid) if bid and ask else None
+    if spread_pct is not None:
+        spread_pct=spread_pct/(1+spread_pct/100) # approx spread / ask, percentage
+
     vwap=session_vwap_from_bars(intraday)
-    high=max([fnum(x.get("h")) or 0 for x in intraday],default=fnum(day.get("h")) or price)
-    low=min([fnum(x.get("l")) for x in intraday if fnum(x.get("l"))],default=fnum(day.get("l")) or price)
+    high=max(
+        [fnum(x.get("h")) or 0 for x in intraday],
+        default=provider_day_high or fnum(day.get("h")) or price,
+    )
+    low=min(
+        [fnum(x.get("l")) for x in intraday if fnum(x.get("l"))],
+        default=provider_day_low or fnum(day.get("l")) or price,
+    )
     from_high=(high-price)/high*100 if high else None
+
     def mom(n):
         if len(intraday)>=n+1:
-            c=fnum(intraday[-(n+1)].get("c")); return pct(price,c) if c else None
+            c=fnum(intraday[-(n+1)].get("c"))
+            return pct(price,c) if c else None
         return None
+
     avgvol,volsrc=avg_daily_volume(symbol,now)
     session_volume=sum((fnum(x.get("v")) or 0) for x in intraday)
-    today_volume=fnum(day.get("v")) or session_volume
+    if live_provider=="tradier":
+        today_volume=session_volume
+        volume_source="TRADIER CONSOLIDATED"
+    else:
+        today_volume=fnum(day.get("v")) or session_volume
+        volume_source=volsrc
+
     pace=None
     if avgvol:
         expected=avgvol*(session_fraction(now_et) if is_regular(now_et) else 1)
         pace=today_volume/expected if expected else None
+
+    trade_age=_market_age_seconds(trade_ts,now)
+    quote_age=_market_age_seconds(quote_ts,now)
+
     daily,daysrc=try_sip_delayed_bars(symbol,"1Day",now-timedelta(days=180),now,180)
     supports,resist=pivot_levels(daily,price)
     try:
@@ -800,19 +953,61 @@ def analyze(symbol):
         supports=annotate_level_touches(supports,touch_bars,now)
         resist=annotate_level_touches(resist,touch_bars,now)
     except Exception:
-        # Support/resistance levels should still render even if the extra
-        # intraday timestamp lookup is temporarily unavailable.
         for level in supports + resist:
             level.update({"last_touch":None,"last_touch_label":"—","age":"Unavailable","touch_precision":None,"touch_source":None})
+
     supports=score_level_quality(supports,vwap,now)
     resist=score_level_quality(resist,vwap,now)
     atr14,atr14_pct=atr_from_daily(daily,now,14)
     hist=historical_spikes(symbol,now,day_pct)
     arts=[]
-    try:arts=catalyst_summary(news(symbol,now),now)
+    try: arts=catalyst_summary(news(symbol,now),now)
     except Exception: pass
+
     liquidity=liquidity_context(price,avgvol,pace,spread_pct)
-    metrics={"engine_version":ANALYZER_ENGINE_VERSION,"symbol":symbol,"as_of":now_et.isoformat(),"live_feed":LIVE_FEED.upper(),"historical_feed":daysrc,"latest_trade_time":trade_ts,"latest_quote_time":quote_ts,"trade_age_seconds":round(trade_age,2) if trade_age is not None else None,"quote_age_seconds":round(quote_age,2) if quote_age is not None else None,"price":round(price,4),"prev_close":prev_close,"day_pct":round(day_pct,2) if day_pct is not None else None,"bid":bid,"ask":ask,"spread_pct":round(spread_pct,2) if spread_pct is not None else None,"day_high":round(high,4),"day_low":round(low,4),"from_high_pct":round(from_high,2) if from_high is not None else None,"vwap":round(vwap,4) if vwap else None,"vwap_position":"ABOVE" if vwap and price>=vwap else "BELOW" if vwap else "N/A","vwap_extension_pct":round(pct(price,vwap),2) if vwap else None,"momentum_5m":round(mom(5),2) if mom(5) is not None else None,"momentum_15m":round(mom(15),2) if mom(15) is not None else None,"momentum_30m":round(mom(30),2) if mom(30) is not None else None,"session_volume":round(session_volume),"volume":round(today_volume),"avg_20d_volume":round(avgvol) if avgvol else None,"volume_pace":round(pace,2) if pace is not None else None,"volume_source":volsrc,"atr_14":round(atr14,4) if atr14 is not None else None,"atr_14_pct":round(atr14_pct,2) if atr14_pct is not None else None,"liquidity":liquidity,"supports":supports,"resistances":resist,"historical_analogs":hist,"news":arts}
+    metrics={
+        "engine_version":ANALYZER_ENGINE_VERSION,
+        "feature_version":ANALYZER_FEATURE_VERSION,
+        "symbol":symbol,
+        "as_of":now_et.isoformat(),
+        "market_provider":live_provider,
+        "live_provider":live_provider,
+        "live_feed":live_feed_label,
+        "live_provider_error":live_provider_error,
+        "historical_provider":"alpaca",
+        "historical_feed":daysrc,
+        "latest_trade_time":trade_ts,
+        "latest_quote_time":quote_ts,
+        "trade_age_seconds":round(trade_age,2) if trade_age is not None else None,
+        "quote_age_seconds":round(quote_age,2) if quote_age is not None else None,
+        "price":round(price,4),
+        "prev_close":prev_close,
+        "day_pct":round(day_pct,2) if day_pct is not None else None,
+        "bid":bid,
+        "ask":ask,
+        "spread_pct":round(spread_pct,2) if spread_pct is not None else None,
+        "day_high":round(high,4),
+        "day_low":round(low,4),
+        "from_high_pct":round(from_high,2) if from_high is not None else None,
+        "vwap":round(vwap,4) if vwap else None,
+        "vwap_position":"ABOVE" if vwap and price>=vwap else "BELOW" if vwap else "N/A",
+        "vwap_extension_pct":round(pct(price,vwap),2) if vwap else None,
+        "momentum_5m":round(mom(5),2) if mom(5) is not None else None,
+        "momentum_15m":round(mom(15),2) if mom(15) is not None else None,
+        "momentum_30m":round(mom(30),2) if mom(30) is not None else None,
+        "session_volume":round(session_volume),
+        "volume":round(today_volume),
+        "avg_20d_volume":round(avgvol) if avgvol else None,
+        "volume_pace":round(pace,2) if pace is not None else None,
+        "volume_source":volume_source,
+        "atr_14":round(atr14,4) if atr14 is not None else None,
+        "atr_14_pct":round(atr14_pct,2) if atr14_pct is not None else None,
+        "liquidity":liquidity,
+        "supports":supports,
+        "resistances":resist,
+        "historical_analogs":hist,
+        "news":arts,
+    }
     score,grade,entry,reasons=score_setup(metrics)
     metrics.update({"score":score,"grade":grade,"entry_quality":entry,"score_reasons":reasons})
     metrics["trade_plan"]=build_trade_plan(metrics,now)
