@@ -524,6 +524,19 @@ def _score_bucket(value):
     return "0-49"
 
 
+def _independent_calibration_rows(rows):
+    chosen = {}
+    for row in sorted(rows, key=lambda item: str(item.get("timestamp") or "")):
+        symbol = str(row.get("symbol") or "").upper().strip()
+        dt = _parse_dt(row.get("timestamp"))
+        if not symbol or dt is None:
+            continue
+        key = (symbol, dt.date().isoformat(), dt.hour)
+        if key not in chosen:
+            chosen[key] = row
+    return list(chosen.values())
+
+
 def _bucket_calibration(rows, score_field):
     groups = {}
     for row in rows:
@@ -552,8 +565,9 @@ def tracker_summary(rows=None, symbol=None, current_metrics=None):
     if symbol:
         rows = [r for r in rows if r.get("symbol") == str(symbol).upper().strip()]
 
+    calibration_rows = _independent_calibration_rows(rows)
     resolved_60 = [
-        r for r in rows
+        r for r in calibration_rows
         if (r.get("outcomes") or {}).get("return_60m_pct") is not None
     ]
     positive_60 = [
@@ -562,7 +576,7 @@ def tracker_summary(rows=None, symbol=None, current_metrics=None):
         and _num((r.get("outcomes") or {}).get("return_60m_pct")) > 0
     ]
     touches = [
-        r for r in rows
+        r for r in calibration_rows
         if (r.get("outcomes") or {}).get("target1_first_touch") in {"target", "stop"}
     ]
     target_wins = [
@@ -604,6 +618,8 @@ def tracker_summary(rows=None, symbol=None, current_metrics=None):
 
     return {
         "total_predictions": len(rows),
+        "calibration_rows": len(calibration_rows),
+        "calibration_sampling": "one observation per ticker per hour",
         "signal_lifecycle": lifecycle,
         "resolved_60m": len(resolved_60),
         "higher_60m_rate": (
@@ -617,11 +633,11 @@ def tracker_summary(rows=None, symbol=None, current_metrics=None):
         ),
         "potential_calibration": (
             (durable.get("potential_calibration") or {})
-            or _bucket_calibration(rows, "potential_score")
+            or _bucket_calibration(calibration_rows, "potential_score")
         ),
         "entry_calibration": (
             (durable.get("entry_calibration") or {})
-            or _bucket_calibration(rows, "entry_readiness")
+            or _bucket_calibration(calibration_rows, "entry_readiness")
         ),
         "calibration_ready": (
             bool(durable.get("calibration_ready"))
