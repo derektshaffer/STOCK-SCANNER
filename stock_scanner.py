@@ -109,7 +109,8 @@ VOLUME_PROFILE_MIN_SESSIONS = 7
 
 SCAN_LOG_DIR = os.environ.get("SCAN_LOG_DIR", "scan_logs").strip() or "scan_logs"
 SCAN_LOG_TOP = 30
-SCANNER_VERSION = "3.0"
+SCANNER_VERSION = "3.1"
+SCANNER_FEATURE_VERSION = "scanner-features-v2-consolidated"
 
 API_KEY = os.environ.get("ALPACA_API_KEY", "").strip()
 API_SECRET = os.environ.get("ALPACA_SECRET_KEY", "").strip()
@@ -1652,6 +1653,7 @@ def candidate_log_record(c, rank):
     """Stable, compact record used later to evaluate what happened after a signal."""
     return {
         "rank": rank,
+        "feature_version": SCANNER_FEATURE_VERSION,
         "symbol": c.get("symbol"),
         "price": c.get("price"),
         "prev_close": c.get("prev_close"),
@@ -1728,8 +1730,9 @@ def write_scan_logs(rows, now_utc, now_et, excluded_symbols, ml_summary=None):
         grade_counts = Counter(c.get("setup_grade", "unknown") for c in rows)
 
         payload = {
-            "schema_version": 1,
+            "schema_version": 2,
             "scanner_version": SCANNER_VERSION,
+            "feature_version": SCANNER_FEATURE_VERSION,
             "scan_id": scan_id,
             "scan_time_utc": now_utc.isoformat(),
             "scan_time_et": now_et.isoformat(),
