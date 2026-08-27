@@ -17,6 +17,13 @@ try:
 except Exception:
     apply_scanner_ml = None
 
+try:
+    from tradier_live import get_quotes as get_tradier_quotes
+    from tradier_live import get_timesales_bars as get_tradier_timesales_bars
+except Exception:
+    get_tradier_quotes = None
+    get_tradier_timesales_bars = None
+
 # ============================================================
 # MOMENTUM STOCK SCANNER - v2.9
 #
@@ -48,6 +55,13 @@ LIVE_FEED = (os.environ.get("ALPACA_LIVE_FEED", "iex").strip().lower() or "iex")
 if LIVE_FEED not in {"iex", "sip"}:
     LIVE_FEED = "iex"
 HISTORICAL_FEED = "sip"
+TRADIER_TOKEN = os.environ.get("TRADIER_ACCESS_TOKEN", "").strip()
+USE_TRADIER = bool(
+    TRADIER_TOKEN
+    and get_tradier_quotes is not None
+    and get_tradier_timesales_bars is not None
+)
+LIVE_PROVIDER = "tradier" if USE_TRADIER else "alpaca"
 
 TOP_MOVERS = 50
 WATCHLIST_SIZE = 15
@@ -458,16 +472,20 @@ def is_regular_session(now_et):
 
 
 def live_feed_available(now_et):
-    """Whether the configured live feed is open for the current stock session."""
+    """Whether the configured live provider covers the current stock session."""
     phase = market_session_mode(now_et)
     if phase not in {"premarket", "regular", "afterhours"}:
         return False
 
+    # Tradier production market data is consolidated and is used for the
+    # scanner's live quote/volume/spread/intraday metrics when configured.
+    if USE_TRADIER:
+        return True
+
     if LIVE_FEED == "sip":
         return True
 
-    # IEX exchange hours are approximately 8:00 AM-5:00 PM ET, so Basic/IEX
-    # data only covers the last 90 minutes of pre-market and first hour after close.
+    # Alpaca Basic/IEX is the fallback and has a narrower useful window.
     minutes = now_et.hour * 60 + now_et.minute
     return (8 * 60) <= minutes < (17 * 60)
 
@@ -541,7 +559,11 @@ def critical_fail_count(c):
         else MIN_TOTAL_DOLLAR_VOLUME
     )
 
-    if c.get("liquidity_source") == "delayed_sip":
+    if c.get("liquidity_source") in {
+        "delayed_sip",
+        "tradier_consolidated",
+        "tradier_extended",
+    }:
         if c.get("liquidity_dollar_volume", 0) < liquidity_floor:
             count += 1
     else:
@@ -703,9 +725,18 @@ def evaluate_base_filters(c):
     )
     liquidity_label = "$1M" if liquidity_floor == MIN_EXTENDED_DOLLAR_VOLUME else "$5M"
 
-    if c.get("liquidity_source") == "delayed_sip":
+    if c.get("liquidity_source") in {
+        "delayed_sip",
+        "tradier_consolidated",
+        "tradier_extended",
+    }:
         if c.get("liquidity_dollar_volume", 0) < liquidity_floor:
-            reasons.append(f"delayed SIP dollar volume < {liquidity_label}")
+            source_label = (
+                "Tradier consolidated dollar volume"
+                if str(c.get("liquidity_source") or "").startswith("tradier")
+                else "delayed SIP dollar volume"
+            )
+            reasons.append(f"{source_label} < {liquidity_label}")
     else:
         if c.get("dollar_volume", 0) < MIN_RAW_IEX_DOLLAR_VOLUME_FALLBACK:
             reasons.append("IEX dollar volume < $25k (fallback)")
@@ -724,10 +755,12 @@ def evaluate_base_filters(c):
 def evaluate_tradability_warnings(c):
     warnings = []
     spread = c.get("spread_pct")
+    source = str(c.get("live_quote_source") or "")
+    spread_label = "consolidated spread" if source.startswith("tradier") else "IEX spread"
     if spread is None:
-        warnings.append("IEX spread unavailable")
+        warnings.append(f"{spread_label} unavailable")
     elif spread > MAX_IEX_SPREAD_WARNING_PCT:
-        warnings.append(f"IEX spread > {MAX_IEX_SPREAD_WARNING_PCT:.0f}%")
+        warnings.append(f"{spread_label} > {MAX_IEX_SPREAD_WARNING_PCT:.0f}%")
     return warnings
 
 
@@ -750,8 +783,13 @@ def refresh_quality(c):
 
 
 def enrich_delayed_sip_liquidity(rows, now_utc, now_et):
-    """Use delayed SIP liquidity in regular hours; extended hours use live session flow."""
+    """Use delayed SIP only when consolidated Tradier liquidity is not active."""
     if not rows:
+        return
+
+    if USE_TRADIER:
+        for row in rows:
+            row["sip_liquidity_status"] = "not_needed_tradier_consolidated"
         return
 
     if market_session_mode(now_et) in {"premarket", "afterhours"}:
@@ -828,7 +866,10 @@ def enrich_delayed_sip_liquidity(rows, now_utc, now_et):
         refresh_quality(c)
 
 
-def analyze_snapshot(symbol):
+def analyze_snapshot(symbol, tradier_quote=None):
+    # Alpaca remains the discovery/history/news source. Its snapshot also
+    # supplies a VWAP fallback until Tradier intraday Time & Sales enrichment
+    # runs for the highest-ranked symbols.
     snap = get_snapshot(symbol)
     trade = snap.get("latestTrade") or {}
     quote = snap.get("latestQuote") or {}
@@ -843,9 +884,31 @@ def analyze_snapshot(symbol):
     vwap = float(daily.get("vw") or 0)
     bid = float(quote.get("bp") or 0)
     ask = float(quote.get("ap") or 0)
+    live_quote_source = f"alpaca_{LIVE_FEED}"
+    liquidity_source = "iex_estimate"
+
+    if tradier_quote:
+        def tnum(name):
+            try:
+                return float(tradier_quote.get(name) or 0)
+            except (TypeError, ValueError):
+                return 0.0
+
+        price = tnum("last") or tnum("close") or price
+        prev_close = tnum("prevclose") or prev_close
+        volume = tnum("volume") or volume
+        high = tnum("high") or high
+        low = tnum("low") or low
+        bid = tnum("bid") or bid
+        ask = tnum("ask") or ask
+        live_quote_source = "tradier_consolidated"
+        liquidity_source = "tradier_consolidated"
+
     daily_ts = daily.get("t")
     session_date = None
-    if daily_ts:
+    if tradier_quote:
+        session_date = datetime.now(ZoneInfo("America/New_York")).date().isoformat()
+    elif daily_ts:
         try:
             session_date = (
                 datetime.fromisoformat(str(daily_ts).replace("Z", "+00:00"))
@@ -861,11 +924,17 @@ def analyze_snapshot(symbol):
 
     day_pct = pct_change(price, prev_close)
     dollar_volume = price * volume
-    estimated_total_dollar_volume = (
-        dollar_volume / IEX_MARKET_SHARE_ESTIMATE
-        if IEX_MARKET_SHARE_ESTIMATE > 0
-        else dollar_volume
-    )
+    if liquidity_source == "tradier_consolidated":
+        estimated_total_dollar_volume = dollar_volume
+        liquidity_dollar_volume = dollar_volume
+    else:
+        estimated_total_dollar_volume = (
+            dollar_volume / IEX_MARKET_SHARE_ESTIMATE
+            if IEX_MARKET_SHARE_ESTIMATE > 0
+            else dollar_volume
+        )
+        liquidity_dollar_volume = estimated_total_dollar_volume
+
     intraday_range_pct = pct_change(high, low)
     distance_from_high_pct = ((high - price) / high) * 100 if high else None
     distance_from_vwap_pct = pct_change(price, vwap) if vwap else None
@@ -884,8 +953,9 @@ def analyze_snapshot(symbol):
         "volume": int(volume),
         "dollar_volume": round(dollar_volume, 2),
         "estimated_total_dollar_volume": round(estimated_total_dollar_volume, 2),
-        "liquidity_source": "iex_estimate",
-        "liquidity_dollar_volume": round(estimated_total_dollar_volume, 2),
+        "liquidity_source": liquidity_source,
+        "liquidity_dollar_volume": round(liquidity_dollar_volume, 2),
+        "live_quote_source": live_quote_source,
         "session_date": session_date,
         "spread_pct": round(spread_pct, 3) if spread_pct is not None else None,
         "intraday_range_pct": round(intraday_range_pct, 2)
