@@ -514,37 +514,62 @@ with st.container(key="analyzer_controls"):
         if not _COMBINED_WORKSPACE:
             st.caption(f"Refresh every {AUTO_REFRESH_SECONDS}s · use `ALPACA_LIVE_FEED=\"sip\"` for consolidated real-time data when your Alpaca plan supports SIP.")
 
+def _save_position_input(symbol, field, widget_key):
+    store = st.session_state.setdefault("_position_inputs_by_symbol", {})
+    record = dict(store.get(symbol) or {})
+    record[field] = st.session_state.get(widget_key)
+    store[symbol] = record
+    st.session_state["_position_inputs_by_symbol"] = store
+
+
+_position_store = st.session_state.setdefault("_position_inputs_by_symbol", {})
+_position_saved = dict(_position_store.get(ticker) or {})
+_position_toggle_key = f"position_owned_{ticker}"
+_position_cost_key = f"position_avg_cost_{ticker}"
+_position_shares_key = f"position_shares_{ticker}"
+
+if _position_toggle_key not in st.session_state:
+    st.session_state[_position_toggle_key] = bool(_position_saved.get("enabled", False))
+if _position_cost_key not in st.session_state:
+    st.session_state[_position_cost_key] = float(_position_saved.get("average_cost") or 0.0)
+if _position_shares_key not in st.session_state:
+    st.session_state[_position_shares_key] = float(_position_saved.get("shares") or 0.0)
+
 _position_enabled = st.toggle(
     "I already own this stock",
-    value=False,
-    key=f"position_owned_{ticker}",
+    key=_position_toggle_key,
+    on_change=_save_position_input,
+    args=(ticker, "enabled", _position_toggle_key),
 )
-_position_avg_cost = 0.0
-_position_shares = 0.0
+_position_avg_cost = float(st.session_state.get(_position_cost_key) or 0.0)
+_position_shares = float(st.session_state.get(_position_shares_key) or 0.0)
+
 if _position_enabled:
     _pc1, _pc2, _pc3 = st.columns([1, 1, 3.2], vertical_alignment="bottom")
     with _pc1:
         _position_avg_cost = st.number_input(
             "Average cost",
             min_value=0.0,
-            value=0.0,
             step=0.01,
             format="%.4f",
-            key=f"position_avg_cost_{ticker}",
+            key=_position_cost_key,
+            on_change=_save_position_input,
+            args=(ticker, "average_cost", _position_cost_key),
         )
     with _pc2:
         _position_shares = st.number_input(
             "Shares (optional)",
             min_value=0.0,
-            value=0.0,
             step=1.0,
             format="%.4f",
-            key=f"position_shares_{ticker}",
+            key=_position_shares_key,
+            on_change=_save_position_input,
+            args=(ticker, "shares", _position_shares_key),
         )
     with _pc3:
         st.caption(
             "Position mode reuses the trade-plan area below for exit management. "
-            "These inputs stay local to this browser session."
+            "Cost and shares are kept separately for each ticker during this session."
         )
 
 _existing_result=st.session_state.get("result")
@@ -727,9 +752,6 @@ if _position_plan and _position_plan.get("status") == "ok":
         unsafe_allow_html=True,
     )
 
-    _pnl_note = f'{pp(_position_plan.get("pnl_pct"))} vs avg cost'
-    if _position_plan.get("total_pnl") is not None:
-        _pnl_note += f' · total {money(_position_plan.get("total_pnl"))}'
     _protect_note = (
         f'{pp(_position_plan.get("protective_exit_return_pct"))} vs cost · '
         f'{_position_plan.get("room_to_protective_pct", 0):.1f}% below current'
