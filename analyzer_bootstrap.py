@@ -26,6 +26,8 @@ def _preload_secrets():
         "ANALYZER_GITHUB_REPO",
         "ANALYZER_GITHUB_BRANCH",
         "ANALYZER_REMOTE_SYNC_SECONDS",
+        "ANALYZER_STREAM_UI_SECONDS",
+        "INTRINIO_API_KEY",
     ):
         value = secrets.get(key)
         if value is not None and str(value).strip():
@@ -451,6 +453,8 @@ def run():
 
     from historical_ui import render_historical_setup
     from ml_ui import render_ml_prediction
+    from live_tape_ui import render_live_tape
+    from alpaca_live_stream import get_live_overlay
 
     target = Path(__file__).with_name("analyzer_ui_core.py")
     if not target.exists():
@@ -462,6 +466,22 @@ def run():
         )
     except Exception:
         refresh_seconds = 15
+
+    try:
+        stream_ui_seconds = max(
+            1, int(os.environ.get("ANALYZER_STREAM_UI_SECONDS", "2") or 2)
+        )
+    except Exception:
+        stream_ui_seconds = 2
+
+    @st.fragment(run_every=f"{stream_ui_seconds}s")
+    def _render_fast_live_tape():
+        result = st.session_state.get("result") or {}
+        if not isinstance(result, dict) or not result.get("symbol"):
+            return
+        overlay = get_live_overlay(result)
+        with st.container(key="analyzer_fast_live_tape"):
+            render_live_tape(st, overlay)
 
     @st.fragment(run_every=f"{refresh_seconds}s")
     def _render_live_analyzer():
@@ -504,6 +524,7 @@ def run():
                 else:
                     _render_analysis_sections()
 
+    _render_fast_live_tape()
     _render_live_analyzer()
 
     if not combined:
