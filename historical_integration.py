@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from historical_patterns import analyze_historical_patterns
 
@@ -12,6 +12,42 @@ def _num(value):
 
 def _clamp(value, lo, hi):
     return max(lo, min(hi, value))
+
+
+def _expanded_history_fetch(sa, symbol, timeframe, start, end, limit=10000):
+    """Fetch deeper historical data without silently hitting Alpaca row caps."""
+    if timeframe == "1Day":
+        expanded_start = min(start, end - timedelta(days=900))
+        return sa.try_sip_delayed_bars(symbol, timeframe, expanded_start, end, 1000)
+
+    if timeframe != "5Min":
+        return sa.try_sip_delayed_bars(symbol, timeframe, start, end, limit)
+
+    expanded_start = min(start, end - timedelta(days=540))
+    cursor = expanded_start
+    step = timedelta(days=45)
+    merged = {}
+    sources = []
+
+    while cursor < end:
+        chunk_end = min(end, cursor + step)
+        try:
+            chunk, source = sa.try_sip_delayed_bars(
+                symbol, timeframe, cursor, chunk_end, 10000
+            )
+        except Exception:
+            chunk, source = [], "unavailable"
+
+        if source and source not in sources:
+            sources.append(source)
+        for bar in chunk or []:
+            ts = str(bar.get("t") or "")
+            if ts:
+                merged[ts] = bar
+        cursor = chunk_end
+
+    rows = [merged[k] for k in sorted(merged)]
+    return rows, " + ".join(sources) if sources else "unavailable"
 
 
 def install_historical_analysis(sa):
@@ -50,7 +86,9 @@ def install_historical_analysis(sa):
                 current_day_pct=metrics.get("day_pct"),
                 current_gap_pct=gap_pct,
                 current_volume_pace=metrics.get("volume_pace"),
-                fetch_bars=sa.try_sip_delayed_bars,
+                fetch_bars=lambda sym, timeframe, start, end, limit=10000: _expanded_history_fetch(
+                    sa, sym, timeframe, start, end, limit
+                ),
                 et=sa.ET,
             )
         except Exception as exc:
