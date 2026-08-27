@@ -720,8 +720,14 @@ if clicked:
         st.error(msg)
 
 
+scanner_return_grace_until = float(
+    st.session_state.get("_scanner_return_grace_until") or 0.0
+)
+scanner_return_grace_active = scanner_return_grace_until > time.time()
 auto_run_every = (
-    AUTO_STATUS_REFRESH_SECONDS if st.session_state["auto_scan_enabled"] else None
+    3 if st.session_state["auto_scan_enabled"] and scanner_return_grace_active
+    else AUTO_STATUS_REFRESH_SECONDS if st.session_state["auto_scan_enabled"]
+    else None
 )
 
 
@@ -729,6 +735,20 @@ auto_run_every = (
 def auto_scan_controller():
     enabled = st.session_state["auto_scan_enabled"]
     open_now, now_et = market_is_open()
+
+    grace_until = float(st.session_state.get("_scanner_return_grace_until") or 0.0)
+    now_ts = time.time()
+    if enabled and grace_until > now_ts:
+        seconds = max(1, int(round(grace_until - now_ts)))
+        st.markdown(
+            '<div class="auto-box auto-on"><b>🟢 SCANNER READY</b><br>'
+            f'<span class="sub">Showing the latest completed scan now. '
+            f'Auto-refresh resumes in about {seconds}s.</span></div>',
+            unsafe_allow_html=True,
+        )
+        return
+    if grace_until:
+        st.session_state.pop("_scanner_return_grace_until", None)
 
     if not enabled:
         st.markdown(
