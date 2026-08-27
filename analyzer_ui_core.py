@@ -414,7 +414,26 @@ if _COMBINED_WORKSPACE:
     )
 
 with st.container(key="analyzer_header"):
-    st.markdown('<div class="hero"><div class="title">Single Stock Analyzer</div><div class="sub">Live momentum, VWAP, volume, historical analogs, support/resistance and dynamic entry/exit planning.</div></div>',unsafe_allow_html=True)
+    _header_result = st.session_state.get("result") or {}
+    _header_symbol = str(
+        _header_result.get("symbol")
+        or st.session_state.get("ticker")
+        or st.session_state.get("ticker_search_request")
+        or "—"
+    ).upper().strip()
+    st.markdown(
+        f'<div class="hero">'
+        f'<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">'
+        f'<div class="title">Single Stock Analyzer</div>'
+        f'<div style="padding:4px 10px;border:1px solid #3f6a8f;border-radius:999px;'
+        f'background:#10243a;color:#eaf4ff;font-size:12px;font-weight:900;'
+        f'letter-spacing:.06em;">CURRENT STOCK · {html.escape(_header_symbol)}</div>'
+        f'</div>'
+        f'<div class="sub">Live momentum, VWAP, volume, historical analogs, '
+        f'support/resistance and dynamic entry/exit planning.</div>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
 
 @st.fragment
 def render_ticker_search(asset_choices, current_symbol):
