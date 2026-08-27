@@ -106,7 +106,7 @@ VOLUME_PROFILE_MIN_SESSIONS = 7
 
 SCAN_LOG_DIR = os.environ.get("SCAN_LOG_DIR", "scan_logs").strip() or "scan_logs"
 SCAN_LOG_TOP = 30
-SCANNER_VERSION = "2.9"
+SCANNER_VERSION = "3.0"
 
 API_KEY = os.environ.get("ALPACA_API_KEY", "").strip()
 API_SECRET = os.environ.get("ALPACA_SECRET_KEY", "").strip()
@@ -1668,6 +1668,12 @@ def candidate_log_record(c, rank):
         "setup_flags": c.get("setup_flags") or [],
         "liquidity_source": c.get("liquidity_source"),
         "liquidity_dollar_volume": c.get("liquidity_dollar_volume"),
+        "live_quote_source": c.get("live_quote_source"),
+        "live_intraday_source": c.get("live_intraday_source"),
+        "live_dollar_volume": c.get("dollar_volume"),
+        "live_spread_pct": c.get("spread_pct"),
+        # Legacy fields remain populated so the existing validated ML feature
+        # schema can continue learning across the provider transition.
         "iex_dollar_volume": c.get("dollar_volume"),
         "iex_spread_pct": c.get("spread_pct"),
         "intraday_range_pct": c.get("intraday_range_pct"),
@@ -1745,8 +1751,10 @@ def write_scan_logs(rows, now_utc, now_et, excluded_symbols, ml_summary=None):
                 "sha": os.environ.get("GITHUB_SHA"),
             },
             "data": {
-                "live_feed": LIVE_FEED,
+                "live_provider": LIVE_PROVIDER,
+                "live_feed": "consolidated" if USE_TRADIER else LIVE_FEED,
                 "live_feed_available": live_feed_available(now_et),
+                "historical_provider": "alpaca",
                 "historical_feed": HISTORICAL_FEED,
                 "sip_liquidity_delay_minutes": SIP_LIQUIDITY_DELAY_MINUTES,
             },
@@ -1773,7 +1781,8 @@ def write_scan_logs(rows, now_utc, now_et, excluded_symbols, ml_summary=None):
             "passed_base_filters", "momentum_5m", "momentum_15m", "volume_pace",
             "volume_pace_source", "expected_volume_by_now",
             "expected_volume_fraction_pct", "volume_vs_expected_pct", "volume_profile_samples",
-            "liquidity_source", "liquidity_dollar_volume", "iex_spread_pct",
+            "liquidity_source", "liquidity_dollar_volume", "live_quote_source",
+            "live_spread_pct", "iex_spread_pct",
             "distance_from_high_pct", "distance_from_vwap_pct", "above_vwap",
             "failed_filters", "tradability_warnings", "setup_flags",
             "news_status", "news_category", "news_score", "news_headline",
@@ -1814,6 +1823,8 @@ def write_scan_logs(rows, now_utc, now_et, excluded_symbols, ml_summary=None):
                     "volume_profile_samples": r.get("volume_profile_samples"),
                     "liquidity_source": r.get("liquidity_source"),
                     "liquidity_dollar_volume": r.get("liquidity_dollar_volume"),
+                    "live_quote_source": r.get("live_quote_source"),
+                    "live_spread_pct": r.get("live_spread_pct"),
                     "iex_spread_pct": r.get("iex_spread_pct"),
                     "distance_from_high_pct": r.get("distance_from_high_pct"),
                     "distance_from_vwap_pct": r.get("distance_from_vwap_pct"),
@@ -2027,10 +2038,16 @@ def main():
         "closed": "MARKET CLOSED / TEST",
     }[phase]
     print("Mode: " + phase_label)
-    print(
-        f"Data: live momentum = {LIVE_FEED.upper()}; liquidity prefers consolidated SIP "
-        "volume delayed ~15m in regular hours; IEX scaling is fallback only."
-    )
+    if USE_TRADIER:
+        print(
+            "Data: Tradier consolidated live quotes/volume/spread/Time & Sales; "
+            "Alpaca discovery/news/history retained."
+        )
+    else:
+        print(
+            f"Data: Alpaca live momentum = {LIVE_FEED.upper()}; liquidity prefers "
+            "delayed consolidated SIP in regular hours; IEX scaling is fallback only."
+        )
     if phase in {"premarket", "afterhours"} and not live_feed_available(now_et):
         print(
             "WARN configured live feed is not available at this extended-hours time. "
@@ -2040,6 +2057,23 @@ def main():
 
     candidates = get_candidate_universe(now_et)
     print(f"Alpaca discovery returned {len(candidates)} candidate symbols.")
+
+    tradier_quotes = {}
+    if USE_TRADIER:
+        quote_symbols = [
+            str(row.get("symbol") or "").upper().strip()
+            for row in candidates
+            if row.get("symbol")
+        ]
+        try:
+            tradier_quotes = get_tradier_quotes(quote_symbols, TRADIER_TOKEN)
+            print(
+                f"Tradier consolidated quotes loaded for "
+                f"{len(tradier_quotes)}/{len(quote_symbols)} candidates."
+            )
+        except Exception as exc:
+            print(f"WARN Tradier quote batch failed; using Alpaca fallback: {exc}")
+            tradier_quotes = {}
 
     rows = []
     rejection_counts = Counter()
@@ -2055,7 +2089,7 @@ def main():
             continue
 
         try:
-            c = analyze_snapshot(symbol)
+            c = analyze_snapshot(symbol, tradier_quotes.get(symbol))
         except Exception as exc:
             print(f"WARN {symbol}: snapshot error: {exc}")
             rejection_counts["API/data error"] += 1
@@ -2071,8 +2105,8 @@ def main():
         rows.append(c)
         time.sleep(0.03)
 
-    # Replace the rough IEX market-share liquidity estimate with real consolidated
-    # SIP volume through ~15 minutes ago whenever the Basic plan allows it.
+    # Tradier rows already carry consolidated live liquidity. Alpaca fallback
+    # rows still use the delayed-SIP enrichment path when it is available.
     enrich_delayed_sip_liquidity(rows, now_utc, now_et)
 
     rejection_counts = Counter(
