@@ -271,6 +271,17 @@ def render_v2_decision(st, metrics):
                 f"**Calibration:** collecting observations for the {current_bucket} "
                 "Potential bucket; at least 5 resolved examples are needed before showing a rate."
             )
+        entry_signal_cal = tracking.get("entry_signal_calibration") or {}
+        if int(entry_signal_cal.get("signals") or 0) > 0:
+            st.write(
+                f"**Actual ENTRY AVAILABLE signals:** "
+                f"{int(entry_signal_cal.get('signals') or 0)} independent signal(s) · "
+                f"T1-before-stop {_fmt_pct(entry_signal_cal.get('target_before_stop_rate'))} "
+                f"across n={int(entry_signal_cal.get('resolved_target_stop') or 0)} decisive outcomes · "
+                f"60m higher {_fmt_pct(entry_signal_cal.get('higher_60m_rate'))} "
+                f"across n={int(entry_signal_cal.get('resolved_60m') or 0)}."
+            )
+
         if tracking.get("durable_enabled"):
             st.write("**Durable tracking: ON** · Analyzer predictions are syncing to GitHub.")
             if tracking.get("durable_error"):
