@@ -262,6 +262,7 @@ def record_prediction(metrics, now=None):
     ml = metrics.get("ml_prediction") or {}
     hist = metrics.get("historical_setup") or {}
     v2 = metrics.get("decision_v2") or {}
+    turnover = v2.get("turnover_context") or {}
 
     row = {
         "id": f"{key}:{len(rows)+1}",
@@ -289,6 +290,12 @@ def record_prediction(metrics, now=None):
         "historical_bias": hist.get("bias_label"),
         "historical_bias_score": _num(hist.get("bias_score")),
         "historical_samples": int(hist.get("sample_count") or 0),
+        "float_shares": _num(turnover.get("float_shares")),
+        "float_turnover": _num(turnover.get("float_turnover")),
+        "shares_outstanding": _num(turnover.get("shares_outstanding")),
+        "shares_outstanding_turnover": _num(
+            turnover.get("shares_outstanding_turnover")
+        ),
         "outcomes": {},
     }
     rows.append(row)
