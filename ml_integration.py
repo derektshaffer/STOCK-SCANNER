@@ -82,14 +82,14 @@ def _expanded_history_fetch(sa, symbol, timeframe, start, end, limit=10000):
 
     ML v1 originally asked for ~95 calendar days. Some tickers only produced a
     few dozen usable labeled observations after warm-up/future-window filters.
-    For 5-minute ML data we expand to ~240 calendar days and request it in
+    For 5-minute ML data we expand to ~365 calendar days and request it in
     40-day chunks, then de-duplicate by timestamp. Other timeframes keep the
     analyzer's normal historical fetch behavior.
     """
     if timeframe != "5Min":
         return sa.try_sip_delayed_bars(symbol, timeframe, start, end, limit)
 
-    expanded_start = min(start, end - timedelta(days=240))
+    expanded_start = min(start, end - timedelta(days=365))
     cursor = expanded_start
     step = timedelta(days=40)
     merged = {}
