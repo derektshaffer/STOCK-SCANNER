@@ -303,6 +303,16 @@ def configured_live_feed():
     return feed if feed in {"iex", "sip"} else "iex"
 
 
+def configured_live_provider():
+    return "tradier" if secret("TRADIER_ACCESS_TOKEN") else "alpaca"
+
+
+def configured_live_label():
+    if configured_live_provider() == "tradier":
+        return "TRADIER CONSOLIDATED"
+    return f"ALPACA {configured_live_feed().upper()}"
+
+
 def market_session_phase(now_et=None):
     now_et = now_et or datetime.now(ZoneInfo("America/New_York"))
     if now_et.weekday() >= 5:
@@ -321,6 +331,8 @@ def live_feed_available(now_et):
     phase = market_session_phase(now_et)
     if phase == "closed":
         return False
+    if configured_live_provider() == "tradier":
+        return True
     if configured_live_feed() == "sip":
         return True
     minutes = now_et.hour * 60 + now_et.minute
@@ -346,6 +358,9 @@ def run_scanner():
     env["ALPACA_API_KEY"] = key
     env["ALPACA_SECRET_KEY"] = sec
     env["ALPACA_LIVE_FEED"] = configured_live_feed()
+    tradier_token = secret("TRADIER_ACCESS_TOKEN")
+    if tradier_token:
+        env["TRADIER_ACCESS_TOKEN"] = tradier_token
 
     try:
         p = subprocess.run(
@@ -488,7 +503,9 @@ def card(c):
     ml_text, ml_cls = ml_display(c)
 
     spread = (
-        c.get("iex_spread_pct")
+        c.get("live_spread_pct")
+        if c.get("live_spread_pct") is not None
+        else c.get("iex_spread_pct")
         if c.get("iex_spread_pct") is not None
         else c.get("spread_pct")
     )
@@ -536,7 +553,7 @@ def card(c):
     {metric("NORMAL VOL BY NOW",f(c.get("expected_volume_fraction_pct"),1,"%"))}
     {metric("VWAP PRICE","$"+f(c.get("vwap"),2),"pos" if c.get("above_vwap") else "neg")}
     {metric("FROM HIGH",f(c.get("distance_from_high_pct"),2,"%"))}
-    {metric("IEX SPREAD",f(spread,2,"%"))}
+    {metric("LIVE SPREAD",f(spread,2,"%"))}
     {metric("LIQUIDITY","$"+f((c.get("liquidity_dollar_volume") or 0)/1_000_000,1,"M"))}
   </div>
   <div class="note"><div class="nk">SETUP READ</div><div class="nv">{html.escape(note[:250])}</div></div>
@@ -573,7 +590,11 @@ def to_df(records):
                 "Liquidity $M": round(
                     (c.get("liquidity_dollar_volume") or 0) / 1_000_000, 2
                 ),
-                "IEX Spread %": c.get("iex_spread_pct"),
+                "Live Spread %": (
+                    c.get("live_spread_pct")
+                    if c.get("live_spread_pct") is not None
+                    else c.get("iex_spread_pct")
+                ),
                 "Catalyst": news.get("category") or "—",
                 "Failed / Warning": " | ".join(fail[:3]) or "PASS",
             }
@@ -640,7 +661,7 @@ def styled(df):
                 "From High %": lambda x: "—" if pd.isna(x) else f"{x:.2f}%",
                 "VWAP $": lambda x: "—" if pd.isna(x) else f"${x:.2f}",
                 "Liquidity $M": "${:.2f}M",
-                "IEX Spread %": lambda x: "—" if pd.isna(x) else f"{x:.2f}%",
+                "Live Spread %": lambda x: "—" if pd.isna(x) else f"{x:.2f}%",
             }
         )
     )
@@ -678,8 +699,12 @@ with controls_context:
                 key="scan_working_button",
             )
     with auto_col:
-        feed_name = configured_live_feed().upper()
-        coverage = "4:00 AM–8:00 PM ET" if feed_name == "SIP" else "8:00 AM–5:00 PM ET"
+        feed_name = configured_live_label()
+        coverage = (
+            "4:00 AM–8:00 PM ET"
+            if configured_live_provider() == "tradier" or configured_live_feed() == "sip"
+            else "8:00 AM–5:00 PM ET"
+        )
         st.toggle(
             "Auto scan every 5 minutes",
             key="auto_scan_enabled",
@@ -710,7 +735,7 @@ with controls_context:
         )
 
 if clicked:
-    with st.spinner("Scanning Alpaca movers and ranking setups…"):
+    with st.spinner("Scanning movers and ranking live setups…"):
         ok, msg = run_scanner()
     if ok:
         st.session_state["last_auto_scan_at"] = time.time()
@@ -759,8 +784,12 @@ def auto_scan_controller():
         return
 
     if not open_now:
-        feed_name = configured_live_feed().upper()
-        coverage = "4:00 AM–8:00 PM ET" if feed_name == "SIP" else "8:00 AM–5:00 PM ET"
+        feed_name = configured_live_label()
+        coverage = (
+            "4:00 AM–8:00 PM ET"
+            if configured_live_provider() == "tradier" or configured_live_feed() == "sip"
+            else "8:00 AM–5:00 PM ET"
+        )
         st.markdown(
             '<div class="auto-box auto-wait"><b>🟡 AUTO SCAN ARMED</b><br>'
             f'<span class="sub">Paused because the {feed_name} live feed is outside its '
@@ -874,6 +903,15 @@ else:
     pill_text = "● MARKET CLOSED / PREVIEW"
 
 payload_summary = payload.get("summary") or {}
+data_meta = payload.get("data") or {}
+live_provider = str(data_meta.get("live_provider") or "alpaca").lower()
+if live_provider == "tradier":
+    live_data_pill = "LIVE DATA · TRADIER CONSOLIDATED"
+    live_data_pill_cls = "green"
+else:
+    live_data_pill = f"LIVE DATA · ALPACA {str(data_meta.get('live_feed') or 'iex').upper()}"
+    live_data_pill_cls = "blue"
+
 ml_model = payload_summary.get("ml_model") or {}
 ml_status = str(ml_model.get("status") or "learning")
 ml_samples = int(ml_model.get("samples") or 0)
@@ -904,6 +942,7 @@ st.markdown(
     '<div class="sub">Readable ranking of momentum, liquidity, VWAP position, '
     'catalysts, historical context, and validated ML continuation.</div>'
     f'<span class="pill {pill_cls}">{pill_text}</span>'
+    f'<span class="pill {live_data_pill_cls}">{html.escape(live_data_pill)}</span>'
     f'<span class="pill {ml_pill_cls}">{html.escape(ml_pill_text)}</span>'
     f'<div class="sub">Last scan: {html.escape(str(when))} · '
     f'Scanner v{html.escape(str(payload.get("scanner_version","—")))}</div></div>',
@@ -1046,7 +1085,7 @@ if rej:
 else:
     st.success("No rejection reasons were logged for the displayed candidates.")
 
-with st.expander("Tradier vs Alpaca IEX test"):
+with st.expander("Tradier vs Alpaca IEX diagnostics"):
     tradier_token = secret("TRADIER_ACCESS_TOKEN")
     if not tradier_token:
         st.caption(
@@ -1055,8 +1094,8 @@ with st.expander("Tradier vs Alpaca IEX test"):
         )
     else:
         st.caption(
-            "Compares the same top 15 scanner symbols using Tradier consolidated data "
-            "versus Alpaca IEX. This test does not change scanner rankings."
+            "The scanner now uses Tradier consolidated data for live ranking inputs. "
+            "This diagnostic compares those values with Alpaca IEX for reference."
         )
         if st.button(
             "Run Tradier vs IEX comparison",
