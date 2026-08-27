@@ -40,7 +40,7 @@ _load_streamlit_secrets_into_env()
 from stock_analyzer import analyze
 from analyzer_v2_ui import render_v2_decision
 
-AUTO_REFRESH_SECONDS = max(5, int(os.environ.get("ANALYZER_REFRESH_SECONDS", "15") or 15))
+AUTO_REFRESH_SECONDS = max(30, int(os.environ.get("ANALYZER_REFRESH_SECONDS", "60") or 60))
 
 def _result_age_seconds(result):
     if not result or not result.get("as_of"):
@@ -436,9 +436,10 @@ def render_ticker_search(asset_choices, current_symbol):
     # In Streamlit's native selectbox, typing filters the options and Enter
     # accepts the currently highlighted match (normally the first result).
     if selected_symbol and selected_symbol != st.session_state.get("ticker_search_request"):
-        # This core now runs inside the Analyzer fragment. Updating the request
-        # is enough; the remainder of this same fragment pass analyzes it.
+        # This core runs inside the Analyzer fragment. Mark the real Analyze
+        # button busy before the expensive calculation begins.
         st.session_state["ticker_search_request"] = selected_symbol
+        st.session_state["_analyzer_loading"] = True
 
     if not _COMBINED_WORKSPACE:
         st.caption(f"Currently analyzed: **{current_symbol}**")
@@ -472,8 +473,21 @@ with st.container(key="analyzer_controls"):
         or st.session_state.get("ticker","SDOT")
         or "SDOT"
     ).upper().strip()
+
+    def _request_manual_analysis():
+        st.session_state["_manual_analyze_requested"] = True
+        st.session_state["_analyzer_loading"] = True
+
     with c2:
-        run=st.button("Analyze",type="primary",width="stretch")
+        _button_loading = bool(st.session_state.get("_analyzer_loading"))
+        st.button(
+            "Analyzing..." if _button_loading else "Analyze",
+            type="primary",
+            width="stretch",
+            key="analyzer_manual_analyze",
+            disabled=_button_loading,
+            on_click=_request_manual_analysis,
+        )
     with c3:
         st.toggle("Auto-refresh", value=True, key="auto_refresh_enabled")
         if not _COMBINED_WORKSPACE:
@@ -489,27 +503,39 @@ _refresh_due=(
 
 _ticker_changed = st.session_state.get("ticker") != ticker
 _initial_analysis = "result" not in st.session_state
-_needs_analysis = run or _initial_analysis or _ticker_changed or _refresh_due
+_manual_request = bool(st.session_state.get("_manual_analyze_requested"))
+_needs_analysis = _manual_request or _initial_analysis or _ticker_changed or _refresh_due
+_interactive_analysis = _manual_request or _ticker_changed
 
 if _needs_analysis:
     try:
-        # Background timed refreshes are intentionally silent so the Analyzer
-        # looks like live numbers changing in place. Show a spinner only when
-        # the user explicitly requests/analyzes a ticker.
-        if run or _initial_analysis or _ticker_changed:
-            with st.spinner(f"Analyzing {ticker}…"):
-                _new_result = analyze(ticker)
-        else:
-            _new_result = analyze(ticker)
+        # Never render a separate spinner/status line. Interactive analyses use
+        # the actual Analyze button's "Analyzing..." state; timed deep refreshes
+        # are silent.
+        _new_result = analyze(ticker)
         st.session_state["result"] = _new_result
         st.session_state["ticker"] = ticker
         st.session_state["ticker_search_request"] = ticker
+        st.session_state.pop("_analyzer_refresh_error", None)
     except Exception as e:
         # Keep the last good analysis visible if a background refresh fails.
         if _refresh_due and st.session_state.get("result"):
             st.session_state["_analyzer_refresh_error"] = str(e)
         else:
+            st.session_state["_analyzer_loading"] = False
+            st.session_state["_manual_analyze_requested"] = False
             st.error(str(e)); st.stop()
+    finally:
+        if _interactive_analysis:
+            st.session_state["_analyzer_loading"] = False
+            st.session_state["_manual_analyze_requested"] = False
+
+    # Button clicks/selectbox changes rerun this fragment. Refresh it once more
+    # after the analysis completes so the button immediately returns to Analyze
+    # and the new values render without a full-app rerun.
+    if _interactive_analysis:
+        st.rerun(scope="fragment")
+
 r=st.session_state["result"]
 
 # Compact glossary/AI tool rendered into the top control row.
