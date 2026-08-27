@@ -260,6 +260,7 @@ def _activate_saved_stock(symbol):
         return
     st.session_state["ticker"] = symbol
     st.session_state["ticker_search_request"] = symbol
+    st.session_state["saved_stock_loading"] = symbol
     st.session_state.pop("ticker_picker", None)
     st.session_state.pop("result", None)
 
@@ -329,11 +330,18 @@ def _render_saved_stocks():
             if i >= len(chunk):
                 continue
             symbol = chunk[i]
+            loading_symbol = str(
+                st.session_state.get("saved_stock_loading") or ""
+            ).upper().strip()
+            is_loading = loading_symbol == symbol
             with col:
                 if st.button(
-                    f"● {symbol}" if symbol == current else symbol,
+                    "Analyzing..." if is_loading else (
+                        f"● {symbol}" if symbol == current else symbol
+                    ),
                     key=f"saved_stock_{start+i}_{symbol}",
                     type="primary" if symbol == current else "secondary",
+                    disabled=bool(is_loading),
                     use_container_width=True,
                 ):
                     _activate_saved_stock(symbol)
@@ -359,12 +367,14 @@ def _prepare_combined_result(sa):
     try:
         result = sa.analyze(ticker)
     except Exception as exc:
+        st.session_state.pop("saved_stock_loading", None)
         return str(exc)
 
     st.session_state["result"] = result
     st.session_state["ticker"] = ticker
     st.session_state["ticker_search_request"] = ticker
     st.session_state.pop("ticker_picker", None)
+    st.session_state.pop("saved_stock_loading", None)
     return None
 
 
@@ -415,13 +425,25 @@ def run():
 
     launch_error = None
     if combined:
+        _cleanup_combined_browser_helpers()
+
+        # Render Saved Stocks before any expensive analysis so a clicked saved
+        # ticker can immediately show "Analyzing..." while the result loads.
+        saved_toolbar = st.empty()
+        with saved_toolbar.container():
+            with st.container(key="saved_stocks_top"):
+                _render_saved_stocks()
+
         # Scanner-launched analyses are normally already calculated by the
         # button callback. This is a fast no-op in that case and remains a
         # fallback for direct/manual switches to the Analyzer.
         launch_error = _prepare_combined_result(sa)
-        _cleanup_combined_browser_helpers()
-        with st.container(key="saved_stocks_top"):
-            _render_saved_stocks()
+
+        # Replace the temporary loading label with the normal saved-stock row.
+        saved_toolbar.empty()
+        with saved_toolbar.container():
+            with st.container(key="saved_stocks_top_done"):
+                _render_saved_stocks()
 
         if launch_error:
             st.error(f"Could not analyze the selected ticker: {launch_error}")
