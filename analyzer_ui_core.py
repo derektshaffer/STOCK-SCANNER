@@ -12,7 +12,14 @@ _COMBINED_WORKSPACE = st.session_state.get("app_view") == "Stock Analyzer"
 # stock_analyzer because that module reads its configuration at import time.
 def _load_streamlit_secrets_into_env():
     required = ("ALPACA_API_KEY", "ALPACA_SECRET_KEY")
-    optional = ("ALPACA_LIVE_FEED", "ALPACA_HISTORICAL_FEED", "OPENAI_API_KEY", "OPENAI_MODEL")
+    optional = (
+        "ALPACA_LIVE_FEED",
+        "ALPACA_HISTORICAL_FEED",
+        "TRADIER_ACCESS_TOKEN",
+        "TRADIER_TOKEN",
+        "OPENAI_API_KEY",
+        "OPENAI_MODEL",
+    )
 
     try:
         secrets = dict(st.secrets)
@@ -39,7 +46,7 @@ _load_streamlit_secrets_into_env()
 
 from stock_analyzer import analyze
 from analyzer_v2_ui import render_v2_decision
-from position_exit import build_position_exit_plan
+from position_exit import build_position_exit_plan, merge_live_position_metrics
 from live_market_stream import get_live_overlay
 
 AUTO_REFRESH_SECONDS = max(30, int(os.environ.get("ANALYZER_REFRESH_SECONDS", "60") or 60))
@@ -720,14 +727,11 @@ if not plan:
 
 _position_plan = None
 if _position_enabled and float(_position_avg_cost or 0) > 0:
-    _position_metrics = dict(r)
     try:
         _position_overlay = get_live_overlay(r) or {}
     except Exception:
         _position_overlay = {}
-    for _key in ("price", "bid", "ask", "spread_pct", "vwap", "session_volume"):
-        if _position_overlay.get(_key) is not None:
-            _position_metrics[_key] = _position_overlay.get(_key)
+    _position_metrics = merge_live_position_metrics(r, _position_overlay)
     _position_plan = build_position_exit_plan(
         _position_metrics,
         _position_avg_cost,
@@ -736,6 +740,15 @@ if _position_enabled and float(_position_avg_cost or 0) > 0:
 
 if _position_enabled and not _position_plan:
     st.info("Enter your average cost above to build a position exit plan.")
+elif (
+    _position_enabled
+    and _position_plan
+    and _position_plan.get("status") != "ok"
+):
+    st.warning(
+        _position_plan.get("error")
+        or "The position exit plan is temporarily unavailable."
+    )
 
 if _position_plan and _position_plan.get("status") == "ok":
     _pread = str(_position_plan.get("read") or "WATCH")
@@ -836,7 +849,7 @@ if _position_plan and _position_plan.get("status") == "ok":
                 f'{_position_plan.get("stretch_reason") or "—"}'
             )
         st.caption(_position_plan.get("method_note") or "")
-else:
+elif not _position_enabled:
     selected=plan.get("selected") or {}
     status=plan.get("status") or "WAIT"
     status_cls="good" if status=="ENTRY AVAILABLE" else "bad" if status=="NO TRADE" else "warn"
