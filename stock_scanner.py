@@ -589,6 +589,7 @@ def critical_fail_count(c):
         "delayed_sip",
         "tradier_consolidated",
         "tradier_extended",
+        "historical_tradier_replay",
     }:
         if c.get("liquidity_dollar_volume", 0) < liquidity_floor:
             count += 1
@@ -899,6 +900,7 @@ def evaluate_base_filters(c):
         "delayed_sip",
         "tradier_consolidated",
         "tradier_extended",
+        "historical_tradier_replay",
     }:
         if c.get("liquidity_dollar_volume", 0) < liquidity_floor:
             source_label = (
