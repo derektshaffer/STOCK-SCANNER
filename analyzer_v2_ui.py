@@ -167,18 +167,38 @@ def render_v2_decision(st, metrics):
             )
 
         with tcols[1]:
-            st.markdown("#### Shares / turnover")
+            st.markdown("#### Float / turnover")
             shares = turnover.get("shares_outstanding")
-            turn = turnover.get("shares_outstanding_turnover")
-            st.write(f"Shares outstanding: **{_fmt_int(shares)}**")
-            st.write(
-                "Session volume / shares outstanding: "
-                f"**{_fmt_pct((turn or 0) * 100) if turn is not None else '—'}**"
-            )
-            st.caption(
-                "This is a shares-outstanding turnover proxy. Reliable live float "
-                "shares are not available from the app's current data sources."
-            )
+            shares_turn = turnover.get("shares_outstanding_turnover")
+            float_shares = turnover.get("float_shares")
+            float_turn = turnover.get("float_turnover")
+
+            if float_shares is not None:
+                st.write(
+                    f"Public float: **{_fmt_int(float_shares)} shares** "
+                    f"({turnover.get('float_source') or 'provider'})"
+                )
+                st.write(
+                    "Session volume / public float: "
+                    f"**{_fmt_pct((float_turn or 0) * 100) if float_turn is not None else '—'}**"
+                )
+                if turnover.get("float_date"):
+                    st.caption(
+                        f"Float date: {turnover.get('float_date')}. "
+                        "Collected for calibration; not yet used to change score weights."
+                    )
+            else:
+                st.write(f"Shares outstanding: **{_fmt_int(shares)}**")
+                st.write(
+                    "Session volume / shares outstanding: "
+                    f"**{_fmt_pct((shares_turn or 0) * 100) if shares_turn is not None else '—'}**"
+                )
+                st.caption(
+                    "True public float is not currently configured. Add an "
+                    "INTRINIO_API_KEY to Streamlit Secrets to enable the "
+                    "Intrinio public-float feed; until then this remains a "
+                    "shares-outstanding turnover proxy."
+                )
 
         with tcols[2]:
             st.markdown("#### Dilution / financing")
