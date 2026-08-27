@@ -2,3 +2,4 @@ streamlit
 pandas
 streamlit-searchbox==0.1.24
 xgboost>=2.1
+websocket-client>=1.8
