@@ -525,7 +525,7 @@ TECHNICAL_TOOLTIPS = {
     "VWAP PRICE": "The current session's Volume-Weighted Average Price—the average traded price with heavier-volume prices given more weight.",
     "VWAP EXTENSION": "How far the current price is above or below VWAP. A large positive extension can mean the stock is becoming risky to chase.",
     "LIQUIDITY": "How easily shares can be bought or sold without moving price much. Higher liquidity usually means tighter spreads and less slippage.",
-    "IEX SPREAD": "The percentage gap between the current IEX bid and ask. A smaller spread usually means cleaner entries and exits.",
+    "LIVE SPREAD": "The percentage gap between the current live bid and ask. With Tradier configured this is consolidated market data; smaller is generally better for entries, exits, and slippage.",
     "BID/ASK SPREAD": "The gap between the best current buying price and selling price. Wider spreads generally increase trading friction and slippage.",
     "DOLLAR VOLUME": "Share volume multiplied by price. It estimates how much money is changing hands and helps compare liquidity between stocks.",
     "FROM HIGH": "How far the current price has fallen from today's session high. A small value means price is still trading close to its high.",
