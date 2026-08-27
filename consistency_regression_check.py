@@ -559,6 +559,21 @@ def test_analyzer_ui_preserves_historical_context_dependencies():
     assert hist_use > hist_assign, "Historical analogs variable is used before assignment"
 
 
+def test_analyzer_shared_button_styles_live_in_bootstrap():
+    from pathlib import Path
+
+    source = Path("analyzer_bootstrap.py").read_text(encoding="utf-8")
+    required = [
+        ".st-key-saved_stocks_top button[data-testid=\"stBaseButton-secondary\"]",
+        ".st-key-analyzer_live_fragment button[data-testid=\"stBaseButton-secondary\"]",
+        ".st-key-analyzer_live_fragment [data-testid=\"stPopover\"] button",
+        "background: #11243a !important;",
+        "color: #edf5ff !important;",
+    ]
+    missing = [item for item in required if item not in source]
+    assert not missing, f"Missing shared Analyzer button styles: {missing}"
+
+
 if __name__ == "__main__":
     tests = [
         test_analyzer_prefers_tradier,
@@ -578,6 +593,7 @@ if __name__ == "__main__":
         test_position_exit_profit_floor,
         test_position_live_overlay_recomputes_derived_fields,
         test_analyzer_ui_preserves_historical_context_dependencies,
+        test_analyzer_shared_button_styles_live_in_bootstrap,
     ]
     for test in tests:
         test()
