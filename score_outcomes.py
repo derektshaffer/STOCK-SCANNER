@@ -397,6 +397,7 @@ def build_observations(scans, target_date, bars_index):
                 "volume_vs_expected_pct": c.get("volume_vs_expected_pct"),
                 "live_confirmation_count": c.get("live_confirmation_count"),
                 "ml_continuation_prob_pct": c.get("ml_continuation_prob_pct"),
+                "ml_advisory_prob_pct": c.get("ml_advisory_prob_pct"),
                 "ml_validated": c.get("ml_validated"),
                 "ml_status": c.get("ml_status"),
                 "setup_grade": c.get("setup_grade"),
@@ -693,11 +694,11 @@ def write_reports(target_date, discovery, rows, status, error=None):
 
     csv_fields = [
         "observation_id", "scan_id", "scan_time_et", "feature_version",
-        "market_provider", "live_feed", "rank", "symbol",
+        "observation_source", "market_provider", "live_feed", "rank", "symbol",
         "entry_price", "day_pct", "score", "base_score", "live_bonus", "news_bonus",
         "opportunity_score", "intraday_range_pct", "expected_volume_fraction_pct",
         "volume_vs_expected_pct", "live_confirmation_count",
-        "ml_continuation_prob_pct", "ml_validated", "ml_status",
+        "ml_continuation_prob_pct", "ml_advisory_prob_pct", "ml_validated", "ml_status",
         "setup_grade", "setup_label",
         "alert_tier", "alert_ready",
         "scanner_action", "scanner_action_tier", "scanner_action_reason",
