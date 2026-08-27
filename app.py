@@ -3,10 +3,14 @@ import json
 import os
 import runpy
 import time
+from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import streamlit as st
 import streamlit.components.v1 as components
+
+from glass_theme import inject_glass_theme
 
 
 st.set_page_config(
@@ -200,18 +204,57 @@ VIEWS = ("Momentum Scanner", "Stock Analyzer")
 if st.session_state.get("app_view") not in VIEWS:
     st.session_state["app_view"] = "Momentum Scanner"
 
-st.markdown(
-    '<div class="combined-nav-wrap"><div class="combined-nav-title">Stock Workspace</div></div>',
-    unsafe_allow_html=True,
-)
+def _workspace_market_status():
+    now_et = datetime.now(ZoneInfo("America/New_York"))
+    minutes = now_et.hour * 60 + now_et.minute
+    weekday = now_et.weekday() < 5
+
+    if weekday and 4 * 60 <= minutes < 9 * 60 + 30:
+        return now_et, True, "PRE-MARKET"
+    if weekday and 9 * 60 + 30 <= minutes < 16 * 60:
+        return now_et, True, "MARKET OPEN"
+    if weekday and 16 * 60 <= minutes < 20 * 60:
+        return now_et, True, "AFTER-HOURS"
+    return now_et, False, "MARKET CLOSED"
+
+
 previous_rendered_view = st.session_state.get("_rendered_app_view")
-view = st.radio(
-    "Stock Workspace",
-    VIEWS,
-    key="app_view",
-    horizontal=True,
-    label_visibility="collapsed",
+workspace_now_et, workspace_live, workspace_session = _workspace_market_status()
+brand_col, nav_col, status_col = st.columns(
+    [1.0, 2.35, 1.15],
+    gap="small",
+    vertical_alignment="center",
 )
+with brand_col:
+    st.markdown(
+        '<div class="workspace-brand">'
+        '<span class="workspace-brand-mark">↗</span>'
+        '<span class="workspace-brand-text">STOCK WORKSPACE</span>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
+with nav_col:
+    view = st.radio(
+        "Stock Workspace",
+        VIEWS,
+        key="app_view",
+        horizontal=True,
+        label_visibility="collapsed",
+    )
+with status_col:
+    live_class = "live" if workspace_live else ""
+    live_text = "LIVE" if workspace_live else "CLOSED"
+    session_class = "session" if workspace_session in {"PRE-MARKET", "AFTER-HOURS"} else ""
+    st.markdown(
+        '<div class="workspace-status">'
+        f'<span class="workspace-status-pill {live_class}">'
+        '<span class="workspace-status-dot"></span>'
+        f'{live_text}</span>'
+        f'<span class="workspace-status-pill {session_class}">{workspace_session}</span>'
+        f'<span class="workspace-status-pill time">{workspace_now_et:%I:%M %p ET}</span>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
 
 # Returning from the Analyzer should be an instant view switch. Do not let an
 # overdue automatic scan run inside this same full-app rerun; give Streamlit a
@@ -584,6 +627,11 @@ try:
         run_analyzer()
 finally:
     st.set_page_config = _original_set_page_config
+
+# Apply the shared Option-B glass theme after the active child app has rendered
+# its own legacy styles. This lets the theme override presentation without
+# changing scanner/analyzer behavior.
+inject_glass_theme()
 
 
 # One shared tooltip layer for both child apps.  The analyzer already contains
