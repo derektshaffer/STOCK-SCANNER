@@ -168,7 +168,13 @@ def _feature_row(day, prev_close, avg20_vol, atr_pct, idx):
     }
 
 
-def _first_touch_label(future_bars, price, target_pct, stop_pct):
+def _first_touch_outcome(future_bars, price, target_pct, stop_pct):
+    """Return the first decisive same-session target/stop outcome.
+
+    A bar that touches both levels is ambiguous because 5-minute OHLC data
+    cannot reveal which level traded first. If neither level is touched before
+    the session ends, the observation is unresolved rather than a loss.
+    """
     target = price * (1.0 + target_pct / 100.0)
     stop = price * (1.0 + stop_pct / 100.0)
     for bar in future_bars:
@@ -177,12 +183,12 @@ def _first_touch_label(future_bars, price, target_pct, stop_pct):
         hit_target = h is not None and h >= target
         hit_stop = l is not None and l <= stop
         if hit_target and hit_stop:
-            return None
+            return "ambiguous"
         if hit_target:
-            return 1
+            return "target"
         if hit_stop:
-            return 0
-    return 0
+            return "stop"
+    return "unresolved"
 
 
 def _build_dataset(bars5, et, target_pct, stop_pct):
@@ -240,6 +246,19 @@ def _build_dataset(bars5, et, target_pct, stop_pct):
                     bool(c30 and c30 > breakout_level and (min_future is None or min_future >= breakout_level * 0.985))
                 )
 
+            # Target 1 is a day-trade first-touch question, not a 60-minute
+            # continuation question. Evaluate it through the rest of this same
+            # session. Timeouts are censored instead of being mislabeled losses.
+            future_session = bars[idx + 1:]
+            target_outcome = _first_touch_outcome(
+                future_session, price, target_pct, stop_pct
+            )
+            target_label = (
+                1 if target_outcome == "target"
+                else 0 if target_outcome == "stop"
+                else None
+            )
+
             row = {k: feat.get(k) for k in FEATURES}
             dt = _bar_dt(bars[idx], et)
             row.update(
@@ -247,9 +266,8 @@ def _build_dataset(bars5, et, target_pct, stop_pct):
                     "timestamp": dt.astimezone(timezone.utc).timestamp() if dt else 0.0,
                     "higher_30": int(bool(c30 and c30 > price)),
                     "higher_60": int(bool(c60 and c60 > price)),
-                    "target_before_stop": _first_touch_label(
-                        future60, price, target_pct, stop_pct
-                    ),
+                    "target_before_stop": target_label,
+                    "target_before_stop_outcome": target_outcome,
                     "breakout_hold": breakout_hold,
                 }
             )
@@ -305,6 +323,7 @@ def _walk_forward_fit(rows, label, current_features):
             "label": label,
             "samples": n,
             "positives": positives,
+            "negatives": max(0, n - positives),
         }
 
     val_probs = []
@@ -385,6 +404,8 @@ def _walk_forward_fit(rows, label, current_features):
         "label": label,
         "probability_pct": round(probability * 100.0, 1),
         "samples": n,
+        "positives": positives,
+        "negatives": max(0, n - positives),
         "validation_samples": len(val_y),
         "walk_forward_accuracy_pct": round(accuracy * 100.0, 1),
         "baseline_accuracy_pct": round(baseline_accuracy * 100.0, 1),
@@ -518,7 +539,21 @@ def predict_ml(symbol, now, metrics, fetch_bars, et):
     for label in ("target_before_stop", "higher_30", "higher_60", "breakout_hold"):
         models[label] = _walk_forward_fit(dataset, label, current)
 
+    target_outcomes = {
+        "target_wins": sum(row.get("target_before_stop_outcome") == "target" for row in dataset),
+        "stop_first": sum(row.get("target_before_stop_outcome") == "stop" for row in dataset),
+        "unresolved": sum(row.get("target_before_stop_outcome") == "unresolved" for row in dataset),
+        "ambiguous": sum(row.get("target_before_stop_outcome") == "ambiguous" for row in dataset),
+    }
+
     plan = metrics.get("trade_plan") or {}
+    selected = plan.get("selected") or {}
+    target_model = models.get("target_before_stop") or {}
+    target_model["horizon"] = "same_session"
+    target_model["target_source"] = selected.get("target1_reason") or "Target 1"
+    target_model["outcome_summary"] = target_outcomes
+    models["target_before_stop"] = target_model
+
     breakout = plan.get("breakout") or {}
     breakout_level = _fnum(breakout.get("breakout_level"))
     price = _fnum(metrics.get("price"))
@@ -555,7 +590,7 @@ def predict_ml(symbol, now, metrics, fetch_bars, et):
     result = {
         "status": "ok",
         "model_type": "XGBoost",
-        "version": "ml-v1",
+        "version": "ml-v1.1",
         "source": source,
         "training_samples": len(dataset),
         "target_pct": round(target_pct, 2),
@@ -571,6 +606,7 @@ def predict_ml(symbol, now, metrics, fetch_bars, et):
         "cached": False,
         "note": (
             "Walk-forward validation uses older observations to predict later unseen observations. "
+            "Target 1 uses same-session first-touch outcomes; sessions where neither target nor stop is touched are excluded. "
             "ML v1 only adjusts plan confidence when the validation gate passes; it does not override "
             "the rule-based entry/stop/target decision."
         ),
