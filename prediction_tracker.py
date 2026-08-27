@@ -463,6 +463,8 @@ def tracker_summary(rows=None, symbol=None):
         if (r.get("outcomes") or {}).get("target1_first_touch") == "target"
     ]
 
+    durable = _load_durable_calibration()
+
     return {
         "total_predictions": len(rows),
         "resolved_60m": len(resolved_60),
@@ -476,19 +478,19 @@ def tracker_summary(rows=None, symbol=None):
             if touches else None
         ),
         "potential_calibration": (
-            (_load_durable_calibration().get("potential_calibration") or {})
+            (durable.get("potential_calibration") or {})
             or _bucket_calibration(rows, "potential_score")
         ),
         "entry_calibration": (
-            (_load_durable_calibration().get("entry_calibration") or {})
+            (durable.get("entry_calibration") or {})
             or _bucket_calibration(rows, "entry_readiness")
         ),
         "calibration_ready": (
-            bool(_load_durable_calibration().get("calibration_ready"))
+            bool(durable.get("calibration_ready"))
             or len(resolved_60) >= 30
         ),
         "durable_resolved_60m": int(
-            _load_durable_calibration().get("resolved_60m") or 0
+            durable.get("resolved_60m") or 0
         ),
         "storage": str(LOG_PATH),
         "persistence": "github+local" if GITHUB_TOKEN else "runtime-local",
