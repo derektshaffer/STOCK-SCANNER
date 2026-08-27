@@ -924,6 +924,54 @@ if not _position_enabled:
         st.dataframe(ddf,width="stretch",hide_index=True)
         st.caption(plan.get("method_note") or "")
 
+st.markdown('<div class="section">Momentum & liquidity</div>',unsafe_allow_html=True)
+liq=r.get("liquidity") or {}
+df=pd.DataFrame([{
+    "5m %":r.get("momentum_5m"),"15m %":r.get("momentum_15m"),"30m %":r.get("momentum_30m"),
+    "VWAP Ext %":r.get("vwap_extension_pct"),"From High %":r.get("from_high_pct"),"ATR 14 %":r.get("atr_14_pct"),
+    "Spread %":r.get("spread_pct"),"Volume Pace":r.get("volume_pace"),"Liquidity":liq.get("label"),
+    "Avg $ Volume":dollars_compact(liq.get("avg_dollar_volume"))
+}])
+st.dataframe(df,width="stretch",hide_index=True)
+
+def level_table(rows):
+    columns=["Price","Touches","Last touch","Age","Quality","Side"]
+    if not rows:
+        return pd.DataFrame(columns=columns)
+    out=[]
+    for row in rows:
+        out.append({
+            "Price":row.get("price"),
+            "Touches":row.get("touches"),
+            "Last touch":row.get("last_touch_label") or "—",
+            "Age":row.get("age") or "—",
+            "Quality":f'{row.get("quality") or "—"} ({row.get("quality_score",0)}/100)',
+            "Side":str(row.get("side") or "").title(),
+        })
+    return pd.DataFrame(out,columns=columns)
+
+scol,rcol=st.columns(2)
+with scol:
+    st.markdown('<div class="section">Support</div>',unsafe_allow_html=True)
+    sup=r.get("supports") or []
+    st.dataframe(
+        level_table(sup),
+        width="stretch",
+        hide_index=True,
+        column_config={"Price":st.column_config.NumberColumn(format="$%.2f")},
+    )
+with rcol:
+    st.markdown('<div class="section">Resistance</div>',unsafe_allow_html=True)
+    res=r.get("resistances") or []
+    st.dataframe(
+        level_table(res),
+        width="stretch",
+        hide_index=True,
+        column_config={"Price":st.column_config.NumberColumn(format="$%.2f")},
+    )
+st.caption("Last touch = most recent regular-session test of the level. Recent tests use 1-minute bars; older tests use 5-minute bars as a fallback. Times are Eastern (ET).")
+
+h=r.get("historical_analogs") or {}
 st.markdown('<div class="section">Historical spike analogs</div>',unsafe_allow_html=True)
 if h.get("status")=="ok":
     sm=h.get("summary") or {}; hc=st.columns(4)
