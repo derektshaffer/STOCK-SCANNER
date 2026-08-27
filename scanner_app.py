@@ -303,8 +303,12 @@ def configured_live_feed():
     return feed if feed in {"iex", "sip"} else "iex"
 
 
+def get_tradier_token():
+    return secret("TRADIER_ACCESS_TOKEN") or secret("TRADIER_TOKEN")
+
+
 def configured_live_provider():
-    return "tradier" if secret("TRADIER_ACCESS_TOKEN") else "alpaca"
+    return "tradier" if get_tradier_token() else "alpaca"
 
 
 def configured_live_label():
@@ -358,7 +362,7 @@ def run_scanner():
     env["ALPACA_API_KEY"] = key
     env["ALPACA_SECRET_KEY"] = sec
     env["ALPACA_LIVE_FEED"] = configured_live_feed()
-    tradier_token = secret("TRADIER_ACCESS_TOKEN")
+    tradier_token = get_tradier_token()
     if tradier_token:
         env["TRADIER_ACCESS_TOKEN"] = tradier_token
 
@@ -1086,7 +1090,7 @@ else:
     st.success("No rejection reasons were logged for the displayed candidates.")
 
 with st.expander("Tradier vs Alpaca IEX diagnostics"):
-    tradier_token = secret("TRADIER_ACCESS_TOKEN")
+    tradier_token = get_tradier_token()
     if not tradier_token:
         st.caption(
             "Tradier live comparison is ready, but TRADIER_ACCESS_TOKEN is not configured yet. "
