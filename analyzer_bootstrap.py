@@ -54,7 +54,10 @@ def _install_no_fade_css(combined=False):
             ".element-container[data-stale=\"true\"]:has(.st-key-analyzer_live_fragment), "
             ".st-key-analyzer_fast_live_tape[data-stale=\"true\"], "
             ".st-key-analyzer_fast_live_tape [data-stale=\"true\"], "
-            ".element-container[data-stale=\"true\"]:has(.st-key-analyzer_fast_live_tape)"
+            ".element-container[data-stale=\"true\"]:has(.st-key-analyzer_fast_live_tape), "
+            ".st-key-saved_stocks_top[data-stale=\"true\"], "
+            ".st-key-saved_stocks_top [data-stale=\"true\"], "
+            ".element-container[data-stale=\"true\"]:has(.st-key-saved_stocks_top)"
         )
     else:
         stale_selector = (
