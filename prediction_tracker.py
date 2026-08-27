@@ -1,11 +1,32 @@
+import base64
 import json
 import os
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 
 LOG_PATH = Path(os.environ.get("ANALYZER_PREDICTION_LOG", "analysis_logs/analyzer_predictions.json"))
 BUCKET_MINUTES = 5
+ET = ZoneInfo("America/New_York")
+
+GITHUB_TOKEN = (
+    os.environ.get("ANALYZER_GITHUB_TOKEN", "").strip()
+    or os.environ.get("GITHUB_TOKEN", "").strip()
+)
+GITHUB_REPO = os.environ.get(
+    "ANALYZER_GITHUB_REPO", "derektshaffer/STOCK-SCANNER"
+).strip()
+GITHUB_BRANCH = os.environ.get("ANALYZER_GITHUB_BRANCH", "main").strip() or "main"
+REMOTE_DIR = os.environ.get("ANALYZER_OUTCOME_DIR", "analyzer_outcomes").strip() or "analyzer_outcomes"
+REMOTE_SYNC_SECONDS = max(
+    300, int(os.environ.get("ANALYZER_REMOTE_SYNC_SECONDS", "900") or 900)
+)
+_REMOTE_STATE = {"loaded": False, "last_sync": 0.0, "last_error": None, "last_path": None}
 
 
 def _num(value):
@@ -25,26 +46,197 @@ def _parse_dt(value):
         return None
 
 
+def _github_headers():
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "User-Agent": "stock-analyzer-prediction-tracker/2.0",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+    if GITHUB_TOKEN:
+        headers["Authorization"] = f"Bearer {GITHUB_TOKEN}"
+    return headers
+
+
+def _github_contents_url(path):
+    owner_repo = GITHUB_REPO.strip("/")
+    encoded = "/".join(urllib.parse.quote(part, safe="") for part in str(path).split("/"))
+    return f"https://api.github.com/repos/{owner_repo}/contents/{encoded}"
+
+
+def _github_get_file(path, require_token=False):
+    if require_token and not GITHUB_TOKEN:
+        return None, None
+    url = _github_contents_url(path) + "?" + urllib.parse.urlencode({"ref": GITHUB_BRANCH})
+    req = urllib.request.Request(url, headers=_github_headers())
+    try:
+        with urllib.request.urlopen(req, timeout=12) as resp:
+            payload = json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        if exc.code == 404:
+            return None, None
+        raise
+    content = payload.get("content")
+    if payload.get("encoding") == "base64" and content:
+        raw = base64.b64decode("".join(str(content).split()))
+        return json.loads(raw.decode("utf-8")), payload.get("sha")
+    return None, payload.get("sha")
+
+
+def _github_put_json(path, payload, sha=None):
+    if not GITHUB_TOKEN:
+        return False
+    body = {
+        "message": f"Sync Analyzer predictions {datetime.now(ET).date().isoformat()}",
+        "content": base64.b64encode(
+            json.dumps(payload, separators=(",", ":")).encode("utf-8")
+        ).decode("ascii"),
+        "branch": GITHUB_BRANCH,
+    }
+    if sha:
+        body["sha"] = sha
+    req = urllib.request.Request(
+        _github_contents_url(path),
+        data=json.dumps(body).encode("utf-8"),
+        headers={**_github_headers(), "Content-Type": "application/json"},
+        method="PUT",
+    )
+    with urllib.request.urlopen(req, timeout=15):
+        return True
+
+
+def _remote_day_path(day):
+    return f"{REMOTE_DIR}/predictions_{day.isoformat()}.json"
+
+
+def _row_day(row):
+    dt = _parse_dt(row.get("timestamp"))
+    return dt.astimezone(ET).date() if dt else None
+
+
+def _merge_rows(*groups):
+    merged = {}
+    for rows in groups:
+        for row in rows or []:
+            key = row.get("bucket_key") or row.get("id")
+            if not key:
+                continue
+            existing = merged.get(key)
+            if not existing:
+                merged[key] = row
+                continue
+            # Prefer whichever copy has more resolved outcome fields.
+            old_count = len((existing.get("outcomes") or {}))
+            new_count = len((row.get("outcomes") or {}))
+            merged[key] = row if new_count >= old_count else existing
+    return sorted(
+        merged.values(),
+        key=lambda row: str(row.get("timestamp") or ""),
+    )
+
+
+def _load_remote_today():
+    if not GITHUB_TOKEN:
+        return []
+    today = datetime.now(ET).date()
+    try:
+        payload, _sha = _github_get_file(_remote_day_path(today), require_token=True)
+        if isinstance(payload, list):
+            _REMOTE_STATE["last_error"] = None
+            return payload
+    except Exception as exc:
+        _REMOTE_STATE["last_error"] = str(exc)[:180]
+    return []
+
+
+def _sync_remote(rows, force=False):
+    if not GITHUB_TOKEN:
+        return {"enabled": False, "synced": False, "reason": "missing_token"}
+    now_ts = time.time()
+    if (
+        not force
+        and _REMOTE_STATE["last_sync"]
+        and now_ts - float(_REMOTE_STATE["last_sync"]) < REMOTE_SYNC_SECONDS
+    ):
+        return {"enabled": True, "synced": False, "reason": "interval"}
+
+    today = datetime.now(ET).date()
+    daily_rows = [row for row in rows if _row_day(row) == today]
+    path = _remote_day_path(today)
+    try:
+        remote, sha = _github_get_file(path, require_token=True)
+        merged = _merge_rows(remote if isinstance(remote, list) else [], daily_rows)
+        _github_put_json(path, merged, sha=sha)
+        _REMOTE_STATE.update(
+            {
+                "last_sync": now_ts,
+                "last_error": None,
+                "last_path": path,
+            }
+        )
+        return {"enabled": True, "synced": True, "path": path, "count": len(merged)}
+    except Exception as exc:
+        _REMOTE_STATE["last_error"] = str(exc)[:180]
+        return {
+            "enabled": True,
+            "synced": False,
+            "reason": "error",
+            "error": _REMOTE_STATE["last_error"],
+        }
+
+
+def _load_durable_calibration():
+    path = f"{REMOTE_DIR}/calibration.json"
+    try:
+        payload, _sha = _github_get_file(path, require_token=False)
+        return payload if isinstance(payload, dict) else {}
+    except Exception:
+        return {}
+
+
 def _load():
+    local = []
     try:
         if LOG_PATH.exists():
             payload = json.loads(LOG_PATH.read_text(encoding="utf-8"))
             if isinstance(payload, list):
-                return payload
+                local = payload
     except Exception:
-        pass
-    return []
+        local = []
+
+    if not _REMOTE_STATE["loaded"]:
+        _REMOTE_STATE["loaded"] = True
+        remote = _load_remote_today()
+        if remote:
+            local = _merge_rows(local, remote)
+            try:
+                LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+                LOG_PATH.write_text(
+                    json.dumps(local[-5000:], separators=(",", ":")),
+                    encoding="utf-8",
+                )
+            except Exception:
+                pass
+    return local
 
 
-def _save(rows):
+def _save(rows, force_remote=False):
+    local_ok = False
     try:
         LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
         tmp = LOG_PATH.with_suffix(".tmp")
         tmp.write_text(json.dumps(rows[-5000:], separators=(",", ":")), encoding="utf-8")
         tmp.replace(LOG_PATH)
-        return True
+        local_ok = True
     except Exception:
-        return False
+        local_ok = False
+
+    sync = _sync_remote(rows, force=force_remote) if local_ok else {
+        "enabled": bool(GITHUB_TOKEN),
+        "synced": False,
+        "reason": "local_save_failed",
+    }
+    _REMOTE_STATE["last_sync_result"] = sync
+    return local_ok
 
 
 def _bucket_key(symbol, when):
@@ -98,8 +290,15 @@ def record_prediction(metrics, now=None):
         "outcomes": {},
     }
     rows.append(row)
-    ok = _save(rows)
-    return {"recorded": ok, "count": len(rows), "path": str(LOG_PATH)}
+    force_remote = not bool(_REMOTE_STATE.get("last_sync"))
+    ok = _save(rows, force_remote=force_remote)
+    sync = _REMOTE_STATE.get("last_sync_result") or {}
+    return {
+        "recorded": ok,
+        "count": len(rows),
+        "path": str(LOG_PATH),
+        "durable_sync": sync,
+    }
 
 
 def _bar_dt(bar):
@@ -276,9 +475,24 @@ def tracker_summary(rows=None, symbol=None):
             round(len(target_wins) / len(touches) * 100.0, 1)
             if touches else None
         ),
-        "potential_calibration": _bucket_calibration(rows, "potential_score"),
-        "entry_calibration": _bucket_calibration(rows, "entry_readiness"),
-        "calibration_ready": len(resolved_60) >= 30,
+        "potential_calibration": (
+            (_load_durable_calibration().get("potential_calibration") or {})
+            or _bucket_calibration(rows, "potential_score")
+        ),
+        "entry_calibration": (
+            (_load_durable_calibration().get("entry_calibration") or {})
+            or _bucket_calibration(rows, "entry_readiness")
+        ),
+        "calibration_ready": (
+            bool(_load_durable_calibration().get("calibration_ready"))
+            or len(resolved_60) >= 30
+        ),
+        "durable_resolved_60m": int(
+            _load_durable_calibration().get("resolved_60m") or 0
+        ),
         "storage": str(LOG_PATH),
-        "persistence": "runtime-local",
+        "persistence": "github+local" if GITHUB_TOKEN else "runtime-local",
+        "durable_enabled": bool(GITHUB_TOKEN),
+        "durable_path": _REMOTE_STATE.get("last_path"),
+        "durable_error": _REMOTE_STATE.get("last_error"),
     }
