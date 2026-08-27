@@ -135,11 +135,11 @@ def inject_glass_theme():
            Streamlit's radio wrapper is slightly taller than its visible group
            unless we explicitly collapse that extra layout space. */
         div[data-testid="stHorizontalBlock"]:has(.workspace-brand):has(.st-key-app_view) {
-            align-items: center !important;
+            align-items: flex-start !important;
         }
         div[data-testid="stHorizontalBlock"]:has(.workspace-brand):has(.st-key-app_view)
         > [data-testid="stColumn"] {
-            align-self: center !important;
+            align-self: flex-start !important;
         }
         .workspace-brand,
         .workspace-status,
