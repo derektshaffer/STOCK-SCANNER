@@ -725,32 +725,34 @@ if not plan:
     )
     st.stop()
 
-_position_plan = None
-if _position_enabled and float(_position_avg_cost or 0) > 0:
+@st.fragment(run_every="5s" if _position_enabled else None)
+def _render_position_exit_plan():
+    _avg_cost = float(st.session_state.get(_position_cost_key) or 0.0)
+    _shares = float(st.session_state.get(_position_shares_key) or 0.0)
+
+    if _avg_cost <= 0:
+        st.info("Enter your average cost above to build a position exit plan.")
+        return
+
     try:
         _position_overlay = get_live_overlay(r) or {}
     except Exception:
         _position_overlay = {}
+
     _position_metrics = merge_live_position_metrics(r, _position_overlay)
     _position_plan = build_position_exit_plan(
         _position_metrics,
-        _position_avg_cost,
-        _position_shares if float(_position_shares or 0) > 0 else None,
+        _avg_cost,
+        _shares if _shares > 0 else None,
     )
 
-if _position_enabled and not _position_plan:
-    st.info("Enter your average cost above to build a position exit plan.")
-elif (
-    _position_enabled
-    and _position_plan
-    and _position_plan.get("status") != "ok"
-):
-    st.warning(
-        _position_plan.get("error")
-        or "The position exit plan is temporarily unavailable."
-    )
+    if _position_plan.get("status") != "ok":
+        st.warning(
+            _position_plan.get("error")
+            or "The position exit plan is temporarily unavailable."
+        )
+        return
 
-if _position_plan and _position_plan.get("status") == "ok":
     _pread = str(_position_plan.get("read") or "WATCH")
     _pcls = (
         "good" if _pread == "HOLD"
@@ -849,7 +851,12 @@ if _position_plan and _position_plan.get("status") == "ok":
                 f'{_position_plan.get("stretch_reason") or "—"}'
             )
         st.caption(_position_plan.get("method_note") or "")
-elif not _position_enabled:
+
+
+if _position_enabled:
+    _render_position_exit_plan()
+
+if not _position_enabled:
     selected=plan.get("selected") or {}
     status=plan.get("status") or "WAIT"
     status_cls="good" if status=="ENTRY AVAILABLE" else "bad" if status=="NO TRADE" else "warn"
