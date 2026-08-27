@@ -104,12 +104,20 @@ def render_live_tape(st, overlay):
     )
 
     if status == "streaming":
-        st.caption(
+        try:
+            quote_is_stale = float(quote_age) >= 15.0
+        except Exception:
+            quote_is_stale = False
+
+        freshness_text = (
             "Freshness · trade "
             + _age_text(trade_age)
             + " · quote "
             + _age_text(quote_age)
         )
+        if quote_is_stale:
+            freshness_text += " · live data may be stale"
+        st.caption(freshness_text)
 
     if status == "rest_fallback":
         st.caption(
