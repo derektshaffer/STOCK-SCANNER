@@ -196,11 +196,29 @@ def render_v2_decision(st, metrics):
                 st.caption("Detected filing terms: " + ", ".join(kws[:5]))
 
         st.markdown("#### Prediction tracking")
+        effective_resolved = int(
+            tracking.get("effective_resolved_60m")
+            or tracking.get("durable_resolved_60m")
+            or tracking.get("resolved_60m")
+            or 0
+        )
+        progress = tracking.get("calibration_progress") or {}
+        next_threshold = progress.get("next_threshold")
+        if next_threshold:
+            progress_text = (
+                f"{effective_resolved}/{int(next_threshold)} toward "
+                f"{progress.get('stage') or 'COLLECTING'}"
+            )
+        else:
+            progress_text = f"{effective_resolved} resolved · {progress.get('stage') or 'STRONGER SAMPLE'}"
         st.write(
-            f"Recorded: **{int(tracking.get('total_predictions') or 0)}** · "
-            f"60m resolved: **{int(tracking.get('resolved_60m') or 0)}** · "
-            f"60m higher rate: **{_fmt_pct(tracking.get('higher_60m_rate'))}** · "
-            f"T1-before-stop resolved: **{int(tracking.get('resolved_target_stop') or 0)}**"
+            f"Recorded this runtime: **{int(tracking.get('total_predictions') or 0)}** · "
+            f"Durable 60m outcomes: **{effective_resolved}** · "
+            f"Calibration progress: **{progress_text}**"
+        )
+        st.caption(
+            "30 resolved observations = early read · 100+ = useful · "
+            "300+ = much stronger evidence for changing score weights."
         )
         current_bucket = (
             "80-100" if potential >= 80 else
@@ -210,11 +228,22 @@ def render_v2_decision(st, metrics):
         )
         calibration = (tracking.get("potential_calibration") or {}).get(current_bucket) or {}
         if int(calibration.get("n") or 0) >= 5:
+            r15 = calibration.get("return_15m") or {}
+            r30 = calibration.get("return_30m") or {}
+            r60 = calibration.get("return_60m") or {}
             st.write(
                 f"**Current Potential bucket ({current_bucket}) empirical result:** "
-                f"{_fmt_pct(calibration.get('higher_60m_rate'))} higher after 60m "
-                f"across n={int(calibration.get('n') or 0)} tracked observations."
+                f"15m higher {_fmt_pct(r15.get('higher_rate'))} · "
+                f"30m higher {_fmt_pct(r30.get('higher_rate'))} · "
+                f"60m higher {_fmt_pct(calibration.get('higher_60m_rate'))} "
+                f"(60m n={int(calibration.get('n') or 0)})."
             )
+            if int(calibration.get("target_stop_n") or 0) >= 5:
+                st.write(
+                    f"Target 1 before stop: "
+                    f"**{_fmt_pct(calibration.get('target_before_stop_rate'))}** "
+                    f"across n={int(calibration.get('target_stop_n') or 0)} decisive outcomes."
+                )
         else:
             st.write(
                 f"**Calibration:** collecting observations for the {current_bucket} "
