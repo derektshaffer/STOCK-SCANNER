@@ -518,6 +518,28 @@ def session_fraction(now_et):
     return max(1.0 / total, (current_minutes - open_minutes) / total)
 
 
+def analyzer_aligned_volume_pace(session_volume, avg_daily_volume_value, now_et):
+    """Regular-hours relative volume using the same baseline as the Analyzer.
+
+    The scanner keeps its historical time-of-day pace for ML continuity, while
+    this aligned value is used for the compact UI/action signal so the two apps
+    speak the same language.
+    """
+    if market_session_mode(now_et) != "regular":
+        return None
+    try:
+        session_volume = float(session_volume)
+        avg_daily_volume_value = float(avg_daily_volume_value)
+    except (TypeError, ValueError):
+        return None
+    if session_volume < 0 or avg_daily_volume_value <= 0:
+        return None
+    expected = avg_daily_volume_value * session_fraction(now_et)
+    if expected <= 0:
+        return None
+    return session_volume / expected
+
+
 def base_quality_score(c):
     score = 0.0
     if MIN_PRICE <= c["price"] <= MAX_PRICE:
@@ -710,6 +732,150 @@ def assign_setup_grade(c, now_et):
 def assign_setup_grades(rows, now_et):
     for c in rows:
         assign_setup_grade(c, now_et)
+
+
+def scanner_action_signal(c, now_et=None):
+    """Compact scanner-level entry cue; the Analyzer remains final confirmation."""
+    grade = str(c.get("setup_grade") or "REJECT").upper()
+    phase = str(c.get("market_session") or "")
+    if now_et is not None:
+        phase = market_session_mode(now_et)
+
+    failed = int(c.get("failed_count") or 0)
+    critical = int(c.get("critical_fail_count") or 0)
+    warnings = c.get("tradability_warnings") or []
+    spread = c.get("spread_pct")
+    day_pct = c.get("day_pct")
+    from_high = c.get("distance_from_high_pct")
+    dist_vwap = c.get("distance_from_vwap_pct")
+    m5 = c.get("momentum_5m")
+    m15 = c.get("momentum_15m")
+    pace = (
+        c.get("volume_pace_display")
+        if c.get("volume_pace_display") is not None
+        else c.get("volume_pace")
+    )
+
+    def num(value):
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+    spread = num(spread)
+    day_pct = num(day_pct)
+    from_high = num(from_high)
+    dist_vwap = num(dist_vwap)
+    m5 = num(m5)
+    m15 = num(m15)
+    pace = num(pace)
+
+    if phase != "regular":
+        return {
+            "label": "EXTENDED WATCH",
+            "tier": "watch",
+            "reason": "Extended-hours conditions require extra confirmation.",
+        }
+
+    if grade == "REJECT" or critical > 0 or failed >= 2:
+        reason = (
+            (c.get("failed_filters") or [None])[0]
+            or "Scanner safety filters reject the setup."
+        )
+        return {"label": "NO TRADE", "tier": "avoid", "reason": reason}
+
+    if spread is not None and spread > 4.5:
+        return {
+            "label": "NO TRADE",
+            "tier": "avoid",
+            "reason": "Live spread is too wide for a clean momentum entry.",
+        }
+
+    if grade == "C" or warnings or (spread is not None and spread > 2.5):
+        return {
+            "label": "CAUTION",
+            "tier": "caution",
+            "reason": "Setup or execution quality still has a material warning.",
+        }
+
+    if not bool(c.get("above_vwap")):
+        return {
+            "label": "WAIT",
+            "tier": "watch",
+            "reason": "Price is not holding above VWAP.",
+        }
+
+    # Strong movers can still be poor chase points. This deliberately catches
+    # cases such as a +50% mover that the full Analyzer may prefer on pullback.
+    if (
+        (day_pct is not None and day_pct >= 50.0)
+        or (dist_vwap is not None and dist_vwap >= 8.0)
+    ):
+        return {
+            "label": "WAIT PULLBACK",
+            "tier": "pullback",
+            "reason": "Momentum is strong, but the current price is extended enough to avoid chasing.",
+        }
+
+    strong_momentum = (
+        m5 is not None and m5 >= 0.5
+        and m15 is not None and m15 >= 1.0
+    )
+    strong_participation = pace is not None and pace >= 1.5
+    near_high = from_high is not None and from_high <= 3.0
+    very_near_high = from_high is not None and from_high <= 1.25
+    execution_ok = spread is None or spread <= 2.0
+
+    if grade == "A" and strong_momentum and strong_participation and near_high and execution_ok:
+        if very_near_high:
+            return {
+                "label": "BREAKOUT WATCH",
+                "tier": "breakout",
+                "reason": "High-quality momentum is pressing the session high; confirm the breakout in Analyzer.",
+            }
+        return {
+            "label": "ENTRY READY",
+            "tier": "ready",
+            "reason": "Scanner-level momentum, participation, VWAP and execution checks are aligned.",
+        }
+
+    if (
+        grade in {"A", "B"}
+        and m5 is not None and m5 > 0
+        and (m15 is None or m15 >= 0)
+        and pace is not None and pace >= 1.2
+        and very_near_high
+    ):
+        return {
+            "label": "BREAKOUT WATCH",
+            "tier": "breakout",
+            "reason": "Price is pressing the high with positive momentum; wait for confirmation.",
+        }
+
+    if (
+        grade in {"A", "B"}
+        and dist_vwap is not None and dist_vwap >= 5.5
+    ):
+        return {
+            "label": "WAIT PULLBACK",
+            "tier": "pullback",
+            "reason": "Setup is attractive, but price is stretched above VWAP.",
+        }
+
+    return {
+        "label": "WATCH",
+        "tier": "watch",
+        "reason": "Interesting setup, but scanner-level entry conditions are not fully aligned yet.",
+    }
+
+
+def assign_scanner_actions(rows, now_et):
+    for c in rows:
+        action = scanner_action_signal(c, now_et)
+        c["scanner_action"] = action.get("label")
+        c["scanner_action_tier"] = action.get("tier")
+        c["scanner_action_reason"] = action.get("reason")
+    return rows
 
 
 def evaluate_base_filters(c):
@@ -1307,11 +1473,27 @@ def enrich_live(c, now_utc, now_et):
     elif phase in {"premarket", "afterhours"}:
         pace_source = "extended_profile_unavailable"
 
+    aligned_pace = analyzer_aligned_volume_pace(
+        session_volume,
+        avg_vol,
+        now_et,
+    )
+    display_pace = aligned_pace if aligned_pace is not None else pace
+
     c["momentum_5m"] = round(m5, 2) if m5 is not None else None
     c["momentum_15m"] = round(m15, 2) if m15 is not None else None
     c["avg_20d_volume"] = round(avg_vol, 0) if avg_vol is not None else None
+    # Keep the historical time-of-day pace unchanged for scanner-ml-v2.
     c["volume_pace"] = round(pace, 2) if pace is not None else None
     c["volume_pace_source"] = pace_source
+    c["volume_pace_display"] = (
+        round(display_pace, 2) if display_pace is not None else None
+    )
+    c["volume_pace_display_source"] = (
+        "analyzer_aligned_regular"
+        if aligned_pace is not None
+        else pace_source
+    )
     c["expected_volume_by_now"] = round(expected_so_far, 0) if expected_so_far is not None else None
     c["expected_volume_fraction_pct"] = round(expected_fraction * 100.0, 1) if expected_fraction is not None else None
     c["volume_vs_expected_pct"] = round((pace - 1.0) * 100.0, 1) if pace is not None else None
@@ -1667,6 +1849,9 @@ def candidate_log_record(c, rank):
         "setup_label": c.get("setup_label"),
         "alert_tier": c.get("alert_tier"),
         "alert_ready": bool(c.get("alert_ready")),
+        "scanner_action": c.get("scanner_action"),
+        "scanner_action_tier": c.get("scanner_action_tier"),
+        "scanner_action_reason": c.get("scanner_action_reason"),
         "passed_base_filters": bool(c.get("passed_base_filters")),
         "failed_filters": c.get("failed_filters") or [],
         "tradability_warnings": c.get("tradability_warnings") or [],
@@ -1690,6 +1875,8 @@ def candidate_log_record(c, rank):
         "momentum_15m": c.get("momentum_15m"),
         "volume_pace": c.get("volume_pace"),
         "volume_pace_source": c.get("volume_pace_source"),
+        "volume_pace_display": c.get("volume_pace_display"),
+        "volume_pace_display_source": c.get("volume_pace_display_source"),
         "expected_volume_by_now": c.get("expected_volume_by_now"),
         "expected_volume_fraction_pct": c.get("expected_volume_fraction_pct"),
         "volume_vs_expected_pct": c.get("volume_vs_expected_pct"),
@@ -1784,8 +1971,10 @@ def write_scan_logs(rows, now_utc, now_et, excluded_symbols, ml_summary=None):
             "score", "opportunity_score", "ml_continuation_prob_pct",
             "ml_validated", "ml_status", "ml_training_samples", "ml_validation_auc",
             "setup_grade", "setup_label", "alert_tier", "alert_ready",
+            "scanner_action", "scanner_action_tier", "scanner_action_reason",
             "passed_base_filters", "momentum_5m", "momentum_15m", "volume_pace",
-            "volume_pace_source", "expected_volume_by_now",
+            "volume_pace_source", "volume_pace_display", "volume_pace_display_source",
+            "expected_volume_by_now",
             "expected_volume_fraction_pct", "volume_vs_expected_pct", "volume_profile_samples",
             "liquidity_source", "liquidity_dollar_volume", "live_quote_source",
             "live_spread_pct", "iex_spread_pct",
@@ -1818,11 +2007,16 @@ def write_scan_logs(rows, now_utc, now_et, excluded_symbols, ml_summary=None):
                     "setup_label": r.get("setup_label"),
                     "alert_tier": r.get("alert_tier"),
                     "alert_ready": r.get("alert_ready"),
+                    "scanner_action": r.get("scanner_action"),
+                    "scanner_action_tier": r.get("scanner_action_tier"),
+                    "scanner_action_reason": r.get("scanner_action_reason"),
                     "passed_base_filters": r.get("passed_base_filters"),
                     "momentum_5m": r.get("momentum_5m"),
                     "momentum_15m": r.get("momentum_15m"),
                     "volume_pace": r.get("volume_pace"),
                     "volume_pace_source": r.get("volume_pace_source"),
+                    "volume_pace_display": r.get("volume_pace_display"),
+                    "volume_pace_display_source": r.get("volume_pace_display_source"),
                     "expected_volume_by_now": r.get("expected_volume_by_now"),
                     "expected_volume_fraction_pct": r.get("expected_volume_fraction_pct"),
                     "volume_vs_expected_pct": r.get("volume_vs_expected_pct"),
@@ -2192,6 +2386,10 @@ def main():
             row["ml_validated"] = False
             row["ml_continuation_prob_pct"] = None
             row["opportunity_score"] = row.get("score")
+
+    # Scanner ACTION stays rule-based and auditable. Validated ML is surfaced
+    # alongside it in the UI, but does not silently override the action.
+    assign_scanner_actions(rows, now_et)
 
     rows.sort(key=ranking_key, reverse=True)
 
