@@ -21,6 +21,7 @@ def _preload_secrets():
         "OPENAI_API_KEY",
         "OPENAI_MODEL",
         "ANALYZER_REFRESH_SECONDS",
+        "SEC_USER_AGENT",
     ):
         value = secrets.get(key)
         if value is not None and str(value).strip():
@@ -369,9 +370,11 @@ def prepare_analyzer_result(symbol):
     import stock_analyzer as sa
     from historical_integration import install_historical_analysis
     from ml_integration import install_ml_analysis
+    from analyzer_v2_integration import install_v2_analysis
 
     install_historical_analysis(sa)
     install_ml_analysis(sa)
+    install_v2_analysis(sa)
     return _prepare_combined_result(sa)
 
 
@@ -385,9 +388,11 @@ def run():
     import stock_analyzer as sa
     from historical_integration import install_historical_analysis
     from ml_integration import install_ml_analysis
+    from analyzer_v2_integration import install_v2_analysis
 
     install_historical_analysis(sa)
     install_ml_analysis(sa)
+    install_v2_analysis(sa)
 
     launch_error = None
     if combined:
