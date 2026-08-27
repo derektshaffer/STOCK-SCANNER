@@ -97,6 +97,14 @@ def render_v2_decision(st, metrics):
                     f"{_fmt_pct(market.get('sector_move_pct'))}"
                 )
 
+            sip = v2.get("sip_status") or {}
+            if sip.get("available") and str(sip.get("active_feed") or "").upper() == "SIP":
+                st.write("**Live market feed: SIP ACTIVE** · consolidated real-time feed")
+            else:
+                st.write("**Live market feed: IEX fallback**")
+                if sip.get("error"):
+                    st.caption("SIP entitlement check: " + str(sip.get("error"))[:160])
+
         catalyst = v2.get("catalyst_strength") or {}
         sec = v2.get("fundamental_context") or {}
         turnover = v2.get("turnover_context") or {}
@@ -165,10 +173,19 @@ def render_v2_decision(st, metrics):
                 f"**Calibration:** collecting observations for the {current_bucket} "
                 "Potential bucket; at least 5 resolved examples are needed before showing a rate."
             )
+        if tracking.get("durable_enabled"):
+            st.write("**Durable tracking: ON** · Analyzer predictions are syncing to GitHub.")
+            if tracking.get("durable_error"):
+                st.caption("Last durable-sync issue: " + str(tracking.get("durable_error"))[:160])
+        else:
+            st.write("**Durable tracking: OFF** · local tracking still works, but restarts can reset it.")
+            st.caption(
+                "To enable durable Analyzer calibration, add a fine-grained GitHub token "
+                "to Streamlit Secrets as ANALYZER_GITHUB_TOKEN with Contents read/write "
+                "permission for this repository."
+            )
         st.caption(
-            "The app records one prediction per ticker per 5-minute bucket and resolves "
-            "older outcomes with delayed SIP data. It groups resolved predictions by score "
-            "bucket so we can see whether higher scores actually outperform lower scores. "
-            "Storage is runtime-local in this first Analyzer version, so a Streamlit "
-            "redeploy/restart can reset this Analyzer-specific history."
+            "The app records one prediction per ticker per 5-minute bucket, resolves "
+            "older outcomes with delayed SIP data, and groups resolved predictions by "
+            "score bucket so we can test whether higher scores really outperform lower scores."
         )
