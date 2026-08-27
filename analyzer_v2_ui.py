@@ -147,8 +147,28 @@ def render_v2_decision(st, metrics):
             f"60m higher rate: **{_fmt_pct(tracking.get('higher_60m_rate'))}** · "
             f"T1-before-stop resolved: **{int(tracking.get('resolved_target_stop') or 0)}**"
         )
+        current_bucket = (
+            "80-100" if potential >= 80 else
+            "65-79" if potential >= 65 else
+            "50-64" if potential >= 50 else
+            "0-49"
+        )
+        calibration = (tracking.get("potential_calibration") or {}).get(current_bucket) or {}
+        if int(calibration.get("n") or 0) >= 5:
+            st.write(
+                f"**Current Potential bucket ({current_bucket}) empirical result:** "
+                f"{_fmt_pct(calibration.get('higher_60m_rate'))} higher after 60m "
+                f"across n={int(calibration.get('n') or 0)} tracked observations."
+            )
+        else:
+            st.write(
+                f"**Calibration:** collecting observations for the {current_bucket} "
+                "Potential bucket; at least 5 resolved examples are needed before showing a rate."
+            )
         st.caption(
-            "The app now records one prediction per ticker per 5-minute bucket and "
-            "resolves older outcomes with delayed SIP data. Storage is runtime-local "
-            "for this first version, so a Streamlit redeploy/restart can reset the history."
+            "The app records one prediction per ticker per 5-minute bucket and resolves "
+            "older outcomes with delayed SIP data. It groups resolved predictions by score "
+            "bucket so we can see whether higher scores actually outperform lower scores. "
+            "Storage is runtime-local in this first Analyzer version, so a Streamlit "
+            "redeploy/restart can reset this Analyzer-specific history."
         )
