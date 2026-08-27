@@ -1,6 +1,6 @@
 name: Historical Scanner ML Backfill
 
-# Historical replay can be re-triggered explicitly; ordinary code pushes do not run it.
+# Historical replay is manual-by-default; this marker intentionally triggers the current backfill.
 on:
   workflow_dispatch:
     inputs:
