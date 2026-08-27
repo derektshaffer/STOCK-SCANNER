@@ -237,7 +237,9 @@ def render_v2_decision(st, metrics):
             f"Calibration progress: **{progress_text}**"
         )
         st.caption(
-            "30 resolved observations = early read · 100+ = useful · "
+            "Calibration uses at most one observation per ticker per hour so "
+            "overlapping 5-minute refreshes do not inflate the sample. "
+            "30 resolved ticker-hours = early read · 100+ = useful · "
             "300+ = much stronger evidence for changing score weights."
         )
         current_bucket = (
