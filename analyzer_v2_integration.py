@@ -618,7 +618,9 @@ def install_v2_analysis(sa):
 
         try:
             record_result = record_prediction(metrics, now)
-            tracking = resolve_symbol_predictions(sa, symbol_clean, now)
+            tracking = resolve_symbol_predictions(
+                sa, symbol_clean, now, current_metrics=metrics
+            )
             tracking["last_record"] = record_result
         except Exception as exc:
             tracking = {"error": str(exc)[:140], "persistence": "runtime-local"}
