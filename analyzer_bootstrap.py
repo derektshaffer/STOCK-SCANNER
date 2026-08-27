@@ -37,27 +37,42 @@ def _combined_workspace():
     return st.session_state.get("app_view") in ("Momentum Scanner", "Stock Analyzer")
 
 
-def _install_no_fade_css():
-    """Keep a standalone analyzer fully opaque while a rerun is active."""
+def _install_no_fade_css(combined=False):
+    """Prevent fragment-refresh flashing without preserving stale whole pages.
+
+    The previous global [data-stale] override kept detached Analyzer widgets
+    visible after switching back to the Scanner. They looked clickable but
+    Streamlit had already removed their widget handlers. In the combined app,
+    only the live Analyzer fragment gets the no-fade treatment.
+    """
+    if combined:
+        stale_selector = (
+            ".st-key-analyzer_live_fragment[data-stale=\"true\"], "
+            ".st-key-analyzer_live_fragment [data-stale=\"true\"]"
+        )
+    else:
+        stale_selector = (
+            '[data-stale="true"], div[data-stale="true"], '
+            '.element-container[data-stale="true"]'
+        )
+
     st.markdown(
-        """
+        f"""
         <style>
-        [data-stale="true"],
-        div[data-stale="true"],
-        .element-container[data-stale="true"] {
+        {stale_selector} {{
             opacity: 1 !important;
             filter: none !important;
             transition: none !important;
             animation: none !important;
-        }
+        }}
         [data-testid="stAppViewBlockContainer"],
         [data-testid="stAppViewContainer"],
         [data-testid="stMain"],
         .stApp,
         .stApp > div,
-        .element-container {
+        .element-container {{
             transition: none !important;
-        }
+        }}
         </style>
         """,
         unsafe_allow_html=True,
@@ -387,7 +402,7 @@ def run():
     combined = _combined_workspace()
     # Fragment reruns should never dim the Analyzer. Scope this CSS to stale
     # Streamlit elements so numbers can update without the page flashing.
-    _install_no_fade_css()
+    _install_no_fade_css(combined=combined)
 
     import stock_analyzer as sa
     from historical_integration import install_historical_analysis
