@@ -205,6 +205,42 @@ def resolve_symbol_predictions(sa, symbol, now=None):
     return tracker_summary(rows, symbol)
 
 
+def _score_bucket(value):
+    value = _num(value)
+    if value is None:
+        return None
+    if value >= 80:
+        return "80-100"
+    if value >= 65:
+        return "65-79"
+    if value >= 50:
+        return "50-64"
+    return "0-49"
+
+
+def _bucket_calibration(rows, score_field):
+    groups = {}
+    for row in rows:
+        ret = _num((row.get("outcomes") or {}).get("return_60m_pct"))
+        bucket = _score_bucket(row.get(score_field))
+        if ret is None or bucket is None:
+            continue
+        g = groups.setdefault(bucket, {"n": 0, "wins": 0, "returns": []})
+        g["n"] += 1
+        g["wins"] += int(ret > 0)
+        g["returns"].append(ret)
+
+    out = {}
+    for bucket, g in groups.items():
+        values = g["returns"]
+        out[bucket] = {
+            "n": g["n"],
+            "higher_60m_rate": round(g["wins"] / g["n"] * 100.0, 1) if g["n"] else None,
+            "avg_return_60m_pct": round(sum(values) / len(values), 3) if values else None,
+        }
+    return out
+
+
 def tracker_summary(rows=None, symbol=None):
     rows = rows if rows is not None else _load()
     if symbol:
@@ -240,6 +276,9 @@ def tracker_summary(rows=None, symbol=None):
             round(len(target_wins) / len(touches) * 100.0, 1)
             if touches else None
         ),
+        "potential_calibration": _bucket_calibration(rows, "potential_score"),
+        "entry_calibration": _bucket_calibration(rows, "entry_readiness"),
+        "calibration_ready": len(resolved_60) >= 30,
         "storage": str(LOG_PATH),
         "persistence": "runtime-local",
     }
