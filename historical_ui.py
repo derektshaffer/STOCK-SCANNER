@@ -14,7 +14,9 @@ def render_historical_setup(st, pd, result, card, pp):
             f"Score {bias:+.1f}" if bias is not None else "same-ticker history",
             "good" if setup.get("bias_label") == "BULLISH" else "bad" if setup.get("bias_label") == "BEARISH" else "warn",
         )
-        card(cols[1], "SIMILAR DAYS", str(setup.get("sample_count", 0)), setup.get("setup_label") or "setup matches")
+        sample_quality = setup.get("sample_quality") or "LOW"
+        similar_note = f'{setup.get("setup_label") or "setup matches"} · {sample_quality} sample'
+        card(cols[1], "SIMILAR DAYS", str(setup.get("sample_count", 0)), similar_note)
 
         gr, gf = setup.get("gap_run_pct"), setup.get("gap_fade_pct")
         card(
