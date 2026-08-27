@@ -402,10 +402,15 @@ def build_observations(scans, target_date, bars_index):
                 "setup_label": c.get("setup_label"),
                 "alert_tier": c.get("alert_tier"),
                 "alert_ready": bool(c.get("alert_ready")),
+                "scanner_action": c.get("scanner_action"),
+                "scanner_action_tier": c.get("scanner_action_tier"),
+                "scanner_action_reason": c.get("scanner_action_reason"),
                 "passed_base_filters": bool(c.get("passed_base_filters")),
                 "momentum_5m": c.get("momentum_5m"),
                 "momentum_15m": c.get("momentum_15m"),
                 "volume_pace": c.get("volume_pace"),
+                "volume_pace_display": c.get("volume_pace_display"),
+                "volume_pace_display_source": c.get("volume_pace_display_source"),
                 "liquidity_dollar_volume": c.get("liquidity_dollar_volume"),
                 "liquidity_source": c.get("liquidity_source"),
                 "live_quote_source": c.get("live_quote_source"),
@@ -526,6 +531,7 @@ def summarize(rows):
         },
         "by_grade": {},
         "by_alert_tier": {},
+        "by_scanner_action": {},
         "ranking_comparison": {
             "scanner_score_top5": selection_stats(scanner_top5),
             "opportunity_score_top5": selection_stats(opportunity_top5),
@@ -547,6 +553,17 @@ def summarize(rows):
     for tier in tiers:
         group = [r for r in rows if str(r.get("alert_tier") or "NONE") == tier]
         summary["by_alert_tier"][tier] = {
+            "n": len(group),
+            **{f"{m}m": horizon_stats(group, m) for m in HORIZONS_MINUTES},
+        }
+
+    actions = sorted({str(r.get("scanner_action") or "UNSET") for r in rows})
+    for action in actions:
+        group = [
+            r for r in rows
+            if str(r.get("scanner_action") or "UNSET") == action
+        ]
+        summary["by_scanner_action"][action] = {
             "n": len(group),
             **{f"{m}m": horizon_stats(group, m) for m in HORIZONS_MINUTES},
         }
@@ -681,8 +698,11 @@ def write_reports(target_date, discovery, rows, status, error=None):
         "volume_vs_expected_pct", "live_confirmation_count",
         "ml_continuation_prob_pct", "ml_validated", "ml_status",
         "setup_grade", "setup_label",
-        "alert_tier", "alert_ready", "passed_base_filters",
+        "alert_tier", "alert_ready",
+        "scanner_action", "scanner_action_tier", "scanner_action_reason",
+        "passed_base_filters",
         "momentum_5m", "momentum_15m", "volume_pace",
+        "volume_pace_display", "volume_pace_display_source",
         "liquidity_dollar_volume", "liquidity_source",
         "live_quote_source", "live_intraday_source",
         "spread_pct", "iex_spread_pct",
