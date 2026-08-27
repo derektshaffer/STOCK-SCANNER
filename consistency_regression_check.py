@@ -225,6 +225,11 @@ def test_scanner_outcome_metadata():
                     "liquidity_source": "tradier_consolidated",
                     "live_quote_source": "tradier_consolidated",
                     "live_intraday_source": "tradier_timesales",
+                    "scanner_action": "ENTRY READY",
+                    "scanner_action_tier": "ready",
+                    "scanner_action_reason": "test action",
+                    "volume_pace_display": 2.4,
+                    "volume_pace_display_source": "analyzer_aligned_regular",
                 }
             ],
         }
@@ -237,6 +242,8 @@ def test_scanner_outcome_metadata():
     assert row["live_feed"] == "consolidated", row
     assert row["spread_pct"] == 0.11, row
     assert row["live_quote_source"] == "tradier_consolidated", row
+    assert row["scanner_action"] == "ENTRY READY", row
+    assert row["volume_pace_display"] == 2.4, row
 
 
 def test_stream_seed_rejects_non_tradier_metrics():
@@ -574,6 +581,103 @@ def test_analyzer_shared_button_styles_live_in_bootstrap():
     assert not missing, f"Missing shared Analyzer button styles: {missing}"
 
 
+def test_scanner_aligned_volume_pace_matches_analyzer_baseline():
+    os.environ.setdefault("ALPACA_API_KEY", "test-key")
+    os.environ.setdefault("ALPACA_SECRET_KEY", "test-secret")
+    import stock_scanner as ss
+
+    now_et = datetime(2026, 8, 27, 14, 22, tzinfo=ET)
+    avg_volume = 1_000_000.0
+    session_volume = 750_000.0
+    expected = avg_volume * ss.session_fraction(now_et)
+    pace = ss.analyzer_aligned_volume_pace(
+        session_volume,
+        avg_volume,
+        now_et,
+    )
+    assert pace is not None
+    assert abs(pace - (session_volume / expected)) < 1e-9, pace
+
+
+def _scanner_action_row(**overrides):
+    row = {
+        "market_session": "regular",
+        "setup_grade": "A",
+        "failed_count": 0,
+        "critical_fail_count": 0,
+        "failed_filters": [],
+        "tradability_warnings": [],
+        "spread_pct": 0.5,
+        "day_pct": 20.0,
+        "distance_from_high_pct": 2.0,
+        "distance_from_vwap_pct": 3.0,
+        "momentum_5m": 1.0,
+        "momentum_15m": 2.0,
+        "volume_pace_display": 3.0,
+        "above_vwap": True,
+    }
+    row.update(overrides)
+    return row
+
+
+def test_scanner_action_avoids_chasing_extreme_mover():
+    os.environ.setdefault("ALPACA_API_KEY", "test-key")
+    os.environ.setdefault("ALPACA_SECRET_KEY", "test-secret")
+    import stock_scanner as ss
+
+    action = ss.scanner_action_signal(
+        _scanner_action_row(day_pct=56.7, distance_from_vwap_pct=5.4)
+    )
+    assert action["label"] == "WAIT PULLBACK", action
+
+
+def test_scanner_action_entry_ready_requires_aligned_conditions():
+    os.environ.setdefault("ALPACA_API_KEY", "test-key")
+    os.environ.setdefault("ALPACA_SECRET_KEY", "test-secret")
+    import stock_scanner as ss
+
+    action = ss.scanner_action_signal(_scanner_action_row())
+    assert action["label"] == "ENTRY READY", action
+    assert action["tier"] == "ready", action
+
+
+def test_scanner_action_breakout_watch_near_high():
+    os.environ.setdefault("ALPACA_API_KEY", "test-key")
+    os.environ.setdefault("ALPACA_SECRET_KEY", "test-secret")
+    import stock_scanner as ss
+
+    action = ss.scanner_action_signal(
+        _scanner_action_row(distance_from_high_pct=0.8)
+    )
+    assert action["label"] == "BREAKOUT WATCH", action
+
+
+def test_scanner_action_reject_stays_no_trade():
+    os.environ.setdefault("ALPACA_API_KEY", "test-key")
+    os.environ.setdefault("ALPACA_SECRET_KEY", "test-secret")
+    import stock_scanner as ss
+
+    action = ss.scanner_action_signal(
+        _scanner_action_row(
+            setup_grade="REJECT",
+            critical_fail_count=1,
+            failed_count=1,
+            failed_filters=["liquidity failure"],
+        )
+    )
+    assert action["label"] == "NO TRADE", action
+
+
+def test_scanner_ui_auto_surfaces_validated_ml():
+    from pathlib import Path
+
+    source = Path("app.py").read_text(encoding="utf-8")
+    assert 'label = "ACTION"' in source
+    assert 'label += f" · ML {probability:.0f}%"' in source
+    assert "volume_pace_display" in source
+    assert "combined-action-value" in source
+
+
 if __name__ == "__main__":
     tests = [
         test_analyzer_prefers_tradier,
@@ -594,6 +698,12 @@ if __name__ == "__main__":
         test_position_live_overlay_recomputes_derived_fields,
         test_analyzer_ui_preserves_historical_context_dependencies,
         test_analyzer_shared_button_styles_live_in_bootstrap,
+        test_scanner_aligned_volume_pace_matches_analyzer_baseline,
+        test_scanner_action_avoids_chasing_extreme_mover,
+        test_scanner_action_entry_ready_requires_aligned_conditions,
+        test_scanner_action_breakout_watch_near_high,
+        test_scanner_action_reject_stays_no_trade,
+        test_scanner_ui_auto_surfaces_validated_ml,
     ]
     for test in tests:
         test()
