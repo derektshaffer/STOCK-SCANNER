@@ -275,6 +275,8 @@ def record_prediction(metrics, now=None):
         "setup_score": _num(metrics.get("score")),
         "plan_confidence": _num(plan.get("confidence")),
         "plan_status": plan.get("status"),
+        "plan_action": plan.get("action"),
+        "preferred_plan": plan.get("preferred_plan"),
         "potential_score": _num(v2.get("potential_score")),
         "entry_readiness": _num(v2.get("entry_readiness")),
         "evidence_strength": _num(v2.get("evidence_strength")),
@@ -341,7 +343,7 @@ def _first_touch(bars, target, stop):
     return None
 
 
-def resolve_symbol_predictions(sa, symbol, now=None):
+def resolve_symbol_predictions(sa, symbol, now=None, current_metrics=None):
     """Resolve older predictions opportunistically using delayed SIP bars.
 
     This intentionally waits for consolidated delayed data rather than scoring
@@ -357,12 +359,12 @@ def resolve_symbol_predictions(sa, symbol, now=None):
         and not bool((row.get("outcomes") or {}).get("resolved_60m"))
     ][-40:]
     if not pending:
-        return tracker_summary(rows, symbol)
+        return tracker_summary(rows, symbol, current_metrics=current_metrics)
 
     earliest = min(_parse_dt(row["timestamp"]) for row in pending)
     safe_end = now - timedelta(minutes=16)
     if safe_end <= earliest:
-        return tracker_summary(rows, symbol)
+        return tracker_summary(rows, symbol, current_metrics=current_metrics)
 
     try:
         bars, _source = sa.try_sip_delayed_bars(
@@ -401,7 +403,105 @@ def resolve_symbol_predictions(sa, symbol, now=None):
 
     if changed:
         _save(rows)
-    return tracker_summary(rows, symbol)
+    return tracker_summary(rows, symbol, current_metrics=current_metrics)
+
+
+def signal_lifecycle(symbol, current_metrics=None, rows=None):
+    """Summarize how today's first real ENTRY AVAILABLE signal has evolved."""
+    rows = rows if rows is not None else _load()
+    symbol = str(symbol or "").upper().strip()
+    if not symbol:
+        return {"status": "no_symbol"}
+
+    now = datetime.now(timezone.utc)
+    today_et = now.astimezone(ET).date()
+    symbol_rows = []
+    for row in rows:
+        if row.get("symbol") != symbol:
+            continue
+        dt = _parse_dt(row.get("timestamp"))
+        if dt is None or dt.astimezone(ET).date() != today_et:
+            continue
+        symbol_rows.append(row)
+    symbol_rows.sort(key=lambda row: str(row.get("timestamp") or ""))
+
+    signal = next(
+        (row for row in symbol_rows if row.get("plan_status") == "ENTRY AVAILABLE"),
+        None,
+    )
+    if signal is None:
+        return {
+            "status": "no_entry_signal",
+            "message": "No ENTRY AVAILABLE signal has been recorded for this ticker today.",
+        }
+
+    signal_dt = _parse_dt(signal.get("timestamp"))
+    signal_price = _num(signal.get("price"))
+    target1 = _num(signal.get("target1"))
+    stop = _num(signal.get("stop"))
+    outcomes = signal.get("outcomes") or {}
+    first_touch = outcomes.get("target1_first_touch")
+
+    current_metrics = current_metrics or {}
+    current_price = _num(current_metrics.get("price"))
+    current_plan = current_metrics.get("trade_plan") or {}
+    current_status = str(current_plan.get("status") or "")
+    current_action = str(current_plan.get("action") or current_status or "Current setup unavailable")
+
+    change_pct = None
+    if signal_price and current_price:
+        change_pct = round((current_price / signal_price - 1.0) * 100.0, 2)
+
+    thesis_status = "ACTIVE"
+    thesis_message = "Original entry thesis is still unresolved."
+    if first_touch == "target":
+        thesis_status = "SUCCEEDED"
+        thesis_message = "Target 1 was reached before the original stop."
+    elif first_touch == "stop":
+        thesis_status = "FAILED"
+        thesis_message = "The original stop was reached before Target 1."
+    elif first_touch == "ambiguous":
+        thesis_status = "AMBIGUOUS"
+        thesis_message = "Target and stop touched within the same bar; order cannot be determined."
+    elif current_price is not None and target1 is not None and current_price >= target1:
+        thesis_status = "LIKELY SUCCEEDED"
+        thesis_message = "Current price is already at/above the original Target 1; final first-touch scoring is pending."
+    elif current_price is not None and stop is not None and current_price <= stop:
+        thesis_status = "AT RISK"
+        thesis_message = "Current price is at/below the original stop; final first-touch scoring is pending."
+
+    if current_status == "ENTRY AVAILABLE":
+        current_state = "ENTRY AVAILABLE NOW"
+    elif current_status == "WAIT":
+        current_state = current_action
+    elif current_status == "NO TRADE":
+        current_state = current_action
+    else:
+        current_state = current_action
+
+    return {
+        "status": "ok",
+        "signal_time": signal_dt.astimezone(ET).isoformat() if signal_dt else signal.get("timestamp"),
+        "signal_price": signal_price,
+        "signal_action": signal.get("plan_action") or "ENTRY AVAILABLE",
+        "signal_preferred_plan": signal.get("preferred_plan"),
+        "signal_potential": _num(signal.get("potential_score")),
+        "signal_entry_readiness": _num(signal.get("entry_readiness")),
+        "signal_evidence": _num(signal.get("evidence_strength")),
+        "target1": target1,
+        "stop": stop,
+        "current_price": current_price,
+        "change_since_signal_pct": change_pct,
+        "thesis_status": thesis_status,
+        "thesis_message": thesis_message,
+        "first_touch": first_touch,
+        "current_plan_status": current_status,
+        "current_state": current_state,
+        "observations_since_signal": sum(
+            1 for row in symbol_rows
+            if str(row.get("timestamp") or "") >= str(signal.get("timestamp") or "")
+        ),
+    }
 
 
 def _score_bucket(value):
@@ -440,7 +540,7 @@ def _bucket_calibration(rows, score_field):
     return out
 
 
-def tracker_summary(rows=None, symbol=None):
+def tracker_summary(rows=None, symbol=None, current_metrics=None):
     rows = rows if rows is not None else _load()
     if symbol:
         rows = [r for r in rows if r.get("symbol") == str(symbol).upper().strip()]
@@ -465,8 +565,11 @@ def tracker_summary(rows=None, symbol=None):
 
     durable = _load_durable_calibration()
 
+    lifecycle = signal_lifecycle(symbol, current_metrics=current_metrics, rows=rows) if symbol else None
+
     return {
         "total_predictions": len(rows),
+        "signal_lifecycle": lifecycle,
         "resolved_60m": len(resolved_60),
         "higher_60m_rate": (
             round(len(positive_60) / len(resolved_60) * 100.0, 1)
