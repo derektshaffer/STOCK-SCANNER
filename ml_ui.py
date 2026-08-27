@@ -50,10 +50,10 @@ def render_ml_prediction(st, pd, result, card):
 
     if ml.get("status") != "ok":
         if ml.get("status") == "insufficient_history":
-            st.info("ML v1 does not have enough 5-minute same-ticker history to train a reliable model yet.")
+            st.info("ML v1.1 does not have enough 5-minute same-ticker history to train a reliable model yet.")
         else:
             detail = ml.get("error")
-            st.caption("ML v1 is temporarily unavailable." + (f" {detail}" if detail else ""))
+            st.caption("ML v1.1 is temporarily unavailable." + (f" {detail}" if detail else ""))
         return
 
     models = ml.get("models") or {}
