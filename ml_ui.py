@@ -128,11 +128,20 @@ def render_ml_prediction(st, pd, result, card):
         "Unvalidated/advisory probabilities remain visible in their own cards but are excluded from the headline edge."
     )
 
-    with st.expander("ML v1 details / walk-forward validation"):
+    with st.expander("ML v1.1 details / walk-forward validation"):
         st.write(
-            "**What it predicts:** Target 1 before stop within the next 60 minutes, "
-            "whether price is higher in 30 and 60 minutes, and breakout hold probability "
-            "when price is near the breakout trigger."
+            "**What it predicts:** Whether Target 1 is reached before the stop during the "
+            "rest of the same trading session, whether price is higher in 30 and 60 minutes, "
+            "and breakout hold probability when price is near the breakout trigger."
+        )
+        target_source = target.get("target_source") or "Target 1"
+        outcomes = target.get("outcome_summary") or {}
+        st.caption(
+            f"Target 1 source: {target_source}. Same-session T1 training uses only decisive "
+            f"first-touch outcomes: {int(outcomes.get('target_wins') or 0)} target-first, "
+            f"{int(outcomes.get('stop_first') or 0)} stop-first; "
+            f"{int(outcomes.get('unresolved') or 0)} unresolved and "
+            f"{int(outcomes.get('ambiguous') or 0)} ambiguous observations are excluded."
         )
         st.write(
             "**How it is trained:** Same-ticker 5-minute bars are converted into historical "
@@ -198,6 +207,6 @@ def render_ml_prediction(st, pd, result, card):
             f'XGBoost · same-ticker data · {ml.get("training_samples", 0)} historical snapshots · '
             f'target geometry +{ml.get("target_pct", 0):.1f}% / {ml.get("stop_pct", 0):.1f}% · '
             f'source: {ml.get("source")}. '
-            "ML v1 is a probability/decision-support layer, not a guaranteed forecast. "
+            "ML v1.1 is a probability/decision-support layer, not a guaranteed forecast. "
             "It cannot override the rule-based trade action in this version."
         )
