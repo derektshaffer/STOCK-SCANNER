@@ -540,7 +540,15 @@ def _evidence_strength(metrics, sec, market, catalyst):
 
     trade_age = _num(metrics.get("trade_age_seconds"))
     live_feed = str(metrics.get("live_feed") or "").upper()
-    if live_feed == "SIP":
+    market_provider = str(
+        metrics.get("market_provider")
+        or metrics.get("live_provider")
+        or ""
+    ).lower()
+    if market_provider == "tradier" or "TRADIER" in live_feed:
+        score += 12.0
+        reasons.append("Tradier consolidated live feed")
+    elif live_feed == "SIP":
         score += 12.0
         reasons.append("consolidated SIP live feed")
     else:
