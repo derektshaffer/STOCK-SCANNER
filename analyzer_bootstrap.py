@@ -378,8 +378,9 @@ def prepare_analyzer_result(symbol):
 def run():
     _preload_secrets()
     combined = _combined_workspace()
-    if not combined:
-        _install_no_fade_css()
+    # Fragment reruns should never dim the Analyzer. Scope this CSS to stale
+    # Streamlit elements so numbers can update without the page flashing.
+    _install_no_fade_css()
 
     import stock_analyzer as sa
     from historical_integration import install_historical_analysis
@@ -409,41 +410,55 @@ def run():
     if not target.exists():
         raise FileNotFoundError("analyzer_ui_core.py is missing from the repository root.")
 
-    original_expander = st.expander
-    analysis_slot = {"placeholder": None}
-
-    def _expander_with_analysis_slot(label, *args, **kwargs):
-        if (
-            analysis_slot["placeholder"] is None
-            and str(label).startswith("Trade plan details")
-        ):
-            analysis_slot["placeholder"] = st.empty()
-        return original_expander(label, *args, **kwargs)
-
-    st.expander = _expander_with_analysis_slot
     try:
-        ns = runpy.run_path(str(target), run_name="__main__")
-    finally:
-        st.expander = original_expander
+        refresh_seconds = max(
+            5, int(os.environ.get("ANALYZER_REFRESH_SECONDS", "15") or 15)
+        )
+    except Exception:
+        refresh_seconds = 15
 
-    result = ns.get("r") or {}
-    card = ns.get("card")
-    pp = ns.get("pp")
+    @st.fragment(run_every=f"{refresh_seconds}s")
+    def _render_live_analyzer():
+        # Only this fragment reruns on the timer. app.py's navigation and the
+        # rest of the workspace stay mounted, eliminating full-page refreshes.
+        with st.container(key="analyzer_live_fragment"):
+            original_expander = st.expander
+            analysis_slot = {"placeholder": None}
 
-    if card and pp:
-        slot = analysis_slot.get("placeholder")
+            def _expander_with_analysis_slot(label, *args, **kwargs):
+                if (
+                    analysis_slot["placeholder"] is None
+                    and str(label).startswith("Trade plan details")
+                ):
+                    analysis_slot["placeholder"] = st.empty()
+                return original_expander(label, *args, **kwargs)
 
-        def _render_analysis_sections():
-            with st.container(key="ml_prediction_section"):
-                render_ml_prediction(st, pd, result, card)
-            with st.container(key="historical_match_section"):
-                render_historical_setup(st, pd, result, card, pp)
+            st.expander = _expander_with_analysis_slot
+            try:
+                ns = runpy.run_path(str(target), run_name="__main__")
+            finally:
+                st.expander = original_expander
 
-        if slot is not None:
-            with slot.container():
-                _render_analysis_sections()
-        else:
-            _render_analysis_sections()
+            result = ns.get("r") or {}
+            card = ns.get("card")
+            pp = ns.get("pp")
+
+            if card and pp:
+                slot = analysis_slot.get("placeholder")
+
+                def _render_analysis_sections():
+                    with st.container(key="ml_prediction_section"):
+                        render_ml_prediction(st, pd, result, card)
+                    with st.container(key="historical_match_section"):
+                        render_historical_setup(st, pd, result, card, pp)
+
+                if slot is not None:
+                    with slot.container():
+                        _render_analysis_sections()
+                else:
+                    _render_analysis_sections()
+
+    _render_live_analyzer()
 
     if not combined:
         _install_scroll_keeper()
