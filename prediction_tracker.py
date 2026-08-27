@@ -14,6 +14,7 @@ LOG_PATH = Path(os.environ.get("ANALYZER_PREDICTION_LOG", "analysis_logs/analyze
 BUCKET_MINUTES = 5
 ET = ZoneInfo("America/New_York")
 ANALYZER_FEATURE_VERSION = "analyzer-features-v2-consolidated"
+DECISION_SCORE_VERSION = "decision-v2.1-deduped"
 
 GITHUB_TOKEN = (
     os.environ.get("ANALYZER_GITHUB_TOKEN", "").strip()
@@ -282,6 +283,10 @@ def record_prediction(metrics, now=None):
             metrics.get("market_provider")
             or metrics.get("live_provider")
             or "alpaca"
+        ),
+        "decision_score_version": (
+            v2.get("version")
+            or "legacy-decision-score"
         ),
         "price": _num(metrics.get("price")),
         "day_pct": _num(metrics.get("day_pct")),
@@ -596,6 +601,12 @@ def tracker_summary(rows=None, symbol=None, current_metrics=None):
     ]
     legacy_excluded = len(all_rows) - len(current_rows)
 
+    decision_rows = [
+        r for r in current_rows
+        if r.get("decision_score_version") == DECISION_SCORE_VERSION
+    ]
+    legacy_decision_excluded = len(current_rows) - len(decision_rows)
+
     symbol_rows = current_rows
     if symbol:
         symbol_rows = [
@@ -603,10 +614,11 @@ def tracker_summary(rows=None, symbol=None, current_metrics=None):
             if r.get("symbol") == str(symbol).upper().strip()
         ]
 
-    # Calibration is global across all tracked tickers, but only the current
-    # feature version is eligible. This prevents pre-Tradier/IEX observations
-    # from inflating or biasing the consolidated-data calibration.
-    calibration_rows = _independent_calibration_rows(current_rows)
+    # Score calibration requires both the current market-data feature version
+    # and the current Decision score formula. Lifecycle/history may still use
+    # all current-provider observations because it tracks the original signal,
+    # not score-band calibration.
+    calibration_rows = _independent_calibration_rows(decision_rows)
     resolved_60 = [
         r for r in calibration_rows
         if (r.get("outcomes") or {}).get("return_60m_pct") is not None
@@ -626,7 +638,10 @@ def tracker_summary(rows=None, symbol=None, current_metrics=None):
     ]
 
     durable = _load_durable_calibration()
-    if durable.get("feature_version") != ANALYZER_FEATURE_VERSION:
+    if (
+        durable.get("feature_version") != ANALYZER_FEATURE_VERSION
+        or durable.get("decision_score_version") != DECISION_SCORE_VERSION
+    ):
         durable = {}
     durable_resolved = int(durable.get("resolved_60m") or 0)
     effective_resolved = max(durable_resolved, len(resolved_60))
@@ -664,8 +679,10 @@ def tracker_summary(rows=None, symbol=None, current_metrics=None):
 
     return {
         "feature_version": ANALYZER_FEATURE_VERSION,
+        "decision_score_version": DECISION_SCORE_VERSION,
         "total_predictions": len(current_rows),
         "legacy_predictions_excluded": legacy_excluded,
+        "legacy_decision_scores_excluded": legacy_decision_excluded,
         "calibration_rows": len(calibration_rows),
         "calibration_sampling": "one observation per ticker per hour",
         "signal_lifecycle": lifecycle,
