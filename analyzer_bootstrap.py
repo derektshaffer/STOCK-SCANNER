@@ -27,6 +27,8 @@ def _preload_secrets():
         "ANALYZER_GITHUB_BRANCH",
         "ANALYZER_REMOTE_SYNC_SECONDS",
         "ANALYZER_STREAM_UI_SECONDS",
+        "TRADIER_ACCESS_TOKEN",
+        "TRADIER_TOKEN",
         "INTRINIO_API_KEY",
     ):
         value = secrets.get(key)
@@ -464,7 +466,7 @@ def run():
     from historical_ui import render_historical_setup
     from ml_ui import render_ml_prediction
     from live_tape_ui import render_live_tape
-    from alpaca_live_stream import get_live_overlay
+    from live_market_stream import get_live_overlay
 
     target = Path(__file__).with_name("analyzer_ui_core.py")
     if not target.exists():
