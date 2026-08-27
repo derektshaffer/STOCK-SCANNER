@@ -583,7 +583,9 @@ def install_v2_analysis(sa):
 
     def enhanced_analyze(symbol):
         symbol_clean = str(symbol or "").upper().strip()
-        sip_status = prefer_best_live_feed(sa, symbol_clean or "SPY")
+        # Probe entitlement on SPY, a continuously active SIP symbol, so an
+        # illiquid target ticker cannot create a false "SIP unavailable" result.
+        sip_status = prefer_best_live_feed(sa, "SPY")
         metrics = base_analyze(symbol)
         now = datetime.now(timezone.utc)
 
