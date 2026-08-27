@@ -50,7 +50,11 @@ def _install_no_fade_css(combined=False):
     if combined:
         stale_selector = (
             ".st-key-analyzer_live_fragment[data-stale=\"true\"], "
-            ".st-key-analyzer_live_fragment [data-stale=\"true\"]"
+            ".st-key-analyzer_live_fragment [data-stale=\"true\"], "
+            ".element-container[data-stale=\"true\"]:has(.st-key-analyzer_live_fragment), "
+            ".st-key-analyzer_fast_live_tape[data-stale=\"true\"], "
+            ".st-key-analyzer_fast_live_tape [data-stale=\"true\"], "
+            ".element-container[data-stale=\"true\"]:has(.st-key-analyzer_fast_live_tape)"
         )
     else:
         stale_selector = (
@@ -434,23 +438,21 @@ def run():
     if combined:
         _cleanup_combined_browser_helpers()
 
-        # Render Saved Stocks before any expensive analysis so a clicked saved
-        # ticker can immediately show "Analyzing..." while the result loads.
-        saved_toolbar = st.empty()
-        with saved_toolbar.container():
+        @st.fragment(run_every="2s")
+        def _render_saved_stock_toolbar():
+            # This fragment follows ticker_search_request/result changes made
+            # inside the Analyzer fragment, so Save/Remove always refers to the
+            # stock the user is actually analyzing.
             with st.container(key="saved_stocks_top"):
-                _render_saved_stocks("loading")
+                _render_saved_stocks("toolbar")
 
-        # Scanner-launched analyses are normally already calculated by the
-        # button callback. This is a fast no-op in that case and remains a
-        # fallback for direct/manual switches to the Analyzer.
+        # Render the toolbar first so saved-ticker clicks can visibly show
+        # "Analyzing..." before the expensive combined analysis executes.
+        _render_saved_stock_toolbar()
+
+        # Scanner/saved-stock launches may arrive with result cleared. This is
+        # a fast no-op when the requested ticker is already analyzed.
         launch_error = _prepare_combined_result(sa)
-
-        # Replace the temporary loading label with the normal saved-stock row.
-        saved_toolbar.empty()
-        with saved_toolbar.container():
-            with st.container(key="saved_stocks_top_done"):
-                _render_saved_stocks("ready")
 
         if launch_error:
             st.error(f"Could not analyze the selected ticker: {launch_error}")
@@ -467,7 +469,7 @@ def run():
 
     try:
         refresh_seconds = max(
-            5, int(os.environ.get("ANALYZER_REFRESH_SECONDS", "15") or 15)
+            30, int(os.environ.get("ANALYZER_REFRESH_SECONDS", "60") or 60)
         )
     except Exception:
         refresh_seconds = 15
