@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import io
 import json
 import math
@@ -30,6 +31,12 @@ MIN_LIVE_CONFIRMATION_DAYS = 2
 MIN_LIVE_CONFIRMATION_CLASS_COUNT = 5
 MAX_ARTIFACTS = 12
 ARTIFACT_PREFIX = "outcome-report-"
+MODEL_CACHE_DIR = Path(
+    os.environ.get("SCANNER_ML_CACHE_DIR", ".scanner_cache").strip()
+    or ".scanner_cache"
+)
+MODEL_CACHE_PATH = MODEL_CACHE_DIR / "scanner_ml_model.json"
+MODEL_CACHE_META_PATH = MODEL_CACHE_DIR / "scanner_ml_model_meta.json"
 
 FEATURES = [
     "day_pct",
@@ -329,6 +336,76 @@ def load_training_observations():
             if source != "historical_replay"
         ),
     }
+
+
+def _training_fingerprint(rows):
+    digest = hashlib.sha256()
+    digest.update(MODEL_VERSION.encode("utf-8"))
+    digest.update(CURRENT_FEATURE_VERSION.encode("utf-8"))
+    for row in rows:
+        digest.update(
+            (
+                str(row.get("observation_id"))
+                + "|"
+                + str(row.get("timestamp"))
+                + "|"
+                + str(row.get("label"))
+                + "\n"
+            ).encode("utf-8")
+        )
+    return digest.hexdigest()
+
+
+def _load_cached_model(fingerprint):
+    if not MODEL_CACHE_PATH.exists() or not MODEL_CACHE_META_PATH.exists():
+        return None, None
+    try:
+        meta = json.loads(
+            MODEL_CACHE_META_PATH.read_text(encoding="utf-8")
+        )
+        if meta.get("training_fingerprint") != fingerprint:
+            return None, None
+        if meta.get("model_version") != MODEL_VERSION:
+            return None, None
+        if meta.get("feature_version") != CURRENT_FEATURE_VERSION:
+            return None, None
+
+        import xgboost as xgb
+
+        model = xgb.Booster()
+        model.load_model(str(MODEL_CACHE_PATH))
+        cached_meta = dict(meta.get("validation_meta") or {})
+        cached_meta["model_cache_hit"] = True
+        return model, cached_meta
+    except Exception:
+        return None, None
+
+
+def _save_cached_model(model, fingerprint, meta):
+    if model is None or not meta.get("historical_validated"):
+        return
+    try:
+        MODEL_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        model.save_model(str(MODEL_CACHE_PATH))
+        payload = {
+            "model_version": MODEL_VERSION,
+            "feature_version": CURRENT_FEATURE_VERSION,
+            "training_fingerprint": fingerprint,
+            "validation_meta": {
+                key: value
+                for key, value in meta.items()
+                if isinstance(
+                    value,
+                    (str, int, float, bool, list, dict, type(None)),
+                )
+            },
+        }
+        MODEL_CACHE_META_PATH.write_text(
+            json.dumps(payload, indent=2),
+            encoding="utf-8",
+        )
+    except Exception:
+        pass
 
 
 def _auc(y, probabilities):
@@ -780,9 +857,18 @@ def apply_scanner_ml(rows, now_et):
     training_rows, source_meta = (
         load_training_observations()
     )
-    model, meta = _validation_and_model(
-        training_rows
-    )
+    fingerprint = _training_fingerprint(training_rows)
+    model, meta = _load_cached_model(fingerprint)
+    if model is None or meta is None:
+        model, meta = _validation_and_model(
+            training_rows
+        )
+        meta["model_cache_hit"] = False
+        _save_cached_model(
+            model,
+            fingerprint,
+            meta,
+        )
     meta.update(source_meta)
     meta["feature_version"] = CURRENT_FEATURE_VERSION
 
