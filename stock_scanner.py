@@ -978,7 +978,26 @@ def analyze_snapshot(symbol, tradier_quote=None):
 
 
 def avg_daily_volume(symbol, now_utc):
-    bars = get_bars(symbol, "1Day", now_utc - timedelta(days=45), now_utc, 35)
+    # Use consolidated historical SIP volume when available so Tradier's
+    # consolidated live volume is compared with a like-for-like baseline.
+    try:
+        bars = get_bars(
+            symbol,
+            "1Day",
+            now_utc - timedelta(days=45),
+            now_utc,
+            35,
+            feed=HISTORICAL_FEED,
+        )
+    except Exception:
+        bars = get_bars(
+            symbol,
+            "1Day",
+            now_utc - timedelta(days=45),
+            now_utc,
+            35,
+            feed=LIVE_FEED,
+        )
     if not bars:
         return None
 
@@ -999,14 +1018,26 @@ def historical_volume_profile(symbol, now_utc, now_et):
     measured at the current clock time, then the median is used so one huge spike
     day does not distort the baseline. The typical daily volume is also a median.
     """
-    bars = get_bars(
-        symbol,
-        VOLUME_PROFILE_TIMEFRAME,
-        now_utc - timedelta(days=VOLUME_PROFILE_LOOKBACK_DAYS),
-        now_utc,
-        10000,
-        feed=LIVE_FEED,
-    )
+    profile_feed = HISTORICAL_FEED
+    try:
+        bars = get_bars(
+            symbol,
+            VOLUME_PROFILE_TIMEFRAME,
+            now_utc - timedelta(days=VOLUME_PROFILE_LOOKBACK_DAYS),
+            now_utc,
+            10000,
+            feed=profile_feed,
+        )
+    except Exception:
+        profile_feed = LIVE_FEED
+        bars = get_bars(
+            symbol,
+            VOLUME_PROFILE_TIMEFRAME,
+            now_utc - timedelta(days=VOLUME_PROFILE_LOOKBACK_DAYS),
+            now_utc,
+            10000,
+            feed=profile_feed,
+        )
     if not bars:
         return None
 
@@ -1065,8 +1096,35 @@ def historical_volume_profile(symbol, now_utc, now_et):
         "typical_daily_volume": typical_daily_volume,
         "expected_fraction": expected_fraction,
         "expected_volume": expected_volume,
-        "source": f"ticker_historical_{market_session_mode(now_et)}_tod_{LIVE_FEED}",
+        "source": f"ticker_historical_{market_session_mode(now_et)}_tod_{profile_feed}",
     }
+
+
+def get_live_bars(symbol, timeframe, start, end, limit=10000):
+    """Use Tradier consolidated Time & Sales for live intraday bars when configured."""
+    if USE_TRADIER:
+        interval = {
+            "1Min": "1min",
+            "5Min": "5min",
+            "15Min": "15min",
+        }.get(timeframe)
+        if interval:
+            return get_tradier_timesales_bars(
+                symbol,
+                TRADIER_TOKEN,
+                start,
+                end,
+                interval=interval,
+                session_filter="all",
+            )[:limit]
+    return get_bars(
+        symbol,
+        timeframe,
+        start,
+        end,
+        limit,
+        feed=LIVE_FEED,
+    )
 
 
 def current_session_stats(symbol, now_utc, now_et):
@@ -1082,13 +1140,12 @@ def current_session_stats(symbol, now_utc, now_et):
         second=0,
         microsecond=0,
     )
-    bars = get_bars(
+    bars = get_live_bars(
         symbol,
         "5Min",
         start_et.astimezone(timezone.utc),
         now_utc,
         10000,
-        feed=LIVE_FEED,
     )
     if not bars:
         return None
@@ -1113,6 +1170,7 @@ def current_session_stats(symbol, now_utc, now_et):
     if high is None or low is None:
         return None
 
+    last_price = float(bars[-1].get("c") or 0) if bars else 0.0
     return {
         "phase": phase,
         "volume": volume,
@@ -1120,11 +1178,19 @@ def current_session_stats(symbol, now_utc, now_et):
         "high": high,
         "low": low,
         "vwap": (dollar / volume) if volume > 0 else None,
+        "last_price": last_price or None,
+        "live_source": "tradier_consolidated" if USE_TRADIER else f"alpaca_{LIVE_FEED}",
     }
 
 
 def recent_momentum(symbol, now_utc, current_price):
-    bars = get_bars(symbol, "1Min", now_utc - timedelta(minutes=60), now_utc, 60)
+    bars = get_live_bars(
+        symbol,
+        "1Min",
+        now_utc - timedelta(minutes=60),
+        now_utc,
+        60,
+    )
     if len(bars) < 2:
         return None, None
 
@@ -1154,7 +1220,17 @@ def enrich_live(c, now_utc, now_et):
         session_high = session_stats.get("high")
         session_low = session_stats.get("low")
         session_vwap = session_stats.get("vwap")
+        session_last = session_stats.get("last_price")
 
+        if session_last:
+            c["price"] = round(float(session_last), 4)
+            if c.get("prev_close"):
+                c["day_pct"] = round(
+                    pct_change(c["price"], float(c["prev_close"])) or 0.0,
+                    2,
+                )
+
+        c["live_intraday_source"] = session_stats.get("live_source")
         c["session_volume"] = round(session_volume, 0)
         c["session_dollar_volume"] = round(session_dollar, 2)
         c["session_high"] = round(session_high, 4) if session_high else None
@@ -1176,9 +1252,18 @@ def enrich_live(c, now_utc, now_et):
             )
             c["above_vwap"] = bool(c["price"] > session_vwap)
 
-        # Extended-hours liquidity should reflect the current extended session,
-        # not yesterday's/current regular-session daily bar.
-        if phase in {"premarket", "afterhours"} and session_dollar > 0:
+        # Tradier Time & Sales is consolidated, so use its actual session
+        # dollar volume directly instead of estimating total market activity.
+        if USE_TRADIER and session_dollar > 0:
+            c["dollar_volume"] = round(session_dollar, 2)
+            c["estimated_total_dollar_volume"] = round(session_dollar, 2)
+            c["liquidity_source"] = (
+                "tradier_extended"
+                if phase in {"premarket", "afterhours"}
+                else "tradier_consolidated"
+            )
+            c["liquidity_dollar_volume"] = round(session_dollar, 2)
+        elif phase in {"premarket", "afterhours"} and session_dollar > 0:
             c["dollar_volume"] = round(session_dollar, 2)
             if LIVE_FEED == "sip":
                 c["estimated_total_dollar_volume"] = round(session_dollar, 2)
