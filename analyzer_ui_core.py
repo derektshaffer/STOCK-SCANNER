@@ -460,7 +460,8 @@ def render_ticker_search(asset_choices, current_symbol):
 
 
 with st.container(key="analyzer_controls"):
-    c1,c2,c3=st.columns([2.2,1,1], vertical_alignment="center")
+    c1,c2,c3,c4=st.columns([2.3,1,0.9,0.65], vertical_alignment="center")
+    term_tool_col = c4
     with c1:
         asset_choices=load_active_us_equities()
         current_symbol=str(st.session_state.get("ticker","SDOT") or "SDOT").upper().strip()
@@ -511,41 +512,8 @@ if _needs_analysis:
             st.error(str(e)); st.stop()
 r=st.session_state["result"]
 
-def money(x): return "—" if x is None else f"${x:,.2f}"
-def pp(x): return "—" if x is None else f"{x:+.2f}%"
-def multiple(x): return "—" if x is None else f"{x:.2f}x"
-def rr(x): return "—" if x is None else f"{x:.2f}:1"
-def dollars_compact(x):
-    if x is None: return "—"
-    x=float(x)
-    if abs(x)>=1_000_000_000:return f"${x/1_000_000_000:.1f}B"
-    if abs(x)>=1_000_000:return f"${x/1_000_000:.1f}M"
-    if abs(x)>=1_000:return f"${x/1_000:.1f}K"
-    return f"${x:,.0f}"
-def zone_text(plan):
-    if not plan:return "—"
-    lo=plan.get("entry_low"); hi=plan.get("entry_high")
-    return f"{money(lo)}–{money(hi)}" if lo is not None and hi is not None else "—"
-
-def card(col,k,v,n="",cls=""):
-    with col: st.markdown(f'<div class="card"><div class="k">{html.escape(k)}</div><div class="v {cls}">{html.escape(str(v))}</div><div class="n">{html.escape(str(n))}</div></div>',unsafe_allow_html=True)
-
-with st.container(key="analyzer_metrics_top"):
-    cols=st.columns(6)
-    _trade_age=r.get("trade_age_seconds")
-    _price_note=f'{pp(r.get("day_pct"))} · trade {_age_text(_trade_age)} · {r.get("live_feed")}'
-    card(cols[0],"PRICE",money(r.get("price")),_price_note,"good" if (r.get("day_pct") or 0)>=0 else "bad")
-    card(cols[1],"VWAP",money(r.get("vwap")),f'{r.get("vwap_position")} · {pp(r.get("vwap_extension_pct"))}',"good" if r.get("vwap_position")=="ABOVE" else "bad")
-    card(cols[2],"DAY RANGE",f'{money(r.get("day_low"))}–{money(r.get("day_high"))}',f'{r.get("from_high_pct",0):.1f}% below high')
-    card(cols[3],"VOL PACE",multiple(r.get("volume_pace")),f'{r.get("volume",0):,.0f} shown · {r.get("volume_source")}')
-    card(cols[4],"SETUP SCORE",f'{r.get("score"):.1f} / 100',f'Grade {r.get("grade")}',"good" if r.get("grade") in ("A","B") else "warn")
-    card(cols[5],"BASE SETUP",r.get("entry_quality"),f'Live feed: {r.get("live_feed")}',"good" if r.get("entry_quality")=="FAVORABLE" else "warn")
-
-with st.container(key="analyzer_decision_v2"):
-    render_v2_decision(st, r)
-
-
-with st.expander("📘 Trading term lookup / Ask AI", expanded=False):
+# Compact glossary/AI tool rendered into the top control row.
+with term_tool_col.popover("📘 Terms / Ask AI"):
     st.caption("Search common analyzer terms. Built-in definitions work without an AI key; optional OpenAI answers can use the current ticker's metrics for context.")
     glossary_terms=sorted(TERM_GLOSSARY.keys())
     term=st.selectbox(
@@ -583,6 +551,42 @@ with st.expander("📘 Trading term lookup / Ask AI", expanded=False):
         else:
             st.caption("Optional: add `OPENAI_API_KEY` to Streamlit Secrets to get AI explanations inside the analyzer. This is separate from your ChatGPT subscription.")
             st.link_button("Open ChatGPT", "https://chatgpt.com/", width="content")
+
+
+def money(x): return "—" if x is None else f"${x:,.2f}"
+def pp(x): return "—" if x is None else f"{x:+.2f}%"
+def multiple(x): return "—" if x is None else f"{x:.2f}x"
+def rr(x): return "—" if x is None else f"{x:.2f}:1"
+def dollars_compact(x):
+    if x is None: return "—"
+    x=float(x)
+    if abs(x)>=1_000_000_000:return f"${x/1_000_000_000:.1f}B"
+    if abs(x)>=1_000_000:return f"${x/1_000_000:.1f}M"
+    if abs(x)>=1_000:return f"${x/1_000:.1f}K"
+    return f"${x:,.0f}"
+def zone_text(plan):
+    if not plan:return "—"
+    lo=plan.get("entry_low"); hi=plan.get("entry_high")
+    return f"{money(lo)}–{money(hi)}" if lo is not None and hi is not None else "—"
+
+def card(col,k,v,n="",cls=""):
+    with col: st.markdown(f'<div class="card"><div class="k">{html.escape(k)}</div><div class="v {cls}">{html.escape(str(v))}</div><div class="n">{html.escape(str(n))}</div></div>',unsafe_allow_html=True)
+
+with st.container(key="analyzer_metrics_top"):
+    cols=st.columns(6)
+    _trade_age=r.get("trade_age_seconds")
+    _price_note=f'{pp(r.get("day_pct"))} · trade {_age_text(_trade_age)} · {r.get("live_feed")}'
+    card(cols[0],"PRICE",money(r.get("price")),_price_note,"good" if (r.get("day_pct") or 0)>=0 else "bad")
+    card(cols[1],"VWAP",money(r.get("vwap")),f'{r.get("vwap_position")} · {pp(r.get("vwap_extension_pct"))}',"good" if r.get("vwap_position")=="ABOVE" else "bad")
+    card(cols[2],"DAY RANGE",f'{money(r.get("day_low"))}–{money(r.get("day_high"))}',f'{r.get("from_high_pct",0):.1f}% below high')
+    card(cols[3],"VOL PACE",multiple(r.get("volume_pace")),f'{r.get("volume",0):,.0f} shown · {r.get("volume_source")}')
+    card(cols[4],"SETUP SCORE",f'{r.get("score"):.1f} / 100',f'Grade {r.get("grade")}',"good" if r.get("grade") in ("A","B") else "warn")
+    card(cols[5],"BASE SETUP",r.get("entry_quality"),f'Live feed: {r.get("live_feed")}',"good" if r.get("entry_quality")=="FAVORABLE" else "warn")
+
+with st.container(key="analyzer_decision_v2"):
+    render_v2_decision(st, r)
+
+
 
 if _trade_age is not None and float(_trade_age) > max(30, AUTO_REFRESH_SECONDS*2):
     feed_name=str(r.get("live_feed") or "").upper()
