@@ -21,6 +21,7 @@ on:
       - "scanner_ml_ranker.py"
       - "score_outcomes.py"
       - "tradier_live.py"
+      - "consistency_regression_check.py"
       - ".github/workflows/stock-scanner.yml"
       - "requirements.txt"
       - "tradier_live_stream.py"
@@ -41,7 +42,7 @@ jobs:
           python-version: "3.12"
       - name: Compile Analyzer v2
         run: |
-          python -m py_compile analyzer_v2_integration.py analyzer_v2_ui.py prediction_tracker.py score_analyzer_outcomes.py analyzer_bootstrap.py analyzer_ui_core.py ml_ui.py analyzer_app.py app.py alpaca_live_stream.py tradier_live_stream.py live_market_stream.py live_tape_ui.py float_data.py stock_analyzer.py stock_scanner.py scanner_ml_ranker.py score_outcomes.py tradier_live.py
+          python -m py_compile analyzer_v2_integration.py analyzer_v2_ui.py prediction_tracker.py score_analyzer_outcomes.py analyzer_bootstrap.py analyzer_ui_core.py ml_ui.py analyzer_app.py app.py alpaca_live_stream.py tradier_live_stream.py live_market_stream.py live_tape_ui.py float_data.py stock_analyzer.py stock_scanner.py scanner_ml_ranker.py score_outcomes.py tradier_live.py consistency_regression_check.py
       - name: Import standalone v2 modules
         run: |
           python - <<'PY'
@@ -52,3 +53,15 @@ jobs:
           import live_market_stream
           print("Analyzer v2 imports passed")
           PY
+      - name: Run provider/version consistency regressions
+        run: python consistency_regression_check.py
+      - name: Report Tradier secret availability
+        env:
+          TRADIER_ACCESS_TOKEN: ${{ secrets.TRADIER_ACCESS_TOKEN }}
+          TRADIER_TOKEN: ${{ secrets.TRADIER_TOKEN }}
+        run: |
+          if [ -n "$TRADIER_ACCESS_TOKEN" ] || [ -n "$TRADIER_TOKEN" ]; then
+            echo "TRADIER_SECRET_CONFIGURED=true"
+          else
+            echo "TRADIER_SECRET_CONFIGURED=false"
+          fi
