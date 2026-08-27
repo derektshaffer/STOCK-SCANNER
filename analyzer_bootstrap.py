@@ -84,6 +84,65 @@ def _install_no_fade_css(combined=False):
         .element-container {{
             transition: none !important;
         }}
+
+        /* Shared Analyzer control colors.
+           The combined workspace launches through analyzer_bootstrap.py, so
+           these styles must live here rather than only in analyzer_app.py. */
+        .st-key-saved_stocks_top button[data-testid="stBaseButton-secondary"],
+        .st-key-saved_stocks_top button[kind="secondary"],
+        .st-key-analyzer_live_fragment button[data-testid="stBaseButton-secondary"],
+        .st-key-analyzer_live_fragment button[kind="secondary"],
+        .st-key-analyzer_live_fragment [data-testid="stPopover"] button,
+        .st-key-analyzer_controls [data-testid="stPopover"] button {{
+            background: #11243a !important;
+            border: 1px solid #365878 !important;
+            color: #edf5ff !important;
+            box-shadow: none !important;
+            opacity: 1 !important;
+        }}
+
+        .st-key-saved_stocks_top button[data-testid="stBaseButton-secondary"] *,
+        .st-key-saved_stocks_top button[kind="secondary"] *,
+        .st-key-analyzer_live_fragment button[data-testid="stBaseButton-secondary"] *,
+        .st-key-analyzer_live_fragment button[kind="secondary"] *,
+        .st-key-analyzer_live_fragment [data-testid="stPopover"] button *,
+        .st-key-analyzer_controls [data-testid="stPopover"] button * {{
+            color: #edf5ff !important;
+            fill: #edf5ff !important;
+            opacity: 1 !important;
+        }}
+
+        .st-key-saved_stocks_top button[data-testid="stBaseButton-secondary"]:hover:not(:disabled),
+        .st-key-saved_stocks_top button[kind="secondary"]:hover:not(:disabled),
+        .st-key-analyzer_live_fragment button[data-testid="stBaseButton-secondary"]:hover:not(:disabled),
+        .st-key-analyzer_live_fragment button[kind="secondary"]:hover:not(:disabled),
+        .st-key-analyzer_live_fragment [data-testid="stPopover"] button:hover:not(:disabled),
+        .st-key-analyzer_controls [data-testid="stPopover"] button:hover:not(:disabled) {{
+            background: #18314d !important;
+            border-color: #5b86ad !important;
+            color: #ffffff !important;
+        }}
+
+        .st-key-saved_stocks_top button:disabled,
+        .st-key-analyzer_live_fragment button[data-testid="stBaseButton-secondary"]:disabled,
+        .st-key-analyzer_live_fragment button[kind="secondary"]:disabled,
+        .st-key-analyzer_live_fragment [data-testid="stPopover"] button:disabled,
+        .st-key-analyzer_controls [data-testid="stPopover"] button:disabled {{
+            background: #0d1a2b !important;
+            border-color: #263d57 !important;
+            color: #8095ab !important;
+            opacity: 1 !important;
+        }}
+
+        .st-key-saved_stocks_top button:disabled *,
+        .st-key-analyzer_live_fragment button[data-testid="stBaseButton-secondary"]:disabled *,
+        .st-key-analyzer_live_fragment button[kind="secondary"]:disabled *,
+        .st-key-analyzer_live_fragment [data-testid="stPopover"] button:disabled *,
+        .st-key-analyzer_controls [data-testid="stPopover"] button:disabled * {{
+            color: #8095ab !important;
+            fill: #8095ab !important;
+            opacity: 1 !important;
+        }}
         </style>
         """,
         unsafe_allow_html=True,
