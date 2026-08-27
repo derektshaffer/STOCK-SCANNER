@@ -25,6 +25,9 @@ MIN_UNIQUE_SCANS = 24
 MIN_TRADING_DAYS = 3
 MIN_CLASS_COUNT = 30
 MIN_VALIDATION_SAMPLES = 60
+MIN_LIVE_CONFIRMATION_SAMPLES = 30
+MIN_LIVE_CONFIRMATION_DAYS = 2
+MIN_LIVE_CONFIRMATION_CLASS_COUNT = 5
 MAX_ARTIFACTS = 12
 ARTIFACT_PREFIX = "outcome-report-"
 
@@ -163,6 +166,11 @@ def _extract_observations(payload):
                 "scan_time_et": scan_time,
                 "trading_date": dt.date().isoformat(),
                 "scan_id": row.get("scan_id"),
+                "observation_source": (
+                    row.get("observation_source")
+                    or payload.get("source")
+                    or "live_scan"
+                ),
                 "label": int(return_60 >= 3.0),
                 "features": features,
             }
@@ -304,10 +312,22 @@ def load_training_observations():
         deduped.values(),
         key=lambda row: row["timestamp"],
     )
+    source_counts = {}
+    for row in rows:
+        source = str(row.get("observation_source") or "live_scan")
+        source_counts[source] = source_counts.get(source, 0) + 1
+
     return rows, {
         "local_report_count": local_reports,
         "artifact_report_count": artifact_count,
         "observations_loaded": len(rows),
+        "observation_source_counts": source_counts,
+        "historical_replay_samples": source_counts.get("historical_replay", 0),
+        "live_samples": sum(
+            count
+            for source, count in source_counts.items()
+            if source != "historical_replay"
+        ),
     }
 
 
@@ -409,9 +429,28 @@ def _validation_and_model(rows):
         }
     )
 
+    replay_rows = [
+        row
+        for row in rows
+        if row.get("observation_source") == "historical_replay"
+    ]
+    live_rows = [
+        row
+        for row in rows
+        if row.get("observation_source") != "historical_replay"
+    ]
+    live_days = sorted(
+        {
+            row.get("trading_date")
+            for row in live_rows
+            if row.get("trading_date")
+        }
+    )
+
     base_meta = {
         "status": "learning",
         "validated": False,
+        "historical_validated": False,
         "model_type": MODEL_TYPE,
         "version": MODEL_VERSION,
         "target": TARGET_DESCRIPTION,
@@ -420,6 +459,11 @@ def _validation_and_model(rows):
         "negatives": negatives,
         "unique_scans": len(scans),
         "trading_days": len(days),
+        "historical_replay_samples": len(replay_rows),
+        "live_samples": len(live_rows),
+        "live_trading_days": len(live_days),
+        "live_confirmation_min_samples": MIN_LIVE_CONFIRMATION_SAMPLES,
+        "live_confirmation_min_days": MIN_LIVE_CONFIRMATION_DAYS,
     }
 
     if (
@@ -527,7 +571,7 @@ def _validation_and_model(rows):
         in zip(val_baseline_probs, val_y)
     )
 
-    validated = bool(
+    historical_validated = bool(
         auc is not None
         and auc >= 0.55
         and brier < baseline_brier
@@ -536,12 +580,7 @@ def _validation_and_model(rows):
 
     meta = {
         **base_meta,
-        "status": (
-            "validated"
-            if validated
-            else "failed_validation"
-        ),
-        "validated": validated,
+        "historical_validated": historical_validated,
         "validation_samples": len(val_y),
         "walk_forward_auc": (
             round(auc, 3)
@@ -560,9 +599,94 @@ def _validation_and_model(rows):
         ),
     }
 
-    if not validated:
+    if not historical_validated:
+        meta["status"] = "failed_validation"
         return None, meta
 
+    # Historical replay can establish a strong model quickly, but it cannot
+    # reproduce live bid/ask spreads, quote freshness or every catalyst. When
+    # replay data is present, require a smaller truly-live holdout before the
+    # scanner grants the full validated badge or gives ML ranking weight.
+    fully_validated = True
+    if replay_rows:
+        live_positives = sum(row["label"] for row in live_rows)
+        live_negatives = len(live_rows) - live_positives
+        enough_live = bool(
+            len(live_rows) >= MIN_LIVE_CONFIRMATION_SAMPLES
+            and len(live_days) >= MIN_LIVE_CONFIRMATION_DAYS
+            and live_positives >= MIN_LIVE_CONFIRMATION_CLASS_COUNT
+            and live_negatives >= MIN_LIVE_CONFIRMATION_CLASS_COUNT
+        )
+        meta["live_positives"] = live_positives
+        meta["live_negatives"] = live_negatives
+        meta["live_confirmation_ready"] = enough_live
+
+        if not enough_live:
+            fully_validated = False
+            meta["status"] = "replay_validated_waiting_live"
+        else:
+            replay_X, replay_y = _matrix(replay_rows, np)
+            live_X, live_y = _matrix(live_rows, np)
+            replay_model = xgb.train(
+                _params(),
+                xgb.DMatrix(
+                    replay_X,
+                    label=replay_y,
+                    feature_names=FEATURES,
+                ),
+                num_boost_round=145,
+                verbose_eval=False,
+            )
+            live_probs = replay_model.predict(
+                xgb.DMatrix(
+                    live_X,
+                    feature_names=FEATURES,
+                )
+            )
+            live_y_list = [int(value) for value in live_y.tolist()]
+            live_prob_list = [float(value) for value in live_probs]
+            live_auc = _auc(live_y_list, live_prob_list)
+            live_brier = mean(
+                (probability - actual) ** 2
+                for probability, actual in zip(live_prob_list, live_y_list)
+            )
+            replay_base_rate = float(replay_y.mean())
+            live_baseline_brier = mean(
+                (replay_base_rate - actual) ** 2
+                for actual in live_y_list
+            )
+            live_pass = bool(
+                live_auc is not None
+                and live_auc >= 0.52
+                and live_brier < live_baseline_brier
+            )
+            meta.update(
+                {
+                    "live_confirmation_auc": (
+                        round(live_auc, 3)
+                        if live_auc is not None
+                        else None
+                    ),
+                    "live_confirmation_brier": round(live_brier, 4),
+                    "live_confirmation_baseline_brier": round(
+                        live_baseline_brier, 4
+                    ),
+                    "live_confirmation_passed": live_pass,
+                }
+            )
+            fully_validated = live_pass
+            meta["status"] = (
+                "validated"
+                if live_pass
+                else "failed_live_confirmation"
+            )
+    else:
+        meta["status"] = "validated"
+
+    meta["validated"] = fully_validated
+
+    # A replay-validated model remains available for advisory predictions while
+    # live confirmation accumulates. Advisory predictions do not affect rank.
     final_model = xgb.train(
         _params(),
         xgb.DMatrix(
@@ -629,11 +753,12 @@ def apply_scanner_ml(rows, now_et):
             "walk_forward_auc"
         )
         row["ml_continuation_prob_pct"] = None
+        row["ml_advisory_prob_pct"] = None
         row["opportunity_score"] = row.get("score")
 
     if (
         model is None
-        or not meta.get("validated")
+        or not meta.get("historical_validated")
         or not rows
     ):
         return meta
@@ -700,9 +825,9 @@ def apply_scanner_ml(rows, now_et):
             + 0.30 * probability_pct,
             1,
         )
-        row["ml_continuation_prob_pct"] = (
-            probability_pct
-        )
-        row["opportunity_score"] = opportunity
+        row["ml_advisory_prob_pct"] = probability_pct
+        if meta.get("validated"):
+            row["ml_continuation_prob_pct"] = probability_pct
+            row["opportunity_score"] = opportunity
 
     return meta
