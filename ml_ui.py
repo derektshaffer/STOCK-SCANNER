@@ -46,7 +46,14 @@ def render_ml_prediction(st, pd, result, card):
     ml = result.get("ml_prediction") or {}
 
     version = str(ml.get("version") or "ml-v1").replace("ml-", "ML ")
-    st.markdown(f'<div class="section">Machine-learning probability model <span style="font-size:12px;color:#91a7c2">{version}</span></div>', unsafe_allow_html=True)
+    heading_cols = st.columns([8, 1.25], vertical_alignment="center")
+    with heading_cols[0]:
+        st.markdown(
+            f'<div class="section">Machine-learning probability model '
+            f'<span style="font-size:12px;color:#91a7c2">{version}</span></div>',
+            unsafe_allow_html=True,
+        )
+    ml_details_slot = heading_cols[1]
 
     if ml.get("status") != "ok":
         if ml.get("status") == "insufficient_history":
@@ -128,7 +135,7 @@ def render_ml_prediction(st, pd, result, card):
         "Unvalidated/advisory probabilities remain visible in their own cards but are excluded from the headline edge."
     )
 
-    with st.expander("ML v1.1 details / walk-forward validation"):
+    with ml_details_slot.popover("ML details"):
         st.write(
             "**What it predicts:** Whether Target 1 is reached before the stop during the "
             "rest of the same trading session, whether price is higher in 30 and 60 minutes, "
