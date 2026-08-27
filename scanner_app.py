@@ -834,14 +834,16 @@ def auto_scan_controller():
           The dashboard refreshes itself after each scan.</span>
         </div>
         <style>
-          html,body{{margin:0;padding:0;background:transparent;color:#f4f7fb;
+          html,body{{margin:0;padding:0;background:transparent;color:#f4f8ff;
             font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;}}
-          .auto-box{{box-sizing:border-box;width:100%;background:#111b2e;
-            border:1px solid #2b3b56;border-left:4px solid #22c55e;
-            border-radius:9px;padding:6px 10px;margin:1px 0 5px;}}
-          b{{font-size:13px;font-weight:850;}}
-          .sub{{display:inline-block;color:#9fb0c9;font-size:11px;margin-top:2px;}}
-          #live-countdown{{font-variant-numeric:tabular-nums;font-weight:800;color:#f4f7fb;}}
+          .auto-box{{box-sizing:border-box;width:100%;
+            background:linear-gradient(145deg,rgba(12,29,48,.92),rgba(7,20,34,.86));
+            border:1px solid rgba(105,151,197,.24);border-left:3px solid #37ef79;
+            border-radius:10px;padding:7px 11px;margin:1px 0 5px;
+            box-shadow:inset 0 1px 0 rgba(255,255,255,.035),0 8px 24px rgba(0,0,0,.12);}}
+          b{{font-size:12px;font-weight:900;letter-spacing:.02em;color:#eff8ff;}}
+          .sub{{display:inline-block;color:#91a9c5;font-size:11px;margin-top:2px;}}
+          #live-countdown{{font-variant-numeric:tabular-nums;font-weight:900;color:#76f7a5;}}
         </style>
         <script>
           (() => {{
