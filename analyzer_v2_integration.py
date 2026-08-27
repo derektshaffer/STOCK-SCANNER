@@ -8,6 +8,7 @@ from functools import lru_cache
 
 from prediction_tracker import record_prediction, resolve_symbol_predictions
 from alpaca_live_stream import ensure_live_stream, get_live_overlay
+from float_data import get_public_float
 
 
 SEC_BASE = "https://data.sec.gov"
@@ -560,18 +561,38 @@ def _evidence_strength(metrics, sec, market, catalyst):
     return round(_clamp(score), 1), reasons[:6]
 
 
-def _turnover_context(metrics, sec):
+def _turnover_context(metrics, sec, float_data):
     shares = _num(sec.get("shares_outstanding"))
     volume = _num(metrics.get("volume"))
-    turnover = None
+
+    shares_turnover = None
     if shares and volume is not None and shares > 0:
-        turnover = volume / shares
+        shares_turnover = volume / shares
+
+    float_shares = _num((float_data or {}).get("public_float_shares"))
+    float_turnover = None
+    if float_shares and volume is not None and float_shares > 0:
+        float_turnover = volume / float_shares
+
     return {
         "shares_outstanding": shares,
         "shares_as_of": sec.get("shares_as_of"),
-        "shares_outstanding_turnover": round(turnover, 3) if turnover is not None else None,
-        "float_shares": None,
-        "float_source": "not available from current reliable data sources",
+        "shares_outstanding_turnover": (
+            round(shares_turnover, 3) if shares_turnover is not None else None
+        ),
+        "float_shares": float_shares,
+        "float_turnover": (
+            round(float_turnover, 3) if float_turnover is not None else None
+        ),
+        "float_date": (float_data or {}).get("float_date"),
+        "float_filing_date": (float_data or {}).get("filing_date"),
+        "float_source": (
+            (float_data or {}).get("provider")
+            if (float_data or {}).get("status") == "ok"
+            else None
+        ),
+        "float_status": (float_data or {}).get("status"),
+        "float_error": (float_data or {}).get("error"),
     }
 
 
@@ -598,9 +619,10 @@ def install_v2_analysis(sa):
         live_overlay = get_live_overlay(metrics)
 
         sec = _recent_sec_risk(symbol_clean)
+        float_context = get_public_float(symbol_clean)
         market = _market_context(sa, sec.get("sector_etf"))
         catalyst = _catalyst_strength(metrics.get("news") or [])
-        turnover = _turnover_context(metrics, sec)
+        turnover = _turnover_context(metrics, sec, float_context)
 
         potential, potential_reasons = _potential_score(metrics, sec, market, catalyst)
         readiness, blockers = _entry_readiness(metrics)
@@ -620,6 +642,7 @@ def install_v2_analysis(sa):
             "catalyst_strength": catalyst,
             "market_context": market,
             "fundamental_context": sec,
+            "float_context": float_context,
             "turnover_context": turnover,
             "sip_status": sip_status,
             "live_stream_status": stream_status,
