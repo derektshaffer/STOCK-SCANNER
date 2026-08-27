@@ -620,18 +620,45 @@ def _install_technical_tooltips():
           if (old) {{
             try {{ old.observer.disconnect(); }} catch (_) {{}}
             try {{ d.removeEventListener('mouseover', old.over); }} catch (_) {{}}
+            try {{ d.removeEventListener('mousemove', old.move); }} catch (_) {{}}
             try {{ d.removeEventListener('mouseout', old.out); }} catch (_) {{}}
             try {{ d.removeEventListener('focusin', old.focusin); }} catch (_) {{}}
             try {{ d.removeEventListener('focusout', old.focusout); }} catch (_) {{}}
           }}
 
+          // A number of analyzer labels are flex/grid items whose element box
+          // stretches well past the visible word. Hit-test the rendered text
+          // itself so hovering blank space to the right does not open a tip.
+          function pointerIsOverRenderedText(el, event) {{
+            if (!el || event.clientX == null || event.clientY == null) return false;
+            const range = d.createRange();
+            range.selectNodeContents(el);
+            const rects = Array.from(range.getClientRects());
+            if (range.detach) range.detach();
+            return rects.some((r) =>
+              event.clientX >= r.left && event.clientX <= r.right &&
+              event.clientY >= r.top && event.clientY <= r.bottom
+            );
+          }}
+
+          let activeHover = null;
           const over = (event) => {{
             const el = event.target.closest && event.target.closest('[data-tech-tooltip]');
-            if (el) show(el);
+            if (el && pointerIsOverRenderedText(el, event)) {{
+              activeHover = el;
+              show(el);
+            }} else if (activeHover) {{
+              activeHover = null;
+              hide();
+            }}
           }};
+          const move = over;
           const out = (event) => {{
             const el = event.target.closest && event.target.closest('[data-tech-tooltip]');
-            if (el && (!event.relatedTarget || !el.contains(event.relatedTarget))) hide();
+            if (el && (!event.relatedTarget || !el.contains(event.relatedTarget))) {{
+              activeHover = null;
+              hide();
+            }}
           }};
           const focusin = (event) => {{
             const el = event.target.closest && event.target.closest('[data-tech-tooltip]');
@@ -643,6 +670,7 @@ def _install_technical_tooltips():
           }};
 
           d.addEventListener('mouseover', over);
+          d.addEventListener('mousemove', move);
           d.addEventListener('mouseout', out);
           d.addEventListener('focusin', focusin);
           d.addEventListener('focusout', focusout);
@@ -658,7 +686,7 @@ def _install_technical_tooltips():
           }});
           if (d.body) observer.observe(d.body, {{childList: true, subtree: true}});
 
-          p.__stockTechnicalTooltips = {{observer, over, out, focusin, focusout}};
+          p.__stockTechnicalTooltips = {{observer, over, move, out, focusin, focusout}};
           applyTips();
         }})();
         </script>
