@@ -26,7 +26,8 @@ def render_live_tape(st, overlay):
     overlay = overlay or {}
     status = str(overlay.get("status") or "idle")
     feed = str(overlay.get("feed") or "—").upper()
-    age = overlay.get("message_age_seconds")
+    trade_age = overlay.get("trade_age_seconds")
+    quote_age = overlay.get("quote_age_seconds")
 
     if status in {"idle", "disabled"} and not overlay.get("price"):
         return
@@ -52,21 +53,31 @@ def render_live_tape(st, overlay):
         dot = "#ff6b6b"
         label = "STREAM ERROR" if status == "error" else status.upper()
 
-    age_text = f"{float(age):.1f}s ago" if age is not None else "waiting for tick"
+    def _age_text(value):
+        try:
+            seconds = float(value)
+        except Exception:
+            return "waiting"
+        if seconds < 1:
+            return "<1s"
+        if seconds < 60:
+            return f"{seconds:.1f}s"
+        return f"{seconds / 60.0:.1f}m"
     bid = _money(overlay.get("bid"))
     ask = _money(overlay.get("ask"))
     breakout = str(overlay.get("breakout_state") or "—")
     vwap_pos = str(overlay.get("vwap_position") or "N/A")
 
     cells = [
-        ("LIVE PRICE", _money(overlay.get("price")), f"{label} · {age_text}"),
+        ("LIVE PRICE", _money(overlay.get("price")), label),
         ("BID / ASK", f"{bid} / {ask}", "streaming quote"),
         ("SPREAD", _pct(overlay.get("spread_pct")), "live quote spread"),
         ("LIVE VWAP", _money(overlay.get("vwap")), vwap_pos),
         (
             "SESSION VOL",
             _int(overlay.get("session_volume")),
-            "regular-session seeded + streamed",
+            "Tradier session + stream" if str(overlay.get("provider") or "").lower() == "tradier"
+            else "session seeded + streamed",
         ),
         ("BREAKOUT", breakout, "vs current trade-plan trigger"),
     ]
@@ -91,6 +102,14 @@ def render_live_tape(st, overlay):
         + '</div>',
         unsafe_allow_html=True,
     )
+
+    if status == "streaming":
+        st.caption(
+            "Freshness · trade "
+            + _age_text(trade_age)
+            + " · quote "
+            + _age_text(quote_age)
+        )
 
     if status == "rest_fallback":
         st.caption(
