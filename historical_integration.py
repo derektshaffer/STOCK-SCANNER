@@ -65,6 +65,7 @@ def install_historical_analysis(sa):
     def enhanced_analyze(symbol):
         metrics = base_analyze(symbol)
         old_score = float(metrics.get("score") or 50)
+        metrics["technical_score_before_history"] = round(old_score, 1)
         now = datetime.now(timezone.utc)
 
         gap_pct = None
@@ -124,6 +125,7 @@ def install_historical_analysis(sa):
 
         new_score = round(_clamp(new_score, 0, 100), 1)
         metrics["score"] = new_score
+        metrics["historical_score_adjustment"] = round(new_score - old_score, 1)
         metrics["score_reasons"] = score_reasons
 
         day_pct = _num(metrics.get("day_pct")) or 0
