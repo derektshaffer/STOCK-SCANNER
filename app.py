@@ -263,7 +263,9 @@ if view == "Momentum Scanner":
             margin-bottom: 3px !important;
         }
         .combined-ticker-row {
-            min-height: 44px !important;
+            min-height: 50px !important;
+            height: 50px !important;
+            box-sizing: border-box !important;
             gap: 5px !important;
             padding: 3px 0 !important;
         }
@@ -275,6 +277,8 @@ if view == "Momentum Scanner":
             margin-top: 2px !important;
         }
         .combined-stat {
+            height: 44px !important;
+            box-sizing: border-box !important;
             padding: 4px 7px !important;
             border-radius: 7px !important;
         }
@@ -321,9 +325,24 @@ if view == "Momentum Scanner":
             display: none !important;
         }
 
+        [class*="st-key-combined_analyze_"] {
+            height: 50px !important;
+            min-height: 50px !important;
+            margin: 0 !important;
+            padding: 3px 0 !important;
+            box-sizing: border-box !important;
+            display: flex !important;
+            align-items: stretch !important;
+        }
+        [class*="st-key-combined_analyze_"] [data-testid="stButton"] {
+            width: 100% !important;
+            height: 44px !important;
+            margin: 0 !important;
+        }
         [class*="st-key-combined_analyze_"] button {
-            min-height: 42px !important;
-            height: 42px !important;
+            min-height: 44px !important;
+            height: 44px !important;
+            margin: 0 !important;
             border-radius: 8px !important;
         }
         </style>
@@ -364,6 +383,7 @@ def _latest_scan_candidates():
                 "day_pct": row.get("day_pct"),
                 "volume_pace": row.get("volume_pace"),
                 "volume_pace_display": row.get("volume_pace_display"),
+                "volume_pace_source": row.get("volume_pace_source"),
             }
         )
     return out[:15]
@@ -465,6 +485,9 @@ def _volume_pace_display(row):
     try:
         pace = float(value)
     except (TypeError, ValueError):
+        source = str(row.get("volume_pace_source") or "")
+        if "profile_unavailable" in source:
+            return "N/A", None
         return "—", None
     if pace >= 100:
         return "100x+", pace
