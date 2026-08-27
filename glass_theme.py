@@ -131,6 +131,39 @@ def inject_glass_theme():
             box-shadow: 0 0 10px currentColor;
         }
 
+        /* Keep the brand, segmented selector and status pills on one baseline.
+           Streamlit's radio wrapper is slightly taller than its visible group
+           unless we explicitly collapse that extra layout space. */
+        div[data-testid="stHorizontalBlock"]:has(.workspace-brand):has(.st-key-app_view) {
+            align-items: center !important;
+        }
+        div[data-testid="stHorizontalBlock"]:has(.workspace-brand):has(.st-key-app_view)
+        > [data-testid="stColumn"] {
+            align-self: center !important;
+        }
+        .workspace-brand,
+        .workspace-status,
+        .st-key-app_view,
+        .st-key-app_view [data-testid="stRadio"],
+        .st-key-app_view [data-testid="stRadio"] > div {
+            margin-top: 0 !important;
+            margin-bottom: 0 !important;
+        }
+        .st-key-app_view {
+            min-height: 52px !important;
+            height: 52px !important;
+            display: flex !important;
+            align-items: center !important;
+            padding: 0 !important;
+        }
+        .st-key-app_view [data-testid="stRadio"] {
+            min-height: 52px !important;
+            height: 52px !important;
+            display: flex !important;
+            align-items: center !important;
+            padding: 0 !important;
+        }
+
         .combined-nav-wrap { display: none !important; }
 
         .st-key-app_view,
@@ -188,6 +221,27 @@ def inject_glass_theme():
             opacity: 0 !important;
             width: 1px !important;
             height: 1px !important;
+            pointer-events: none !important;
+        }
+
+        /* Streamlit/BaseWeb can render the native radio mark one level deeper
+           than the label's first child. Remove that visual mark completely;
+           the highlighted segment itself is the selected-state indicator. */
+        .st-key-app_view input[type="radio"] {
+            position: absolute !important;
+            opacity: 0 !important;
+            width: 1px !important;
+            height: 1px !important;
+            pointer-events: none !important;
+        }
+        .st-key-app_view label div:has(> input[type="radio"]),
+        .st-key-app_view label span:has(> input[type="radio"]),
+        .st-key-app_view [data-baseweb="radio"] > div:has(input[type="radio"]) {
+            position: absolute !important;
+            opacity: 0 !important;
+            width: 1px !important;
+            height: 1px !important;
+            overflow: hidden !important;
             pointer-events: none !important;
         }
 
@@ -465,6 +519,28 @@ def inject_glass_theme():
             background:
                 linear-gradient(145deg, rgba(228,57,80,.98), rgba(160,29,49,.98)) !important;
             box-shadow: 0 0 22px rgba(255,83,104,.16) !important;
+        }
+
+        /* Analyze loading feedback: yellow is reserved for "working now".
+           The browser adds stock-analyze-loading immediately on click, and the
+           Analyzer's native disabled/loading rerun gets the same treatment. */
+        button.stock-analyze-loading,
+        .st-key-analyzer_manual_analyze button:disabled {
+            color: #211800 !important;
+            border-color: rgba(255,214,91,.92) !important;
+            background:
+                linear-gradient(145deg, #ffd75b 0%, #e7a928 100%) !important;
+            box-shadow:
+                inset 0 1px 0 rgba(255,255,255,.34),
+                0 0 24px rgba(255,201,90,.22) !important;
+            opacity: 1 !important;
+            cursor: wait !important;
+        }
+        button.stock-analyze-loading *,
+        .st-key-analyzer_manual_analyze button:disabled * {
+            color: #211800 !important;
+            fill: #211800 !important;
+            opacity: 1 !important;
         }
 
         div[data-testid="stButton"] button:disabled {
