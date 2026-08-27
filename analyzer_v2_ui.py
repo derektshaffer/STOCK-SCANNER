@@ -31,15 +31,18 @@ def render_v2_decision(st, metrics):
     if not v2:
         return
 
-    st.markdown(
-        '<div class="section">Upside potential & entry timing '
-        '<span style="font-size:12px;color:#91a7c2">Decision v2</span></div>',
-        unsafe_allow_html=True,
-    )
-
     potential = float(v2.get("potential_score") or 0)
     readiness = float(v2.get("entry_readiness") or 0)
     evidence = float(v2.get("evidence_strength") or 0)
+
+    heading_cols = st.columns([8, 1.35], vertical_alignment="center")
+    with heading_cols[0]:
+        st.markdown(
+            '<div class="section">Upside potential & entry timing '
+            '<span style="font-size:12px;color:#91a7c2">Decision v2</span></div>',
+            unsafe_allow_html=True,
+        )
+    details_slot = heading_cols[1]
 
     cols = st.columns(3)
     _score_card(
@@ -58,7 +61,7 @@ def render_v2_decision(st, metrics):
         "how much reliable data supports the read",
     )
 
-    with st.expander("Why these three scores?"):
+    with details_slot.popover("Why these scores"):
         pc, ec = st.columns(2)
         with pc:
             st.markdown("#### Potential drivers")
