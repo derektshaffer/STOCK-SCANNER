@@ -358,6 +358,24 @@ def _write_calibration():
         if (row.get("outcomes") or {}).get("target1_first_touch") == "target"
     ]
 
+    entry_signals = [
+        row for row in calibration_rows
+        if row.get("plan_status") == "ENTRY AVAILABLE"
+    ]
+    entry_signal_touches = [
+        row for row in entry_signals
+        if (row.get("outcomes") or {}).get("target1_first_touch") in {"target", "stop"}
+    ]
+    entry_signal_wins = [
+        row for row in entry_signal_touches
+        if (row.get("outcomes") or {}).get("target1_first_touch") == "target"
+    ]
+    entry_signal_60m = [
+        _num((row.get("outcomes") or {}).get("return_60m_pct"))
+        for row in entry_signals
+        if _num((row.get("outcomes") or {}).get("return_60m_pct")) is not None
+    ]
+
     payload = {
         "schema_version": 1,
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
@@ -375,6 +393,23 @@ def _write_calibration():
             if touches else None
         ),
         "target_stop_resolved": len(touches),
+        "entry_signal_calibration": {
+            "signals": len(entry_signals),
+            "resolved_target_stop": len(entry_signal_touches),
+            "target_before_stop_rate": (
+                round(len(entry_signal_wins) / len(entry_signal_touches) * 100.0, 1)
+                if entry_signal_touches else None
+            ),
+            "resolved_60m": len(entry_signal_60m),
+            "higher_60m_rate": (
+                round(sum(v > 0 for v in entry_signal_60m) / len(entry_signal_60m) * 100.0, 1)
+                if entry_signal_60m else None
+            ),
+            "avg_return_60m_pct": (
+                round(sum(entry_signal_60m) / len(entry_signal_60m), 3)
+                if entry_signal_60m else None
+            ),
+        },
     }
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     (OUT_DIR / "calibration.json").write_text(
