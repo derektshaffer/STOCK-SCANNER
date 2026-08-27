@@ -2,6 +2,8 @@ import json
 import os
 import threading
 import time
+import urllib.parse
+import urllib.request
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
@@ -50,6 +52,8 @@ class _LiveStream:
         self.generation = 0
         self.desired_symbol = None
         self.desired_feed = None
+        self.subscribed_symbol = None
+        self.blocked_until = 0.0
         self.state = self._blank_state()
 
     def _blank_state(self):
@@ -82,6 +86,10 @@ class _LiveStream:
         out["message_age_seconds"] = (
             round(max(0.0, time.time() - last), 2) if last else None
         )
+        if self.blocked_until > time.time():
+            out["retry_after_seconds"] = round(
+                max(0.0, self.blocked_until - time.time()), 1
+            )
         return out
 
     def get(self, symbol=None):
@@ -92,8 +100,8 @@ class _LiveStream:
                 "status": "switching",
                 "symbol": str(symbol).upper(),
                 "feed": out.get("feed"),
-                "connected": False,
-                "authenticated": False,
+                "connected": out.get("connected", False),
+                "authenticated": out.get("authenticated", False),
             }
         return out
 
@@ -118,6 +126,39 @@ class _LiveStream:
         as_of = _parse_dt(metrics.get("as_of"))
         self.state["seed_cutoff"] = as_of.timestamp() if as_of else time.time()
         self.state["bars_seen"] = set()
+
+    def _send_symbol_switch(self, wsapp, old_symbol, new_symbol):
+        if wsapp is None or not new_symbol:
+            return
+        try:
+            if old_symbol and old_symbol != new_symbol:
+                wsapp.send(
+                    json.dumps(
+                        {
+                            "action": "unsubscribe",
+                            "trades": [old_symbol],
+                            "quotes": [old_symbol],
+                            "bars": [old_symbol],
+                        }
+                    )
+                )
+            wsapp.send(
+                json.dumps(
+                    {
+                        "action": "subscribe",
+                        "trades": [new_symbol],
+                        "quotes": [new_symbol],
+                        "bars": [new_symbol],
+                    }
+                )
+            )
+            with self.lock:
+                self.subscribed_symbol = new_symbol
+                self.state["status"] = "subscribing"
+        except Exception as exc:
+            with self.lock:
+                self.state["error"] = str(exc)[:220]
+                self.state["status"] = "error"
 
     def ensure(self, symbol, feed, metrics=None):
         symbol = str(symbol or "").upper().strip()
@@ -150,23 +191,96 @@ class _LiveStream:
                 )
             return self.get()
 
-        with self.lock:
-            same = (
-                self.desired_symbol == symbol
-                and self.desired_feed == feed
-                and self.thread is not None
-                and self.thread.is_alive()
-            )
-            if same:
-                if metrics and self.state.get("seeded_at") is None:
-                    self._seed(metrics)
-                return self._public_state()
+        ws_to_switch = None
+        old_symbol = None
+        old_thread = None
+        old_ws = None
 
+        with self.lock:
+            thread_alive = self.thread is not None and self.thread.is_alive()
+
+            # Reuse the existing socket when only the ticker changes. Alpaca
+            # commonly permits only one connection per endpoint/account.
+            if thread_alive and self.desired_feed == feed:
+                if self.desired_symbol != symbol:
+                    old_symbol = self.subscribed_symbol or self.desired_symbol
+                    connected = bool(self.state.get("connected"))
+                    authenticated = bool(self.state.get("authenticated"))
+                    self.desired_symbol = symbol
+
+                    previous_state = self.state
+                    self.state = self._blank_state()
+                    self.state.update(
+                        {
+                            "status": "switching" if authenticated else previous_state.get("status", "connecting"),
+                            "symbol": symbol,
+                            "feed": feed,
+                            "connected": connected,
+                            "authenticated": authenticated,
+                            "error": None,
+                        }
+                    )
+                    self._seed(metrics)
+                    if authenticated and self.ws is not None:
+                        ws_to_switch = self.ws
+                elif metrics and self.state.get("seeded_at") is None:
+                    self._seed(metrics)
+
+                current = self._public_state()
+            else:
+                current = None
+
+            if current is None:
+                # If Alpaca just rejected us for a connection-limit error,
+                # don't hammer the endpoint on every Streamlit refresh.
+                if self.blocked_until > time.time() and self.desired_feed in {None, feed}:
+                    self.desired_symbol = symbol
+                    self.desired_feed = feed
+                    self.state.update(
+                        {
+                            "status": "connection_limit",
+                            "symbol": symbol,
+                            "feed": feed,
+                            "connected": False,
+                            "authenticated": False,
+                        }
+                    )
+                    self._seed(metrics)
+                    return self._public_state()
+
+                # Feed changes require a different endpoint, so close the old
+                # socket and wait briefly for its thread to release the Alpaca
+                # session before opening the replacement.
+                if thread_alive:
+                    self.generation += 1
+                    old_thread = self.thread
+                    old_ws = self.ws
+
+                self.desired_symbol = symbol
+                self.desired_feed = feed
+
+        if ws_to_switch is not None:
+            self._send_symbol_switch(ws_to_switch, old_symbol, symbol)
+            return self.get(symbol)
+
+        if current is not None:
+            return current
+
+        if old_ws is not None:
+            try:
+                old_ws.close()
+            except Exception:
+                pass
+        if old_thread is not None:
+            try:
+                old_thread.join(timeout=2.0)
+            except Exception:
+                pass
+
+        with self.lock:
             self.generation += 1
             generation = self.generation
-            old_ws = self.ws
-            self.desired_symbol = symbol
-            self.desired_feed = feed
+            self.subscribed_symbol = None
             self.state = self._blank_state()
             self.state.update(
                 {
@@ -176,38 +290,27 @@ class _LiveStream:
                 }
             )
             self._seed(metrics)
-
-            if old_ws is not None:
-                try:
-                    old_ws.close()
-                except Exception:
-                    pass
-
             self.thread = threading.Thread(
                 target=self._run_loop,
-                args=(generation, symbol, feed),
+                args=(generation, feed),
                 daemon=True,
-                name=f"alpaca-stream-{symbol}-{feed}",
+                name=f"alpaca-stream-{feed}",
             )
             self.thread.start()
             return self._public_state()
 
-    def _still_current(self, generation, symbol, feed):
+    def _still_current(self, generation, feed):
         with self.lock:
-            return (
-                generation == self.generation
-                and symbol == self.desired_symbol
-                and feed == self.desired_feed
-            )
+            return generation == self.generation and feed == self.desired_feed
 
-    def _run_loop(self, generation, symbol, feed):
+    def _run_loop(self, generation, feed):
         delay = 1.0
-        while self._still_current(generation, symbol, feed):
+        while self._still_current(generation, feed):
             url = f"wss://stream.data.alpaca.markets/v2/{feed}"
 
             def on_open(wsapp):
                 with self.lock:
-                    if not self._still_current(generation, symbol, feed):
+                    if not self._still_current(generation, feed):
                         return
                     self.state.update(
                         {
@@ -227,20 +330,21 @@ class _LiveStream:
                 )
 
             def on_message(wsapp, raw):
-                self._handle_message(generation, symbol, feed, wsapp, raw)
+                self._handle_message(generation, feed, wsapp, raw)
 
             def on_error(_wsapp, error):
                 with self.lock:
-                    if self._still_current(generation, symbol, feed):
+                    if self._still_current(generation, feed):
                         self.state["error"] = str(error)[:220]
-                        self.state["status"] = "error"
+                        if self.state.get("status") != "connection_limit":
+                            self.state["status"] = "error"
 
             def on_close(_wsapp, _code, _msg):
                 with self.lock:
-                    if self._still_current(generation, symbol, feed):
+                    if self._still_current(generation, feed):
                         self.state["connected"] = False
                         self.state["authenticated"] = False
-                        if self.state.get("status") != "error":
+                        if self.state.get("status") not in {"error", "connection_limit"}:
                             self.state["status"] = "reconnecting"
 
             app = websocket.WebSocketApp(
@@ -251,24 +355,32 @@ class _LiveStream:
                 on_close=on_close,
             )
             with self.lock:
-                if not self._still_current(generation, symbol, feed):
+                if not self._still_current(generation, feed):
                     return
                 self.ws = app
+
             try:
                 app.run_forever(ping_interval=20, ping_timeout=10)
             except Exception as exc:
                 with self.lock:
-                    if self._still_current(generation, symbol, feed):
+                    if self._still_current(generation, feed):
                         self.state["error"] = str(exc)[:220]
-                        self.state["status"] = "error"
+                        if self.state.get("status") != "connection_limit":
+                            self.state["status"] = "error"
 
-            if not self._still_current(generation, symbol, feed):
-                return
+            with self.lock:
+                if not self._still_current(generation, feed):
+                    return
+                if self.state.get("status") == "connection_limit":
+                    self.thread = None
+                    self.ws = None
+                    return
+
             time.sleep(delay)
             delay = min(15.0, delay * 1.8)
 
-    def _handle_message(self, generation, symbol, feed, wsapp, raw):
-        if not self._still_current(generation, symbol, feed):
+    def _handle_message(self, generation, feed, wsapp, raw):
+        if not self._still_current(generation, feed):
             return
         try:
             payload = json.loads(raw)
@@ -294,24 +406,39 @@ class _LiveStream:
                                 "error": None,
                             }
                         )
-                        wsapp.send(
-                            json.dumps(
-                                {
-                                    "action": "subscribe",
-                                    "trades": [symbol],
-                                    "quotes": [symbol],
-                                    "bars": [symbol],
-                                }
-                            )
-                        )
+                        target = self.desired_symbol
+                    else:
+                        target = None
+                if target:
+                    self._send_symbol_switch(wsapp, None, target)
                 continue
 
             if kind == "error":
+                code = msg.get("code")
+                message = str(msg.get("msg") or msg)
+                if code == 406 or "connection limit exceeded" in message.lower():
+                    with self.lock:
+                        self.blocked_until = time.time() + 60.0
+                        self.state.update(
+                            {
+                                "status": "connection_limit",
+                                "error": message[:220],
+                                "connected": False,
+                                "authenticated": False,
+                                "last_message_at": now_ts,
+                            }
+                        )
+                    try:
+                        wsapp.close()
+                    except Exception:
+                        pass
+                    return
+
                 with self.lock:
                     self.state.update(
                         {
                             "status": "error",
-                            "error": str(msg.get("msg") or msg)[:220],
+                            "error": message[:220],
                             "last_message_at": now_ts,
                         }
                     )
@@ -319,6 +446,7 @@ class _LiveStream:
 
             if kind == "subscription":
                 with self.lock:
+                    self.subscribed_symbol = self.desired_symbol
                     self.state.update(
                         {
                             "status": "streaming",
@@ -330,7 +458,10 @@ class _LiveStream:
                     )
                 continue
 
-            if str(msg.get("S") or "").upper() != symbol:
+            msg_symbol = str(msg.get("S") or "").upper()
+            with self.lock:
+                target_symbol = self.desired_symbol
+            if msg_symbol != target_symbol:
                 continue
 
             with self.lock:
@@ -405,6 +536,59 @@ class _LiveStream:
             self.state["day_low"] = low if old_low is None else min(old_low, low)
 
 
+_REST_FALLBACK = {
+    "symbol": None,
+    "feed": None,
+    "last_poll": 0.0,
+    "payload": None,
+    "error": None,
+}
+
+
+def _rest_snapshot(symbol, feed):
+    now_ts = time.time()
+    if (
+        _REST_FALLBACK.get("symbol") == symbol
+        and _REST_FALLBACK.get("feed") == feed
+        and now_ts - float(_REST_FALLBACK.get("last_poll") or 0) < 5.0
+    ):
+        return _REST_FALLBACK.get("payload"), _REST_FALLBACK.get("error")
+
+    params = urllib.parse.urlencode({"feed": feed})
+    url = (
+        "https://data.alpaca.markets/v2/stocks/"
+        + urllib.parse.quote(symbol, safe="")
+        + "/snapshot?"
+        + params
+    )
+    req = urllib.request.Request(
+        url,
+        headers={
+            "APCA-API-KEY-ID": API_KEY,
+            "APCA-API-SECRET-KEY": API_SECRET,
+            "Accept": "application/json",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            payload = json.loads(resp.read().decode("utf-8"))
+        error = None
+    except Exception as exc:
+        payload = _REST_FALLBACK.get("payload")
+        error = str(exc)[:180]
+
+    _REST_FALLBACK.update(
+        {
+            "symbol": symbol,
+            "feed": feed,
+            "last_poll": now_ts,
+            "payload": payload,
+            "error": error,
+        }
+    )
+    return payload, error
+
+
 _STREAM = _LiveStream()
 
 
@@ -422,6 +606,41 @@ def get_live_overlay(metrics):
     state = get_live_state(symbol)
     trade = state.get("last_trade") or {}
     quote = state.get("last_quote") or {}
+
+    # If Alpaca's single WebSocket connection is occupied elsewhere, keep
+    # price/quote fresh with a low-frequency REST snapshot instead of leaving
+    # the live tape dead.
+    if state.get("status") == "connection_limit" and symbol:
+        feed = str(state.get("feed") or metrics.get("live_feed") or "iex").lower()
+        snap, rest_error = _rest_snapshot(symbol, feed)
+        if isinstance(snap, dict):
+            snap_trade = snap.get("latestTrade") or {}
+            snap_quote = snap.get("latestQuote") or {}
+            if snap_trade:
+                trade = {
+                    "price": _num(snap_trade.get("p")),
+                    "size": _num(snap_trade.get("s")),
+                    "timestamp": snap_trade.get("t"),
+                    "exchange": snap_trade.get("x"),
+                }
+            if snap_quote:
+                quote = {
+                    "bid": _num(snap_quote.get("bp")),
+                    "ask": _num(snap_quote.get("ap")),
+                    "bid_size": _num(snap_quote.get("bs")),
+                    "ask_size": _num(snap_quote.get("as")),
+                    "timestamp": snap_quote.get("t"),
+                }
+            state = {
+                **state,
+                "status": "rest_fallback",
+                "fallback_reason": "Alpaca WebSocket connection limit",
+                "rest_error": rest_error,
+                "message_age_seconds": round(
+                    max(0.0, time.time() - float(_REST_FALLBACK.get("last_poll") or 0)),
+                    2,
+                ),
+            }
 
     price = _num(trade.get("price"))
     if price is None:
