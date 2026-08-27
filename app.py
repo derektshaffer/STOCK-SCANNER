@@ -299,27 +299,36 @@ if view == "Momentum Scanner":
         }
         .combined-ticker-symbol-wrap {
             height: 100% !important;
-            display: flex !important;
-            justify-content: center !important;
+            width: 100% !important;
+            display: grid !important;
+            grid-template-columns: 36px minmax(0, 1fr) !important;
+            align-items: center !important;
+            justify-content: stretch !important;
+            column-gap: 10px !important;
         }
         .combined-ticker-symbol {
-            display: flex !important;
+            display: inline-flex !important;
             align-items: center !important;
+            justify-self: start !important;
             height: 100% !important;
             line-height: 1 !important;
-        }
-        .combined-ticker-symbol-wrap {
-            flex-direction: row !important;
-            align-items: center !important;
-            gap: 8px !important;
+            min-width: 0 !important;
         }
         .combined-rank {
-            min-width: 20px !important;
+            width: 36px !important;
+            min-width: 36px !important;
+            max-width: 36px !important;
+            box-sizing: border-box !important;
             text-align: right !important;
+            justify-self: end !important;
+            padding: 0 !important;
+            margin: 0 !important;
             color: #91a7c2 !important;
             font-size: 12px !important;
             font-weight: 900 !important;
             line-height: 1 !important;
+            font-variant-numeric: tabular-nums !important;
+            font-feature-settings: "tnum" 1 !important;
         }
         .combined-ticker-caption {
             display: none !important;
