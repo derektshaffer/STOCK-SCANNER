@@ -44,6 +44,7 @@ def render_live_tape(st, overlay):
         "switching",
         "reconnecting",
         "connection_limit",
+        "session_limit",
     }:
         dot = "#ffd166"
         label = status.upper()
@@ -99,5 +100,10 @@ def render_live_tape(st, overlay):
         )
         if overlay.get("rest_error"):
             st.caption("REST fallback issue: " + str(overlay.get("rest_error"))[:180])
+    elif status == "session_limit":
+        st.caption(
+            "Tradier reports that its one market-data stream session is already in use. "
+            "Close the other Tradier stream/session and this app will reconnect automatically."
+        )
     elif overlay.get("error"):
         st.caption("Live stream: " + str(overlay.get("error"))[:180])
