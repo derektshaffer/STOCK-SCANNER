@@ -542,6 +542,23 @@ def test_position_live_overlay_recomputes_derived_fields():
     assert merged["quote_age_seconds"] == 0.4, merged
 
 
+def test_analyzer_ui_preserves_historical_context_dependencies():
+    from pathlib import Path
+
+    source = Path("analyzer_ui_core.py").read_text(encoding="utf-8")
+    momentum = source.find("Momentum & liquidity")
+    support = source.find("Support</div>")
+    resistance = source.find("Resistance</div>")
+    hist_assign = source.find('h=r.get("historical_analogs") or {}')
+    hist_use = source.find('if h.get("status")=="ok":')
+
+    assert momentum >= 0, "Momentum & liquidity section is missing"
+    assert support > momentum, "Support section is missing or out of order"
+    assert resistance > support, "Resistance section is missing or out of order"
+    assert hist_assign > resistance, "Historical analogs variable is not initialized"
+    assert hist_use > hist_assign, "Historical analogs variable is used before assignment"
+
+
 if __name__ == "__main__":
     tests = [
         test_analyzer_prefers_tradier,
@@ -560,6 +577,7 @@ if __name__ == "__main__":
         test_position_exit_underwater_weakness,
         test_position_exit_profit_floor,
         test_position_live_overlay_recomputes_derived_fields,
+        test_analyzer_ui_preserves_historical_context_dependencies,
     ]
     for test in tests:
         test()
