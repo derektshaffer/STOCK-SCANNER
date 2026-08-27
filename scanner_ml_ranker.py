@@ -446,6 +446,35 @@ def _validation_and_model(rows):
             if row.get("trading_date")
         }
     )
+    replay_days = sorted(
+        {
+            row.get("trading_date")
+            for row in replay_rows
+            if row.get("trading_date")
+        }
+    )
+    replay_end_day = replay_days[-1] if replay_days else None
+    # A live-confirmation holdout must occur strictly after the replay period.
+    # Otherwise the same symbol/day can appear in replay training and the live
+    # holdout, making confirmation look stronger than it really is.
+    live_confirmation_rows = [
+        row
+        for row in live_rows
+        if (
+            not replay_end_day
+            or (
+                row.get("trading_date")
+                and row["trading_date"] > replay_end_day
+            )
+        )
+    ]
+    live_confirmation_days = sorted(
+        {
+            row.get("trading_date")
+            for row in live_confirmation_rows
+            if row.get("trading_date")
+        }
+    )
 
     base_meta = {
         "status": "learning",
@@ -462,6 +491,9 @@ def _validation_and_model(rows):
         "historical_replay_samples": len(replay_rows),
         "live_samples": len(live_rows),
         "live_trading_days": len(live_days),
+        "live_confirmation_samples": len(live_confirmation_rows),
+        "live_confirmation_days": len(live_confirmation_days),
+        "live_confirmation_after_replay_day": replay_end_day,
         "live_confirmation_min_samples": MIN_LIVE_CONFIRMATION_SAMPLES,
         "live_confirmation_min_days": MIN_LIVE_CONFIRMATION_DAYS,
     }
@@ -623,11 +655,13 @@ def _validation_and_model(rows):
     # scanner grants the full validated badge or gives ML ranking weight.
     fully_validated = True
     if replay_rows:
-        live_positives = sum(row["label"] for row in live_rows)
-        live_negatives = len(live_rows) - live_positives
+        live_positives = sum(
+            row["label"] for row in live_confirmation_rows
+        )
+        live_negatives = len(live_confirmation_rows) - live_positives
         enough_live = bool(
-            len(live_rows) >= MIN_LIVE_CONFIRMATION_SAMPLES
-            and len(live_days) >= MIN_LIVE_CONFIRMATION_DAYS
+            len(live_confirmation_rows) >= MIN_LIVE_CONFIRMATION_SAMPLES
+            and len(live_confirmation_days) >= MIN_LIVE_CONFIRMATION_DAYS
             and live_positives >= MIN_LIVE_CONFIRMATION_CLASS_COUNT
             and live_negatives >= MIN_LIVE_CONFIRMATION_CLASS_COUNT
         )
@@ -640,7 +674,7 @@ def _validation_and_model(rows):
             meta["status"] = "replay_validated_waiting_live"
         else:
             replay_X, replay_y = _matrix(replay_rows, np)
-            live_X, live_y = _matrix(live_rows, np)
+            live_X, live_y = _matrix(live_confirmation_rows, np)
             replay_model = xgb.train(
                 _params(),
                 xgb.DMatrix(
