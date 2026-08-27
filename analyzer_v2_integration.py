@@ -223,6 +223,58 @@ def _recent_sec_risk(symbol):
 
 
 _MARKET_CACHE = {}
+_SIP_PROBE = {"checked_at": 0.0, "available": None, "error": None}
+
+
+def prefer_best_live_feed(sa, symbol="SPY"):
+    """Prefer consolidated SIP automatically when the Alpaca account allows it.
+
+    The old app often remained on IEX simply because ALPACA_LIVE_FEED was set
+    that way months earlier. A successful SIP snapshot is definitive enough to
+    switch the analyzer to SIP for the current process. If SIP is unavailable,
+    keep IEX and expose the reason in the Analyzer UI.
+    """
+    now_ts = time.time()
+    cached = _SIP_PROBE.get("available")
+    if cached is not None and now_ts - float(_SIP_PROBE.get("checked_at") or 0) < 600:
+        if cached:
+            sa.LIVE_FEED = "sip"
+        return {
+            "available": bool(cached),
+            "active_feed": str(sa.LIVE_FEED).upper(),
+            "error": _SIP_PROBE.get("error"),
+            "checked_at": _SIP_PROBE.get("checked_at"),
+        }
+
+    test_symbol = str(symbol or "SPY").upper().strip() or "SPY"
+    try:
+        snap = sa.snapshot(test_symbol, "sip")
+        trade = (snap or {}).get("latestTrade") or {}
+        quote = (snap or {}).get("latestQuote") or {}
+        if not trade and not quote:
+            raise RuntimeError("SIP snapshot returned no trade or quote data.")
+        sa.LIVE_FEED = "sip"
+        _SIP_PROBE.update(
+            {"checked_at": now_ts, "available": True, "error": None}
+        )
+    except Exception as exc:
+        # Preserve explicit fallback behavior rather than breaking analysis.
+        if str(sa.LIVE_FEED).lower() != "sip":
+            sa.LIVE_FEED = "iex"
+        _SIP_PROBE.update(
+            {
+                "checked_at": now_ts,
+                "available": False,
+                "error": str(exc)[:180],
+            }
+        )
+
+    return {
+        "available": bool(_SIP_PROBE.get("available")),
+        "active_feed": str(sa.LIVE_FEED).upper(),
+        "error": _SIP_PROBE.get("error"),
+        "checked_at": _SIP_PROBE.get("checked_at"),
+    }
 
 
 def _snapshot_day_pct(sa, symbol):
@@ -530,9 +582,10 @@ def install_v2_analysis(sa):
     base_analyze = sa.analyze
 
     def enhanced_analyze(symbol):
+        symbol_clean = str(symbol or "").upper().strip()
+        sip_status = prefer_best_live_feed(sa, symbol_clean or "SPY")
         metrics = base_analyze(symbol)
         now = datetime.now(timezone.utc)
-        symbol_clean = str(symbol or "").upper().strip()
 
         sec = _recent_sec_risk(symbol_clean)
         market = _market_context(sa, sec.get("sector_etf"))
@@ -558,6 +611,7 @@ def install_v2_analysis(sa):
             "market_context": market,
             "fundamental_context": sec,
             "turnover_context": turnover,
+            "sip_status": sip_status,
         }
 
         try:
