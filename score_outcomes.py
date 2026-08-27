@@ -27,7 +27,8 @@ from zoneinfo import ZoneInfo
 # This is research/performance measurement only. It does not trade.
 # ============================================================
 
-VERSION = "2.8"
+VERSION = "2.9"
+SCANNER_FEATURE_VERSION = "scanner-features-v2-consolidated"
 GITHUB_API = "https://api.github.com"
 ALPACA_DATA_BASE = "https://data.alpaca.markets"
 ET = ZoneInfo("America/New_York")
@@ -360,6 +361,13 @@ def build_observations(scans, target_date, bars_index):
         if not scan_time:
             continue
         scan_time = scan_time.astimezone(ET)
+        scan_data = scan.get("data") or {}
+        scan_feature_version = (
+            scan.get("feature_version")
+            or "legacy-scanner-features-v1"
+        )
+        scan_provider = str(scan_data.get("live_provider") or "alpaca").lower()
+        scan_live_feed = scan_data.get("live_feed")
 
         for c in scan.get("candidates") or []:
             symbol = str(c.get("symbol") or "").upper().strip()
@@ -371,6 +379,9 @@ def build_observations(scans, target_date, bars_index):
                 "observation_id": f"{scan.get('scan_id')}:{symbol}",
                 "scan_id": scan.get("scan_id"),
                 "scan_time_et": scan_time.isoformat(),
+                "feature_version": scan_feature_version,
+                "market_provider": scan_provider,
+                "live_feed": scan_live_feed,
                 "rank": c.get("rank"),
                 "symbol": symbol,
                 "entry_price": float(entry_price),
@@ -643,8 +654,9 @@ def write_reports(target_date, discovery, rows, status, error=None):
 
     summary = summarize(rows) if rows else None
     payload = {
-        "schema_version": 1,
+        "schema_version": 2,
         "tracker_version": VERSION,
+        "current_feature_version": SCANNER_FEATURE_VERSION,
         "trading_date": target_date.isoformat(),
         "status": status,
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
@@ -662,7 +674,8 @@ def write_reports(target_date, discovery, rows, status, error=None):
     json_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
     csv_fields = [
-        "observation_id", "scan_id", "scan_time_et", "rank", "symbol",
+        "observation_id", "scan_id", "scan_time_et", "feature_version",
+        "market_provider", "live_feed", "rank", "symbol",
         "entry_price", "day_pct", "score", "base_score", "live_bonus", "news_bonus",
         "opportunity_score", "intraday_range_pct", "expected_volume_fraction_pct",
         "volume_vs_expected_pct", "live_confirmation_count",
@@ -670,7 +683,9 @@ def write_reports(target_date, discovery, rows, status, error=None):
         "setup_grade", "setup_label",
         "alert_tier", "alert_ready", "passed_base_filters",
         "momentum_5m", "momentum_15m", "volume_pace",
-        "liquidity_dollar_volume", "iex_spread_pct",
+        "liquidity_dollar_volume", "liquidity_source",
+        "live_quote_source", "live_intraday_source",
+        "spread_pct", "iex_spread_pct",
         "distance_from_high_pct", "distance_from_vwap_pct", "above_vwap",
         "tradability_warnings", "setup_flags", "news_status", "news_category",
         "news_score", "historical_status", "historical_quality",
