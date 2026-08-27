@@ -384,136 +384,220 @@ def _catalyst_strength(news_rows):
 
 
 def _potential_score(metrics, sec, market, catalyst):
-    score = 35.0
+    """Further-upside quality with each evidence family counted once."""
+    base = 40.5
+    technical = 0.0
+    history_points = 0.0
+    ml_points = 0.0
+    catalyst_points = 0.0
+    market_points = 0.0
+    dilution_points = 0.0
     reasons = []
-
-    setup = _num(metrics.get("score")) or 50.0
-    score += (setup - 50.0) * 0.35
 
     day_pct = _num(metrics.get("day_pct")) or 0.0
     if day_pct >= 10:
-        score += min(12.0, day_pct * 0.16)
+        technical += min(12.0, day_pct * 0.16)
         reasons.append("strong day momentum")
+    elif day_pct < 3:
+        technical -= 4.0
 
     pace = _num(metrics.get("volume_pace"))
     if pace is not None:
         if pace >= 2:
-            score += min(10.0, 4.0 + (pace - 2.0) * 1.5)
+            technical += min(10.0, 4.0 + (pace - 2.0) * 1.5)
             reasons.append("elevated volume pace")
         elif pace < 0.8:
-            score -= 4.0
+            technical -= 4.0
 
     if metrics.get("vwap_position") == "ABOVE":
-        score += 6.0
+        technical += 6.0
         reasons.append("holding above VWAP")
+    else:
+        technical -= 5.0
 
     from_high = _num(metrics.get("from_high_pct"))
     if from_high is not None:
         if from_high <= 3:
-            score += 6.0
+            technical += 6.0
             reasons.append("trading near session high")
         elif from_high >= 12:
-            score -= 6.0
+            technical -= 6.0
 
     hist = metrics.get("historical_setup") or {}
     if hist.get("status") == "ok":
         bias = _num(hist.get("bias_score")) or 0.0
         n = int(hist.get("sample_count") or 0)
         weight = min(1.0, n / 20.0)
-        score += _clamp(bias * 0.8 * weight, -8.0, 8.0)
+        history_points = _clamp(bias * 0.8 * weight, -8.0, 8.0)
         if bias >= 5:
             reasons.append("bullish same-ticker analogs")
+        elif bias <= -5:
+            reasons.append("bearish same-ticker analogs")
 
     ml = metrics.get("ml_prediction") or {}
     edge = _num(ml.get("ml_edge_score"))
     validated = int(ml.get("validated_edge_model_count") or 0)
     if edge is not None and validated:
-        score += _clamp((edge - 50.0) * 0.22 * min(1.0, validated / 2.0), -8.0, 8.0)
+        ml_points = _clamp(
+            (edge - 50.0) * 0.22 * min(1.0, validated / 2.0),
+            -8.0,
+            8.0,
+        )
         reasons.append(f"{validated} validated ML model(s)")
 
-    cat_score = _num(catalyst.get("score")) or 0.0
-    score += cat_score
-    if cat_score >= 3:
+    catalyst_points = _num(catalyst.get("score")) or 0.0
+    if catalyst_points >= 3:
         reasons.append("fresh positive catalyst")
+    elif catalyst_points <= -3:
+        reasons.append("negative catalyst pressure")
 
     market_label = market.get("label")
     if market_label == "RISK-ON":
-        score += 4.0
+        market_points += 4.0
         reasons.append("supportive broad market")
     elif market_label == "RISK-OFF":
-        score -= 4.0
+        market_points -= 4.0
 
     sector_move = _num(market.get("sector_move_pct"))
     if sector_move is not None:
-        score += _clamp(sector_move * 1.2, -4.0, 4.0)
+        sector_points = _clamp(sector_move * 1.2, -4.0, 4.0)
+        market_points += sector_points
         if sector_move >= 1:
             reasons.append("sector tailwind")
 
     dilution = sec.get("dilution_risk")
     if dilution == "HIGH":
-        score -= 12.0
+        dilution_points = -12.0
         reasons.append("high recent dilution/financing risk")
     elif dilution == "MODERATE":
-        score -= 6.0
+        dilution_points = -6.0
         reasons.append("recent financing/dilution risk")
 
-    return round(_clamp(score), 1), reasons[:6]
+    components = {
+        "base": round(base, 1),
+        "technical_momentum": round(technical, 1),
+        "historical_analogs": round(history_points, 1),
+        "validated_ml": round(ml_points, 1),
+        "catalyst": round(catalyst_points, 1),
+        "market_sector": round(market_points, 1),
+        "dilution": round(dilution_points, 1),
+    }
+    score = sum(components.values())
+    return round(_clamp(score), 1), reasons[:6], components
 
 
 def _entry_readiness(metrics):
+    """Current entry quality from direct timing/execution inputs.
+
+    Trade-plan status is used only as a safety cap, not as an additive score,
+    so its underlying VWAP/momentum/liquidity inputs are not counted twice.
+    """
     plan = metrics.get("trade_plan") or {}
     selected = plan.get("selected") or {}
     status = str(plan.get("status") or "WAIT")
-    score = 78.0 if status == "ENTRY AVAILABLE" else 56.0 if status == "WAIT" else 22.0
+    price = _num(metrics.get("price"))
+
+    base = 50.0
+    trigger_points = 0.0
+    rr_points = 0.0
+    vwap_points = 0.0
+    momentum_points = 0.0
+    execution_points = 0.0
+    extension_points = 0.0
     blockers = []
+
+    entry_low = _num(selected.get("entry_low"))
+    entry_high = _num(selected.get("entry_high"))
+    if price is not None and entry_low is not None and entry_high is not None:
+        if entry_low <= price <= entry_high:
+            trigger_points = 20.0
+        else:
+            if price < entry_low:
+                distance_pct = (entry_low - price) / price * 100.0 if price > 0 else None
+            else:
+                distance_pct = (price - entry_high) / price * 100.0 if price > 0 else None
+            if distance_pct is not None and distance_pct <= 1.5:
+                trigger_points = 10.0
+            elif distance_pct is not None and distance_pct > 4.0:
+                trigger_points = -8.0
+    else:
+        trigger_points = -8.0
 
     rr = _num(selected.get("risk_reward"))
     if rr is not None:
         if rr >= 2:
-            score += 8.0
-        elif rr < 1.25:
-            score -= 14.0
+            rr_points = 10.0
+        elif rr >= 1.3:
+            rr_points = 4.0
+        elif rr < 1.15:
+            rr_points = -15.0
             blockers.append("weak reward/risk")
 
     if metrics.get("vwap_position") == "ABOVE":
-        score += 5.0
+        vwap_points = 6.0
     else:
-        score -= 6.0
+        vwap_points = -8.0
         blockers.append("below VWAP")
 
     m5 = _num(metrics.get("momentum_5m"))
     m15 = _num(metrics.get("momentum_15m"))
-    if m5 is not None and m5 > 0:
-        score += 4.0
+    if m5 is not None and m5 > 0 and (m15 is None or m15 >= 0):
+        momentum_points = 7.0
+    elif m5 is not None and m5 < 0 and m15 is not None and m15 < 0:
+        momentum_points = -10.0
+        blockers.append("short-term momentum weakening")
     elif m5 is not None and m5 < 0:
-        score -= 5.0
+        momentum_points = -6.0
         blockers.append("5-minute momentum weakening")
-    if m15 is not None and m15 > 0:
-        score += 3.0
+    elif m15 is not None and m15 > 0:
+        momentum_points = 3.0
 
-    spread = _num(metrics.get("spread_pct"))
+    # Liquidity label already incorporates spread and dollar-volume quality,
+    # so spread is intentionally NOT scored again here.
     liquidity = (metrics.get("liquidity") or {}).get("label")
     if liquidity == "HIGH":
-        score += 5.0
+        execution_points = 6.0
     elif liquidity == "LOW":
-        score -= 12.0
+        execution_points = -14.0
         blockers.append("low liquidity")
-    if spread is not None and spread > 5:
-        score -= 12.0
-        blockers.append("wide spread")
 
     ext = _num(metrics.get("vwap_extension_pct"))
-    if ext is not None and ext > 12:
-        score -= 8.0
-        blockers.append("extended above VWAP")
+    if ext is not None:
+        if ext > 12:
+            extension_points = -10.0
+            blockers.append("extended above VWAP")
+        elif ext > 8:
+            extension_points = -4.0
+
+    components = {
+        "base": round(base, 1),
+        "trigger_proximity": round(trigger_points, 1),
+        "reward_risk": round(rr_points, 1),
+        "vwap": round(vwap_points, 1),
+        "momentum": round(momentum_points, 1),
+        "execution_quality": round(execution_points, 1),
+        "extension": round(extension_points, 1),
+    }
+    raw_score = sum(components.values())
+    capped_score = raw_score
+    safety_cap = None
+
+    if status == "NO TRADE" and capped_score > 35.0:
+        safety_cap = 35.0
+        capped_score = 35.0
+    elif status == "WAIT" and capped_score > 69.0:
+        safety_cap = 69.0
+        capped_score = 69.0
+
+    if safety_cap is not None:
+        components["plan_status_cap"] = round(capped_score - raw_score, 1)
 
     if status == "WAIT":
         blockers.insert(0, str(plan.get("action") or "waiting for confirmation"))
     elif status == "NO TRADE":
         blockers.insert(0, str(plan.get("action") or "trade rejected"))
 
-    return round(_clamp(score), 1), blockers[:5]
-
+    return round(_clamp(capped_score), 1), blockers[:5], components
 
 def _evidence_strength(metrics, sec, market, catalyst):
     score = 0.0
@@ -632,12 +716,14 @@ def install_v2_analysis(sa):
         catalyst = _catalyst_strength(metrics.get("news") or [])
         turnover = _turnover_context(metrics, sec, float_context)
 
-        potential, potential_reasons = _potential_score(metrics, sec, market, catalyst)
-        readiness, blockers = _entry_readiness(metrics)
+        potential, potential_reasons, potential_components = _potential_score(
+            metrics, sec, market, catalyst
+        )
+        readiness, blockers, entry_components = _entry_readiness(metrics)
         evidence, evidence_reasons = _evidence_strength(metrics, sec, market, catalyst)
 
         metrics["decision_v2"] = {
-            "version": "decision-v2.0",
+            "version": "decision-v2.1-deduped",
             "potential_score": potential,
             "potential_label": _label(potential, 72, 52),
             "entry_readiness": readiness,
@@ -645,7 +731,9 @@ def install_v2_analysis(sa):
             "evidence_strength": evidence,
             "evidence_label": _label(evidence, 72, 52),
             "potential_reasons": potential_reasons,
+            "potential_components": potential_components,
             "entry_blockers": blockers,
+            "entry_components": entry_components,
             "evidence_reasons": evidence_reasons,
             "catalyst_strength": catalyst,
             "market_context": market,
