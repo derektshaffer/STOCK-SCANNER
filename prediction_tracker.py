@@ -263,6 +263,10 @@ def record_prediction(metrics, now=None):
     hist = metrics.get("historical_setup") or {}
     v2 = metrics.get("decision_v2") or {}
     turnover = v2.get("turnover_context") or {}
+    catalyst = v2.get("catalyst_strength") or {}
+    market = v2.get("market_context") or {}
+    fundamental = v2.get("fundamental_context") or {}
+    stream = v2.get("live_stream_status") or {}
 
     row = {
         "id": f"{key}:{len(rows)+1}",
@@ -271,8 +275,16 @@ def record_prediction(metrics, now=None):
         "timestamp": now.isoformat(),
         "price": _num(metrics.get("price")),
         "day_pct": _num(metrics.get("day_pct")),
+        "vwap": _num(metrics.get("vwap")),
+        "vwap_position": metrics.get("vwap_position"),
         "vwap_extension_pct": _num(metrics.get("vwap_extension_pct")),
+        "spread_pct": _num(metrics.get("spread_pct")),
+        "volume": _num(metrics.get("volume")),
+        "session_volume": _num(metrics.get("session_volume")),
         "volume_pace": _num(metrics.get("volume_pace")),
+        "live_feed": metrics.get("live_feed"),
+        "stream_status": stream.get("status"),
+        "stream_feed": stream.get("feed"),
         "setup_score": _num(metrics.get("score")),
         "plan_confidence": _num(plan.get("confidence")),
         "plan_status": plan.get("status"),
@@ -296,6 +308,12 @@ def record_prediction(metrics, now=None):
         "shares_outstanding_turnover": _num(
             turnover.get("shares_outstanding_turnover")
         ),
+        "catalyst_label": catalyst.get("label"),
+        "catalyst_score": _num(catalyst.get("score")),
+        "market_context": market.get("label"),
+        "sector_etf": market.get("sector_etf"),
+        "sector_move_pct": _num(market.get("sector_move_pct")),
+        "dilution_risk": fundamental.get("dilution_risk"),
         "outcomes": {},
     }
     rows.append(row)
