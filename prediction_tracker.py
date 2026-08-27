@@ -666,6 +666,7 @@ def tracker_summary(rows=None, symbol=None, current_metrics=None):
             (durable.get("entry_calibration") or {})
             or _bucket_calibration(calibration_rows, "entry_readiness")
         ),
+        "entry_signal_calibration": durable.get("entry_signal_calibration") or {},
         "calibration_ready": (
             bool(durable.get("calibration_ready"))
             or len(resolved_60) >= 30
