@@ -33,6 +33,90 @@ def _request_json(url, token, timeout=30):
         return json.loads(response.read().decode("utf-8"))
 
 
+def _request_form_json(url, token, form, timeout=30):
+    data = urllib.parse.urlencode(form).encode("utf-8")
+    req = urllib.request.Request(
+        url,
+        data=data,
+        headers={
+            **_headers(token),
+            "Content-Type": "application/x-www-form-urlencoded",
+        },
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
+def post_quotes(symbols, token):
+    """POST quote lookup for larger symbol batches."""
+    symbols = [str(s).upper().strip() for s in symbols if str(s).strip()]
+    if not symbols:
+        return {}
+    payload = _request_form_json(
+        f"{TRADIER_BASE}/markets/quotes",
+        token,
+        {"symbols": ",".join(symbols), "greeks": "false"},
+    )
+    quotes = ((payload or {}).get("quotes") or {}).get("quote")
+    if quotes is None:
+        return {}
+    if not isinstance(quotes, list):
+        quotes = [quotes]
+    return {
+        str(row.get("symbol") or "").upper(): row
+        for row in quotes
+        if row.get("symbol")
+    }
+
+
+def get_history_bars(symbol, token, start, end, interval="daily"):
+    """Return Tradier historical daily/weekly/monthly candles in scanner bar form."""
+    start_date = start.astimezone(ET).date() if isinstance(start, datetime) else start
+    end_date = end.astimezone(ET).date() if isinstance(end, datetime) else end
+    params = urllib.parse.urlencode(
+        {
+            "symbol": str(symbol).upper().strip(),
+            "interval": interval,
+            "start": start_date.isoformat(),
+            "end": end_date.isoformat(),
+        }
+    )
+    payload = _request_json(f"{TRADIER_BASE}/markets/history?{params}", token)
+    rows = ((payload or {}).get("history") or {}).get("day")
+    if rows is None:
+        return []
+    if not isinstance(rows, list):
+        rows = [rows]
+
+    bars = []
+    for row in rows:
+        day = str((row or {}).get("date") or "").strip()
+        close = _num((row or {}).get("close"))
+        if not day or close is None:
+            continue
+        try:
+            dt = datetime.fromisoformat(day).replace(
+                hour=16, minute=0, second=0, microsecond=0, tzinfo=ET
+            )
+            timestamp = dt.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+        except ValueError:
+            timestamp = None
+        bars.append(
+            {
+                "t": timestamp,
+                "o": _num(row.get("open")),
+                "h": _num(row.get("high")),
+                "l": _num(row.get("low")),
+                "c": close,
+                "v": _num(row.get("volume")) or 0.0,
+                "vw": None,
+            }
+        )
+    bars.sort(key=lambda b: b.get("t") or "")
+    return bars
+
+
 def get_quotes(symbols, token):
     symbols = [str(s).upper().strip() for s in symbols if str(s).strip()]
     if not symbols:
