@@ -629,34 +629,70 @@ if view == "Stock Analyzer":
 
         /* First metrics and subsequent sections */
         .st-key-analyzer_metrics_top {
-            margin: 0 0 10px !important;
+            margin: 0 0 6px !important;
         }
         .st-key-analyzer_metrics_top > [data-testid="stVerticalBlock"] {
             gap: 0 !important;
         }
 
         [data-testid="stElementContainer"]:has(.section) {
-            margin-top: 10px !important;
-            margin-bottom: 6px !important;
+            margin-top: 6px !important;
+            margin-bottom: 3px !important;
         }
         .section {
             margin: 0 !important;
-            line-height: 1.25 !important;
+            line-height: 1.2 !important;
+        }
+
+        /* Decision/ML/history are intentionally dense: details now open in
+           popovers instead of taking full-width rows in the document flow. */
+        .st-key-analyzer_decision_v2 {
+            margin: 0 0 4px !important;
+        }
+        .st-key-analyzer_decision_v2 > [data-testid="stVerticalBlock"] {
+            gap: .20rem !important;
+        }
+        .st-key-ml_prediction_section,
+        .st-key-historical_match_section {
+            margin-top: 6px !important;
+            margin-bottom: 5px !important;
+            padding-top: 0 !important;
+        }
+        .st-key-ml_prediction_section > [data-testid="stVerticalBlock"],
+        .st-key-historical_match_section > [data-testid="stVerticalBlock"] {
+            gap: .24rem !important;
+        }
+        .st-key-ml_prediction_section [data-testid="stHorizontalBlock"],
+        .st-key-historical_match_section [data-testid="stHorizontalBlock"],
+        .st-key-analyzer_decision_v2 [data-testid="stHorizontalBlock"] {
+            margin-top: 0 !important;
+            margin-bottom: 2px !important;
+        }
+
+        /* Small heading-attached popover buttons. */
+        .st-key-analyzer_decision_v2 [data-testid="stPopover"] button,
+        .st-key-ml_prediction_section [data-testid="stPopover"] button,
+        .st-key-analyzer_controls [data-testid="stPopover"] button {
+            min-height: 28px !important;
+            height: 28px !important;
+            padding: 2px 9px !important;
+            font-size: 11px !important;
+            white-space: nowrap !important;
         }
 
         /* Keep explanatory elements attached to their section without overlap. */
         [data-testid="stExpander"] {
-            margin: 6px 0 9px !important;
+            margin: 4px 0 6px !important;
         }
         div[data-testid="stAlert"] {
-            margin: 7px 0 10px !important;
+            margin: 5px 0 7px !important;
         }
         .tradeplan {
-            margin: 10px 0 8px !important;
+            margin: 6px 0 5px !important;
         }
         [data-testid="stCaptionContainer"] {
-            margin-top: 4px !important;
-            margin-bottom: 5px !important;
+            margin-top: 2px !important;
+            margin-bottom: 2px !important;
         }
 
         @media (max-width: 900px) {
