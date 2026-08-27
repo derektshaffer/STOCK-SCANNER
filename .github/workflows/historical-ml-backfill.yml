@@ -7,12 +7,12 @@ on:
       trading_days:
         description: "Trading days to replay"
         required: false
-        default: "30"
+        default: "20"
         type: string
       universe_size:
         description: "Prior-information symbols per replay day"
         required: false
-        default: "450"
+        default: "300"
         type: string
       candidates_per_scan:
         description: "Historical candidates kept per checkpoint"
@@ -53,9 +53,13 @@ jobs:
 
       - name: Run leakage-aware historical replay
         env:
+          # Alpaca values are only kept so stock_scanner's pure rule module
+          # can import; the replay market data itself is Tradier-first.
           ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
           ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
           ALPACA_LIVE_FEED: ${{ secrets.ALPACA_LIVE_FEED }}
+          TRADIER_ACCESS_TOKEN: ${{ secrets.TRADIER_ACCESS_TOKEN }}
+          TRADIER_TOKEN: ${{ secrets.TRADIER_TOKEN }}
           REPLAY_TRADING_DAYS: ${{ inputs.trading_days }}
           REPLAY_UNIVERSE_SIZE: ${{ inputs.universe_size }}
           REPLAY_CANDIDATES_PER_SCAN: ${{ inputs.candidates_per_scan }}
