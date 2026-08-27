@@ -669,7 +669,9 @@ if view == "Stock Analyzer":
             margin-bottom: 2px !important;
         }
 
-        /* Small heading-attached popover buttons. */
+        /* Small heading-attached popover buttons.
+           Explicit colors prevent Streamlit's light button theme from making
+           these labels nearly invisible on the dark Analyzer page. */
         .st-key-analyzer_decision_v2 [data-testid="stPopover"] button,
         .st-key-ml_prediction_section [data-testid="stPopover"] button,
         .st-key-analyzer_controls [data-testid="stPopover"] button {
@@ -678,6 +680,33 @@ if view == "Stock Analyzer":
             padding: 2px 9px !important;
             font-size: 11px !important;
             white-space: nowrap !important;
+            background: #11243a !important;
+            border: 1px solid #365878 !important;
+            color: #edf5ff !important;
+            box-shadow: none !important;
+        }
+
+        .st-key-analyzer_decision_v2 [data-testid="stPopover"] button *,
+        .st-key-ml_prediction_section [data-testid="stPopover"] button *,
+        .st-key-analyzer_controls [data-testid="stPopover"] button * {
+            color: #edf5ff !important;
+            fill: #edf5ff !important;
+            opacity: 1 !important;
+        }
+
+        .st-key-analyzer_decision_v2 [data-testid="stPopover"] button:hover,
+        .st-key-ml_prediction_section [data-testid="stPopover"] button:hover,
+        .st-key-analyzer_controls [data-testid="stPopover"] button:hover {
+            background: #18314d !important;
+            border-color: #5b86ad !important;
+            color: #ffffff !important;
+        }
+
+        .st-key-analyzer_decision_v2 [data-testid="stPopover"] button:hover *,
+        .st-key-ml_prediction_section [data-testid="stPopover"] button:hover *,
+        .st-key-analyzer_controls [data-testid="stPopover"] button:hover * {
+            color: #ffffff !important;
+            fill: #ffffff !important;
         }
 
         /* Keep explanatory elements attached to their section without overlap. */
