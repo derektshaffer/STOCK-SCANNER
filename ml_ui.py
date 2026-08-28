@@ -69,6 +69,8 @@ def render_ml_prediction(st, pd, result, card):
     m60 = models.get("higher_60") or {}
     breakout = models.get("breakout_hold") or {}
     reversal = models.get("reversal_30") or {}
+    repeat_bounce = models.get("repeat_bounce_30") or {}
+    new_high = models.get("new_high_60") or {}
 
     cols = st.columns(7)
     edge = ml.get("ml_edge_score")
@@ -143,11 +145,34 @@ def render_ml_prediction(st, pd, result, card):
     card(
         cols[6],
         "VALIDATION",
-        f'{ml.get("validated_models", 0)} / 5',
+        f'{ml.get("validated_models", 0)} / 7',
         "models passed walk-forward gate",
         "good" if ml.get("gate_passed") else "warn",
         "How many same-ticker ML models passed the walk-forward validation gate. Unvalidated models remain advisory and do not get full decision weight.",
     )
+
+    bounce_cols = st.columns([1.25, 1.25, 3.5])
+    card(
+        bounce_cols[0],
+        "NEXT BOUNCE / 30M",
+        _pct_value(repeat_bounce) if ml.get("bounce_relevant") else "N/A",
+        _validation_note(repeat_bounce) if ml.get("bounce_relevant") else "needs at least one completed bounce",
+        "good" if (repeat_bounce.get("probability_pct") or 0) >= 60 else "bad" if repeat_bounce.get("probability_pct") is not None and (repeat_bounce.get("probability_pct") or 0) <= 40 else "warn",
+        "After at least one prior bounce, estimates whether another quick rebound threshold is hit before an equal-sized breakdown threshold during the next 30 minutes.",
+    )
+    card(
+        bounce_cols[1],
+        "NEW HIGH / 60M",
+        _pct_value(new_high) if ml.get("bounce_relevant") else "N/A",
+        _validation_note(new_high) if ml.get("bounce_relevant") else "needs a multi-leg sequence",
+        "good" if (new_high.get("probability_pct") or 0) >= 60 else "bad" if new_high.get("probability_pct") is not None and (new_high.get("probability_pct") or 0) <= 40 else "warn",
+        "After at least one bounce, estimates whether price reaches a fresh session high before an adaptive downside failure threshold during the next 60 minutes.",
+    )
+    with bounce_cols[2]:
+        st.caption(
+            "A later bounce can be a good short-duration trade even when NEW HIGH probability is low. "
+            "The app keeps repeat-bounce opportunity separate from full-run continuation."
+        )
 
     peer_cols = st.columns([1.35, 1.0, 3.65])
     peer_probability = peer.get("probability_pct")
@@ -206,7 +231,8 @@ def render_ml_prediction(st, pd, result, card):
         st.write(
             "**What it predicts:** Whether Target 1 is reached before the stop during the "
             "rest of the same trading session, whether price is higher in 30 and 60 minutes, "
-            "and breakout hold probability when price is near the breakout trigger."
+            "breakout hold probability, 30-minute repeat-bounce probability, 60-minute fresh-high probability, "
+            "and downside reversal risk."
         )
         target_source = target.get("target_source") or "Target 1"
         outcomes = target.get("outcome_summary") or {}
@@ -221,7 +247,8 @@ def render_ml_prediction(st, pd, result, card):
             "**How it is trained:** Same-ticker 5-minute bars are converted into historical "
             "snapshots using only information that existed at each snapshot: day move, gap, "
             "VWAP extension, 5/15/30-minute momentum, volume pace, distance from the high, "
-            "ATR, time of day, range position and intraday range."
+            "ATR, time of day, range position, intraday range, bounce count, bounce-size decay, "
+            "bounce-volume decay, lower-high/higher-low sequences and current bounce/pullback leg."
         )
         st.write(
             "**Leakage protection:** Validation is expanding-window/walk-forward: older samples "
@@ -249,6 +276,8 @@ def render_ml_prediction(st, pd, result, card):
             "higher_60": "60m higher",
             "breakout_hold": "Breakout hold",
             "reversal_30": "30m reversal risk",
+            "repeat_bounce_30": "Next bounce before breakdown (30m)",
+            "new_high_60": "Fresh high before breakdown (60m)",
         }
         for key, label in labels.items():
             m = models.get(key) or {}
@@ -293,6 +322,6 @@ def render_ml_prediction(st, pd, result, card):
             f'source: {ml.get("source")}. '
             f'Peer cohort: {int(peer.get("samples") or 0):,} similar observations across '
             f'{int(peer.get("peer_symbols") or 0)} other tickers. '
-            "ML v1.4 is a probability/decision-support layer, not a guaranteed forecast, "
+            "ML v1.5 is a probability/decision-support layer, not a guaranteed forecast, "
             "and it cannot override the rule-based trade action."
         )
