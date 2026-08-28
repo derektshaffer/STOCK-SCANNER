@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 from statistics import median
 
 from multi_bounce import detect_bounce_sequence
+from stair_step import detect_stair_step
 from zoneinfo import ZoneInfo
 
 try:
@@ -29,8 +30,8 @@ USE_TRADIER = bool(
 )
 LIVE_MARKET_PROVIDER = "tradier" if USE_TRADIER else "alpaca"
 LIVE_MARKET_LABEL = "TRADIER CONSOLIDATED" if USE_TRADIER else LIVE_FEED.upper()
-ANALYZER_FEATURE_VERSION = "analyzer-features-v5-multi-bounce"
-ANALYZER_ENGINE_VERSION = "trade-plan-v6-multi-bounce"
+ANALYZER_FEATURE_VERSION = "analyzer-features-v6-sequence-regimes"
+ANALYZER_ENGINE_VERSION = "trade-plan-v7-repeat-bounce-stair"
 ET = ZoneInfo("America/New_York")
 
 CATALYST_RULES = [
@@ -858,6 +859,15 @@ def build_trade_plan(metrics, now):
     hist=_hist_trade_context(metrics.get("historical_analogs"))
     impulse=metrics.get("impulse_pullback") or {}
     sequence=metrics.get("bounce_sequence") or {}
+    stair=metrics.get("stair_step") or {}
+    stair=metrics.get("stair_step") or {}
+    stair_score=fnum(stair.get("structure_score"))
+    if stair.get("reaccelerating") and stair_score is not None and stair_score>=65:
+        score+=7; reasons.append("multi-session stair-step is reaccelerating")
+    elif stair.get("state")=="HIGHER PLATEAU / COILING" and stair_score is not None and stair_score>=58:
+        score+=4; reasons.append("price is holding a higher multi-session plateau")
+    if stair.get("breakdown"):
+        score-=10; reasons.append("latest stair-step plateau has broken down")
     exhaustion=metrics.get("run_exhaustion") or {}
     reversal_score=fnum(exhaustion.get("score")) or 0.0
     sequence_health=fnum(sequence.get("sequence_health_score"))
@@ -1060,12 +1070,103 @@ def build_trade_plan(metrics, now):
         "stop":breakout_stop,"stop_reason":"back below breakout level with ATR volatility buffer",
         "confirmation":"Require the breakout to clear and hold with positive 5m momentum and preferably ≥1.5x volume pace; avoid a thin poke above resistance.",
     }
+
+    # Dedicated Bounce #2/#3+ scalp plan. This deliberately anchors to the
+    # latest developing dip and previous bounce peak instead of reusing the
+    # original impulse retracement zone.
+    completed_bounces=int(sequence.get("completed_bounces") or 0)
+    next_bounce_number=int(sequence.get("next_bounce_number") or (completed_bounces+1))
+    current_dip=fnum(sequence.get("current_dip_low"))
+    prior_bounce_peak=fnum(sequence.get("reference_peak"))
+    repeat_bounce_plan=None
+    repeat_bounce_zone=None
+    repeat_bounce_confirm=False
+    if completed_bounces>=1 and current_dip and prior_bounce_peak and prior_bounce_peak>current_dip:
+        confirm_pct=_clamp(atr_pct*0.10,0.65,1.8)
+        zone_width_pct=_clamp(atr_pct*0.055,0.35,1.0)
+        confirm_level=current_dip*(1+confirm_pct/100.0)
+        rb_zone={
+            "low":round(confirm_level,4),
+            "high":round(confirm_level*(1+zone_width_pct/100.0),4),
+        }
+        rb_stop=round(current_dip*(1-_clamp(atr_pct*0.13,0.9,2.8)/100.0),4)
+
+        if next_bounce_number==2:
+            expected_bounce=fnum(hist_intraday.get("median_bounce2_pct"))
+            historical_rate=fnum(hist_intraday.get("second_bounce_rate_pct"))
+        elif next_bounce_number==3:
+            expected_bounce=fnum(hist_intraday.get("median_bounce3_pct"))
+            historical_rate=fnum(hist_intraday.get("third_bounce_rate_pct"))
+        else:
+            expected_bounce=None
+            historical_rate=fnum(hist_intraday.get("third_bounce_rate_pct"))
+
+        previous_bounce_size=fnum(sequence.get("latest_bounce_pct"))
+        historical_decay=fnum(hist_intraday.get("median_bounce2_vs_bounce1_ratio"))
+        live_decay=fnum(sequence.get("bounce_decay_ratio"))
+        decay_guess=historical_decay if historical_decay is not None else live_decay
+        if expected_bounce is None and previous_bounce_size:
+            decay_guess=_clamp(decay_guess if decay_guess is not None else 0.68,0.40,0.92)
+            expected_bounce=previous_bounce_size*decay_guess
+        if expected_bounce is None:
+            expected_bounce=_clamp(atr_pct*0.85,3.0,12.0)
+        expected_bounce=_clamp(expected_bounce,2.0,22.0)
+
+        rb_entry=(rb_zone["low"]+rb_zone["high"])/2.0
+        projected_peak=current_dip*(1+expected_bounce/100.0)
+        prior_peak_objective=prior_bounce_peak*0.992
+        realistic_peak=min(projected_peak,prior_peak_objective)
+        if realistic_peak<=rb_entry*1.008:
+            realistic_peak=max(rb_entry*(1+_clamp(expected_bounce*0.55,1.5,8.0)/100.0),rb_entry+atr*0.35)
+
+        # Target 1 is intentionally conservative for a quick later-bounce trade.
+        rb_target1=rb_entry+(realistic_peak-rb_entry)*0.68
+        rb_target2=realistic_peak
+        rb_stretch=max(rb_target2, min(prior_bounce_peak, current_dip*(1+expected_bounce*1.15/100.0)))
+        rb_risk=rb_entry-rb_stop
+        rb_rr=(rb_target1-rb_entry)/rb_risk if rb_risk>0 else 0.0
+        repeat_bounce_plan={
+            "bounce_number":next_bounce_number,
+            "entry_low":round(rb_zone["low"],4),
+            "entry_high":round(rb_zone["high"],4),
+            "entry_mid":round(rb_entry,4),
+            "entry_source":f"Bounce #{next_bounce_number} dip reclaim",
+            "dip_low":round(current_dip,4),
+            "confirmation_level":round(confirm_level,4),
+            "prior_bounce_peak":round(prior_bounce_peak,4),
+            "expected_bounce_pct":round(expected_bounce,2),
+            "historical_bounce_rate_pct":round(historical_rate,1) if historical_rate is not None else None,
+            "target1":round(rb_target1,4),
+            "target1_reason":f"conservative Bounce #{next_bounce_number} recovery target",
+            "target2":round(rb_target2,4),
+            "target2_reason":"expected later-bounce recovery / prior peak constraint",
+            "stretch_target":round(rb_stretch,4),
+            "stretch_reason":"strong repeat-bounce extension toward prior peak",
+            "stop":rb_stop,
+            "stop_reason":f"below developing Bounce #{next_bounce_number} dip with ATR buffer",
+            "risk_reward":round(rb_rr,2),
+            "confirmation":(
+                f"Require the Bounce #{next_bounce_number} dip to hold and reclaim {confirm_level:.4f} "
+                "with improving short-term momentum. This is a quick-bounce plan, not proof the full run will make a new high."
+            ),
+        }
+        repeat_bounce_zone={"low":repeat_bounce_plan["entry_low"],"high":repeat_bounce_plan["entry_high"]}
+        repeat_bounce_confirm=bool(
+            str(sequence.get("current_leg") or "").upper()=="BOUNCING"
+            and price>=confirm_level
+            and (m5 is None or m5>0)
+        )
+
     # Use the tightened zones for all following trigger logic.
     pull_zone={"low":pull_plan["entry_low"],"high":pull_plan["entry_high"]}
     breakout_zone={"low":breakout_plan["entry_low"],"high":breakout_plan["entry_high"]}
 
     in_pull=pull_zone["low"] <= price <= pull_zone["high"]
     in_break=breakout_zone["low"] <= price <= breakout_zone["high"]
+    in_repeat_bounce=bool(
+        repeat_bounce_zone
+        and repeat_bounce_zone["low"] <= price <= repeat_bounce_zone["high"]
+    )
     bullish_momentum=(m5 is not None and m5>0) and (m15 is None or m15>=-1.0)
     impulse_recovery=fnum(impulse.get("bounce_recovery_pct")) or 0.0
     impulse_bounce=bool(impulse.get("bounce_confirmed")) or (
@@ -1090,11 +1191,34 @@ def build_trade_plan(metrics, now):
     negative_catalyst=catalyst.get("score",0)<=-5
 
     preferred="pullback"
-    if in_break and breakout_confirm and reversal_score<62:preferred="breakout"
-    elif in_pull:preferred="pullback"
-    elif breakout_plan["risk_reward"] >= pull_plan["risk_reward"]+0.5 and not overextended and reversal_score<55:preferred="breakout"
+    if repeat_bounce_plan and completed_bounces>=1:
+        preferred="repeat_bounce"
+    if in_break and breakout_confirm and reversal_score<62:
+        preferred="breakout"
+    elif in_repeat_bounce:
+        preferred="repeat_bounce"
+    elif in_pull:
+        preferred="pullback"
+    elif (
+        breakout_plan["risk_reward"] >= pull_plan["risk_reward"]+0.5
+        and not overextended
+        and reversal_score<55
+    ):
+        preferred="breakout"
 
-    chosen=breakout_plan if preferred=="breakout" else pull_plan
+    if (
+        stair.get("detected")
+        and stair.get("reaccelerating")
+        and breakout_plan["risk_reward"]>=1.25
+        and reversal_score<62
+    ):
+        preferred="breakout"
+
+    chosen=(
+        breakout_plan if preferred=="breakout"
+        else repeat_bounce_plan if preferred=="repeat_bounce" and repeat_bounce_plan
+        else pull_plan
+    )
     rr=fnum(chosen.get("risk_reward")) or 0
     confidence=setup_score
     if rr>=2.5:confidence+=9
@@ -1109,6 +1233,15 @@ def build_trade_plan(metrics, now):
     if catalyst.get("label")=="POSITIVE":confidence+=4
     elif catalyst.get("label")=="NEGATIVE":confidence-=6
     if overextended:confidence-=10
+    stair_score=fnum(stair.get("structure_score"))
+    if stair.get("reaccelerating") and stair_score is not None and stair_score>=65:
+        confidence+=6
+    elif stair.get("breakdown"):
+        confidence-=10
+    if repeat_bounce_plan and preferred=="repeat_bounce":
+        hist_rate=fnum(repeat_bounce_plan.get("historical_bounce_rate_pct"))
+        if hist_rate is not None and hist_rate>=60:confidence+=4
+        if sequence_health is not None and sequence_health<35:confidence-=8
     confidence=int(round(_clamp(confidence,0,95)))
 
     reasons=[]
@@ -1128,19 +1261,42 @@ def build_trade_plan(metrics, now):
         status="NO TRADE"
         action="NO TRADE — run exhaustion / reversal risk is very high"
         reasons.append("Multiple top/reversal signals are aligned; avoid treating a mature run as a fresh momentum entry.")
+    elif (
+        repeat_bounce_plan
+        and repeat_bounce_confirm
+        and in_repeat_bounce
+        and reversal_score<78
+        and (sequence_health is None or sequence_health>=32)
+        and (fnum(repeat_bounce_plan.get("risk_reward")) or 0)>=1.25
+    ):
+        status="ENTRY AVAILABLE"
+        preferred="repeat_bounce"; chosen=repeat_bounce_plan
+        action=f"ENTRY AVAILABLE — BOUNCE #{next_bounce_number} SCALP CONFIRMED"
+        reasons.append(
+            f"Bounce #{next_bounce_number} has begun reclaiming from the latest dip. "
+            "This plan targets a quick recovery and does not assume the stock will return to its session high."
+        )
+        if reversal_score>=62:
+            reasons.append("Overall run-exhaustion risk is elevated, so treat this as a shorter-duration bounce setup rather than a fresh continuation thesis.")
+    elif repeat_bounce_plan and str(sequence.get("current_leg") or "").upper().startswith("PULL"):
+        status="WAIT"
+        preferred="repeat_bounce"; chosen=repeat_bounce_plan
+        action=f"WAIT FOR BOUNCE #{next_bounce_number} CONFIRMATION"
+        reasons.append(
+            f"This is the developing dip before possible Bounce #{next_bounce_number}. "
+            "Wait for the dip to hold and reclaim the dedicated confirmation level before considering the quick-bounce plan."
+        )
+    elif repeat_bounce_plan and str(sequence.get("current_leg") or "").upper()=="BOUNCING" and not in_repeat_bounce:
+        status="WAIT"
+        preferred="repeat_bounce"; chosen=repeat_bounce_plan
+        action=f"WAIT — BOUNCE #{next_bounce_number} IS OUTSIDE ENTRY ZONE"
+        reasons.append("The later bounce has started, but price is outside the modeled low-risk reclaim zone; avoid chasing the rebound.")
     elif reversal_score>=68:
         status="WAIT"
-        preferred="pullback"; chosen=pull_plan
+        preferred="repeat_bounce" if repeat_bounce_plan else "pullback"
+        chosen=repeat_bounce_plan if repeat_bounce_plan else pull_plan
         action="WAIT — HIGH RUN-EXHAUSTION RISK"
-        reasons.append("The run is showing meaningful exhaustion/reversal evidence; require a fresh base and reclaim before considering another long entry.")
-    elif int(sequence.get("completed_bounces") or 0) >= 1 and str(sequence.get("current_leg") or "").upper().startswith("PULL"):
-        status="WAIT"
-        preferred="pullback"; chosen=pull_plan
-        action="WAIT FOR NEXT BOUNCE CONFIRMATION"
-        reasons.append(
-            "This is a later pullback in a multi-bounce sequence. A second or third bounce can still be tradable, "
-            "but later bounces often weaken, so require a hold/reclaim before treating the dip as an entry."
-        )
+        reasons.append("The run is showing meaningful exhaustion/reversal evidence; require a fresh base or a tightly confirmed later-bounce reclaim.")
     elif rr < 1.15:
         status="NO TRADE"
         action="NO TRADE — reward/risk is unattractive"
@@ -1197,9 +1353,10 @@ def build_trade_plan(metrics, now):
         "status":status,"action":action,"preferred_plan":preferred,
         "confidence":confidence,
         "confidence_label":"HIGH" if confidence>=75 else "MODERATE" if confidence>=58 else "LOW",
-        "pullback":pull_plan,"breakout":breakout_plan,"selected":chosen,
+        "pullback":pull_plan,"breakout":breakout_plan,"repeat_bounce":repeat_bounce_plan,"selected":chosen,
         "impulse_pullback":impulse,
         "bounce_sequence":sequence,
+        "stair_step":stair,
         "run_exhaustion":exhaustion,
         "nearest_support":support_price,"nearest_support_quality":(nearest_support or {}).get("quality"),
         "nearest_resistance":resistance_price,"support_distance_pct":round(support_distance,2) if support_distance is not None else None,
@@ -1208,7 +1365,7 @@ def build_trade_plan(metrics, now):
         "atr":round(atr,4),"atr_pct":round(atr_pct,2),
         "reasons":reasons,
         "updated":now.astimezone(ET).isoformat(),
-        "method_note":"Rule-based long momentum decision support using impulse/retracement and multi-bounce sequence structure, confirmation, VWAP, support/resistance, ATR, momentum, volume pace, spread/liquidity, same-ticker historical behavior and catalyst context. Pullback zones are not automatic entries; targets are scenarios, not guarantees.",
+        "method_note":"Rule-based long momentum decision support using impulse/retracement, dedicated later-bounce scalp geometry, multi-session stair-step structure, confirmation, VWAP, support/resistance, ATR, momentum, volume pace, spread/liquidity, same-ticker historical behavior and catalyst context. Pullback zones are not automatic entries; targets are scenarios, not guarantees.",
     }
 
 def score_setup(metrics):
@@ -1383,6 +1540,19 @@ def analyze(symbol):
     except Exception: pass
 
     liquidity=liquidity_context(price,avgvol,pace,spread_pct)
+    current_open=fnum(intraday[0].get("o")) if intraday else price
+    stair=detect_stair_step(
+        daily,
+        current_day={
+            "date":now_et.date().isoformat(),
+            "o":current_open or price,
+            "h":high,
+            "l":low,
+            "c":price,
+            "v":today_volume,
+        },
+        atr_pct=atr14_pct,
+    )
     impulse=impulse_pullback_context(intraday,price,atr14_pct)
     sequence=detect_bounce_sequence(intraday,current_price=price,atr_pct=atr14_pct)
     exhaustion=run_exhaustion_context(intraday,price,vwap,atr14_pct,impulse,sequence)
@@ -1425,6 +1595,7 @@ def analyze(symbol):
         "atr_14_pct":round(atr14_pct,2) if atr14_pct is not None else None,
         "impulse_pullback":impulse,
         "bounce_sequence":sequence,
+        "stair_step":stair,
         "run_exhaustion":exhaustion,
         "liquidity":liquidity,
         "supports":supports,
