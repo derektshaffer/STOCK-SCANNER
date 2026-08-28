@@ -6,9 +6,10 @@ from collections import Counter, defaultdict
 from statistics import mean
 
 from scanner_ml_ranker import load_training_observations
+from multi_bounce import bounce_feature_values
 
 
-PEER_MODEL_VERSION = "analyzer-peer-v2-impulse"
+PEER_MODEL_VERSION = "analyzer-peer-v3-multi-bounce"
 PEER_TARGET = ">= +3% at 60 minutes"
 PEER_FEATURES = [
     "day_pct",
@@ -26,6 +27,16 @@ PEER_FEATURES = [
     "impulse_max_retracement_pct",
     "impulse_bounce_recovery_pct",
     "pullback_volume_ratio",
+    "bounce_count",
+    "last_bounce_pct",
+    "bounce_decay_ratio",
+    "bounce_volume_decay_ratio",
+    "lower_high_streak",
+    "higher_low_streak",
+    "sequence_health_score",
+    "current_pullback_pct",
+    "ongoing_bounce_pct",
+    "bounce_leg_code",
 ]
 
 MIN_PEER_SAMPLES = 500
@@ -82,6 +93,7 @@ def _current_features(metrics, now_et):
     time_fraction = _clamp((minute - 570) / 390.0, 0.0, 1.0)
 
     impulse = metrics.get("impulse_pullback") or {}
+    bounce_features = bounce_feature_values(metrics.get("bounce_sequence") or {})
 
     return {
         "entry_price": price,
@@ -100,6 +112,7 @@ def _current_features(metrics, now_et):
         "impulse_max_retracement_pct": _num(impulse.get("max_retracement_pct")),
         "impulse_bounce_recovery_pct": _num(impulse.get("bounce_recovery_pct")),
         "pullback_volume_ratio": _num(impulse.get("pullback_volume_ratio")),
+        **bounce_features,
     }
 
 
@@ -130,6 +143,16 @@ def _similarity_distance(row, current):
         ("impulse_max_retracement_pct", 18.0, 1.00),
         ("impulse_bounce_recovery_pct", 12.0, 1.15),
         ("pullback_volume_ratio", 0.45, 0.85),
+        ("bounce_count", 1.5, 1.25),
+        ("last_bounce_pct", 8.0, 1.00),
+        ("bounce_decay_ratio", 0.35, 1.25),
+        ("bounce_volume_decay_ratio", 0.40, 0.90),
+        ("lower_high_streak", 1.0, 1.25),
+        ("higher_low_streak", 1.0, 0.85),
+        ("sequence_health_score", 20.0, 1.15),
+        ("current_pullback_pct", 6.0, 0.95),
+        ("ongoing_bounce_pct", 6.0, 0.85),
+        ("bounce_leg_code", 1.0, 0.90),
     )
     for name, scale, weight in specs:
         d = _scaled_abs(features.get(name), current.get(name), scale)
@@ -465,6 +488,10 @@ def predict_peer_ml(symbol, now, metrics, et):
         round(_num(current.get("entry_price")) or 0.0, 1),
         round(_num(current.get("impulse_retracement_pct")) or -1.0, 0),
         round(_num(current.get("impulse_bounce_recovery_pct")) or 0.0, 0),
+        int(_num(current.get("bounce_count")) or 0),
+        round(_num(current.get("bounce_decay_ratio")) or -1.0, 1),
+        int(_num(current.get("lower_high_streak")) or 0),
+        int(_num(current.get("bounce_leg_code")) or 0),
     )
     stamp = time.time()
     cached = _CACHE.get(key)
@@ -533,8 +560,8 @@ def predict_peer_ml(symbol, now, metrics, et):
     result["note"] = (
         "Separate peer layer using similar historical momentum setups from other tickers. "
         "Similarity uses price band, liquidity, day move, momentum, volume pace, VWAP extension, "
-        "distance from the high, intraday range, time of day, impulse size, retracement depth, bounce recovery "
-        "and pullback-volume behavior. It is validated on whole trading "
+        "distance from the high, intraday range, time of day, impulse size, retracement depth, bounce recovery, "
+        "multi-bounce count/decay, lower-high structure and pullback-volume behavior. It is validated on whole trading "
         "days and never replaces the stock's own same-ticker model."
     )
 
