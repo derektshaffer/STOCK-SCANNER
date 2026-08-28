@@ -14,7 +14,7 @@ LOG_PATH = Path(os.environ.get("ANALYZER_PREDICTION_LOG", "analysis_logs/analyze
 BUCKET_MINUTES = 5
 ET = ZoneInfo("America/New_York")
 ANALYZER_FEATURE_VERSION = "analyzer-features-v2-consolidated"
-DECISION_SCORE_VERSION = "decision-v2.1-deduped"
+DECISION_SCORE_VERSION = "decision-v2.2-peer-ml"
 
 GITHUB_TOKEN = (
     os.environ.get("ANALYZER_GITHUB_TOKEN", "").strip()
