@@ -19,6 +19,14 @@ FEATURES = [
     "time_fraction",
     "close_location",
     "range_pct",
+    # Impulse -> pullback -> bounce structure. These are calculated using only
+    # information available at each historical observation, so there is no
+    # future leakage in training.
+    "impulse_move_pct",
+    "impulse_retracement_pct",
+    "impulse_max_retracement_pct",
+    "impulse_bounce_recovery_pct",
+    "pullback_volume_ratio",
 ]
 
 _CACHE = {}
@@ -104,6 +112,83 @@ def _atr_pct(daily, i, periods=14):
     return atr / pc * 100.0 if atr and pc else None
 
 
+def _impulse_features(bars, idx):
+    """Impulse/retracement features using bars no later than idx."""
+    if idx < 6:
+        return {
+            "impulse_move_pct": None,
+            "impulse_retracement_pct": None,
+            "impulse_max_retracement_pct": None,
+            "impulse_bounce_recovery_pct": None,
+            "pullback_volume_ratio": None,
+        }
+    rows=[]
+    for b in bars[:idx+1]:
+        h=_fnum(b.get("h")); l=_fnum(b.get("l")); cc=_fnum(b.get("c")); v=_fnum(b.get("v")) or 0.0
+        if h is None or l is None or cc is None or h<=0 or l<=0:
+            continue
+        rows.append({"h":h,"l":l,"c":cc,"v":v})
+    if len(rows)<7:
+        return {
+            "impulse_move_pct": None,
+            "impulse_retracement_pct": None,
+            "impulse_max_retracement_pct": None,
+            "impulse_bounce_recovery_pct": None,
+            "pullback_volume_ratio": None,
+        }
+
+    current=rows[-1]["c"]
+    candidates=[]
+    n=len(rows)
+    for peak_idx in range(4,n-1):
+        start=max(0,peak_idx-24)
+        low_idx=min(range(start,peak_idx),key=lambda i:rows[i]["l"])
+        low=rows[low_idx]["l"]; peak=rows[peak_idx]["h"]
+        if peak<=low:
+            continue
+        move=(peak/low-1)*100.0
+        if move<6:
+            continue
+        after=rows[peak_idx+1:]
+        if not after:
+            continue
+        trough_rel=min(range(len(after)),key=lambda i:after[i]["l"])
+        trough_idx=peak_idx+1+trough_rel
+        trough=rows[trough_idx]["l"]
+        run=peak-low
+        max_retrace=(peak-trough)/run*100.0
+        current_retrace=(peak-current)/run*100.0
+        recovery=max_retrace-current_retrace
+        age=n-1-peak_idx
+        recency=max(.35,1.0-age/max(12.0,n*.8))
+        score=move*recency*(1.0 if 15<=max_retrace<=75 else .75)
+        candidates.append((score,low_idx,peak_idx,trough_idx,move,max_retrace,current_retrace,recovery))
+
+    if not candidates:
+        return {
+            "impulse_move_pct": None,
+            "impulse_retracement_pct": None,
+            "impulse_max_retracement_pct": None,
+            "impulse_bounce_recovery_pct": None,
+            "pullback_volume_ratio": None,
+        }
+
+    _,low_idx,peak_idx,trough_idx,move,max_retrace,current_retrace,recovery=max(candidates,key=lambda x:x[0])
+    iv=[rows[i]["v"] for i in range(low_idx,peak_idx+1) if rows[i]["v"]>0]
+    pv=[rows[i]["v"] for i in range(peak_idx+1,trough_idx+1) if rows[i]["v"]>0]
+    iva=sum(iv)/len(iv) if iv else None
+    pva=sum(pv)/len(pv) if pv else None
+    volume_ratio=pva/iva if iva and pva is not None else None
+
+    return {
+        "impulse_move_pct": move,
+        "impulse_retracement_pct": current_retrace,
+        "impulse_max_retracement_pct": max_retrace,
+        "impulse_bounce_recovery_pct": recovery,
+        "pullback_volume_ratio": volume_ratio,
+    }
+
+
 def _feature_row(day, prev_close, avg20_vol, atr_pct, idx):
     bars = day["bars"]
     if idx < 6 or idx >= len(bars):
@@ -148,6 +233,7 @@ def _feature_row(day, prev_close, avg20_vol, atr_pct, idx):
     rng = session_high - session_low
     close_location = (price - session_low) / rng if rng > 0 else 0.5
     range_pct = rng / price * 100.0 if price else None
+    impulse = _impulse_features(bars, idx)
 
     return {
         "day_pct": _pct(price, prev_close),
@@ -162,6 +248,7 @@ def _feature_row(day, prev_close, avg20_vol, atr_pct, idx):
         "time_fraction": time_fraction,
         "close_location": close_location,
         "range_pct": range_pct,
+        **impulse,
         "_price": price,
         "_idx": idx,
         "_session_high": session_high,
@@ -430,6 +517,8 @@ def _current_features(metrics, now_et):
     minute = now_et.hour * 60 + now_et.minute
     time_fraction = _clamp((minute - 570) / 390.0, 1.0 / 78.0, 1.0)
 
+    impulse = metrics.get("impulse_pullback") or {}
+
     return {
         "day_pct": _fnum(metrics.get("day_pct")),
         "gap_pct": _fnum(metrics.get("gap_pct")),
@@ -443,6 +532,11 @@ def _current_features(metrics, now_et):
         "time_fraction": time_fraction,
         "close_location": close_location,
         "range_pct": range_pct,
+        "impulse_move_pct": _fnum(impulse.get("impulse_move_pct")),
+        "impulse_retracement_pct": _fnum(impulse.get("current_retracement_pct")),
+        "impulse_max_retracement_pct": _fnum(impulse.get("max_retracement_pct")),
+        "impulse_bounce_recovery_pct": _fnum(impulse.get("bounce_recovery_pct")),
+        "pullback_volume_ratio": _fnum(impulse.get("pullback_volume_ratio")),
     }
 
 
@@ -591,7 +685,7 @@ def predict_ml(symbol, now, metrics, fetch_bars, et):
     result = {
         "status": "ok",
         "model_type": "XGBoost",
-        "version": "ml-v1.1",
+        "version": "ml-v1.3-impulse",
         "source": source,
         "training_samples": len(dataset),
         "target_pct": round(target_pct, 2),
@@ -608,7 +702,8 @@ def predict_ml(symbol, now, metrics, fetch_bars, et):
         "note": (
             "Walk-forward validation uses older observations to predict later unseen observations. "
             "Target 1 uses same-session first-touch outcomes; sessions where neither target nor stop is touched are excluded. "
-            "ML v1 only adjusts plan confidence when the validation gate passes; it does not override "
+            "Impulse size, retracement depth, bounce recovery and pullback-volume behavior are included as leakage-safe features. "
+            "ML only adjusts plan confidence when the validation gate passes; it does not override "
             "the rule-based entry/stop/target decision."
         ),
     }
