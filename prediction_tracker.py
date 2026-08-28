@@ -313,7 +313,28 @@ def record_prediction(metrics, now=None):
         "target1": _num(selected.get("target1")),
         "stop": _num(selected.get("stop")),
         "ml_edge": _num(ml.get("ml_edge_score")),
+        "ml_same_ticker_edge": _num(ml.get("same_ticker_edge_score")),
+        "ml_hybrid_edge": _num(ml.get("hybrid_ml_edge_score")),
+        "ml_edge_method": ml.get("edge_method"),
         "ml_validated_models": int(ml.get("validated_edge_model_count") or 0),
+        "peer_ml_probability_pct": _num(
+            (ml.get("peer_model") or {}).get("probability_pct")
+        ),
+        "peer_ml_edge": _num(
+            (ml.get("peer_model") or {}).get("peer_edge_score")
+        ),
+        "peer_ml_validated": bool(
+            (ml.get("peer_model") or {}).get("validated")
+        ),
+        "peer_ml_samples": int(
+            (ml.get("peer_model") or {}).get("samples") or 0
+        ),
+        "peer_ml_symbols": int(
+            (ml.get("peer_model") or {}).get("peer_symbols") or 0
+        ),
+        "peer_ml_blend_weight_pct": int(
+            ml.get("peer_blend_weight_pct") or 0
+        ),
         "historical_bias": hist.get("bias_label"),
         "historical_bias_score": _num(hist.get("bias_score")),
         "historical_samples": int(hist.get("sample_count") or 0),
