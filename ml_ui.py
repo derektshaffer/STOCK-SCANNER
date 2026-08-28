@@ -74,19 +74,23 @@ def render_ml_prediction(st, pd, result, card):
     edge_count = int(ml.get("validated_edge_model_count") or 0)
     coverage = ml.get("ml_edge_coverage") or "NONE"
     gate = ml.get("validation_gate") or "ADVISORY ONLY"
+    peer = ml.get("peer_model") or {}
+    peer_blend = int(ml.get("peer_blend_weight_pct") or 0)
     edge_class = "good" if edge is not None and edge >= 65 else "bad" if edge is not None and edge <= 45 else "warn"
 
     if edge is None:
-        edge_note = "no validated models yet · advisory predictions excluded"
+        edge_note = "no validated same-ticker models yet · advisory predictions excluded"
     else:
         model_word = "model" if edge_count == 1 else "models"
         edge_note = f'{ml.get("ml_lean") or "MIXED"} · {edge_count} validated {model_word} · {coverage.lower()} coverage'
+        if peer_blend:
+            edge_note += f" · peer layer {peer_blend}%"
         if gate != "PASSED":
             edge_note += " · advisory only"
 
     card(
         cols[0],
-        "VALIDATED ML EDGE",
+        "HYBRID ML EDGE" if peer_blend else "VALIDATED ML EDGE",
         f"{edge:.0f} / 100" if edge is not None else "—",
         edge_note,
         edge_class,
@@ -130,9 +134,55 @@ def render_ml_prediction(st, pd, result, card):
         "good" if ml.get("gate_passed") else "warn",
     )
 
+    peer_cols = st.columns([1.35, 1.0, 3.65])
+    peer_probability = peer.get("probability_pct")
+    peer_edge = peer.get("peer_edge_score")
+    peer_validated = bool(peer.get("validated"))
+    peer_status = str(peer.get("status") or "unavailable").replace("_", " ")
+    peer_note = (
+        f"{'validated' if peer_validated else peer_status} · "
+        f"n={int(peer.get('samples') or 0):,} similar setups · "
+        f"{int(peer.get('peer_symbols') or 0)} other tickers"
+    )
+    card(
+        peer_cols[0],
+        "SIMILAR-TICKER +3% / 60M",
+        f"{float(peer_probability):.1f}%" if peer_probability is not None else "—",
+        peer_note,
+        "good" if peer_validated and (peer_edge or 50) >= 58 else "warn",
+    )
+    card(
+        peer_cols[1],
+        "PEER EDGE",
+        f"{float(peer_edge):.0f} / 100" if peer_edge is not None else "—",
+        (
+            f"{peer_blend}% of headline when blended"
+            if peer_blend
+            else "advisory until both gates pass"
+        ),
+        "good" if peer_validated and (peer_edge or 50) >= 58 else "bad" if peer_validated and (peer_edge or 50) <= 42 else "warn",
+    )
+    with peer_cols[2]:
+        top_peers = peer.get("top_peer_symbols") or []
+        peer_names = ", ".join(
+            str(item.get("symbol"))
+            for item in top_peers[:6]
+            if item.get("symbol")
+        )
+        if peer_names:
+            st.caption(
+                "Peer cohort emphasizes behaviorally similar momentum setups from other symbols. "
+                f"Most represented peers: {peer_names}."
+            )
+        else:
+            st.caption(
+                "Peer ML is collecting a sufficiently large, diverse cohort of similar momentum setups."
+            )
+
     st.caption(
-        "The headline Validated ML Edge uses only models that passed walk-forward validation. "
-        "Unvalidated/advisory probabilities remain visible in their own cards but are excluded from the headline edge."
+        "Same-ticker ML stays primary. A peer model can contribute at most 30% of the headline edge, "
+        "and only after the stock's own same-ticker validation gate and the peer model's separate "
+        "whole-trading-day validation gate have both passed."
     )
 
     with ml_details_slot.popover("ML details"):
@@ -162,8 +212,16 @@ def render_ml_prediction(st, pd, result, card):
             "naive baseline and meet a Brier-score threshold before it is marked validated."
         )
         st.write(
-            "**Headline edge rule:** Only validated models contribute to Validated ML Edge. "
-            "Advisory models can still be inspected individually, but they do not affect the headline score or ML confidence adjustment."
+            "**Headline edge rule:** Same-ticker models remain primary. Only validated same-ticker "
+            "models contribute to the stock-specific edge. The separate similar-ticker peer model "
+            "can contribute up to 30% only when it passes whole-trading-day validation AND the "
+            "same-ticker validation gate has already passed. Peer-only evidence stays advisory."
+        )
+        st.write(
+            "**Peer model:** It searches historical momentum observations from other tickers for "
+            "setups resembling the current stock in price band, liquidity, day move, 5/15-minute "
+            "momentum, volume pace, VWAP extension, distance from the high, intraday range and time of day. "
+            "Its target is a +3% or greater move over the next 60 minutes."
         )
 
         rows = []
@@ -214,6 +272,8 @@ def render_ml_prediction(st, pd, result, card):
             f'XGBoost · same-ticker data · {ml.get("training_samples", 0)} historical snapshots · '
             f'target geometry +{ml.get("target_pct", 0):.1f}% / {ml.get("stop_pct", 0):.1f}% · '
             f'source: {ml.get("source")}. '
-            "ML v1.1 is a probability/decision-support layer, not a guaranteed forecast. "
-            "It cannot override the rule-based trade action in this version."
+            f'Peer cohort: {int(peer.get("samples") or 0):,} similar observations across '
+            f'{int(peer.get("peer_symbols") or 0)} other tickers. '
+            "ML v1.2 is a probability/decision-support layer, not a guaranteed forecast, "
+            "and it cannot override the rule-based trade action."
         )
