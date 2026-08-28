@@ -166,6 +166,8 @@ def render_v2_decision(st, metrics):
                     ("execution_quality", "Execution"),
                     ("extension", "Extension"),
                     ("pullback_structure", "Pullback"),
+                    ("repeat_bounce_setup", "Repeat bounce"),
+                    ("stair_step_structure", "Stair-step"),
                     ("plan_status_cap", "Plan cap"),
                     ("evidence_safety_cap", "Evidence cap"),
                 ],
@@ -336,6 +338,26 @@ def render_v2_decision(st, metrics):
                 f"across n={int(entry_signal_cal.get('resolved_target_stop') or 0)} decisive outcomes · "
                 f"60m higher {_fmt_pct(entry_signal_cal.get('higher_60m_rate'))} "
                 f"across n={int(entry_signal_cal.get('resolved_60m') or 0)}."
+            )
+
+        repeat_cal = tracking.get("repeat_bounce_calibration") or {}
+        if int(repeat_cal.get("entry_signals") or 0) > 0:
+            st.write(
+                f"**Bounce #2/#3+ live calibration:** "
+                f"{int(repeat_cal.get('entry_signals') or 0)} confirmed later-bounce signal(s) · "
+                f"T1-before-stop {_fmt_pct(repeat_cal.get('target_before_stop_rate'))} "
+                f"across n={int(repeat_cal.get('resolved_target_stop') or 0)} decisive outcomes · "
+                f"avg 30m MFE {_fmt_pct(repeat_cal.get('avg_mfe_30m_pct'))} · "
+                f"avg 30m MAE {_fmt_pct(repeat_cal.get('avg_mae_30m_pct'))}."
+            )
+
+        failure_cal = tracking.get("mature_bounce_failure_calibration") or {}
+        if int(failure_cal.get("resolved_60m_excursions") or 0) > 0:
+            st.write(
+                f"**Mature-bounce falloff calibration:** "
+                f"≥5% drop {_fmt_pct(failure_cal.get('drop_5pct_rate'))} · "
+                f"≥10% drop {_fmt_pct(failure_cal.get('drop_10pct_rate'))} "
+                f"across n={int(failure_cal.get('resolved_60m_excursions') or 0)} resolved 60m observations."
             )
 
         if tracking.get("durable_enabled"):
