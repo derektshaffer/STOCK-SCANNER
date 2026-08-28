@@ -24,8 +24,9 @@ from statistics import median
 from zoneinfo import ZoneInfo
 
 from tradier_live import get_history_bars, get_timesales_bars, post_quotes
+from multi_bounce import bounce_feature_values, detect_bounce_sequence
 
-REPLAY_VERSION = "historical-scanner-replay-v2.1-impulse"
+REPLAY_VERSION = "historical-scanner-replay-v3-multi-bounce"
 ET = ZoneInfo("America/New_York")
 
 DEFAULT_TRADING_DAYS = int(os.environ.get("REPLAY_TRADING_DAYS", "20") or 20)
@@ -691,10 +692,18 @@ def _current_snapshot(ss, symbol, rows, idx, prev_close, avg_daily, day_map, rep
     )
 
     impulse = _impulse_snapshot(rows, idx)
+    completed_bars = [bar for _, bar in completed]
+    sequence = detect_bounce_sequence(
+        completed_bars,
+        current_price=price,
+        atr_pct=None,
+    )
+    bounce_features = bounce_feature_values(sequence)
 
     c = {
         "symbol": symbol,
         **impulse,
+        **bounce_features,
         "market_session": "regular",
         "session_date": replay_day.isoformat(),
         "price": round(price, 4),
@@ -929,6 +938,16 @@ def build_replay_observations(
                         "impulse_max_retracement_pct": snap.get("impulse_max_retracement_pct"),
                         "impulse_bounce_recovery_pct": snap.get("impulse_bounce_recovery_pct"),
                         "pullback_volume_ratio": snap.get("pullback_volume_ratio"),
+                        "bounce_count": snap.get("bounce_count"),
+                        "last_bounce_pct": snap.get("last_bounce_pct"),
+                        "bounce_decay_ratio": snap.get("bounce_decay_ratio"),
+                        "bounce_volume_decay_ratio": snap.get("bounce_volume_decay_ratio"),
+                        "lower_high_streak": snap.get("lower_high_streak"),
+                        "higher_low_streak": snap.get("higher_low_streak"),
+                        "sequence_health_score": snap.get("sequence_health_score"),
+                        "current_pullback_pct": snap.get("current_pullback_pct"),
+                        "ongoing_bounce_pct": snap.get("ongoing_bounce_pct"),
+                        "bounce_leg_code": snap.get("bounce_leg_code"),
                         "above_vwap": snap["above_vwap"],
                         "failed_filters": snap["failed_filters"],
                         "failed_count": snap["failed_count"],
