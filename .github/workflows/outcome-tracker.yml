@@ -49,10 +49,14 @@ jobs:
           OUTCOME_DATE: ${{ inputs.date }}
           ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
           ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+          TRADIER_ACCESS_TOKEN: ${{ secrets.TRADIER_ACCESS_TOKEN }}
+          TRADIER_TOKEN: ${{ secrets.TRADIER_TOKEN }}
+          OUTCOME_MARKET_PROVIDER: "tradier"
         run: python score_outcomes.py
 
       - name: Score Analyzer outcomes
         if: github.event_name == 'workflow_dispatch' || steps.score_time.outputs.should_score == 'true'
+        continue-on-error: true
         env:
           OUTCOME_DATE: ${{ inputs.date }}
           ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
@@ -60,7 +64,7 @@ jobs:
         run: python score_analyzer_outcomes.py
 
       - name: Commit durable outcome history
-        if: github.event_name == 'workflow_dispatch' || steps.score_time.outputs.should_score == 'true'
+        if: always() && (github.event_name == 'workflow_dispatch' || steps.score_time.outputs.should_score == 'true')
         shell: bash
         run: |
           git config user.name "github-actions[bot]"
