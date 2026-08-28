@@ -71,6 +71,8 @@ def render_ml_prediction(st, pd, result, card):
     reversal = models.get("reversal_30") or {}
     repeat_bounce = models.get("repeat_bounce_30") or {}
     new_high = models.get("new_high_60") or {}
+    post_failure = models.get("post_bounce_failure_60") or {}
+    stair_reaccel = models.get("stair_reacceleration_60") or {}
 
     cols = st.columns(7)
     edge = ml.get("ml_edge_score")
@@ -145,15 +147,15 @@ def render_ml_prediction(st, pd, result, card):
     card(
         cols[6],
         "VALIDATION",
-        f'{ml.get("validated_models", 0)} / 7',
+        f'{ml.get("validated_models", 0)} / 9',
         "models passed walk-forward gate",
         "good" if ml.get("gate_passed") else "warn",
         "How many same-ticker ML models passed the walk-forward validation gate. Unvalidated models remain advisory and do not get full decision weight.",
     )
 
-    bounce_cols = st.columns([1.25, 1.25, 3.5])
+    sequence_cols = st.columns(4)
     card(
-        bounce_cols[0],
+        sequence_cols[0],
         "NEXT BOUNCE / 30M",
         _pct_value(repeat_bounce) if ml.get("bounce_relevant") else "N/A",
         _validation_note(repeat_bounce) if ml.get("bounce_relevant") else "needs at least one completed bounce",
@@ -161,18 +163,33 @@ def render_ml_prediction(st, pd, result, card):
         "After at least one prior bounce, estimates whether another quick rebound threshold is hit before an equal-sized breakdown threshold during the next 30 minutes.",
     )
     card(
-        bounce_cols[1],
+        sequence_cols[1],
         "NEW HIGH / 60M",
         _pct_value(new_high) if ml.get("bounce_relevant") else "N/A",
         _validation_note(new_high) if ml.get("bounce_relevant") else "needs a multi-leg sequence",
         "good" if (new_high.get("probability_pct") or 0) >= 60 else "bad" if new_high.get("probability_pct") is not None and (new_high.get("probability_pct") or 0) <= 40 else "warn",
         "After at least one bounce, estimates whether price reaches a fresh session high before an adaptive downside failure threshold during the next 60 minutes.",
     )
-    with bounce_cols[2]:
-        st.caption(
-            "A later bounce can be a good short-duration trade even when NEW HIGH probability is low. "
-            "The app keeps repeat-bounce opportunity separate from full-run continuation."
-        )
+    card(
+        sequence_cols[2],
+        "POST-BOUNCE FAILURE / 60M",
+        _pct_value(post_failure) if ml.get("mature_bounce_relevant") else "N/A",
+        _validation_note(post_failure) if ml.get("mature_bounce_relevant") else "needs at least two completed bounces",
+        "bad" if (post_failure.get("probability_pct") or 0) >= 60 else "good" if post_failure.get("probability_pct") is not None and (post_failure.get("probability_pct") or 0) <= 40 else "warn",
+        "After two or more completed bounces, estimates whether a material falloff occurs before another smaller rescue push during the next 60 minutes.",
+    )
+    card(
+        sequence_cols[3],
+        "STAIR REACCEL / 60M",
+        _pct_value(stair_reaccel) if ml.get("stair_relevant") else "N/A",
+        _validation_note(stair_reaccel) if ml.get("stair_relevant") else "needs a multi-session step / plateau",
+        "good" if (stair_reaccel.get("probability_pct") or 0) >= 60 else "bad" if stair_reaccel.get("probability_pct") is not None and (stair_reaccel.get("probability_pct") or 0) <= 40 else "warn",
+        "When a multi-session stair-step or higher plateau exists, estimates whether another expansion leg happens before the accepted higher level breaks down.",
+    )
+    st.caption(
+        "A later bounce can be a good short-duration trade even when NEW HIGH probability is low. "
+        "Post-bounce failure and stair-step reacceleration are modeled separately so weakening bounces are not confused with healthy higher-plateau continuation."
+    )
 
     peer_cols = st.columns([1.35, 1.0, 3.65])
     peer_probability = peer.get("probability_pct")
@@ -232,7 +249,7 @@ def render_ml_prediction(st, pd, result, card):
             "**What it predicts:** Whether Target 1 is reached before the stop during the "
             "rest of the same trading session, whether price is higher in 30 and 60 minutes, "
             "breakout hold probability, 30-minute repeat-bounce probability, 60-minute fresh-high probability, "
-            "and downside reversal risk."
+            "60-minute mature-bounce failure risk, multi-session stair-step reacceleration, and downside reversal risk."
         )
         target_source = target.get("target_source") or "Target 1"
         outcomes = target.get("outcome_summary") or {}
@@ -248,7 +265,8 @@ def render_ml_prediction(st, pd, result, card):
             "snapshots using only information that existed at each snapshot: day move, gap, "
             "VWAP extension, 5/15/30-minute momentum, volume pace, distance from the high, "
             "ATR, time of day, range position, intraday range, bounce count, bounce-size decay, "
-            "bounce-volume decay, lower-high/higher-low sequences and current bounce/pullback leg."
+            "bounce-volume decay, lower-high/higher-low sequences, current bounce/pullback leg, "
+            "step count, plateau age/range/retention, plateau volume contraction, and stair-step reacceleration/breakdown state."
         )
         st.write(
             "**Leakage protection:** Validation is expanding-window/walk-forward: older samples "
@@ -265,7 +283,8 @@ def render_ml_prediction(st, pd, result, card):
             "**Peer model:** It searches historical momentum observations from other tickers for "
             "setups resembling the current stock in price band, liquidity, day move, 5/15-minute "
             "momentum, volume pace, VWAP extension, distance from the high, intraday range, time of day, "
-            "impulse size, retracement depth, bounce recovery and pullback-volume behavior. "
+            "impulse size, retracement depth, bounce recovery, pullback-volume behavior, bounce decay, "
+            "and multi-session stair-step / plateau structure. "
             "Its target is a +3% or greater move over the next 60 minutes."
         )
 
@@ -278,6 +297,8 @@ def render_ml_prediction(st, pd, result, card):
             "reversal_30": "30m reversal risk",
             "repeat_bounce_30": "Next bounce before breakdown (30m)",
             "new_high_60": "Fresh high before breakdown (60m)",
+            "post_bounce_failure_60": "Mature-bounce failure risk (60m)",
+            "stair_reacceleration_60": "Stair-step reacceleration (60m)",
         }
         for key, label in labels.items():
             m = models.get(key) or {}
@@ -322,6 +343,6 @@ def render_ml_prediction(st, pd, result, card):
             f'source: {ml.get("source")}. '
             f'Peer cohort: {int(peer.get("samples") or 0):,} similar observations across '
             f'{int(peer.get("peer_symbols") or 0)} other tickers. '
-            "ML v1.5 is a probability/decision-support layer, not a guaranteed forecast, "
+            "ML v1.6 is a probability/decision-support layer, not a guaranteed forecast, "
             "and it cannot override the rule-based trade action."
         )
