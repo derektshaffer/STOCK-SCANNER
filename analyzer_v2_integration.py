@@ -663,7 +663,7 @@ def _evidence_strength(metrics, sec, market, catalyst):
     validated = int(ml.get("validated_edge_model_count") or 0)
     score += min(30.0, validated * 10.0)
     if validated:
-        reasons.append(f"{validated}/4 ML models validated")
+        reasons.append(f"{validated}/5 ML models validated")
     else:
         reasons.append("no validated ML models yet")
 
@@ -696,6 +696,234 @@ def _evidence_strength(metrics, sec, market, catalyst):
         score += 5.0
 
     return round(_clamp(score), 1), reasons[:6]
+
+
+def _full_spectrum_analysis(metrics, sec, market, catalyst, turnover):
+    """Synthesize the stock the way a discretionary momentum trader would.
+
+    Scores are 0-100 quality/risk indices. Scenario percentages are RELATIVE
+    WEIGHTS, not calibrated probabilities; they summarize which path currently
+    has the most evidence while the separately validated ML models retain their
+    own probability semantics.
+    """
+    def num(key, default=None):
+        value=_num(metrics.get(key))
+        return default if value is None else value
+    def cap(x):
+        return round(_clamp(float(x),0.0,100.0),1)
+    def stance(score, bullish=True):
+        if bullish:
+            return "STRONG" if score>=72 else "POSITIVE" if score>=58 else "MIXED" if score>=42 else "WEAK"
+        return "VERY HIGH" if score>=78 else "HIGH" if score>=62 else "MODERATE" if score>=42 else "LOW"
+
+    # 1) Momentum / trend.
+    momentum=50.0
+    for key,mult,limit in (("momentum_5m",4.0,14),("momentum_15m",2.2,12),("momentum_30m",1.2,10)):
+        v=num(key)
+        if v is not None:
+            momentum += _clamp(v*mult,-limit,limit)
+    if metrics.get("vwap_position")=="ABOVE":momentum+=7
+    elif metrics.get("vwap_position")=="BELOW":momentum-=9
+    from_high=num("from_high_pct")
+    if from_high is not None:
+        if from_high<=3:momentum+=5
+        elif from_high>=12:momentum-=8
+    momentum=cap(momentum)
+
+    # 2) Volume / participation.
+    volume=50.0
+    pace=num("volume_pace")
+    if pace is not None:
+        if pace>=3:volume+=22
+        elif pace>=2:volume+=15
+        elif pace>=1.25:volume+=7
+        elif pace<0.7:volume-=12
+    impulse=metrics.get("impulse_pullback") or {}
+    pvr=_num(impulse.get("pullback_volume_ratio"))
+    if pvr is not None:
+        if pvr<0.75:volume+=7
+        elif pvr>1.20:volume-=8
+    ft=_num((turnover or {}).get("float_turnover"))
+    if ft is not None:
+        if ft>=1.0:volume+=8
+        elif ft>=0.40:volume+=4
+    volume=cap(volume)
+
+    # 3) Price structure / pullback health.
+    structure=50.0
+    retrace=_num(impulse.get("current_retracement_pct"))
+    max_retrace=_num(impulse.get("max_retracement_pct"))
+    recovery=_num(impulse.get("bounce_recovery_pct")) or 0.0
+    if impulse.get("detected"):
+        structure+=5
+        if retrace is not None and 28<=retrace<=62:structure+=8
+        if impulse.get("bounce_confirmed"):structure+=14
+        elif retrace is not None and 28<=retrace<=62:structure-=5
+        if max_retrace is not None and max_retrace>=78:structure-=18
+        elif max_retrace is not None and max_retrace>=65 and recovery<5:structure-=10
+    else:
+        structure-=3
+    structure=cap(structure)
+
+    # 4) Historical behavior.
+    hist=metrics.get("historical_setup") or {}
+    history=50.0
+    if hist.get("status")=="ok":
+        history += (_num(hist.get("bias_score")) or 0.0)*1.8
+        fail=_num(hist.get("breakout_failure_pct"))
+        follow=_num(hist.get("breakout_follow_through_pct"))
+        if fail is not None and follow is not None:
+            history += (follow-fail)*0.16
+        bounce=_num(hist.get("impulse_bounce_5pct_rate"))
+        if bounce is not None:
+            history += (bounce-50.0)*0.12
+    history=cap(history)
+
+    # 5) Validated ML continuation plus reversal model.
+    ml=metrics.get("ml_prediction") or {}
+    ml_edge=_num(ml.get("ml_edge_score"))
+    ml_score=cap(ml_edge if ml_edge is not None else 50.0)
+    reversal_model=(ml.get("models") or {}).get("reversal_30") or {}
+    reversal_ml=_num(reversal_model.get("probability_pct"))
+    reversal_ml_valid=bool(reversal_model.get("validated"))
+
+    # 6) Catalyst / news.
+    cat_score=cap(50.0+(_num(catalyst.get("score")) or 0.0)*4.0)
+
+    # 7) Market + sector context.
+    market_score=50.0
+    broad=_num(market.get("broad_market_avg_pct"))
+    sector=_num(market.get("sector_move_pct"))
+    if broad is not None:market_score+=_clamp(broad*6.0,-12,12)
+    if sector is not None:market_score+=_clamp(sector*5.0,-10,10)
+    if market.get("label")=="RISK-ON":market_score+=5
+    elif market.get("label")=="RISK-OFF":market_score-=5
+    market_score=cap(market_score)
+
+    # 8) Execution / liquidity.
+    execution=50.0
+    liq=(metrics.get("liquidity") or {}).get("label")
+    if liq=="HIGH":execution+=24
+    elif liq=="MODERATE":execution+=8
+    elif liq=="LOW":execution-=25
+    spread=num("spread_pct")
+    if spread is not None:
+        if spread<=1:execution+=10
+        elif spread>=5:execution-=18
+        elif spread>=3:execution-=8
+    execution=cap(execution)
+
+    # 9) Fundamental/dilution risk translated into long-quality score.
+    fundamental=55.0 if sec.get("status")=="ok" else 50.0
+    dilution=sec.get("dilution_risk")
+    if dilution=="HIGH":fundamental-=28
+    elif dilution=="MODERATE":fundamental-=15
+    elif dilution=="NONE FOUND":fundamental+=5
+    fundamental=cap(fundamental)
+
+    # 10) Reversal risk combines live tape/structure with historical failure and
+    # a validated ML reversal probability when one exists.
+    live_ex=metrics.get("run_exhaustion") or {}
+    live_rev=_num(live_ex.get("score"))
+    reversal_parts=[]
+    if live_rev is not None:reversal_parts.append((live_rev,0.60))
+    fail=_num(hist.get("breakout_failure_pct"))
+    fade=_num(hist.get("gap_fade_pct"))
+    hist_rev=None
+    vals=[x for x in (fail,fade) if x is not None]
+    if vals:hist_rev=sum(vals)/len(vals)
+    if hist_rev is not None:reversal_parts.append((hist_rev,0.20))
+    if reversal_ml is not None and reversal_ml_valid:reversal_parts.append((reversal_ml,0.20))
+    if reversal_parts:
+        tw=sum(w for _,w in reversal_parts)
+        reversal=cap(sum(v*w for v,w in reversal_parts)/tw)
+    else:
+        reversal=50.0
+
+    potential=_num((metrics.get("decision_v2") or {}).get("potential_score"))
+    if potential is None:
+        potential=_num(metrics.get("score")) or 50.0
+
+    # Relative scenario evidence. These deliberately combine independent
+    # families rather than pretending one indicator determines the future.
+    continuation_raw=(
+        potential*0.18+momentum*0.14+volume*0.10+structure*0.10+
+        history*0.12+ml_score*0.16+cat_score*0.06+market_score*0.05+
+        execution*0.04+(100-reversal)*0.05
+    )
+    bounce_base=50.0
+    if impulse.get("detected"):
+        if retrace is not None and 25<=retrace<=62:bounce_base+=18
+        if impulse.get("bounce_confirmed"):bounce_base+=14
+        elif retrace is not None and 25<=retrace<=62:bounce_base-=4
+        hist_bounce=_num(hist.get("impulse_bounce_5pct_rate"))
+        if hist_bounce is not None:bounce_base+=(hist_bounce-50)*0.25
+        if pvr is not None and pvr<0.85:bounce_base+=6
+    bounce_raw=cap(bounce_base*0.55+structure*0.25+history*0.12+(100-reversal)*0.08)
+    reversal_raw=cap(reversal)
+    chop_raw=cap(
+        52.0
+        - abs(momentum-50.0)*0.35
+        - abs(ml_score-50.0)*0.20
+        + (8 if 42<=reversal<=62 else 0)
+        + (6 if 42<=structure<=58 else 0)
+    )
+
+    raws={
+        "continuation":max(1.0,continuation_raw),
+        "pullback_bounce":max(1.0,bounce_raw),
+        "reversal_failure":max(1.0,reversal_raw),
+        "sideways_chop":max(1.0,chop_raw),
+    }
+    total=sum(raws.values())
+    scenarios={
+        key:{
+            "relative_weight_pct":round(value/total*100.0,1),
+            "evidence_score":round(value,1),
+        }
+        for key,value in raws.items()
+    }
+    dominant=max(scenarios,key=lambda k:scenarios[k]["relative_weight_pct"])
+
+    categories={
+        "momentum":{"score":momentum,"stance":stance(momentum)},
+        "volume_participation":{"score":volume,"stance":stance(volume)},
+        "price_structure":{"score":structure,"stance":stance(structure)},
+        "historical_behavior":{"score":history,"stance":stance(history)},
+        "validated_ml":{"score":ml_score,"stance":stance(ml_score)},
+        "catalyst":{"score":cat_score,"stance":stance(cat_score)},
+        "market_sector":{"score":market_score,"stance":stance(market_score)},
+        "execution_liquidity":{"score":execution,"stance":stance(execution)},
+        "fundamental_dilution":{"score":fundamental,"stance":stance(fundamental)},
+        "reversal_risk":{"score":reversal,"stance":stance(reversal,bullish=False)},
+    }
+
+    available=[
+        "live price/quote","VWAP","multi-horizon momentum","ATR/volatility",
+        "volume pace","support/resistance","impulse/retracement","run exhaustion",
+        "same-ticker history","same-ticker ML","peer ML","news/catalyst",
+        "market/sector","SEC dilution risk","float/turnover","spread/liquidity"
+    ]
+    unavailable=[]
+    if str(metrics.get("market_provider") or "").lower()!="tradier" and str(metrics.get("live_feed") or "").upper()!="SIP":
+        unavailable.append("full consolidated tape")
+    unavailable.extend([
+        "true Level-2 order-book depth unless a depth feed is connected",
+        "broker-specific hidden liquidity / queue position",
+        "options flow unless an options feed is connected",
+        "real-time short-borrow availability unless a borrow feed is connected",
+    ])
+
+    return {
+        "version":"full-spectrum-v1",
+        "categories":categories,
+        "reversal_risk_score":reversal,
+        "reversal_risk_label":stance(reversal,bullish=False),
+        "dominant_scenario":dominant,
+        "scenarios":scenarios,
+        "scenario_note":"Relative evidence weights, not calibrated probabilities.",
+        "coverage":{"available":available,"not_currently_available":unavailable},
+    }
 
 
 def _turnover_context(metrics, sec, float_data):
@@ -767,6 +995,13 @@ def install_v2_analysis(sa):
         readiness, blockers, entry_components = _entry_readiness(metrics)
         evidence, evidence_reasons = _evidence_strength(metrics, sec, market, catalyst)
 
+        # Give the full-spectrum engine the current upside score before the
+        # public decision_v2 object is assembled.
+        metrics["decision_v2"] = {"potential_score": potential}
+        full_spectrum = _full_spectrum_analysis(
+            metrics, sec, market, catalyst, turnover
+        )
+
         # Final safety gate: a precise-looking entry should not be promoted when
         # the timing score or supporting evidence is still weak. Keep the price
         # zone visible as a watch area, but require stronger confirmation.
@@ -777,6 +1012,8 @@ def install_v2_analysis(sa):
                 safety_reasons.append("entry readiness is below 60/100")
             if evidence < 50:
                 safety_reasons.append("evidence strength is below 50/100")
+            if _num(full_spectrum.get("reversal_risk_score")) is not None and _num(full_spectrum.get("reversal_risk_score")) >= 68:
+                safety_reasons.append("run-exhaustion / reversal risk is high")
             if safety_reasons:
                 plan["status"] = "WAIT"
                 plan["action"] = "WAIT FOR STRONGER CONFIRMATION"
@@ -794,7 +1031,7 @@ def install_v2_analysis(sa):
                     entry_components["evidence_safety_cap"] = round(readiness - old_readiness, 1)
 
         metrics["decision_v2"] = {
-            "version": "decision-v2.3-impulse-confirmation",
+            "version": "decision-v2.4-full-spectrum",
             "potential_score": potential,
             "potential_label": _label(potential, 72, 52),
             "entry_readiness": readiness,
@@ -811,6 +1048,7 @@ def install_v2_analysis(sa):
             "fundamental_context": sec,
             "float_context": float_context,
             "turnover_context": turnover,
+            "full_spectrum": full_spectrum,
             "sip_status": sip_status,
             "live_stream_status": stream_status,
             "live_overlay": live_overlay,
