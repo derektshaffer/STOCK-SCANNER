@@ -127,6 +127,18 @@ def _feature_dict(row, scan_time=None):
         "current_pullback_pct": _num(row.get("current_pullback_pct")),
         "ongoing_bounce_pct": _num(row.get("ongoing_bounce_pct")),
         "bounce_leg_code": _num(row.get("bounce_leg_code")),
+        "reference_peak_pct_above_dip": _num(row.get("reference_peak_pct_above_dip")),
+        "stair_step_count": _num(row.get("stair_step_count")),
+        "stair_last_step_pct": _num(row.get("stair_last_step_pct")),
+        "stair_step_acceleration_ratio": _num(row.get("stair_step_acceleration_ratio")),
+        "stair_plateau_days": _num(row.get("stair_plateau_days")),
+        "stair_plateau_range_pct": _num(row.get("stair_plateau_range_pct")),
+        "stair_plateau_retention_pct": _num(row.get("stair_plateau_retention_pct")),
+        "stair_plateau_volume_ratio": _num(row.get("stair_plateau_volume_ratio")),
+        "stair_higher_plateau_count": _num(row.get("stair_higher_plateau_count")),
+        "stair_structure_score": _num(row.get("stair_structure_score")),
+        "stair_reaccelerating": _num(row.get("stair_reaccelerating")),
+        "stair_breakdown": _num(row.get("stair_breakdown")),
         "above_vwap": 1.0 if bool(row.get("above_vwap")) else 0.0,
         "log_liquidity": (
             math.log1p(max(0.0, liquidity)) if liquidity is not None else None
