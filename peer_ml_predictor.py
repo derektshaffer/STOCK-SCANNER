@@ -7,9 +7,10 @@ from statistics import mean
 
 from scanner_ml_ranker import load_training_observations
 from multi_bounce import bounce_feature_values
+from stair_step import stair_step_feature_values
 
 
-PEER_MODEL_VERSION = "analyzer-peer-v3-multi-bounce"
+PEER_MODEL_VERSION = "analyzer-peer-v4-sequence-regimes"
 PEER_TARGET = ">= +3% at 60 minutes"
 PEER_FEATURES = [
     "day_pct",
@@ -37,6 +38,18 @@ PEER_FEATURES = [
     "current_pullback_pct",
     "ongoing_bounce_pct",
     "bounce_leg_code",
+    "reference_peak_pct_above_dip",
+    "stair_step_count",
+    "stair_last_step_pct",
+    "stair_step_acceleration_ratio",
+    "stair_plateau_days",
+    "stair_plateau_range_pct",
+    "stair_plateau_retention_pct",
+    "stair_plateau_volume_ratio",
+    "stair_higher_plateau_count",
+    "stair_structure_score",
+    "stair_reaccelerating",
+    "stair_breakdown",
 ]
 
 MIN_PEER_SAMPLES = 500
@@ -94,6 +107,7 @@ def _current_features(metrics, now_et):
 
     impulse = metrics.get("impulse_pullback") or {}
     bounce_features = bounce_feature_values(metrics.get("bounce_sequence") or {})
+    stair_features = stair_step_feature_values(metrics.get("stair_step") or {})
 
     return {
         "entry_price": price,
@@ -113,6 +127,7 @@ def _current_features(metrics, now_et):
         "impulse_bounce_recovery_pct": _num(impulse.get("bounce_recovery_pct")),
         "pullback_volume_ratio": _num(impulse.get("pullback_volume_ratio")),
         **bounce_features,
+        **stair_features,
     }
 
 
@@ -153,6 +168,18 @@ def _similarity_distance(row, current):
         ("current_pullback_pct", 6.0, 0.95),
         ("ongoing_bounce_pct", 6.0, 0.85),
         ("bounce_leg_code", 1.0, 0.90),
+        ("reference_peak_pct_above_dip", 8.0, 0.90),
+        ("stair_step_count", 1.5, 1.15),
+        ("stair_last_step_pct", 8.0, 0.95),
+        ("stair_step_acceleration_ratio", 0.45, 0.90),
+        ("stair_plateau_days", 2.0, 0.85),
+        ("stair_plateau_range_pct", 6.0, 0.95),
+        ("stair_plateau_retention_pct", 25.0, 1.05),
+        ("stair_plateau_volume_ratio", 0.45, 0.85),
+        ("stair_higher_plateau_count", 1.0, 1.00),
+        ("stair_structure_score", 20.0, 1.15),
+        ("stair_reaccelerating", 1.0, 1.10),
+        ("stair_breakdown", 1.0, 1.20),
     )
     for name, scale, weight in specs:
         d = _scaled_abs(features.get(name), current.get(name), scale)
@@ -492,6 +519,10 @@ def predict_peer_ml(symbol, now, metrics, et):
         round(_num(current.get("bounce_decay_ratio")) or -1.0, 1),
         int(_num(current.get("lower_high_streak")) or 0),
         int(_num(current.get("bounce_leg_code")) or 0),
+        int(_num(current.get("stair_step_count")) or 0),
+        round(_num(current.get("stair_structure_score")) or 0.0, 0),
+        int(_num(current.get("stair_reaccelerating")) or 0),
+        int(_num(current.get("stair_breakdown")) or 0),
     )
     stamp = time.time()
     cached = _CACHE.get(key)
@@ -561,7 +592,7 @@ def predict_peer_ml(symbol, now, metrics, et):
         "Separate peer layer using similar historical momentum setups from other tickers. "
         "Similarity uses price band, liquidity, day move, momentum, volume pace, VWAP extension, "
         "distance from the high, intraday range, time of day, impulse size, retracement depth, bounce recovery, "
-        "multi-bounce count/decay, lower-high structure and pullback-volume behavior. It is validated on whole trading "
+        "multi-bounce count/decay, lower-high structure, pullback-volume behavior, and multi-session stair-step / plateau context. It is validated on whole trading "
         "days and never replaces the stock's own same-ticker model."
     )
 
