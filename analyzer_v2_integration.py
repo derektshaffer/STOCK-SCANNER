@@ -646,6 +646,33 @@ def _entry_readiness(metrics):
                 structure_points -= 3.0
                 blockers.append("later-bounce dip still needs a hold/reclaim")
 
+    stair_points=0.0
+    stair=metrics.get("stair_step") or {}
+    stair_score=_num(stair.get("structure_score"))
+    if stair.get("reaccelerating") and stair_score is not None and stair_score>=65:
+        stair_points+=6.0
+    elif stair.get("state")=="HIGHER PLATEAU / COILING" and stair_score is not None and stair_score>=58:
+        stair_points+=3.0
+    if stair.get("breakdown"):
+        stair_points-=10.0
+        blockers.append("multi-session higher plateau has broken down")
+
+    repeat_points=0.0
+    preferred=str(plan.get("preferred_plan") or "")
+    if preferred=="repeat_bounce":
+        rb=plan.get("repeat_bounce") or {}
+        number=int(rb.get("bounce_number") or 0)
+        if status=="ENTRY AVAILABLE":
+            repeat_points+=7.0
+        hist_rate=_num(rb.get("historical_bounce_rate_pct"))
+        if hist_rate is not None:
+            if hist_rate>=65:repeat_points+=4.0
+            elif hist_rate<35:repeat_points-=4.0
+        if number>=3:
+            repeat_points-=2.0  # later bounces deserve a small maturity penalty
+        if int(sequence.get("lower_high_streak") or 0)>=2:
+            repeat_points-=4.0
+
     components = {
         "base": round(base, 1),
         "trigger_proximity": round(trigger_points, 1),
@@ -655,6 +682,8 @@ def _entry_readiness(metrics):
         "execution_quality": round(execution_points, 1),
         "extension": round(extension_points, 1),
         "pullback_structure": round(structure_points, 1),
+        "repeat_bounce_setup": round(repeat_points, 1),
+        "stair_step_structure": round(stair_points, 1),
     }
     raw_score = sum(components.values())
     capped_score = raw_score
@@ -696,7 +725,7 @@ def _evidence_strength(metrics, sec, market, catalyst):
     validated = int(ml.get("validated_edge_model_count") or 0)
     score += min(30.0, validated * 10.0)
     if validated:
-        reasons.append(f"{validated}/7 ML models validated")
+        reasons.append(f"{validated}/9 ML models validated")
     else:
         reasons.append("no validated ML models yet")
 
@@ -773,6 +802,7 @@ def _full_spectrum_analysis(metrics, sec, market, catalyst, turnover):
         elif pace<0.7:volume-=12
     impulse=metrics.get("impulse_pullback") or {}
     sequence=metrics.get("bounce_sequence") or {}
+    stair=metrics.get("stair_step") or {}
     pvr=_num(impulse.get("pullback_volume_ratio"))
     if pvr is not None:
         if pvr<0.75:volume+=7
@@ -807,6 +837,11 @@ def _full_spectrum_analysis(metrics, sec, market, catalyst, turnover):
         sequence_score=50.0
     sequence_score=cap(sequence_score)
 
+    stair_score=_num(stair.get("structure_score"))
+    if stair_score is None:
+        stair_score=45.0 if not stair.get("detected") else 50.0
+    stair_score=cap(stair_score)
+
     # 4) Historical behavior.
     hist=metrics.get("historical_setup") or {}
     history=50.0
@@ -837,6 +872,12 @@ def _full_spectrum_analysis(metrics, sec, market, catalyst, turnover):
     new_high_model=(ml.get("models") or {}).get("new_high_60") or {}
     new_high_ml=_num(new_high_model.get("probability_pct"))
     new_high_valid=bool(new_high_model.get("validated"))
+    post_failure_model=(ml.get("models") or {}).get("post_bounce_failure_60") or {}
+    post_failure_ml=_num(post_failure_model.get("probability_pct"))
+    post_failure_valid=bool(post_failure_model.get("validated"))
+    stair_model=(ml.get("models") or {}).get("stair_reacceleration_60") or {}
+    stair_ml=_num(stair_model.get("probability_pct"))
+    stair_ml_valid=bool(stair_model.get("validated"))
 
     # 6) Catalyst / news.
     cat_score=cap(50.0+(_num(catalyst.get("score")) or 0.0)*4.0)
@@ -877,14 +918,16 @@ def _full_spectrum_analysis(metrics, sec, market, catalyst, turnover):
     live_ex=metrics.get("run_exhaustion") or {}
     live_rev=_num(live_ex.get("score"))
     reversal_parts=[]
-    if live_rev is not None:reversal_parts.append((live_rev,0.60))
+    if live_rev is not None:reversal_parts.append((live_rev,0.50))
     fail=_num(hist.get("breakout_failure_pct"))
     fade=_num(hist.get("gap_fade_pct"))
     hist_rev=None
     vals=[x for x in (fail,fade) if x is not None]
     if vals:hist_rev=sum(vals)/len(vals)
-    if hist_rev is not None:reversal_parts.append((hist_rev,0.20))
-    if reversal_ml is not None and reversal_ml_valid:reversal_parts.append((reversal_ml,0.20))
+    if hist_rev is not None:reversal_parts.append((hist_rev,0.15))
+    if reversal_ml is not None and reversal_ml_valid:reversal_parts.append((reversal_ml,0.15))
+    if int(sequence.get("completed_bounces") or 0)>=2 and post_failure_valid and post_failure_ml is not None:
+        reversal_parts.append((post_failure_ml,0.20))
     if reversal_parts:
         tw=sum(w for _,w in reversal_parts)
         reversal=cap(sum(v*w for v,w in reversal_parts)/tw)
@@ -898,10 +941,12 @@ def _full_spectrum_analysis(metrics, sec, market, catalyst, turnover):
     # Relative scenario evidence. These deliberately combine independent
     # families rather than pretending one indicator determines the future.
     new_high_support=(new_high_ml if new_high_valid and new_high_ml is not None else 50.0)
+    stair_support=(stair_ml if stair_ml_valid and stair_ml is not None else stair_score)
     continuation_raw=(
-        potential*0.16+momentum*0.13+volume*0.09+structure*0.09+
-        sequence_score*0.08+history*0.11+ml_score*0.14+new_high_support*0.06+
-        cat_score*0.05+market_score*0.04+execution*0.03+(100-reversal)*0.02
+        potential*0.14+momentum*0.12+volume*0.08+structure*0.08+
+        sequence_score*0.07+stair_score*0.08+history*0.10+ml_score*0.12+
+        new_high_support*0.05+stair_support*0.05+cat_score*0.04+
+        market_score*0.03+execution*0.02+(100-reversal)*0.02
     )
     bounce_base=50.0
     if impulse.get("detected"):
@@ -930,6 +975,9 @@ def _full_spectrum_analysis(metrics, sec, market, catalyst, turnover):
         if int(sequence.get("lower_high_streak") or 0)>=2:
             bounce_base-=10
 
+    if completed_bounces>=2 and post_failure_valid and post_failure_ml is not None:
+        bounce_base-=(post_failure_ml-50.0)*0.22
+
     bounce_raw=cap(
         bounce_base*0.44
         + structure*0.18
@@ -937,6 +985,17 @@ def _full_spectrum_analysis(metrics, sec, market, catalyst, turnover):
         + history*0.10
         + (100-reversal)*0.10
     )
+
+    stair_base=stair_score
+    if stair.get("reaccelerating"):stair_base+=14
+    elif stair.get("state")=="HIGHER PLATEAU / COILING":stair_base+=8
+    if stair.get("volume_cooled"):stair_base+=4
+    if stair.get("plateau_tight"):stair_base+=4
+    if stair.get("breakdown"):stair_base-=28
+    if stair_ml_valid and stair_ml is not None:
+        stair_base+=(stair_ml-50.0)*0.45
+    stair_raw=cap(stair_base*0.62+momentum*0.12+volume*0.10+history*0.08+(100-reversal)*0.08)
+
     reversal_raw=cap(reversal)
     chop_raw=cap(
         52.0
@@ -949,6 +1008,7 @@ def _full_spectrum_analysis(metrics, sec, market, catalyst, turnover):
     raws={
         "continuation":max(1.0,continuation_raw),
         "pullback_bounce":max(1.0,bounce_raw),
+        "stair_reacceleration":max(1.0,stair_raw),
         "reversal_failure":max(1.0,reversal_raw),
         "sideways_chop":max(1.0,chop_raw),
     }
@@ -967,6 +1027,7 @@ def _full_spectrum_analysis(metrics, sec, market, catalyst, turnover):
         "volume_participation":{"score":volume,"stance":stance(volume)},
         "price_structure":{"score":structure,"stance":stance(structure)},
         "multi_bounce_sequence":{"score":sequence_score,"stance":stance(sequence_score)},
+        "multi_session_stair_step":{"score":stair_score,"stance":stance(stair_score)},
         "historical_behavior":{"score":history,"stance":stance(history)},
         "validated_ml":{"score":ml_score,"stance":stance(ml_score)},
         "catalyst":{"score":cat_score,"stance":stance(cat_score)},
@@ -978,7 +1039,7 @@ def _full_spectrum_analysis(metrics, sec, market, catalyst, turnover):
 
     available=[
         "live price/quote","VWAP","multi-horizon momentum","ATR/volatility",
-        "volume pace","support/resistance","impulse/retracement","multi-bounce sequence","run exhaustion",
+        "volume pace","support/resistance","impulse/retracement","multi-bounce sequence","multi-session stair-step / plateau","run exhaustion",
         "same-ticker history","same-ticker ML","peer ML","news/catalyst",
         "market/sector","SEC dilution risk","float/turnover","spread/liquidity"
     ]
@@ -993,7 +1054,7 @@ def _full_spectrum_analysis(metrics, sec, market, catalyst, turnover):
     ])
 
     return {
-        "version":"full-spectrum-v2-multi-bounce",
+        "version":"full-spectrum-v3-sequence-regimes",
         "categories":categories,
         "reversal_risk_score":reversal,
         "reversal_risk_label":stance(reversal,bullish=False),
@@ -1090,8 +1151,19 @@ def install_v2_analysis(sa):
                 safety_reasons.append("entry readiness is below 60/100")
             if evidence < 50:
                 safety_reasons.append("evidence strength is below 50/100")
-            if _num(full_spectrum.get("reversal_risk_score")) is not None and _num(full_spectrum.get("reversal_risk_score")) >= 68:
-                safety_reasons.append("run-exhaustion / reversal risk is high")
+            reversal_risk=_num(full_spectrum.get("reversal_risk_score"))
+            preferred_plan=str(plan.get("preferred_plan") or "")
+            # A confirmed Bounce #2/#3 scalp is intentionally allowed to coexist
+            # with elevated overall-run exhaustion. Only VERY high reversal risk
+            # blocks the quick-bounce plan; ordinary continuation entries keep
+            # the stricter 68/100 cap.
+            reversal_cap=78 if preferred_plan=="repeat_bounce" else 68
+            if reversal_risk is not None and reversal_risk >= reversal_cap:
+                safety_reasons.append(
+                    "run-exhaustion / reversal risk is very high for the later-bounce scalp"
+                    if preferred_plan=="repeat_bounce"
+                    else "run-exhaustion / reversal risk is high"
+                )
             if safety_reasons:
                 plan["status"] = "WAIT"
                 plan["action"] = "WAIT FOR STRONGER CONFIRMATION"
@@ -1109,7 +1181,7 @@ def install_v2_analysis(sa):
                     entry_components["evidence_safety_cap"] = round(readiness - old_readiness, 1)
 
         metrics["decision_v2"] = {
-            "version": "decision-v2.5-multi-bounce",
+            "version": "decision-v2.6-sequence-regimes",
             "potential_score": potential,
             "potential_label": _label(potential, 72, 52),
             "entry_readiness": readiness,
