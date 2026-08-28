@@ -723,7 +723,7 @@ def install_v2_analysis(sa):
         evidence, evidence_reasons = _evidence_strength(metrics, sec, market, catalyst)
 
         metrics["decision_v2"] = {
-            "version": "decision-v2.1-deduped",
+            "version": "decision-v2.2-peer-ml",
             "potential_score": potential,
             "potential_label": _label(potential, 72, 52),
             "entry_readiness": readiness,
