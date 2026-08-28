@@ -28,13 +28,15 @@ def _validated_edge_only(ml):
 
     models = ml.get("models") or {}
     weights = {
-        "target_before_stop": 0.30,
-        "higher_60": 0.17,
-        "higher_30": 0.10,
-        "breakout_hold": 0.08,
-        "reversal_30": 0.13,
-        "repeat_bounce_30": 0.13,
-        "new_high_60": 0.09,
+        "target_before_stop": 0.24,
+        "higher_60": 0.14,
+        "higher_30": 0.08,
+        "breakout_hold": 0.07,
+        "reversal_30": 0.11,
+        "repeat_bounce_30": 0.11,
+        "new_high_60": 0.07,
+        "post_bounce_failure_60": 0.10,
+        "stair_reacceleration_60": 0.08,
     }
     used = []
     weighted = []
@@ -47,10 +49,14 @@ def _validated_edge_only(ml):
             continue
         if name in {"repeat_bounce_30", "new_high_60"} and not ml.get("bounce_relevant"):
             continue
+        if name == "post_bounce_failure_60" and not ml.get("mature_bounce_relevant"):
+            continue
+        if name == "stair_reacceleration_60" and not ml.get("stair_relevant"):
+            continue
         probability = _num(model.get("probability_pct"))
         if probability is None:
             continue
-        if name == "reversal_30":
+        if name in {"reversal_30", "post_bounce_failure_60"}:
             probability = 100.0 - probability
         used.append(name)
         weighted.append((probability, weight))
@@ -207,6 +213,12 @@ def install_ml_analysis(sa):
         ml["repeat_bounce_30_validated"] = bool(repeat_bounce.get("validated"))
         ml["new_high_60_probability_pct"] = _num(new_high.get("probability_pct"))
         ml["new_high_60_validated"] = bool(new_high.get("validated"))
+        post_failure=(ml.get("models") or {}).get("post_bounce_failure_60") or {}
+        stair_reaccel=(ml.get("models") or {}).get("stair_reacceleration_60") or {}
+        ml["post_bounce_failure_60_probability_pct"] = _num(post_failure.get("probability_pct"))
+        ml["post_bounce_failure_60_validated"] = bool(post_failure.get("validated"))
+        ml["stair_reacceleration_60_probability_pct"] = _num(stair_reaccel.get("probability_pct"))
+        ml["stair_reacceleration_60_validated"] = bool(stair_reaccel.get("validated"))
         ml["peer_blend_weight_pct"] = 0
         ml["hybrid_ml_edge_score"] = (
             round(same_ticker_edge, 1)
@@ -240,7 +252,7 @@ def install_ml_analysis(sa):
         elif peer_edge is not None:
             ml["edge_method"] = str(ml.get("edge_method") or "validated_models_only") + "_peer_advisory"
 
-        ml["version"] = "ml-v1.5-multi-bounce-peer"
+        ml["version"] = "ml-v1.6-sequence-regimes-peer"
         metrics["ml_prediction"] = ml
 
         # Validation gate: only a model that beats naive baselines on unseen,
