@@ -28,11 +28,13 @@ def _validated_edge_only(ml):
 
     models = ml.get("models") or {}
     weights = {
-        "target_before_stop": 0.38,
-        "higher_60": 0.22,
-        "higher_30": 0.14,
-        "breakout_hold": 0.11,
-        "reversal_30": 0.15,
+        "target_before_stop": 0.30,
+        "higher_60": 0.17,
+        "higher_30": 0.10,
+        "breakout_hold": 0.08,
+        "reversal_30": 0.13,
+        "repeat_bounce_30": 0.13,
+        "new_high_60": 0.09,
     }
     used = []
     weighted = []
@@ -42,6 +44,8 @@ def _validated_edge_only(ml):
         if model.get("status") != "ok" or not model.get("validated"):
             continue
         if name == "breakout_hold" and not ml.get("breakout_relevant"):
+            continue
+        if name in {"repeat_bounce_30", "new_high_60"} and not ml.get("bounce_relevant"):
             continue
         probability = _num(model.get("probability_pct"))
         if probability is None:
@@ -197,6 +201,12 @@ def install_ml_analysis(sa):
         reversal_model=(ml.get("models") or {}).get("reversal_30") or {}
         ml["reversal_30_probability_pct"] = _num(reversal_model.get("probability_pct"))
         ml["reversal_30_validated"] = bool(reversal_model.get("validated"))
+        repeat_bounce=(ml.get("models") or {}).get("repeat_bounce_30") or {}
+        new_high=(ml.get("models") or {}).get("new_high_60") or {}
+        ml["repeat_bounce_30_probability_pct"] = _num(repeat_bounce.get("probability_pct"))
+        ml["repeat_bounce_30_validated"] = bool(repeat_bounce.get("validated"))
+        ml["new_high_60_probability_pct"] = _num(new_high.get("probability_pct"))
+        ml["new_high_60_validated"] = bool(new_high.get("validated"))
         ml["peer_blend_weight_pct"] = 0
         ml["hybrid_ml_edge_score"] = (
             round(same_ticker_edge, 1)
@@ -230,7 +240,7 @@ def install_ml_analysis(sa):
         elif peer_edge is not None:
             ml["edge_method"] = str(ml.get("edge_method") or "validated_models_only") + "_peer_advisory"
 
-        ml["version"] = "ml-v1.4-full-spectrum-peer"
+        ml["version"] = "ml-v1.5-multi-bounce-peer"
         metrics["ml_prediction"] = ml
 
         # Validation gate: only a model that beats naive baselines on unseen,
