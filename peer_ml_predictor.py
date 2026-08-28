@@ -8,7 +8,7 @@ from statistics import mean
 from scanner_ml_ranker import load_training_observations
 
 
-PEER_MODEL_VERSION = "analyzer-peer-v1"
+PEER_MODEL_VERSION = "analyzer-peer-v2-impulse"
 PEER_TARGET = ">= +3% at 60 minutes"
 PEER_FEATURES = [
     "day_pct",
@@ -21,6 +21,11 @@ PEER_FEATURES = [
     "distance_from_vwap_pct",
     "log_liquidity",
     "time_fraction",
+    "impulse_move_pct",
+    "impulse_retracement_pct",
+    "impulse_max_retracement_pct",
+    "impulse_bounce_recovery_pct",
+    "pullback_volume_ratio",
 ]
 
 MIN_PEER_SAMPLES = 500
@@ -76,6 +81,8 @@ def _current_features(metrics, now_et):
     minute = now_et.hour * 60 + now_et.minute
     time_fraction = _clamp((minute - 570) / 390.0, 0.0, 1.0)
 
+    impulse = metrics.get("impulse_pullback") or {}
+
     return {
         "entry_price": price,
         "day_pct": _num(metrics.get("day_pct")),
@@ -88,6 +95,11 @@ def _current_features(metrics, now_et):
         "distance_from_vwap_pct": _num(metrics.get("vwap_extension_pct")),
         "log_liquidity": _safe_log1p(avg_dollar),
         "time_fraction": time_fraction,
+        "impulse_move_pct": _num(impulse.get("impulse_move_pct")),
+        "impulse_retracement_pct": _num(impulse.get("current_retracement_pct")),
+        "impulse_max_retracement_pct": _num(impulse.get("max_retracement_pct")),
+        "impulse_bounce_recovery_pct": _num(impulse.get("bounce_recovery_pct")),
+        "pullback_volume_ratio": _num(impulse.get("pullback_volume_ratio")),
     }
 
 
@@ -113,6 +125,11 @@ def _similarity_distance(row, current):
         ("distance_from_vwap_pct", 5.0, 1.00),
         ("log_liquidity", 1.4, 0.75),
         ("time_fraction", 0.20, 0.85),
+        ("impulse_move_pct", 25.0, 1.10),
+        ("impulse_retracement_pct", 18.0, 1.35),
+        ("impulse_max_retracement_pct", 18.0, 1.00),
+        ("impulse_bounce_recovery_pct", 12.0, 1.15),
+        ("pullback_volume_ratio", 0.45, 0.85),
     )
     for name, scale, weight in specs:
         d = _scaled_abs(features.get(name), current.get(name), scale)
@@ -446,6 +463,8 @@ def predict_peer_ml(symbol, now, metrics, et):
         round(_num(current.get("volume_pace")) or 0.0, 1),
         round(_num(current.get("distance_from_vwap_pct")) or 0.0, 1),
         round(_num(current.get("entry_price")) or 0.0, 1),
+        round(_num(current.get("impulse_retracement_pct")) or -1.0, 0),
+        round(_num(current.get("impulse_bounce_recovery_pct")) or 0.0, 0),
     )
     stamp = time.time()
     cached = _CACHE.get(key)
@@ -514,7 +533,8 @@ def predict_peer_ml(symbol, now, metrics, et):
     result["note"] = (
         "Separate peer layer using similar historical momentum setups from other tickers. "
         "Similarity uses price band, liquidity, day move, momentum, volume pace, VWAP extension, "
-        "distance from the high, intraday range and time of day. It is validated on whole trading "
+        "distance from the high, intraday range, time of day, impulse size, retracement depth, bounce recovery "
+        "and pullback-volume behavior. It is validated on whole trading "
         "days and never replaces the stock's own same-ticker model."
     )
 
