@@ -19,7 +19,7 @@ from pathlib import Path
 API_URL = "https://api.openai.com/v1/responses"
 MODEL = os.environ.get("TRADING_RESEARCH_MODEL", "gpt-5.6-luna").strip() or "gpt-5.6-luna"
 OUT_DIR = Path("research")
-RESEARCH_TRIGGER_VERSION = "1.1"
+RESEARCH_TRIGGER_VERSION = "1.2"
 LATEST_PATH = OUT_DIR / "latest_research.json"
 
 
