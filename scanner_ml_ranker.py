@@ -173,6 +173,12 @@ def _extract_observations(payload):
                 "scan_time_et": scan_time,
                 "trading_date": dt.date().isoformat(),
                 "scan_id": row.get("scan_id"),
+                "symbol": str(row.get("symbol") or "").upper().strip(),
+                "entry_price": _num(
+                    row.get("entry_price")
+                    if row.get("entry_price") is not None
+                    else row.get("price")
+                ),
                 "observation_source": (
                     row.get("observation_source")
                     or payload.get("source")
