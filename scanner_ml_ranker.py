@@ -109,6 +109,14 @@ def _feature_dict(row, scan_time=None):
         "intraday_range_pct": _num(row.get("intraday_range_pct")),
         "distance_from_high_pct": _num(row.get("distance_from_high_pct")),
         "distance_from_vwap_pct": _num(row.get("distance_from_vwap_pct")),
+        # Extra analyzer/peer features. The scanner's own FEATURES list can
+        # ignore these, while peer_ml_predictor can consume them from the same
+        # historical observation loader when present.
+        "impulse_move_pct": _num(row.get("impulse_move_pct")),
+        "impulse_retracement_pct": _num(row.get("impulse_retracement_pct")),
+        "impulse_max_retracement_pct": _num(row.get("impulse_max_retracement_pct")),
+        "impulse_bounce_recovery_pct": _num(row.get("impulse_bounce_recovery_pct")),
+        "pullback_volume_ratio": _num(row.get("pullback_volume_ratio")),
         "above_vwap": 1.0 if bool(row.get("above_vwap")) else 0.0,
         "log_liquidity": (
             math.log1p(max(0.0, liquidity)) if liquidity is not None else None
