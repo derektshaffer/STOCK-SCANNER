@@ -12,6 +12,8 @@ on:
       - "analyzer_ui_core.py"
       - "ml_ui.py"
       - "historical_ui.py"
+      - "historical_integration.py"
+      - "historical_patterns.py"
       - "ml_predictor.py"
       - "multi_bounce.py"
       - "trading_research_agent.py"
@@ -58,7 +60,7 @@ jobs:
           python-version: "3.12"
       - name: Compile Analyzer v2
         run: |
-          python -m py_compile analyzer_v2_integration.py analyzer_v2_ui.py prediction_tracker.py score_analyzer_outcomes.py analyzer_bootstrap.py analyzer_ui_core.py ml_ui.py historical_ui.py ml_predictor.py multi_bounce.py trading_research_agent.py ml_integration.py peer_ml_predictor.py analyzer_app.py app.py glass_theme.py scanner_app.py scanner_expand.py scanner_single_open.py alpaca_live_stream.py tradier_live_stream.py live_market_stream.py live_tape_ui.py float_data.py stock_analyzer.py stock_scanner.py scanner_discovery.py scanner_ml_ranker.py historical_scanner_replay.py score_outcomes.py tradier_live.py position_exit.py consistency_regression_check.py
+          python -m py_compile analyzer_v2_integration.py analyzer_v2_ui.py prediction_tracker.py score_analyzer_outcomes.py analyzer_bootstrap.py analyzer_ui_core.py ml_ui.py historical_ui.py historical_integration.py historical_patterns.py ml_predictor.py multi_bounce.py trading_research_agent.py ml_integration.py peer_ml_predictor.py analyzer_app.py app.py glass_theme.py scanner_app.py scanner_expand.py scanner_single_open.py alpaca_live_stream.py tradier_live_stream.py live_market_stream.py live_tape_ui.py float_data.py stock_analyzer.py stock_scanner.py scanner_discovery.py scanner_ml_ranker.py historical_scanner_replay.py score_outcomes.py tradier_live.py position_exit.py consistency_regression_check.py
       - name: Import standalone v2 modules
         run: |
           python - <<'PY'
