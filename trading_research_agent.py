@@ -75,10 +75,90 @@ Return ONLY valid JSON with this shape:
   "research_gaps": ["questions worth investigating next"]
 }
 
-Generate 5-10 hypotheses. Every hypothesis must be implementable from market,
-news, fundamental, or microstructure data that could realistically be connected
-to the analyzer. Do not recommend promoting anything directly to production.
+Generate exactly 6 hypotheses. Every hypothesis must be implementable from
+market, news, fundamental, or microstructure data that could realistically be
+connected to the analyzer. Keep every field concise. Do not put Markdown links
+or citations inside the JSON fields; source URLs are captured separately from
+the web-search tool. Do not recommend promoting anything directly to production.
 """
+
+
+RESEARCH_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": [
+        "research_summary",
+        "hypotheses",
+        "important_caveats",
+        "research_gaps",
+    ],
+    "properties": {
+        "research_summary": {"type": "string"},
+        "hypotheses": {
+            "type": "array",
+            "minItems": 6,
+            "maxItems": 6,
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": [
+                    "title",
+                    "claim",
+                    "why_it_might_matter",
+                    "features_to_test",
+                    "target_outcome",
+                    "conditioning_variables",
+                    "expected_direction",
+                    "recommended_test",
+                    "minimum_evidence_to_promote",
+                    "failure_or_rejection_criteria",
+                    "source_quality",
+                    "confidence",
+                ],
+                "properties": {
+                    "title": {"type": "string"},
+                    "claim": {"type": "string"},
+                    "why_it_might_matter": {"type": "string"},
+                    "features_to_test": {
+                        "type": "array",
+                        "minItems": 2,
+                        "maxItems": 8,
+                        "items": {"type": "string"},
+                    },
+                    "target_outcome": {"type": "string"},
+                    "conditioning_variables": {
+                        "type": "array",
+                        "minItems": 1,
+                        "maxItems": 8,
+                        "items": {"type": "string"},
+                    },
+                    "expected_direction": {"type": "string"},
+                    "recommended_test": {"type": "string"},
+                    "minimum_evidence_to_promote": {"type": "string"},
+                    "failure_or_rejection_criteria": {"type": "string"},
+                    "source_quality": {
+                        "type": "string",
+                        "enum": ["HIGH", "MEDIUM", "LOW"],
+                    },
+                    "confidence": {
+                        "type": "string",
+                        "enum": ["HIGH", "MEDIUM", "LOW"],
+                    },
+                },
+            },
+        },
+        "important_caveats": {
+            "type": "array",
+            "maxItems": 8,
+            "items": {"type": "string"},
+        },
+        "research_gaps": {
+            "type": "array",
+            "maxItems": 8,
+            "items": {"type": "string"},
+        },
+    },
+}
 
 
 def _extract_output_text(payload):
@@ -148,7 +228,16 @@ def main():
         "reasoning": {"effort": "low"},
         "tools": [{"type": "web_search", "search_context_size": "low"}],
         "include": ["web_search_call.action.sources"],
-        "max_output_tokens": 5500,
+        "text": {
+            "verbosity": "low",
+            "format": {
+                "type": "json_schema",
+                "name": "trading_research_hypotheses",
+                "strict": True,
+                "schema": RESEARCH_SCHEMA,
+            },
+        },
+        "max_output_tokens": 9000,
         "store": False,
     }
 
@@ -173,6 +262,12 @@ def main():
 
     output_text = _extract_output_text(response_payload)
     parsed = _parse_json_text(output_text)
+    response_status = str(response_payload.get("status") or "")
+    incomplete_reason = (
+        (response_payload.get("incomplete_details") or {}).get("reason")
+        if isinstance(response_payload.get("incomplete_details"), dict)
+        else None
+    )
 
     sources = {}
     _walk_sources(response_payload.get("output") or [], sources)
@@ -196,7 +291,15 @@ def main():
         "generated_at": now.isoformat(),
         "model": response_payload.get("model") or MODEL,
         "response_id": response_payload.get("id"),
-        "status": "ok" if parsed is not None else "unparsed_output",
+        "status": (
+            "ok"
+            if parsed is not None
+            else "incomplete_output"
+            if response_status == "incomplete"
+            else "unparsed_output"
+        ),
+        "response_status": response_status,
+        "incomplete_reason": incomplete_reason,
         "guardrail": (
             "Research is hypothesis generation only. No item in this file is "
             "allowed to change live predictions until separately validated."
