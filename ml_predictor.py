@@ -334,6 +334,28 @@ def _build_dataset(bars5, et, target_pct, stop_pct):
                     bool(c30 and c30 > breakout_level and (min_future is None or min_future >= breakout_level * 0.985))
                 )
 
+            # Reversal risk asks whether a meaningful downside move occurs
+            # BEFORE a smaller continuation push during the next 30 minutes.
+            # Thresholds adapt to the stock's own ATR so a 3% drop is not treated
+            # the same on a 2% ATR stock and a 20% ATR stock.
+            atr_here=_fnum(feat.get("atr_pct")) or 6.0
+            reversal_down=_clamp(atr_here*0.60,2.5,8.0)
+            reversal_up=_clamp(atr_here*0.42,2.0,6.0)
+            reversal_30=None
+            for fb in future30:
+                fh=_fnum(fb.get("h")); fl=_fnum(fb.get("l"))
+                hit_down=bool(fl is not None and fl <= price*(1.0-reversal_down/100.0))
+                hit_up=bool(fh is not None and fh >= price*(1.0+reversal_up/100.0))
+                if hit_down and hit_up:
+                    reversal_30=None
+                    break
+                if hit_down:
+                    reversal_30=1
+                    break
+                if hit_up:
+                    reversal_30=0
+                    break
+
             # Target 1 is a day-trade first-touch question, not a 60-minute
             # continuation question. Evaluate it through the rest of this same
             # session. Timeouts are censored instead of being mislabeled losses.
@@ -357,6 +379,9 @@ def _build_dataset(bars5, et, target_pct, stop_pct):
                     "target_before_stop": target_label,
                     "target_before_stop_outcome": target_outcome,
                     "breakout_hold": breakout_hold,
+                    "reversal_30": reversal_30,
+                    "reversal_down_pct": round(reversal_down,2),
+                    "reversal_up_pct": round(reversal_up,2),
                 }
             )
             samples.append(row)
@@ -560,10 +585,11 @@ def _plan_geometry(metrics):
 
 def _weighted_edge(models, plan):
     weights = {
-        "target_before_stop": 0.45,
-        "higher_60": 0.25,
-        "higher_30": 0.15,
-        "breakout_hold": 0.15,
+        "target_before_stop": 0.38,
+        "higher_60": 0.22,
+        "higher_30": 0.14,
+        "breakout_hold": 0.11,
+        "reversal_30": 0.15,
     }
     probs = []
     for name, weight in weights.items():
@@ -573,6 +599,8 @@ def _weighted_edge(models, plan):
             continue
         if name == "breakout_hold" and not plan.get("breakout_relevant"):
             continue
+        if name == "reversal_30":
+            p = 100.0 - p
         probs.append((p, weight))
     if not probs:
         return None
@@ -631,7 +659,7 @@ def predict_ml(symbol, now, metrics, fetch_bars, et):
     current = _current_features(metrics, now_et)
 
     models = {}
-    for label in ("target_before_stop", "higher_30", "higher_60", "breakout_hold"):
+    for label in ("target_before_stop", "higher_30", "higher_60", "breakout_hold", "reversal_30"):
         models[label] = _walk_forward_fit(dataset, label, current)
 
     target_outcomes = {
@@ -648,6 +676,12 @@ def predict_ml(symbol, now, metrics, fetch_bars, et):
     target_model["target_source"] = selected.get("target1_reason") or "Target 1"
     target_model["outcome_summary"] = target_outcomes
     models["target_before_stop"] = target_model
+
+    reversal_model=models.get("reversal_30") or {}
+    reversal_model["horizon"]="30 minutes"
+    reversal_model["meaning"]="Probability downside reversal threshold is hit before a smaller continuation threshold"
+    reversal_model["direction"]="higher probability = higher reversal risk"
+    models["reversal_30"]=reversal_model
 
     breakout = plan.get("breakout") or {}
     breakout_level = _fnum(breakout.get("breakout_level"))
@@ -685,7 +719,7 @@ def predict_ml(symbol, now, metrics, fetch_bars, et):
     result = {
         "status": "ok",
         "model_type": "XGBoost",
-        "version": "ml-v1.3-impulse",
+        "version": "ml-v1.4-full-spectrum",
         "source": source,
         "training_samples": len(dataset),
         "target_pct": round(target_pct, 2),
@@ -703,6 +737,7 @@ def predict_ml(symbol, now, metrics, fetch_bars, et):
             "Walk-forward validation uses older observations to predict later unseen observations. "
             "Target 1 uses same-session first-touch outcomes; sessions where neither target nor stop is touched are excluded. "
             "Impulse size, retracement depth, bounce recovery and pullback-volume behavior are included as leakage-safe features. "
+            "A separate 30-minute reversal model estimates whether downside is hit before renewed continuation. "
             "ML only adjusts plan confidence when the validation gate passes; it does not override "
             "the rule-based entry/stop/target decision."
         ),
