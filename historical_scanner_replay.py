@@ -25,7 +25,7 @@ from zoneinfo import ZoneInfo
 
 from tradier_live import get_history_bars, get_timesales_bars, post_quotes
 
-REPLAY_VERSION = "historical-scanner-replay-v2-impulse"
+REPLAY_VERSION = "historical-scanner-replay-v2.1-impulse"
 ET = ZoneInfo("America/New_York")
 
 DEFAULT_TRADING_DAYS = int(os.environ.get("REPLAY_TRADING_DAYS", "20") or 20)
