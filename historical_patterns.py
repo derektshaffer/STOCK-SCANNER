@@ -68,6 +68,60 @@ def _label(gap_pct, close_from_open, close_location, day_pct):
         return "LATE FADE"
     return "TREND / MIXED"
 
+def _impulse_pullback_stats(daybars):
+    """Measure the dominant intraday impulse and first meaningful retracement."""
+    if not daybars or len(daybars) < 8:
+        return {}
+    rows=[]
+    for b in daybars:
+        h=_fnum(b.get("h")); l=_fnum(b.get("l")); cc=_fnum(b.get("c")); v=_fnum(b.get("v")) or 0.0
+        if h is None or l is None or cc is None or h<=0 or l<=0:
+            continue
+        rows.append({"h":h,"l":l,"c":cc,"v":v})
+    if len(rows)<8:
+        return {}
+
+    candidates=[]
+    n=len(rows)
+    for peak_idx in range(4,n-2):
+        start=max(0,peak_idx-24)
+        low_idx=min(range(start,peak_idx),key=lambda i:rows[i]["l"])
+        low=rows[low_idx]["l"]; peak=rows[peak_idx]["h"]
+        if peak<=low:
+            continue
+        move=(peak/low-1)*100.0
+        if move<7:
+            continue
+        future=rows[peak_idx+1:min(n,peak_idx+13)]
+        if not future:
+            continue
+        trough_rel=min(range(len(future)),key=lambda i:future[i]["l"])
+        trough_idx=peak_idx+1+trough_rel
+        trough=rows[trough_idx]["l"]
+        run=peak-low
+        retrace=(peak-trough)/run*100.0
+        after=rows[trough_idx:]
+        later_high=max((r["h"] for r in after),default=trough)
+        bounce=(later_high/trough-1)*100.0 if trough else None
+        iv=[rows[i]["v"] for i in range(low_idx,peak_idx+1) if rows[i]["v"]>0]
+        pv=[rows[i]["v"] for i in range(peak_idx+1,trough_idx+1) if rows[i]["v"]>0]
+        iva=sum(iv)/len(iv) if iv else None
+        pva=sum(pv)/len(pv) if pv else None
+        vr=pva/iva if iva and pva is not None else None
+        score=move*(1.0 if 18<=retrace<=70 else .7)
+        candidates.append((score,move,retrace,bounce,vr))
+    if not candidates:
+        return {}
+    _,move,retrace,bounce,vr=max(candidates,key=lambda x:x[0])
+    return {
+        "impulse_move_pct":round(move,2),
+        "impulse_retracement_pct":round(retrace,2),
+        "impulse_bounce_mfe_pct":round(bounce,2) if bounce is not None else None,
+        "pullback_volume_ratio":round(vr,3) if vr is not None else None,
+        "bounce_5pct":bool(bounce is not None and bounce>=5.0),
+    }
+
+
 def _intraday_stats(symbol, now, candidate_dates, fetch_bars, et):
     try:
         bars5, source = _cached(fetch_bars, symbol, "5Min", now, 540, 10000)
@@ -148,8 +202,11 @@ def _intraday_stats(symbol, now, candidate_dates, fetch_bars, et):
             mins = high_dt.hour * 60 + high_dt.minute
             high_bucket = "MORNING" if mins < 660 else "MIDDAY" if mins < 840 else "POWER HOUR"
 
+        impulse_stats=_impulse_pullback_stats(daybars)
+
         rows.append({
             "date": date,
+            **impulse_stats,
             "first_pullback_pct": round(early_pullback, 2) if early_pullback is not None else None,
             "vwap_reclaimed": reclaim_idx is not None,
             "vwap_reclaim_follow": reclaim_follow,
@@ -179,6 +236,14 @@ def _intraday_stats(symbol, now, candidate_dates, fetch_bars, et):
         "source": source,
         "sample_count": len(rows),
         "median_first_pullback_pct": _median(rows, "first_pullback_pct"),
+        "median_impulse_move_pct": _median(rows, "impulse_move_pct"),
+        "median_impulse_retracement_pct": _median(rows, "impulse_retracement_pct"),
+        "median_impulse_bounce_mfe_pct": _median(rows, "impulse_bounce_mfe_pct"),
+        "median_pullback_volume_ratio": _median(rows, "pullback_volume_ratio"),
+        "impulse_bounce_5pct_rate": _rate(
+            [r for r in rows if r.get("impulse_retracement_pct") is not None],
+            "bounce_5pct",
+        ),
         "vwap_reclaim_rate_pct": round(100 * len(reclaim_rows) / len(rows), 1),
         "vwap_reclaim_follow_through_pct": _rate(reclaim_rows, "vwap_reclaim_follow"),
         "median_reclaim_close_gain_pct": _median(reclaim_rows, "vwap_reclaim_close_gain_pct"),
@@ -338,6 +403,16 @@ def analyze_historical_patterns(symbol, now, current_day_pct, current_gap_pct, c
             notes.append(f"Historical VWAP reclaims often failed to hold; only {reclaim_follow:.0f}% followed through.")
     if intraday.get("median_first_pullback_pct") is not None:
         notes.append(f"Median early pullback after the opening push was {intraday['median_first_pullback_pct']:.1f}%.")
+    if intraday.get("median_impulse_retracement_pct") is not None:
+        notes.append(
+            f"Dominant impulse moves historically retraced a median {intraday['median_impulse_retracement_pct']:.0f}% "
+            f"before the next bounce/continuation attempt."
+        )
+    if intraday.get("impulse_bounce_5pct_rate") is not None:
+        notes.append(
+            f"After measured impulse pullbacks, price later bounced at least 5% on "
+            f"{intraday['impulse_bounce_5pct_rate']:.0f}% of sampled days."
+        )
     if intraday.get("session_high_most_common"):
         notes.append(f"Matched days most often made their session high in the {intraday['session_high_most_common'].lower()} window.")
 
@@ -362,6 +437,9 @@ def analyze_historical_patterns(symbol, now, current_day_pct, current_gap_pct, c
         "breakout_follow_through_pct": breakout_follow,
         "breakout_failure_pct": breakout_failure,
         "median_same_day_pullback_pct": _median(matches, "same_day_pullback_pct"),
+        "median_impulse_retracement_pct": intraday.get("median_impulse_retracement_pct"),
+        "median_impulse_bounce_mfe_pct": intraday.get("median_impulse_bounce_mfe_pct"),
+        "impulse_bounce_5pct_rate": intraday.get("impulse_bounce_5pct_rate"),
         "intraday": intraday,
         "notes": notes,
         "matches": matches[:15],
