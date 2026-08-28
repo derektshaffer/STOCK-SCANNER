@@ -871,6 +871,17 @@ def build_trade_plan(metrics, now):
         reversal_score=max(reversal_score, 74.0)
     hist_setup=metrics.get("historical_setup") or {}
     hist_intraday=hist_setup.get("intraday") or {}
+    historical_post_bounce_drop5=None
+    completed_for_history=int(sequence.get("completed_bounces") or 0)
+    if completed_for_history>=3:
+        historical_post_bounce_drop5=fnum(hist_intraday.get("post_third_bounce_drop5_rate_pct"))
+    elif completed_for_history>=2:
+        historical_post_bounce_drop5=fnum(hist_intraday.get("post_second_bounce_drop5_rate_pct"))
+    if historical_post_bounce_drop5 is not None:
+        if historical_post_bounce_drop5>=70:
+            reversal_score=max(reversal_score,72.0)
+        elif historical_post_bounce_drop5>=55:
+            reversal_score=max(reversal_score,64.0)
     catalyst=_catalyst_bias(metrics.get("news") or [])
     liquidity=metrics.get("liquidity") or {}
 
@@ -1270,6 +1281,11 @@ def build_trade_plan(metrics, now):
         )
         if reversal_score>=62:
             reasons.append("Overall run-exhaustion risk is elevated, so treat this as a shorter-duration bounce setup rather than a fresh continuation thesis.")
+        if historical_post_bounce_drop5 is not None and historical_post_bounce_drop5>=55:
+            reasons.append(
+                f"On comparable same-ticker sessions, a ≥5% falloff after this mature bounce stage occurred about "
+                f"{historical_post_bounce_drop5:.0f}% of the time; keep the later-bounce stop tight."
+            )
     elif repeat_bounce_plan and str(sequence.get("current_leg") or "").upper().startswith("PULL"):
         status="WAIT"
         preferred="repeat_bounce"; chosen=repeat_bounce_plan
