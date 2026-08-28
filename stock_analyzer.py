@@ -836,16 +836,6 @@ def build_trade_plan(metrics, now):
     hist=_hist_trade_context(metrics.get("historical_analogs"))
     impulse=metrics.get("impulse_pullback") or {}
     sequence=metrics.get("bounce_sequence") or {}
-    sequence=metrics.get("bounce_sequence") or {}
-    seq_health=fnum(sequence.get("sequence_health_score"))
-    seq_decay=fnum(sequence.get("bounce_decay_ratio"))
-    if seq_health is not None:
-        if seq_health>=68:score+=5; reasons.append("healthy multi-bounce structure")
-        elif seq_health<42:score-=9; reasons.append("multi-bounce sequence is decaying")
-    if int(sequence.get("lower_high_streak") or 0)>=2:
-        score-=7; reasons.append("repeated lower highs across bounces")
-    if seq_decay is not None and seq_decay<0.65:
-        score-=5; reasons.append("latest bounce is materially weaker than the prior bounce")
     exhaustion=metrics.get("run_exhaustion") or {}
     reversal_score=fnum(exhaustion.get("score")) or 0.0
     sequence_health=fnum(sequence.get("sequence_health_score"))
@@ -1216,6 +1206,16 @@ def score_setup(metrics):
     if fp is not None:
         if fp<=3:score+=8
         elif fp>=15:score-=8; reasons.append("far below day high")
+    sequence=metrics.get("bounce_sequence") or {}
+    seq_health=fnum(sequence.get("sequence_health_score"))
+    seq_decay=fnum(sequence.get("bounce_decay_ratio"))
+    if seq_health is not None:
+        if seq_health>=68:score+=5; reasons.append("healthy multi-bounce structure")
+        elif seq_health<42:score-=9; reasons.append("multi-bounce sequence is decaying")
+    if int(sequence.get("lower_high_streak") or 0)>=2:
+        score-=7; reasons.append("repeated lower highs across bounces")
+    if seq_decay is not None and seq_decay<0.65:
+        score-=5; reasons.append("latest bounce is materially weaker than the prior bounce")
     exhaustion=metrics.get("run_exhaustion") or {}
     ex_score=fnum(exhaustion.get("score"))
     if ex_score is not None:
