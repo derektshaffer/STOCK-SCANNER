@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 from statistics import median
 
 from multi_bounce import bounce_feature_values, detect_bounce_sequence
+from stair_step import detect_stair_step, stair_step_feature_values
 
 FEATURES = [
     "day_pct",
@@ -40,6 +41,19 @@ FEATURES = [
     "current_pullback_pct",
     "ongoing_bounce_pct",
     "bounce_leg_code",
+    "reference_peak_pct_above_dip",
+    # Multi-session step -> plateau -> reacceleration context.
+    "stair_step_count",
+    "stair_last_step_pct",
+    "stair_step_acceleration_ratio",
+    "stair_plateau_days",
+    "stair_plateau_range_pct",
+    "stair_plateau_retention_pct",
+    "stair_plateau_volume_ratio",
+    "stair_higher_plateau_count",
+    "stair_structure_score",
+    "stair_reaccelerating",
+    "stair_breakdown",
 ]
 
 _CACHE = {}
@@ -202,7 +216,7 @@ def _impulse_features(bars, idx):
     }
 
 
-def _feature_row(day, prev_close, avg20_vol, atr_pct, idx):
+def _feature_row(day, prev_close, avg20_vol, atr_pct, idx, prior_daily=None):
     bars = day["bars"]
     if idx < 6 or idx >= len(bars):
         return None
@@ -253,6 +267,20 @@ def _feature_row(day, prev_close, avg20_vol, atr_pct, idx):
         atr_pct=atr_pct,
     )
     bounce_features = bounce_feature_values(sequence)
+    prior_daily = prior_daily or []
+    stair = detect_stair_step(
+        prior_daily,
+        current_day={
+            "date": day.get("date"),
+            "o": day_open,
+            "h": session_high,
+            "l": session_low,
+            "c": price,
+            "v": volume,
+        },
+        atr_pct=atr_pct,
+    )
+    stair_features = stair_step_feature_values(stair)
 
     return {
         "day_pct": _pct(price, prev_close),
@@ -269,6 +297,7 @@ def _feature_row(day, prev_close, avg20_vol, atr_pct, idx):
         "range_pct": range_pct,
         **impulse,
         **bounce_features,
+        **stair_features,
         "_price": price,
         "_idx": idx,
         "_session_high": session_high,
@@ -323,7 +352,25 @@ def _build_dataset(bars5, et, target_pct, stop_pct):
         # 60-minute future window for the 30m/60m continuation labels; the
         # Target 1 first-touch label separately uses the rest of the session.
         for idx in range(6, len(bars) - 12, 3):
-            feat = _feature_row(day, prev_close, avg20, atr_pct, idx)
+            prior_daily_bars=[
+                {
+                    "t": d.get("date"),
+                    "o": d.get("open"),
+                    "h": d.get("high"),
+                    "l": d.get("low"),
+                    "c": d.get("close"),
+                    "v": d.get("volume"),
+                }
+                for d in daily[max(0, i-20):i]
+            ]
+            feat = _feature_row(
+                day,
+                prev_close,
+                avg20,
+                atr_pct,
+                idx,
+                prior_daily=prior_daily_bars,
+            )
             if not feat:
                 continue
             price = feat["_price"]
@@ -427,6 +474,50 @@ def _build_dataset(bars5, et, target_pct, stop_pct):
                         new_high_60=0
                         break
 
+            # Mature-bounce failure: after two or more completed bounces,
+            # does a meaningful downside break happen before another rescue push?
+            post_bounce_failure_60=None
+            failure_down=_clamp(atr_here*0.72,4.0,12.0)
+            failure_rescue=_clamp(atr_here*0.42,2.5,7.0)
+            mature_bounce=bool(bounce_count>=2)
+            if mature_bounce:
+                for fb in future60:
+                    fh=_fnum(fb.get("h")); fl=_fnum(fb.get("l"))
+                    hit_fail=bool(fl is not None and fl <= price*(1.0-failure_down/100.0))
+                    hit_rescue=bool(fh is not None and fh >= price*(1.0+failure_rescue/100.0))
+                    if hit_fail and hit_rescue:
+                        post_bounce_failure_60=None
+                        break
+                    if hit_fail:
+                        post_bounce_failure_60=1
+                        break
+                    if hit_rescue:
+                        post_bounce_failure_60=0
+                        break
+
+            # Stair-step reacceleration: when a multi-session step/plateau
+            # structure exists, does the next expansion threshold hit before a
+            # meaningful loss of the accepted higher level?
+            stair_count=int(_fnum(feat.get("stair_step_count")) or 0)
+            stair_reacceleration_60=None
+            stair_up=_clamp(atr_here*0.50,3.0,9.0)
+            stair_down=_clamp(atr_here*0.40,2.5,7.0)
+            stair_eligible=bool(stair_count>=1 and not bool(_fnum(feat.get("stair_breakdown"))))
+            if stair_eligible:
+                for fb in future60:
+                    fh=_fnum(fb.get("h")); fl=_fnum(fb.get("l"))
+                    hit_up=bool(fh is not None and fh >= price*(1.0+stair_up/100.0))
+                    hit_down=bool(fl is not None and fl <= price*(1.0-stair_down/100.0))
+                    if hit_up and hit_down:
+                        stair_reacceleration_60=None
+                        break
+                    if hit_up:
+                        stair_reacceleration_60=1
+                        break
+                    if hit_down:
+                        stair_reacceleration_60=0
+                        break
+
             # Target 1 is a day-trade first-touch question, not a 60-minute
             # continuation question. Evaluate it through the rest of this same
             # session. Timeouts are censored instead of being mislabeled losses.
@@ -453,7 +544,13 @@ def _build_dataset(bars5, et, target_pct, stop_pct):
                     "reversal_30": reversal_30,
                     "repeat_bounce_30": repeat_bounce_30,
                     "new_high_60": new_high_60,
+                    "post_bounce_failure_60": post_bounce_failure_60,
+                    "stair_reacceleration_60": stair_reacceleration_60,
                     "reversal_down_pct": round(reversal_down,2),
+                    "failure_down_pct": round(failure_down,2),
+                    "failure_rescue_pct": round(failure_rescue,2),
+                    "stair_up_pct": round(stair_up,2),
+                    "stair_down_pct": round(stair_down,2),
                     "reversal_up_pct": round(reversal_up,2),
                     "bounce_up_pct": round(bounce_up,2),
                     "bounce_down_pct": round(bounce_down,2),
@@ -619,6 +716,7 @@ def _current_features(metrics, now_et):
 
     impulse = metrics.get("impulse_pullback") or {}
     bounce_features = bounce_feature_values(metrics.get("bounce_sequence") or {})
+    stair_features = stair_step_feature_values(metrics.get("stair_step") or {})
 
     return {
         "day_pct": _fnum(metrics.get("day_pct")),
@@ -639,6 +737,7 @@ def _current_features(metrics, now_et):
         "impulse_bounce_recovery_pct": _fnum(impulse.get("bounce_recovery_pct")),
         "pullback_volume_ratio": _fnum(impulse.get("pullback_volume_ratio")),
         **bounce_features,
+        **stair_features,
     }
 
 
@@ -662,13 +761,15 @@ def _plan_geometry(metrics):
 
 def _weighted_edge(models, plan):
     weights = {
-        "target_before_stop": 0.30,
-        "higher_60": 0.17,
-        "higher_30": 0.10,
-        "breakout_hold": 0.08,
-        "reversal_30": 0.13,
-        "repeat_bounce_30": 0.13,
-        "new_high_60": 0.09,
+        "target_before_stop": 0.24,
+        "higher_60": 0.14,
+        "higher_30": 0.08,
+        "breakout_hold": 0.07,
+        "reversal_30": 0.11,
+        "repeat_bounce_30": 0.11,
+        "new_high_60": 0.07,
+        "post_bounce_failure_60": 0.10,
+        "stair_reacceleration_60": 0.08,
     }
     probs = []
     for name, weight in weights.items():
@@ -680,7 +781,11 @@ def _weighted_edge(models, plan):
             continue
         if name in {"repeat_bounce_30", "new_high_60"} and not plan.get("bounce_relevant"):
             continue
-        if name == "reversal_30":
+        if name == "post_bounce_failure_60" and not plan.get("mature_bounce_relevant"):
+            continue
+        if name == "stair_reacceleration_60" and not plan.get("stair_relevant"):
+            continue
+        if name in {"reversal_30", "post_bounce_failure_60"}:
             p = 100.0 - p
         probs.append((p, weight))
     if not probs:
@@ -748,6 +853,8 @@ def predict_ml(symbol, now, metrics, fetch_bars, et):
         "reversal_30",
         "repeat_bounce_30",
         "new_high_60",
+        "post_bounce_failure_60",
+        "stair_reacceleration_60",
     ):
         models[label] = _walk_forward_fit(dataset, label, current)
 
@@ -784,6 +891,18 @@ def predict_ml(symbol, now, metrics, fetch_bars, et):
     new_high_model["direction"]="higher probability = stronger re-expansion / new-high evidence"
     models["new_high_60"]=new_high_model
 
+    failure_model=models.get("post_bounce_failure_60") or {}
+    failure_model["horizon"]="60 minutes"
+    failure_model["meaning"]="After at least two completed bounces, probability a material downside break occurs before a smaller rescue push"
+    failure_model["direction"]="higher probability = higher post-bounce failure risk"
+    models["post_bounce_failure_60"]=failure_model
+
+    stair_model=models.get("stair_reacceleration_60") or {}
+    stair_model["horizon"]="60 minutes"
+    stair_model["meaning"]="When a multi-session step/plateau structure exists, probability another expansion leg hits before the higher level breaks down"
+    stair_model["direction"]="higher probability = stronger stair-step reacceleration evidence"
+    models["stair_reacceleration_60"]=stair_model
+
     breakout = plan.get("breakout") or {}
     breakout_level = _fnum(breakout.get("breakout_level"))
     price = _fnum(metrics.get("price"))
@@ -801,12 +920,18 @@ def predict_ml(symbol, now, metrics, fetch_bars, et):
     gate_passed = target_valid and continuation_valid
 
     bounce_sequence=metrics.get("bounce_sequence") or {}
-    bounce_relevant=bool(int(bounce_sequence.get("completed_bounces") or 0)>=1)
+    bounce_count=int(bounce_sequence.get("completed_bounces") or 0)
+    bounce_relevant=bool(bounce_count>=1)
+    mature_bounce_relevant=bool(bounce_count>=2)
+    stair_context=metrics.get("stair_step") or {}
+    stair_relevant=bool(stair_context.get("detected") and not stair_context.get("breakdown"))
     edge = _weighted_edge(
         models,
         {
             "breakout_relevant": breakout_relevant,
             "bounce_relevant": bounce_relevant,
+            "mature_bounce_relevant": mature_bounce_relevant,
+            "stair_relevant": stair_relevant,
         },
     )
     if edge is None:
@@ -825,13 +950,15 @@ def predict_ml(symbol, now, metrics, fetch_bars, et):
     result = {
         "status": "ok",
         "model_type": "XGBoost",
-        "version": "ml-v1.5-multi-bounce",
+        "version": "ml-v1.6-sequence-regimes",
         "source": source,
         "training_samples": len(dataset),
         "target_pct": round(target_pct, 2),
         "stop_pct": round(stop_pct, 2),
         "breakout_relevant": breakout_relevant,
         "bounce_relevant": bounce_relevant,
+        "mature_bounce_relevant": mature_bounce_relevant,
+        "stair_relevant": stair_relevant,
         "models": models,
         "validated_models": validated_count,
         "validation_gate": "PASSED" if gate_passed else "ADVISORY ONLY",
@@ -845,7 +972,8 @@ def predict_ml(symbol, now, metrics, fetch_bars, et):
             "Target 1 uses same-session first-touch outcomes; sessions where neither target nor stop is touched are excluded. "
             "Impulse size, retracement depth, bounce recovery and pullback-volume behavior are included as leakage-safe features. "
             "A separate 30-minute reversal model estimates whether downside is hit before renewed continuation. "
-            "Later-bounce models separately estimate repeat-bounce-before-breakdown and fresh-high-before-breakdown outcomes. "
+            "Later-bounce models separately estimate repeat-bounce-before-breakdown, fresh-high-before-breakdown, and mature-sequence failure. "
+            "A multi-session stair-step model separately estimates plateau reacceleration versus loss of the accepted higher level. "
             "ML only adjusts plan confidence when the validation gate passes; it does not override "
             "the rule-based entry/stop/target decision."
         ),
