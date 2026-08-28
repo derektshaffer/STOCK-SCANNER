@@ -1,0 +1,494 @@
+from __future__ import annotations
+
+import math
+import time
+from collections import Counter, defaultdict
+from statistics import mean
+
+from scanner_ml_ranker import load_training_observations
+
+
+PEER_MODEL_VERSION = "analyzer-peer-v1"
+PEER_TARGET = ">= +3% at 60 minutes"
+PEER_FEATURES = [
+    "day_pct",
+    "score",
+    "momentum_5m",
+    "momentum_15m",
+    "volume_pace",
+    "intraday_range_pct",
+    "distance_from_high_pct",
+    "distance_from_vwap_pct",
+    "log_liquidity",
+    "time_fraction",
+]
+
+MIN_PEER_SAMPLES = 500
+MIN_PEER_SYMBOLS = 8
+MIN_PEER_POSITIVES = 30
+MIN_PEER_NEGATIVES = 150
+MIN_VALIDATION_SAMPLES = 100
+MAX_PEER_SAMPLES = 2400
+MAX_PER_SYMBOL = 180
+MAX_PER_SYMBOL_DAY = 12
+
+_CACHE = {}
+_CACHE_TTL = 900
+
+
+def _num(value):
+    try:
+        value = float(value)
+        return value if math.isfinite(value) else None
+    except Exception:
+        return None
+
+
+def _clamp(value, lo, hi):
+    return max(lo, min(hi, value))
+
+
+def _safe_log1p(value):
+    value = _num(value)
+    if value is None:
+        return None
+    return math.log1p(max(0.0, value))
+
+
+def _current_features(metrics, now_et):
+    price = _num(metrics.get("price"))
+    high = _num(metrics.get("day_high"))
+    low = _num(metrics.get("day_low"))
+    intraday_range = (
+        (high / low - 1.0) * 100.0
+        if high and low and high >= low
+        else None
+    )
+    from_high = _num(metrics.get("from_high_pct"))
+    if from_high is None and high and price:
+        from_high = (high - price) / high * 100.0
+
+    liquidity = metrics.get("liquidity") or {}
+    avg_dollar = _num(liquidity.get("avg_dollar_volume"))
+
+    minute = now_et.hour * 60 + now_et.minute
+    time_fraction = _clamp((minute - 570) / 390.0, 0.0, 1.0)
+
+    return {
+        "entry_price": price,
+        "day_pct": _num(metrics.get("day_pct")),
+        "score": _num(metrics.get("score")),
+        "momentum_5m": _num(metrics.get("momentum_5m")),
+        "momentum_15m": _num(metrics.get("momentum_15m")),
+        "volume_pace": _num(metrics.get("volume_pace")),
+        "intraday_range_pct": intraday_range,
+        "distance_from_high_pct": from_high,
+        "distance_from_vwap_pct": _num(metrics.get("vwap_extension_pct")),
+        "log_liquidity": _safe_log1p(avg_dollar),
+        "time_fraction": time_fraction,
+    }
+
+
+def _scaled_abs(a, b, scale):
+    a = _num(a)
+    b = _num(b)
+    if a is None or b is None:
+        return None
+    return abs(a - b) / float(scale)
+
+
+def _similarity_distance(row, current):
+    features = row.get("features") or {}
+    pieces = []
+
+    specs = (
+        ("day_pct", 10.0, 1.25),
+        ("score", 16.0, 0.85),
+        ("momentum_5m", 2.5, 1.15),
+        ("momentum_15m", 4.5, 1.05),
+        ("intraday_range_pct", 8.0, 0.85),
+        ("distance_from_high_pct", 5.0, 1.05),
+        ("distance_from_vwap_pct", 5.0, 1.00),
+        ("log_liquidity", 1.4, 0.75),
+        ("time_fraction", 0.20, 0.85),
+    )
+    for name, scale, weight in specs:
+        d = _scaled_abs(features.get(name), current.get(name), scale)
+        if d is not None:
+            pieces.append((min(d, 4.0), weight))
+
+    peer_pace = _num(features.get("volume_pace"))
+    current_pace = _num(current.get("volume_pace"))
+    if peer_pace is not None and current_pace is not None:
+        d = abs(math.log1p(max(0.0, peer_pace)) - math.log1p(max(0.0, current_pace))) / 0.65
+        pieces.append((min(d, 4.0), 1.15))
+
+    peer_price = _num(row.get("entry_price"))
+    current_price = _num(current.get("entry_price"))
+    if peer_price and current_price:
+        d = abs(math.log(peer_price / current_price)) / 0.75
+        pieces.append((min(d, 4.0), 1.00))
+
+    if len(pieces) < 6:
+        return None
+
+    total_weight = sum(weight for _, weight in pieces)
+    return sum(value * weight for value, weight in pieces) / total_weight
+
+
+def _select_peer_rows(rows, symbol, current):
+    symbol = str(symbol or "").upper().strip()
+    ranked = []
+    for row in rows:
+        peer_symbol = str(row.get("symbol") or "").upper().strip()
+        if not peer_symbol or peer_symbol == symbol:
+            continue
+        distance = _similarity_distance(row, current)
+        if distance is None:
+            continue
+        ranked.append((distance, row))
+
+    ranked.sort(key=lambda item: (item[0], item[1].get("timestamp") or 0.0))
+
+    selected = []
+    per_symbol = Counter()
+    per_symbol_day = Counter()
+    for distance, row in ranked:
+        peer_symbol = str(row.get("symbol") or "").upper().strip()
+        day = str(row.get("trading_date") or "")
+        if per_symbol[peer_symbol] >= MAX_PER_SYMBOL:
+            continue
+        if day and per_symbol_day[(peer_symbol, day)] >= MAX_PER_SYMBOL_DAY:
+            continue
+
+        copy = dict(row)
+        copy["_peer_distance"] = float(distance)
+        selected.append(copy)
+        per_symbol[peer_symbol] += 1
+        if day:
+            per_symbol_day[(peer_symbol, day)] += 1
+
+        if len(selected) >= MAX_PEER_SAMPLES:
+            break
+
+    selected.sort(key=lambda row: float(row.get("timestamp") or 0.0))
+    return selected
+
+
+def _auc(y, probabilities):
+    positives = sum(int(v == 1) for v in y)
+    negatives = len(y) - positives
+    if positives == 0 or negatives == 0:
+        return None
+
+    pairs = sorted(zip(probabilities, y), key=lambda item: item[0])
+    rank_sum_pos = 0.0
+    rank = 1
+    i = 0
+    while i < len(pairs):
+        j = i + 1
+        while j < len(pairs) and pairs[j][0] == pairs[i][0]:
+            j += 1
+        avg_rank = (rank + (rank + (j - i) - 1)) / 2.0
+        rank_sum_pos += avg_rank * sum(
+            int(pairs[k][1] == 1)
+            for k in range(i, j)
+        )
+        rank += j - i
+        i = j
+
+    return (
+        rank_sum_pos - positives * (positives + 1) / 2.0
+    ) / (positives * negatives)
+
+
+def _matrix(rows, np):
+    X = np.array(
+        [
+            [
+                np.nan
+                if (row.get("features") or {}).get(name) is None
+                else float((row.get("features") or {}).get(name))
+                for name in PEER_FEATURES
+            ]
+            for row in rows
+        ],
+        dtype=float,
+    )
+    y = np.array([int(row.get("label") or 0) for row in rows], dtype=float)
+    return X, y
+
+
+def _params():
+    return {
+        "objective": "binary:logistic",
+        "eval_metric": "logloss",
+        "max_depth": 3,
+        "eta": 0.045,
+        "subsample": 0.82,
+        "colsample_bytree": 0.82,
+        "min_child_weight": 6,
+        "lambda": 2.5,
+        "alpha": 0.2,
+        "seed": 42,
+        "nthread": 2,
+    }
+
+
+def _validate_and_predict(rows, current):
+    try:
+        import numpy as np
+        import xgboost as xgb
+    except Exception as exc:
+        return {
+            "status": "dependency_missing",
+            "validated": False,
+            "error": str(exc)[:180],
+        }
+
+    samples = len(rows)
+    positives = sum(int(row.get("label") == 1) for row in rows)
+    negatives = samples - positives
+    symbols = sorted({
+        str(row.get("symbol") or "").upper().strip()
+        for row in rows
+        if row.get("symbol")
+    })
+    days = sorted({
+        str(row.get("trading_date") or "")
+        for row in rows
+        if row.get("trading_date")
+    })
+
+    distances = [
+        float(row.get("_peer_distance"))
+        for row in rows
+        if row.get("_peer_distance") is not None
+    ]
+    base = {
+        "status": "collecting",
+        "validated": False,
+        "model_type": "XGBoost",
+        "version": PEER_MODEL_VERSION,
+        "target": PEER_TARGET,
+        "samples": samples,
+        "positives": positives,
+        "negatives": negatives,
+        "peer_symbols": len(symbols),
+        "trading_days": len(days),
+        "median_similarity_distance": (
+            round(sorted(distances)[len(distances) // 2], 3)
+            if distances
+            else None
+        ),
+        "cohort_positive_rate_pct": (
+            round(positives / samples * 100.0, 2)
+            if samples
+            else None
+        ),
+    }
+
+    if (
+        samples < MIN_PEER_SAMPLES
+        or len(symbols) < MIN_PEER_SYMBOLS
+        or positives < MIN_PEER_POSITIVES
+        or negatives < MIN_PEER_NEGATIVES
+        or len(days) < 6
+    ):
+        return base
+
+    X, y = _matrix(rows, np)
+    day_to_indices = defaultdict(list)
+    for i, row in enumerate(rows):
+        day_to_indices[str(row.get("trading_date") or "")].append(i)
+
+    validation_days = [day for day in days if day]
+    fold_bounds = (
+        (0.55, 0.70),
+        (0.70, 0.85),
+        (0.85, 1.00),
+    )
+    val_probs = []
+    val_y = []
+    baseline_probs = []
+
+    for train_frac, val_frac in fold_bounds:
+        train_pos = min(
+            len(validation_days) - 1,
+            max(0, int(len(validation_days) * train_frac) - 1),
+        )
+        val_pos = min(
+            len(validation_days) - 1,
+            max(0, int(len(validation_days) * val_frac) - 1),
+        )
+        train_cut = validation_days[train_pos]
+        val_cut = validation_days[val_pos]
+        if val_cut <= train_cut:
+            continue
+
+        train_idx = [
+            i for i, row in enumerate(rows)
+            if row.get("trading_date") and row["trading_date"] <= train_cut
+        ]
+        val_idx = [
+            i for i, row in enumerate(rows)
+            if row.get("trading_date")
+            and train_cut < row["trading_date"] <= val_cut
+        ]
+        if len(train_idx) < 250 or len(val_idx) < 50:
+            continue
+
+        ytr = y[train_idx]
+        yv = y[val_idx]
+        if len(set(ytr.tolist())) < 2 or len(set(yv.tolist())) < 2:
+            continue
+
+        model = xgb.train(
+            _params(),
+            xgb.DMatrix(X[train_idx], label=ytr, feature_names=PEER_FEATURES),
+            num_boost_round=120,
+            verbose_eval=False,
+        )
+        probs = model.predict(
+            xgb.DMatrix(X[val_idx], feature_names=PEER_FEATURES)
+        )
+        train_rate = float(ytr.mean())
+        val_probs.extend(float(p) for p in probs)
+        val_y.extend(int(v) for v in yv)
+        baseline_probs.extend([train_rate] * len(yv))
+
+    if len(val_y) < MIN_VALIDATION_SAMPLES:
+        base["status"] = "insufficient_validation"
+        base["validation_samples"] = len(val_y)
+        return base
+
+    auc = _auc(val_y, val_probs)
+    brier = mean(
+        (probability - actual) ** 2
+        for probability, actual in zip(val_probs, val_y)
+    )
+    baseline_brier = mean(
+        (probability - actual) ** 2
+        for probability, actual in zip(baseline_probs, val_y)
+    )
+
+    validated = bool(
+        auc is not None
+        and auc >= 0.56
+        and brier < baseline_brier
+        and len(val_y) >= MIN_VALIDATION_SAMPLES
+    )
+
+    final_model = xgb.train(
+        _params(),
+        xgb.DMatrix(X, label=y, feature_names=PEER_FEATURES),
+        num_boost_round=145,
+        verbose_eval=False,
+    )
+    current_x = np.array(
+        [[
+            np.nan
+            if current.get(name) is None
+            else float(current.get(name))
+            for name in PEER_FEATURES
+        ]],
+        dtype=float,
+    )
+    probability = float(
+        final_model.predict(
+            xgb.DMatrix(current_x, feature_names=PEER_FEATURES)
+        )[0]
+    )
+
+    importance_raw = final_model.get_score(importance_type="gain")
+    top = sorted(
+        ((name, float(value)) for name, value in importance_raw.items()),
+        key=lambda item: item[1],
+        reverse=True,
+    )[:5]
+    total_gain = sum(value for _, value in top) or 1.0
+
+    base.update(
+        {
+            "status": "validated" if validated else "advisory",
+            "validated": validated,
+            "probability_pct": round(probability * 100.0, 1),
+            "validation_samples": len(val_y),
+            "walk_forward_auc": round(auc, 3) if auc is not None else None,
+            "walk_forward_brier": round(brier, 4),
+            "baseline_brier": round(baseline_brier, 4),
+            "top_features": [
+                {
+                    "feature": name,
+                    "share_pct": round(value / total_gain * 100.0, 1),
+                }
+                for name, value in top
+            ],
+        }
+    )
+    return base
+
+
+def predict_peer_ml(symbol, now, metrics, et):
+    """Return a separate similar-setup continuation model.
+
+    The peer layer never mixes other tickers into the same-ticker models.
+    It selects behaviorally similar historical momentum observations from
+    *other* symbols, validates them on whole trading days, and predicts the
+    probability of at least +3% over the next 60 minutes.
+    """
+    current = _current_features(metrics, now.astimezone(et))
+    key = (
+        str(symbol or "").upper().strip(),
+        round(_num(current.get("day_pct")) or 0.0, 0),
+        round(_num(current.get("volume_pace")) or 0.0, 1),
+        round(_num(current.get("distance_from_vwap_pct")) or 0.0, 1),
+        round(_num(current.get("entry_price")) or 0.0, 1),
+    )
+    stamp = time.time()
+    cached = _CACHE.get(key)
+    if cached and stamp - cached["stamp"] < _CACHE_TTL:
+        result = dict(cached["value"])
+        result["cached"] = True
+        return result
+
+    try:
+        rows, source_meta = load_training_observations()
+    except Exception as exc:
+        return {
+            "status": "unavailable",
+            "validated": False,
+            "version": PEER_MODEL_VERSION,
+            "target": PEER_TARGET,
+            "error": str(exc)[:180],
+        }
+
+    selected = _select_peer_rows(rows, symbol, current)
+    result = _validate_and_predict(selected, current)
+    result["source"] = "scanner historical replay + resolved live scanner outcomes"
+    result["source_observations"] = len(rows)
+    result["current_features"] = current
+    result["cached"] = False
+
+    symbol_counts = Counter(
+        str(row.get("symbol") or "").upper().strip()
+        for row in selected
+        if row.get("symbol")
+    )
+    result["top_peer_symbols"] = [
+        {"symbol": symbol_name, "samples": count}
+        for symbol_name, count in symbol_counts.most_common(8)
+    ]
+    result["source_meta"] = {
+        "historical_replay_samples": source_meta.get("historical_replay_samples"),
+        "live_samples": source_meta.get("live_samples"),
+    }
+    result["note"] = (
+        "Separate peer layer using similar historical momentum setups from other tickers. "
+        "Similarity uses price band, liquidity, day move, momentum, volume pace, VWAP extension, "
+        "distance from the high, intraday range and time of day. It is validated on whole trading "
+        "days and never replaces the stock's own same-ticker model."
+    )
+
+    _CACHE[key] = {"stamp": stamp, "value": result}
+    return result
