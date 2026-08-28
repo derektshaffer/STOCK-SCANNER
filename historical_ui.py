@@ -114,6 +114,65 @@ def render_historical_setup(st, pd, result, card, pp):
                 "Among days that produced a second bounce, the percentage where that second bounce peaked below the previous bounce high. Higher values suggest later bounces often weaken.",
             )
 
+        post2_drop5 = intr.get("post_second_bounce_drop5_rate_pct")
+        post3_drop5 = intr.get("post_third_bounce_drop5_rate_pct")
+        post3_median = intr.get("median_post_third_bounce_max_drop_pct")
+        stair_hist = setup.get("stair_step_history") or {}
+        stair_n = int(stair_hist.get("event_count") or 0)
+        stair_hit5 = stair_hist.get("next3d_hit5_rate_pct")
+        stair_fail5 = stair_hist.get("next3d_failure5_rate_pct")
+
+        if any(v is not None for v in (post2_drop5, post3_drop5, post3_median)) or stair_n:
+            fc = st.columns(6)
+            card(
+                fc[0],
+                "DROP ≥5% AFTER #2",
+                f"{post2_drop5:.0f}%" if post2_drop5 is not None else "—",
+                "after second bounce peak",
+                "bad" if post2_drop5 is not None and post2_drop5 >= 55 else "warn",
+                "How often comparable sessions fell at least 5% after the second completed bounce peak.",
+            )
+            card(
+                fc[1],
+                "DROP ≥5% AFTER #3",
+                f"{post3_drop5:.0f}%" if post3_drop5 is not None else "—",
+                "after third bounce peak",
+                "bad" if post3_drop5 is not None and post3_drop5 >= 55 else "warn",
+                "How often comparable sessions fell at least 5% after the third completed bounce peak.",
+            )
+            card(
+                fc[2],
+                "MEDIAN DROP AFTER #3",
+                pp(post3_median),
+                "peak to later session low",
+                "bad" if post3_median is not None and post3_median <= -8 else "warn",
+                "Median worst decline from the third-bounce peak to a later low during the same session.",
+            )
+            card(
+                fc[3],
+                "STAIR-STEP EVENTS",
+                str(stair_n),
+                "historical same-ticker sequences",
+                "",
+                "Number of historical multi-session step / higher-plateau structures found in the event study.",
+            )
+            card(
+                fc[4],
+                "STAIR +5% / 3D",
+                f"{stair_hit5:.0f}%" if stair_hit5 is not None else "—",
+                "within next 3 sessions",
+                "good" if stair_hit5 is not None and stair_hit5 >= 55 else "warn",
+                "How often a historical stair-step or higher-plateau setup expanded at least another 5% within the next three sessions.",
+            )
+            card(
+                fc[5],
+                "STAIR FAIL -5% / 3D",
+                f"{stair_fail5:.0f}%" if stair_fail5 is not None else "—",
+                "within next 3 sessions",
+                "bad" if stair_fail5 is not None and stair_fail5 >= 45 else "warn",
+                "How often a historical stair-step setup instead fell at least 5% within the next three sessions.",
+            )
+
         for note in (setup.get("notes") or [])[:5]:
             st.caption("• " + str(note))
 
@@ -137,8 +196,8 @@ def render_historical_setup(st, pd, result, card, pp):
 
         st.caption(
             "Included in the setup score and trade-plan confidence. Similarity uses today's move size, "
-            "opening gap and relative volume; recent 5-minute matches add VWAP-reclaim, early-pullback "
-            "and time-of-day tendencies."
+            "opening gap and relative volume; recent 5-minute matches add VWAP-reclaim, early-pullback, "
+            "multi-bounce falloff and time-of-day tendencies. Daily history separately studies multi-session stair-step outcomes."
         )
     elif setup.get("status") == "unavailable":
         detail = setup.get("error")
