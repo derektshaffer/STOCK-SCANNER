@@ -331,6 +331,7 @@ st.markdown("""
 .good{color:#65e98d}.bad{color:#ff8181}.warn{color:#ffd166}.section{font-size:18px;font-weight:900;margin:22px 0 9px}.callout{border-left:4px solid #4593ff;background:#0d1a2d;padding:14px 16px;border-radius:8px;margin-top:10px}
 .tradeplan{border:1px solid #274664;background:#0b1829;border-radius:16px;padding:18px 20px;margin:16px 0 8px}.tradeaction{font-size:25px;font-weight:900;margin-bottom:5px}.tradewhy{color:#a9bdd4;font-size:13px}.smallnote{color:#91a7c2;font-size:12px}
 .search-label{font-size:19px;font-weight:900;color:#f4f8ff;margin:0 0 10px 2px;line-height:1.25;letter-spacing:.01em}
+.metric-term{cursor:help;border-bottom:1px dotted rgba(145,167,194,.65);text-underline-offset:2px}
 </style>
 """,unsafe_allow_html=True)
 
@@ -416,6 +417,21 @@ if _COMBINED_WORKSPACE:
         [data-testid="stSpinner"] {
             margin: 1px 0 !important;
             min-height: 18px !important;
+        }
+
+        /* The ML and historical blocks are intentionally adjacent. Streamlit
+           adds extra wrapper space around the nested keyed containers, so
+           collapse that dead area without tightening the cards themselves. */
+        .st-key-ml_prediction_section {
+            margin-bottom: -2.65rem !important;
+            padding-bottom: 0 !important;
+        }
+        .st-key-historical_match_section {
+            margin-top: 0 !important;
+            padding-top: 0 !important;
+        }
+        .st-key-historical_match_section .section {
+            margin-top: 4px !important;
         }
         </style>
         """,
@@ -681,8 +697,20 @@ def zone_text(plan):
     lo=plan.get("entry_low"); hi=plan.get("entry_high")
     return f"{money(lo)}–{money(hi)}" if lo is not None and hi is not None else "—"
 
-def card(col,k,v,n="",cls=""):
-    with col: st.markdown(f'<div class="card"><div class="k">{html.escape(k)}</div><div class="v {cls}">{html.escape(str(v))}</div><div class="n">{html.escape(str(n))}</div></div>',unsafe_allow_html=True)
+def card(col,k,v,n="",cls="",tooltip=None):
+    label=html.escape(str(k))
+    if tooltip:
+        label=(
+            f'<span class="metric-term" title="{html.escape(str(tooltip), quote=True)}">'
+            f'{label}</span>'
+        )
+    with col:
+        st.markdown(
+            f'<div class="card"><div class="k">{label}</div>'
+            f'<div class="v {cls}">{html.escape(str(v))}</div>'
+            f'<div class="n">{html.escape(str(n))}</div></div>',
+            unsafe_allow_html=True,
+        )
 
 with st.container(key="analyzer_metrics_top"):
     cols=st.columns(6)
