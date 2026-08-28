@@ -13,10 +13,14 @@ def render_historical_setup(st, pd, result, card, pp):
             setup.get("bias_label") or "MIXED",
             f"Score {bias:+.1f}" if bias is not None else "same-ticker history",
             "good" if setup.get("bias_label") == "BULLISH" else "bad" if setup.get("bias_label") == "BEARISH" else "warn",
+            "Overall directional lean from the stock's own historically similar setups. It summarizes whether comparable past days tended to behave bullishly, bearishly, or mixed.",
         )
         sample_quality = setup.get("sample_quality") or "LOW"
         similar_note = f'{setup.get("setup_label") or "setup matches"} · {sample_quality} sample'
-        card(cols[1], "SIMILAR DAYS", str(setup.get("sample_count", 0)), similar_note)
+        card(
+            cols[1], "SIMILAR DAYS", str(setup.get("sample_count", 0)), similar_note, "",
+            "Number of the stock's own historical trading days that most closely resemble today's move, gap, relative volume, and intraday setup."
+        )
 
         gr, gf = setup.get("gap_run_pct"), setup.get("gap_fade_pct")
         card(
@@ -24,6 +28,8 @@ def render_historical_setup(st, pd, result, card, pp):
             "GAP RUN / FADE",
             f"{gr:.0f}% / {gf:.0f}%" if gr is not None and gf is not None else "—",
             f'n={setup.get("gap_sample_count", 0)} gap analogs',
+            "",
+            "Of comparable historical gap days, the first number is the share that continued running and the second is the share that faded."
         )
 
         bf, bfail = setup.get("breakout_follow_through_pct"), setup.get("breakout_failure_pct")
@@ -32,6 +38,8 @@ def render_historical_setup(st, pd, result, card, pp):
             "BREAKOUT HOLD / FAIL",
             f"{bf:.0f}% / {bfail:.0f}%" if bf is not None and bfail is not None else "—",
             f'n={setup.get("breakout_test_count", 0)} tested',
+            "",
+            "Among comparable historical breakouts, HOLD is the share that stayed above the breakout level; FAIL is the share that fell back below it."
         )
 
         vr = intr.get("vwap_reclaim_follow_through_pct")
@@ -40,6 +48,8 @@ def render_historical_setup(st, pd, result, card, pp):
             "VWAP RECLAIM",
             f"{vr:.0f}% follow" if vr is not None else "—",
             f'n={intr.get("sample_count", 0)} matched intraday days',
+            "",
+            "How often a move back above VWAP on comparable historical days produced follow-through instead of quickly losing VWAP again."
         )
 
         pb = intr.get("median_first_pullback_pct")
@@ -48,6 +58,8 @@ def render_historical_setup(st, pd, result, card, pp):
             "EARLY PULLBACK",
             pp(pb),
             f'High most often: {intr.get("session_high_most_common") or "—"}',
+            "",
+            "Median size of the first meaningful pullback after the early push on comparable historical days. A negative value means price pulled back from the prior reference level."
         )
 
         for note in (setup.get("notes") or [])[:5]:
