@@ -14,8 +14,8 @@ API_KEY = os.environ.get("ALPACA_API_KEY", "").strip()
 API_SECRET = os.environ.get("ALPACA_SECRET_KEY", "").strip()
 OUTCOME_DATE = os.environ.get("OUTCOME_DATE", "").strip()
 OUT_DIR = Path(os.environ.get("ANALYZER_OUTCOME_DIR", "analyzer_outcomes"))
-ANALYZER_FEATURE_VERSION = "analyzer-features-v2-consolidated"
-DECISION_SCORE_VERSION = "decision-v2.1-deduped"
+ANALYZER_FEATURE_VERSION = "analyzer-features-v6-sequence-regimes"
+DECISION_SCORE_VERSION = "decision-v2.6-sequence-regimes"
 
 
 def _headers():
@@ -139,6 +139,25 @@ def _first_touch(bars, target, stop, created):
     return None
 
 
+def _window_excursions(bars, created, price, minutes):
+    if created is None or price is None or price <= 0:
+        return None, None
+    end = created + timedelta(minutes=minutes)
+    window=[]
+    for bar in bars:
+        dt=_bar_dt(bar)
+        if dt is None or dt < created or dt > end:
+            continue
+        window.append(bar)
+    highs=[_num(b.get("h")) for b in window]
+    lows=[_num(b.get("l")) for b in window]
+    highs=[v for v in highs if v is not None]
+    lows=[v for v in lows if v is not None]
+    mfe=((max(highs)/price-1.0)*100.0) if highs else None
+    mae=((min(lows)/price-1.0)*100.0) if lows else None
+    return mfe,mae
+
+
 def _resolve_rows(rows, day):
     by_symbol = {}
     for row in rows:
@@ -191,6 +210,55 @@ def _resolve_rows(rows, day):
                 )
                 if touch:
                     outcomes["target1_first_touch"] = touch
+
+            if row.get("repeat_bounce_plan_available"):
+                if "repeat_bounce_target1_first_touch" not in outcomes:
+                    touch = _first_touch(
+                        bars,
+                        row.get("repeat_bounce_target1"),
+                        row.get("repeat_bounce_stop"),
+                        created,
+                    )
+                    if touch:
+                        outcomes["repeat_bounce_target1_first_touch"] = touch
+                if "repeat_bounce_target2_first_touch" not in outcomes:
+                    touch2 = _first_touch(
+                        bars,
+                        row.get("repeat_bounce_target2"),
+                        row.get("repeat_bounce_stop"),
+                        created,
+                    )
+                    if touch2:
+                        outcomes["repeat_bounce_target2_first_touch"] = touch2
+
+                for mins in (30,60):
+                    if created + timedelta(minutes=mins) <= session_end:
+                        mfe,mae=_window_excursions(bars,created,price,mins)
+                        if mfe is not None:
+                            outcomes[f"repeat_bounce_mfe_{mins}m_pct"]=round(mfe,3)
+                        if mae is not None:
+                            outcomes[f"repeat_bounce_mae_{mins}m_pct"]=round(mae,3)
+
+                ref_peak=_num(row.get("bounce_reference_peak"))
+                if ref_peak is not None and created + timedelta(minutes=60) <= session_end:
+                    within60=[]
+                    for bar in bars:
+                        dt=_bar_dt(bar)
+                        if dt is not None and created <= dt <= created + timedelta(minutes=60):
+                            within60.append(bar)
+                    highs=[_num(b.get("h")) for b in within60]
+                    highs=[v for v in highs if v is not None]
+                    if highs:
+                        outcomes["repeat_bounce_reference_peak_reclaimed_60m"]=bool(max(highs)>=ref_peak)
+
+            if int(row.get("bounce_count") or 0)>=2:
+                for mins in (30,60):
+                    if created + timedelta(minutes=mins) <= session_end:
+                        mfe,mae=_window_excursions(bars,created,price,mins)
+                        if mae is not None:
+                            outcomes[f"post_bounce_max_drop_{mins}m_pct"]=round(mae,3)
+                        if mfe is not None:
+                            outcomes[f"post_bounce_max_rise_{mins}m_pct"]=round(mfe,3)
     return rows
 
 
@@ -344,6 +412,82 @@ def _all_rows():
     return rows
 
 
+def _repeat_bounce_calibration(rows):
+    candidates=[
+        row for row in rows
+        if row.get("repeat_bounce_plan_available")
+        and row.get("preferred_plan")=="repeat_bounce"
+    ]
+    entry=[
+        row for row in candidates
+        if row.get("plan_status")=="ENTRY AVAILABLE"
+    ]
+    touches=[
+        row for row in entry
+        if (row.get("outcomes") or {}).get("repeat_bounce_target1_first_touch") in {"target","stop"}
+    ]
+    wins=[
+        row for row in touches
+        if (row.get("outcomes") or {}).get("repeat_bounce_target1_first_touch")=="target"
+    ]
+    mfe30=[
+        _num((row.get("outcomes") or {}).get("repeat_bounce_mfe_30m_pct"))
+        for row in entry
+    ]
+    mfe30=[v for v in mfe30 if v is not None]
+    mae30=[
+        _num((row.get("outcomes") or {}).get("repeat_bounce_mae_30m_pct"))
+        for row in entry
+    ]
+    mae30=[v for v in mae30 if v is not None]
+    by_number={}
+    for row in entry:
+        number=int(row.get("repeat_bounce_plan_number") or 0)
+        if not number:
+            continue
+        g=by_number.setdefault(number,{"signals":0,"wins":0,"losses":0})
+        g["signals"]+=1
+        touch=(row.get("outcomes") or {}).get("repeat_bounce_target1_first_touch")
+        if touch=="target":g["wins"]+=1
+        elif touch=="stop":g["losses"]+=1
+    for number,g in by_number.items():
+        resolved=g["wins"]+g["losses"]
+        g["target_before_stop_rate"]=round(g["wins"]/resolved*100.0,1) if resolved else None
+
+    return {
+        "candidate_rows":len(candidates),
+        "entry_signals":len(entry),
+        "resolved_target_stop":len(touches),
+        "target_before_stop_rate":round(len(wins)/len(touches)*100.0,1) if touches else None,
+        "avg_mfe_30m_pct":round(sum(mfe30)/len(mfe30),3) if mfe30 else None,
+        "avg_mae_30m_pct":round(sum(mae30)/len(mae30),3) if mae30 else None,
+        "by_bounce_number":{str(k):v for k,v in sorted(by_number.items())},
+    }
+
+
+def _mature_bounce_failure_calibration(rows):
+    mature=[row for row in rows if int(row.get("bounce_count") or 0)>=2]
+    drops=[
+        _num((row.get("outcomes") or {}).get("post_bounce_max_drop_60m_pct"))
+        for row in mature
+    ]
+    drops=[v for v in drops if v is not None]
+    rises=[
+        _num((row.get("outcomes") or {}).get("post_bounce_max_rise_60m_pct"))
+        for row in mature
+    ]
+    rises=[v for v in rises if v is not None]
+    return {
+        "observations":len(mature),
+        "resolved_60m_excursions":min(len(drops),len(rises)),
+        "avg_max_drop_60m_pct":round(sum(drops)/len(drops),3) if drops else None,
+        "median_max_drop_60m_pct":round(statistics.median(drops),3) if drops else None,
+        "avg_max_rise_60m_pct":round(sum(rises)/len(rises),3) if rises else None,
+        "drop_5pct_rate":round(sum(v<=-5 for v in drops)/len(drops)*100.0,1) if drops else None,
+        "drop_10pct_rate":round(sum(v<=-10 for v in drops)/len(drops)*100.0,1) if drops else None,
+    }
+
+
 def _write_calibration():
     all_rows = _all_rows()
     feature_rows = [
@@ -389,7 +533,7 @@ def _write_calibration():
     ]
 
     payload = {
-        "schema_version": 2,
+        "schema_version": 3,
         "feature_version": ANALYZER_FEATURE_VERSION,
         "decision_score_version": DECISION_SCORE_VERSION,
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
@@ -409,6 +553,8 @@ def _write_calibration():
             if touches else None
         ),
         "target_stop_resolved": len(touches),
+        "repeat_bounce_calibration": _repeat_bounce_calibration(calibration_rows),
+        "mature_bounce_failure_calibration": _mature_bounce_failure_calibration(calibration_rows),
         "entry_signal_calibration": {
             "signals": len(entry_signals),
             "resolved_target_stop": len(entry_signal_touches),
