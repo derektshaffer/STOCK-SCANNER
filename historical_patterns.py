@@ -2,6 +2,8 @@ import math
 from collections import defaultdict
 from statistics import median
 
+from multi_bounce import detect_bounce_sequence
+
 _CACHE = {}
 
 def _fnum(x):
@@ -203,10 +205,26 @@ def _intraday_stats(symbol, now, candidate_dates, fetch_bars, et):
             high_bucket = "MORNING" if mins < 660 else "MIDDAY" if mins < 840 else "POWER HOUR"
 
         impulse_stats=_impulse_pullback_stats(daybars)
+        sequence=detect_bounce_sequence(daybars,current_price=last_close,atr_pct=None)
+        seq_bounces=sequence.get("bounces") or []
+        bounce1=(seq_bounces[0].get("bounce_pct") if len(seq_bounces)>=1 else None)
+        bounce2=(seq_bounces[1].get("bounce_pct") if len(seq_bounces)>=2 else None)
+        bounce3=(seq_bounces[2].get("bounce_pct") if len(seq_bounces)>=3 else None)
+        decay21=(bounce2/bounce1 if bounce1 and bounce2 is not None else None)
 
         rows.append({
             "date": date,
             **impulse_stats,
+            "bounce_count":int(sequence.get("completed_bounces") or 0),
+            "bounce1_pct":round(bounce1,2) if bounce1 is not None else None,
+            "bounce2_pct":round(bounce2,2) if bounce2 is not None else None,
+            "bounce3_pct":round(bounce3,2) if bounce3 is not None else None,
+            "bounce2_vs_bounce1_ratio":round(decay21,3) if decay21 is not None else None,
+            "bounce_sequence_health":sequence.get("sequence_health_score"),
+            "bounce_lower_high_streak":int(sequence.get("lower_high_streak") or 0),
+            "had_second_bounce":bool(len(seq_bounces)>=2),
+            "had_third_bounce":bool(len(seq_bounces)>=3),
+            "second_bounce_lower_high":bool(len(seq_bounces)>=2 and seq_bounces[1].get("lower_high")),
             "first_pullback_pct": round(early_pullback, 2) if early_pullback is not None else None,
             "vwap_reclaimed": reclaim_idx is not None,
             "vwap_reclaim_follow": reclaim_follow,
@@ -244,6 +262,18 @@ def _intraday_stats(symbol, now, candidate_dates, fetch_bars, et):
             [r for r in rows if r.get("impulse_retracement_pct") is not None],
             "bounce_5pct",
         ),
+        "median_bounce_count": _median(rows, "bounce_count"),
+        "second_bounce_rate_pct": _rate(rows, "had_second_bounce"),
+        "third_bounce_rate_pct": _rate(rows, "had_third_bounce"),
+        "median_bounce1_pct": _median(rows, "bounce1_pct"),
+        "median_bounce2_pct": _median(rows, "bounce2_pct"),
+        "median_bounce3_pct": _median(rows, "bounce3_pct"),
+        "median_bounce2_vs_bounce1_ratio": _median(rows, "bounce2_vs_bounce1_ratio"),
+        "second_bounce_lower_high_rate_pct": _rate(
+            [r for r in rows if r.get("had_second_bounce")],
+            "second_bounce_lower_high",
+        ),
+        "median_bounce_sequence_health": _median(rows, "bounce_sequence_health"),
         "vwap_reclaim_rate_pct": round(100 * len(reclaim_rows) / len(rows), 1),
         "vwap_reclaim_follow_through_pct": _rate(reclaim_rows, "vwap_reclaim_follow"),
         "median_reclaim_close_gain_pct": _median(reclaim_rows, "vwap_reclaim_close_gain_pct"),
@@ -413,6 +443,24 @@ def analyze_historical_patterns(symbol, now, current_day_pct, current_gap_pct, c
             f"After measured impulse pullbacks, price later bounced at least 5% on "
             f"{intraday['impulse_bounce_5pct_rate']:.0f}% of sampled days."
         )
+    if intraday.get("second_bounce_rate_pct") is not None:
+        notes.append(
+            f"A second completed bounce appeared on {intraday['second_bounce_rate_pct']:.0f}% "
+            f"of matched intraday days."
+        )
+    if (
+        intraday.get("median_bounce1_pct") is not None
+        and intraday.get("median_bounce2_pct") is not None
+    ):
+        notes.append(
+            f"Median bounce #1 was {intraday['median_bounce1_pct']:.1f}% versus "
+            f"{intraday['median_bounce2_pct']:.1f}% for bounce #2."
+        )
+    if intraday.get("second_bounce_lower_high_rate_pct") is not None:
+        notes.append(
+            f"Second bounces formed a lower high on "
+            f"{intraday['second_bounce_lower_high_rate_pct']:.0f}% of days where a second bounce occurred."
+        )
     if intraday.get("session_high_most_common"):
         notes.append(f"Matched days most often made their session high in the {intraday['session_high_most_common'].lower()} window.")
 
@@ -440,6 +488,12 @@ def analyze_historical_patterns(symbol, now, current_day_pct, current_gap_pct, c
         "median_impulse_retracement_pct": intraday.get("median_impulse_retracement_pct"),
         "median_impulse_bounce_mfe_pct": intraday.get("median_impulse_bounce_mfe_pct"),
         "impulse_bounce_5pct_rate": intraday.get("impulse_bounce_5pct_rate"),
+        "second_bounce_rate_pct": intraday.get("second_bounce_rate_pct"),
+        "third_bounce_rate_pct": intraday.get("third_bounce_rate_pct"),
+        "median_bounce1_pct": intraday.get("median_bounce1_pct"),
+        "median_bounce2_pct": intraday.get("median_bounce2_pct"),
+        "median_bounce2_vs_bounce1_ratio": intraday.get("median_bounce2_vs_bounce1_ratio"),
+        "second_bounce_lower_high_rate_pct": intraday.get("second_bounce_lower_high_rate_pct"),
         "intraday": intraday,
         "notes": notes,
         "matches": matches[:15],
