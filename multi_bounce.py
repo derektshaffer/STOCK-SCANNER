@@ -77,7 +77,13 @@ def _find_impulse(rows, atr_pct=None, min_impulse_pct=None):
 
         age = n - 1 - peak_idx
         recency = max(0.30, 1.0 - age / max(30.0, n * 0.90))
-        score = move_pct * recency
+        post_bars = n - 1 - peak_idx
+        # For a multi-bounce sequence the dominant initial impulse must stay
+        # anchored even after one or two later rebounds. Recency is only a
+        # mild tie-breaker; otherwise a smaller second bounce can incorrectly
+        # become the "impulse" and erase the earlier bounce history.
+        history_bonus = min(1.12, 0.92 + post_bars * 0.012)
+        score = move_pct * (0.82 + 0.18 * recency) * history_bonus
         candidates.append((score, low_idx, peak_idx, low, peak, move_pct))
 
     if not candidates:
