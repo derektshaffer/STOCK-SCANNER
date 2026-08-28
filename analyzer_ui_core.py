@@ -761,6 +761,90 @@ if _impulse.get("detected"):
     )
 
 
+_full = ((r.get("decision_v2") or {}).get("full_spectrum") or {})
+_exhaust = r.get("run_exhaustion") or {}
+if _full:
+    st.markdown(
+        '<div class="section">Full-spectrum trader view '
+        '<span style="font-size:12px;color:#91a7c2">continuation · bounce · reversal · chop</span></div>',
+        unsafe_allow_html=True,
+    )
+    _scenarios = _full.get("scenarios") or {}
+    _fc = st.columns(5)
+    _rev_score = _full.get("reversal_risk_score")
+    card(
+        _fc[0],
+        "RUN EXHAUSTION",
+        f'{float(_rev_score):.0f} / 100' if _rev_score is not None else "—",
+        str(_full.get("reversal_risk_label") or _exhaust.get("state") or "—"),
+        "bad" if (_rev_score or 0) >= 68 else "warn" if (_rev_score or 0) >= 42 else "good",
+    )
+    _scenario_cards = (
+        ("continuation", "CONTINUATION", "good"),
+        ("pullback_bounce", "PULLBACK → BOUNCE", "good"),
+        ("reversal_failure", "REVERSAL / FAILURE", "bad"),
+        ("sideways_chop", "SIDEWAYS / CHOP", "warn"),
+    )
+    for _col, (_key, _label, _cls) in zip(_fc[1:], _scenario_cards):
+        _s = _scenarios.get(_key) or {}
+        _w = _s.get("relative_weight_pct")
+        card(
+            _col,
+            _label,
+            f'{float(_w):.0f}%' if _w is not None else "—",
+            f'evidence score {_s.get("evidence_score", "—")} · relative weight',
+            _cls,
+        )
+
+    _dominant = str(_full.get("dominant_scenario") or "").replace("_", " ").upper()
+    st.caption(
+        f'Current dominant scenario: {_dominant or "—"}. '
+        'Scenario percentages are relative evidence weights, not calibrated probabilities. '
+        'Validated ML probabilities remain separate.'
+    )
+
+    with st.expander("Full-spectrum analysis details"):
+        _cats = _full.get("categories") or {}
+        _rows = []
+        _names = {
+            "momentum":"Momentum / trend",
+            "volume_participation":"Volume / participation",
+            "price_structure":"Price structure / pullback",
+            "historical_behavior":"Same-ticker history",
+            "validated_ml":"Validated ML",
+            "catalyst":"Catalyst / news",
+            "market_sector":"Market / sector",
+            "execution_liquidity":"Execution / liquidity",
+            "fundamental_dilution":"Fundamental / dilution",
+            "reversal_risk":"Reversal risk",
+        }
+        for _key, _item in _cats.items():
+            _rows.append({
+                "Analysis family": _names.get(_key, _key.replace("_", " ").title()),
+                "Score / 100": _item.get("score"),
+                "Read": _item.get("stance"),
+            })
+        if _rows:
+            st.dataframe(pd.DataFrame(_rows), width="stretch", hide_index=True)
+
+        _factors = _exhaust.get("factors") or []
+        if _factors:
+            st.markdown("#### Top exhaustion / reversal clues")
+            for _factor in _factors[:8]:
+                _pts = float(_factor.get("points") or 0)
+                _sign = "+" if _pts > 0 else ""
+                st.write(f'**{_sign}{_pts:.0f}:** {_factor.get("text") or ""}')
+
+        _coverage = _full.get("coverage") or {}
+        _missing = _coverage.get("not_currently_available") or []
+        if _missing:
+            st.markdown("#### Data not currently available")
+            st.caption(
+                "The analyzer does not pretend to know data it cannot see. "
+                + " · ".join(str(x) for x in _missing)
+            )
+
+
 if _trade_age is not None and float(_trade_age) > max(30, AUTO_REFRESH_SECONDS*2):
     feed_name=str(r.get("live_feed") or "").upper()
     provider=str(r.get("market_provider") or r.get("live_provider") or "alpaca").lower()
