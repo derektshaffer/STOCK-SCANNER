@@ -27,7 +27,7 @@ from tradier_live import get_history_bars, get_timesales_bars, post_quotes
 from multi_bounce import bounce_feature_values, detect_bounce_sequence
 from stair_step import detect_stair_step, stair_step_feature_values
 
-REPLAY_VERSION = "historical-scanner-replay-v4-sequence-regimes"
+REPLAY_VERSION = "historical-scanner-replay-v4.1-sequence-regimes"
 ET = ZoneInfo("America/New_York")
 
 DEFAULT_TRADING_DAYS = int(os.environ.get("REPLAY_TRADING_DAYS", "20") or 20)
