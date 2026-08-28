@@ -802,6 +802,101 @@ if _impulse.get("detected"):
     )
 
 
+_sequence = r.get("bounce_sequence") or {}
+if _sequence.get("detected"):
+    st.markdown(
+        '<div class="section">Multi-bounce sequence '
+        '<span style="font-size:12px;color:#91a7c2">bounce #1 · bounce #2 · decay · repeat opportunity</span></div>',
+        unsafe_allow_html=True,
+    )
+    _bc = st.columns(6)
+    _completed = int(_sequence.get("completed_bounces") or 0)
+    _b1 = _sequence.get("bounce1_pct")
+    _b2 = _sequence.get("bounce2_pct")
+    _decay = _sequence.get("bounce_decay_ratio")
+    _seq_health = _sequence.get("sequence_health_score")
+    _lower_highs = int(_sequence.get("lower_high_streak") or 0)
+    _hist_intr = ((r.get("historical_setup") or {}).get("intraday") or {})
+    _second_rate = _hist_intr.get("second_bounce_rate_pct")
+
+    card(
+        _bc[0],
+        "CURRENT LEG",
+        str(_sequence.get("current_leg") or "—"),
+        str(_sequence.get("sequence_state") or "—"),
+        "good" if str(_sequence.get("current_leg") or "").upper()=="BOUNCING" else "warn",
+        "Whether the latest leg is currently bouncing upward or pulling back after the prior bounce. A pullback is only a watch area until it proves it can hold and turn.",
+    )
+    card(
+        _bc[1],
+        "COMPLETED BOUNCES",
+        str(_completed),
+        f'Historical 2nd-bounce rate {_second_rate:.0f}%' if _second_rate is not None else "same-session sequence",
+        "good" if _completed>=1 else "warn",
+        "How many distinct pullback-to-rebound cycles the sequence detector has confirmed after the initial impulse move.",
+    )
+    card(
+        _bc[2],
+        "BOUNCE #1",
+        f'{float(_b1):.1f}%' if _b1 is not None else "—",
+        "first confirmed rebound",
+        "good",
+        "Percentage rebound from the first confirmed pullback low to the first bounce peak.",
+    )
+    card(
+        _bc[3],
+        "BOUNCE #2",
+        f'{float(_b2):.1f}%' if _b2 is not None else "—",
+        (
+            f'{float(_decay)*100:.0f}% as large as prior bounce'
+            if _decay is not None else
+            "waiting for / measuring second rebound"
+        ),
+        "good" if _decay is not None and _decay>=0.85 else "warn",
+        "Percentage rebound from the second confirmed dip. Later bounces often weaken, so the analyzer compares this bounce with the one before it.",
+    )
+    card(
+        _bc[4],
+        "LOWER-HIGH STREAK",
+        str(_lower_highs),
+        "progressively weaker peaks" if _lower_highs else "no confirmed lower-high streak",
+        "bad" if _lower_highs>=2 else "warn" if _lower_highs==1 else "good",
+        "Number of consecutive bounce peaks that failed below the previous peak. Repeated lower highs are evidence that buyers may be losing control even if quick bounces remain tradable.",
+    )
+    card(
+        _bc[5],
+        "SEQUENCE HEALTH",
+        f'{float(_seq_health):.0f} / 100' if _seq_health is not None else "—",
+        str(_sequence.get("sequence_state") or "—"),
+        "good" if (_seq_health or 0)>=68 else "bad" if _seq_health is not None and _seq_health<42 else "warn",
+        "A structural score for the multi-bounce sequence using bounce size, bounce decay, volume decay, lower highs, higher lows, and the current leg. It is not a probability of profit.",
+    )
+
+    st.caption(
+        "Repeat-bounce opportunity and full-run continuation are intentionally separate. "
+        "A second or third bounce can still offer a short-duration opportunity even when the larger run is weakening."
+    )
+
+    _bounce_rows = _sequence.get("bounces") or []
+    if _bounce_rows:
+        with st.expander("Multi-bounce details"):
+            _show_rows=[]
+            for _b in _bounce_rows:
+                _show_rows.append({
+                    "Bounce": f'#{int(_b.get("number") or 0)}',
+                    "Dip low": _b.get("pullback_low"),
+                    "Bounce peak": _b.get("bounce_peak"),
+                    "Bounce %": _b.get("bounce_pct"),
+                    "Recovery vs prior peak %": _b.get("recovery_to_prior_peak_pct"),
+                    "Lower high": bool(_b.get("lower_high")),
+                    "Higher high": bool(_b.get("higher_high")),
+                    "Decay vs prior": _b.get("decay_vs_previous"),
+                    "Pullback bars": _b.get("pullback_bars"),
+                    "Bounce bars": _b.get("bounce_bars"),
+                })
+            st.dataframe(pd.DataFrame(_show_rows), width="stretch", hide_index=True)
+
+
 _full = ((r.get("decision_v2") or {}).get("full_spectrum") or {})
 _exhaust = r.get("run_exhaustion") or {}
 if _full:
@@ -851,6 +946,7 @@ if _full:
             "momentum":"Momentum / trend",
             "volume_participation":"Volume / participation",
             "price_structure":"Price structure / pullback",
+            "multi_bounce_sequence":"Multi-bounce sequence",
             "historical_behavior":"Same-ticker history",
             "validated_ml":"Validated ML",
             "catalyst":"Catalyst / news",
