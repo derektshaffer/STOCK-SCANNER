@@ -162,6 +162,25 @@ jobs:
           print("SCAN_MODE=" + str(payload.get("mode")))
           print("CANDIDATES_LOGGED=" + str((payload.get("summary") or {}).get("candidates_logged")))
           PY
+      - name: Validate corrected scanner ML replay model
+        if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, 'Run scanner ML pipeline validation')
+        run: |
+          python - <<'PY'
+          import scanner_ml_ranker as sm
+
+          rows, source = sm.load_training_observations()
+          _model, meta = sm._validation_and_model(rows)
+          print("SCANNER_ML_STATUS=" + str(meta.get("status")))
+          print("SCANNER_HISTORICAL_VALIDATED=" + str(bool(meta.get("historical_validated"))).lower())
+          print("SCANNER_FULLY_VALIDATED=" + str(bool(meta.get("validated"))).lower())
+          print("SCANNER_WF_AUC=" + str(meta.get("walk_forward_auc")))
+          print("SCANNER_WF_BRIER=" + str(meta.get("walk_forward_brier")))
+          print("SCANNER_BASELINE_BRIER=" + str(meta.get("baseline_brier")))
+          print("SCANNER_VALIDATION_SAMPLES=" + str(meta.get("validation_samples")))
+          print("SCANNER_LIVE_CONFIRMATION_SAMPLES=" + str(meta.get("live_confirmation_samples")))
+          assert bool(meta.get("historical_validated")), meta
+          assert meta.get("validation_split_unit") == "trading_day", meta
+          PY
       - name: Run provider/version consistency regressions
         run: python consistency_regression_check.py
       # Re-run marker for secret verification
