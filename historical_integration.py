@@ -187,8 +187,9 @@ def install_historical_analysis(sa):
                 "Rule-based long momentum decision support using VWAP, support/resistance, ATR, "
                 "momentum, volume pace, spread/liquidity, same-ticker spike analogs plus setup-"
                 "matched gap/run-vs-fade behavior, breakout failure/follow-through, VWAP reclaim "
-                "tendencies, impulse retracement depth/bounce behavior, time-of-day behavior and catalyst context. "
-                "Targets are scenarios, not guarantees."
+                "tendencies, impulse retracement, dedicated Bounce #2/#3+ scalp geometry, historical "
+                "late-bounce falloff, multi-session stair-step / plateau behavior, time-of-day behavior "
+                "and catalyst context. Targets are scenarios, not guarantees."
             )
             metrics["trade_plan"] = plan
 
