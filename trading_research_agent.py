@@ -19,7 +19,7 @@ from pathlib import Path
 API_URL = "https://api.openai.com/v1/responses"
 MODEL = os.environ.get("TRADING_RESEARCH_MODEL", "gpt-5.6-luna").strip() or "gpt-5.6-luna"
 OUT_DIR = Path("research")
-RESEARCH_TRIGGER_VERSION = "1.2"
+RESEARCH_TRIGGER_VERSION = "1.3"
 LATEST_PATH = OUT_DIR / "latest_research.json"
 
 
@@ -40,6 +40,15 @@ Research current and foundational evidence relevant to:
 - time-of-day effects and closing-hour behavior;
 - variables that help distinguish a quick bounce from a true new-high
   continuation;
+- second/third-bounce failure severity: what tends to happen after a weak late
+  bounce, including 5%/10% falloff risk and time-to-failure;
+- multi-session step -> plateau -> reacceleration structures where price
+  accepts a higher level, consolidates, then expands again;
+- sequence/motif discovery methods that can find useful recurring price-volume
+  patterns even when traders have not already given the pattern a name;
+- clustering, change-point, shapelet, motif, state/regime, or other
+  leakage-safe sequence methods that could discover unknown intraday or
+  multi-session structures worth testing;
 - machine-learning features or validation practices that improve short-horizon
   prediction without leakage or overfitting.
 
@@ -51,6 +60,13 @@ Source priority:
 
 Be skeptical of trading folklore. A widely repeated idea is not evidence.
 Prefer sources with data, definitions, sample periods, and measurable outcomes.
+At least one hypothesis should be a data-driven pattern-discovery experiment
+that does NOT start from a named trading setup. It should search historical
+price/volume sequences for recurring motifs, cluster/regime behavior, or
+change-points, then test whether the discovered motif has stable forward
+outcomes on later unseen dates. Pattern discovery and outcome validation must
+be chronologically separated so the system cannot discover a pattern using the
+same future data it later claims to predict.
 
 Return ONLY valid JSON with this shape:
 {
