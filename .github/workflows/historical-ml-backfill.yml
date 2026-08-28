@@ -2,6 +2,10 @@ name: Historical Scanner ML Backfill
 
 # Historical replay is manual-by-default; this marker intentionally triggers the current backfill.
 on:
+  schedule:
+    # Weekly deep historical refresh. Runs in GitHub's cloud even when the
+    # local Mac and Streamlit app are closed.
+    - cron: "30 12 * * 6"
   workflow_dispatch:
     inputs:
       trading_days:
@@ -36,7 +40,7 @@ permissions:
 
 jobs:
   backfill:
-    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, 'Run historical ML backfill')
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, 'Run historical ML backfill')
     runs-on: ubuntu-latest
     timeout-minutes: 90
 
@@ -64,6 +68,8 @@ jobs:
           REPLAY_UNIVERSE_SIZE: ${{ inputs.universe_size }}
           REPLAY_CANDIDATES_PER_SCAN: ${{ inputs.candidates_per_scan }}
           REPLAY_SCAN_STEP_MINUTES: ${{ inputs.scan_step_minutes }}
+          # Scheduled runs have no workflow_dispatch inputs; the replay script
+          # safely falls back to its 20-day / 300-symbol defaults when blank.
         run: python historical_scanner_replay.py
 
       - name: Validate replay dataset and ML bootstrap
