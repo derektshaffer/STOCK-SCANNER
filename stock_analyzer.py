@@ -27,8 +27,8 @@ USE_TRADIER = bool(
 )
 LIVE_MARKET_PROVIDER = "tradier" if USE_TRADIER else "alpaca"
 LIVE_MARKET_LABEL = "TRADIER CONSOLIDATED" if USE_TRADIER else LIVE_FEED.upper()
-ANALYZER_FEATURE_VERSION = "analyzer-features-v3-impulse-pullback"
-ANALYZER_ENGINE_VERSION = "trade-plan-v4-impulse-confirmation"
+ANALYZER_FEATURE_VERSION = "analyzer-features-v4-full-spectrum"
+ANALYZER_ENGINE_VERSION = "trade-plan-v5-full-spectrum"
 ET = ZoneInfo("America/New_York")
 
 CATALYST_RULES = [
@@ -251,6 +251,140 @@ def impulse_pullback_context(bs, current_price=None, atr_pct=None):
         "default_zone_low":levels["50%"],
         "default_zone_high":levels["33%"],
         "run_size":round(run,4),
+    }
+
+
+def run_exhaustion_context(bs, current_price=None, vwap=None, atr_pct=None, impulse=None):
+    """Estimate whether a momentum run is stalling or transitioning into reversal."""
+    rows=[]
+    for b in bs or []:
+        o=fnum(b.get("o")); h=fnum(b.get("h")); l=fnum(b.get("l")); cc=fnum(b.get("c")); v=fnum(b.get("v")) or 0.0
+        if h is None or l is None or cc is None or h<=0 or l<=0:
+            continue
+        if o is None:o=cc
+        rows.append({"o":o,"h":h,"l":l,"c":cc,"v":v,"t":b.get("t")})
+    if len(rows)<10:
+        return {"status":"insufficient_data","score":None,"label":"UNKNOWN","factors":[]}
+
+    price=fnum(current_price) or rows[-1]["c"]
+    atrp=max(1.0,fnum(atr_pct) or 6.0)
+    imp=impulse or {}
+    session_high=max(r["h"] for r in rows)
+    from_high=(session_high-price)/session_high*100.0 if session_high else 0.0
+    vwap_ext=((price/vwap)-1.0)*100.0 if vwap and vwap>0 else None
+
+    recent=rows[-8:]
+    recent6=rows[-6:]
+    recent12=rows[-12:]
+    upper_wicks=[]
+    rejection_count=0
+    near_high_band=max(0.006,min(0.025,atrp/100.0*0.35))
+    for r in recent12:
+        rng=max(1e-9,r["h"]-r["l"])
+        body_top=max(r["o"],r["c"])
+        upper=max(0.0,r["h"]-body_top)
+        wick_share=upper/rng
+        upper_wicks.append(wick_share)
+        near_high=r["h"]>=session_high*(1-near_high_band)
+        rejected=(r["c"]<=r["h"]*(1-max(.004,near_high_band*.55))) or wick_share>=0.45
+        if near_high and rejected:
+            rejection_count+=1
+    avg_upper_wick=sum(upper_wicks[-8:])/max(1,len(upper_wicks[-8:]))
+
+    highs=[r["h"] for r in recent6]
+    lows=[r["l"] for r in recent6]
+    lower_highs=sum(1 for i in range(1,len(highs)) if highs[i] < highs[i-1]*0.999)
+    lower_lows=sum(1 for i in range(1,len(lows)) if lows[i] < lows[i-1]*0.999)
+    red_fraction=sum(1 for r in recent if r["c"]<r["o"])/max(1,len(recent))
+
+    def ret(n):
+        if len(rows)<=n or rows[-n-1]["c"]<=0:return None
+        return (rows[-1]["c"]/rows[-n-1]["c"]-1.0)*100.0
+    mom3=ret(3); mom6=ret(6); mom12=ret(12)
+
+    vols=[r["v"] for r in rows if r["v"]>0]
+    baseline=median(vols[-40:-8]) if len(vols)>=16 and vols[-40:-8] else (median(vols) if vols else None)
+    recent_vols=[r["v"] for r in recent12 if r["v"]>0]
+    climax=max(recent_vols) if recent_vols else None
+    climax_ratio=(climax/baseline) if climax and baseline else None
+    last3=[r["v"] for r in rows[-3:] if r["v"]>0]
+    last3_avg=sum(last3)/len(last3) if last3 else None
+    post_climax_fade=(last3_avg/climax) if climax and last3_avg is not None else None
+
+    score=8.0
+    factors=[]
+    def add(points,text):
+        nonlocal score
+        score+=points
+        factors.append({"points":round(points,1),"text":text})
+
+    impulse_move=fnum(imp.get("impulse_move_pct")) or 0.0
+    current_retrace=fnum(imp.get("current_retracement_pct"))
+    max_retrace=fnum(imp.get("max_retracement_pct"))
+    recovery=fnum(imp.get("bounce_recovery_pct")) or 0.0
+    pull_vol=fnum(imp.get("pullback_volume_ratio"))
+
+    if impulse_move>=80:add(12,"very large impulse move is mature")
+    elif impulse_move>=40:add(8,"large impulse move")
+    elif impulse_move>=20:add(4,"meaningful impulse already occurred")
+
+    if vwap_ext is not None:
+        if vwap_ext>=20:add(15,"extreme extension above VWAP")
+        elif vwap_ext>=12:add(9,"large extension above VWAP")
+        elif vwap_ext>=8:add(4,"moderate extension above VWAP")
+        elif vwap_ext<0 and impulse_move>=15:add(15,"lost VWAP after a momentum run")
+
+    if rejection_count>=3:add(14,f"{rejection_count} recent rejection attempts near the high")
+    elif rejection_count>=2:add(9,"repeated rejection near the high")
+    elif rejection_count==1:add(4,"one visible rejection near the high")
+
+    if avg_upper_wick>=0.40:add(9,"large upper wicks show selling into strength")
+    elif avg_upper_wick>=0.25:add(4,"upper-wick pressure is elevated")
+
+    if lower_highs>=3:add(9,"recent bars are forming lower highs")
+    elif lower_highs>=2:add(5,"early lower-high structure")
+    if lower_lows>=3:add(6,"recent bars are also making lower lows")
+    if red_fraction>=0.625:add(6,"most recent bars are closing red")
+
+    if mom3 is not None and mom6 is not None:
+        if mom3<0 and mom6<0:add(10,"short-term momentum has rolled over")
+        elif mom3<0:add(5,"very short-term momentum turned negative")
+    if mom12 is not None and mom12>3 and mom3 is not None and mom3<0:
+        add(5,"momentum divergence: larger trend up, immediate tape down")
+
+    if climax_ratio is not None:
+        if climax_ratio>=3 and post_climax_fade is not None and post_climax_fade<0.55:
+            add(10,"volume climax followed by participation fade")
+        elif climax_ratio>=2.2:
+            add(5,"recent volume climax")
+
+    if impulse_move>=15:
+        if from_high>=max(6.0,atrp*0.8):add(8,"price has materially rejected from the run high")
+        if max_retrace is not None and max_retrace>=78:add(12,"impulse retracement is deep enough to threaten trend failure")
+        elif max_retrace is not None and max_retrace>=60 and not imp.get("bounce_confirmed"):
+            add(7,"deep pullback has not produced a convincing bounce")
+        if pull_vol is not None and pull_vol>=1.15:add(7,"selling volume is expanding during the pullback")
+        if current_retrace is not None and 30<=current_retrace<=60 and recovery>=8 and imp.get("bounce_confirmed"):
+            add(-8,"healthy pullback has produced a confirmed recovery")
+        if current_retrace is not None and current_retrace<20 and mom3 is not None and mom3>0:
+            add(-5,"price remains near the high with positive momentum")
+
+    score=max(0.0,min(100.0,score))
+    label="VERY HIGH" if score>=78 else "HIGH" if score>=62 else "MODERATE" if score>=42 else "LOW"
+    state=("LIKELY TOP / REVERSAL RISK" if score>=78 else "EXHAUSTION WARNING" if score>=62 else "WATCH FOR STALLING" if score>=42 else "RUN STILL HEALTHY")
+    return {
+        "status":"ok","score":round(score,1),"label":label,"state":state,
+        "session_high":round(session_high,4),"from_high_pct":round(from_high,2),
+        "vwap_extension_pct":round(vwap_ext,2) if vwap_ext is not None else None,
+        "rejection_count":int(rejection_count),"avg_upper_wick_pct":round(avg_upper_wick*100.0,1),
+        "lower_high_count":int(lower_highs),"lower_low_count":int(lower_lows),
+        "red_bar_pct":round(red_fraction*100.0,1),
+        "momentum_3bar_pct":round(mom3,2) if mom3 is not None else None,
+        "momentum_6bar_pct":round(mom6,2) if mom6 is not None else None,
+        "momentum_12bar_pct":round(mom12,2) if mom12 is not None else None,
+        "volume_climax_ratio":round(climax_ratio,2) if climax_ratio is not None else None,
+        "post_climax_volume_ratio":round(post_climax_fade,2) if post_climax_fade is not None else None,
+        "factors":sorted(factors,key=lambda x:abs(x["points"]),reverse=True)[:8],
     }
 
 
@@ -699,6 +833,8 @@ def build_trade_plan(metrics, now):
     setup_score=fnum(metrics.get("score")) or 50
     hist=_hist_trade_context(metrics.get("historical_analogs"))
     impulse=metrics.get("impulse_pullback") or {}
+    exhaustion=metrics.get("run_exhaustion") or {}
+    reversal_score=fnum(exhaustion.get("score")) or 0.0
     hist_setup=metrics.get("historical_setup") or {}
     hist_intraday=hist_setup.get("intraday") or {}
     catalyst=_catalyst_bias(metrics.get("news") or [])
@@ -922,9 +1058,9 @@ def build_trade_plan(metrics, now):
     negative_catalyst=catalyst.get("score",0)<=-5
 
     preferred="pullback"
-    if in_break and breakout_confirm:preferred="breakout"
+    if in_break and breakout_confirm and reversal_score<62:preferred="breakout"
     elif in_pull:preferred="pullback"
-    elif breakout_plan["risk_reward"] >= pull_plan["risk_reward"]+0.5 and not overextended:preferred="breakout"
+    elif breakout_plan["risk_reward"] >= pull_plan["risk_reward"]+0.5 and not overextended and reversal_score<55:preferred="breakout"
 
     chosen=breakout_plan if preferred=="breakout" else pull_plan
     rr=fnum(chosen.get("risk_reward")) or 0
@@ -956,6 +1092,15 @@ def build_trade_plan(metrics, now):
         status="NO TRADE"
         action="NO TRADE — momentum is weak below VWAP"
         reasons.append("Price is below VWAP with negative short-term momentum.")
+    elif reversal_score>=82 and ((m5 is not None and m5<0) or (vwap is not None and price<vwap)):
+        status="NO TRADE"
+        action="NO TRADE — run exhaustion / reversal risk is very high"
+        reasons.append("Multiple top/reversal signals are aligned; avoid treating a mature run as a fresh momentum entry.")
+    elif reversal_score>=68:
+        status="WAIT"
+        preferred="pullback"; chosen=pull_plan
+        action="WAIT — HIGH RUN-EXHAUSTION RISK"
+        reasons.append("The run is showing meaningful exhaustion/reversal evidence; require a fresh base and reclaim before considering another long entry.")
     elif rr < 1.15:
         status="NO TRADE"
         action="NO TRADE — reward/risk is unattractive"
@@ -1014,6 +1159,7 @@ def build_trade_plan(metrics, now):
         "confidence_label":"HIGH" if confidence>=75 else "MODERATE" if confidence>=58 else "LOW",
         "pullback":pull_plan,"breakout":breakout_plan,"selected":chosen,
         "impulse_pullback":impulse,
+        "run_exhaustion":exhaustion,
         "nearest_support":support_price,"nearest_support_quality":(nearest_support or {}).get("quality"),
         "nearest_resistance":resistance_price,"support_distance_pct":round(support_distance,2) if support_distance is not None else None,
         "resistance_distance_pct":round(resistance_distance,2) if resistance_distance is not None else None,
@@ -1041,6 +1187,12 @@ def score_setup(metrics):
     if fp is not None:
         if fp<=3:score+=8
         elif fp>=15:score-=8; reasons.append("far below day high")
+    exhaustion=metrics.get("run_exhaustion") or {}
+    ex_score=fnum(exhaustion.get("score"))
+    if ex_score is not None:
+        if ex_score>=78:score-=18; reasons.append("very high run-exhaustion / reversal risk")
+        elif ex_score>=62:score-=10; reasons.append("elevated run-exhaustion risk")
+        elif ex_score>=42:score-=4
     pace=metrics.get("volume_pace")
     if pace is not None:
         if pace>=2:score+=10; reasons.append("strong relative volume")
@@ -1181,6 +1333,7 @@ def analyze(symbol):
 
     liquidity=liquidity_context(price,avgvol,pace,spread_pct)
     impulse=impulse_pullback_context(intraday,price,atr14_pct)
+    exhaustion=run_exhaustion_context(intraday,price,vwap,atr14_pct,impulse)
     metrics={
         "engine_version":ANALYZER_ENGINE_VERSION,
         "feature_version":ANALYZER_FEATURE_VERSION,
@@ -1219,6 +1372,7 @@ def analyze(symbol):
         "atr_14":round(atr14,4) if atr14 is not None else None,
         "atr_14_pct":round(atr14_pct,2) if atr14_pct is not None else None,
         "impulse_pullback":impulse,
+        "run_exhaustion":exhaustion,
         "liquidity":liquidity,
         "supports":supports,
         "resistances":resist,
