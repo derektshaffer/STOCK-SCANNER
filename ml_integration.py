@@ -162,7 +162,9 @@ def install_ml_analysis(sa):
         ml = _validated_edge_only(ml)
 
         # Keep the same-ticker model primary. The peer layer is trained
-        # separately on behaviorally similar setups from OTHER symbols.
+        # separately on behaviorally similar setups from OTHER symbols, now
+        # including impulse/retracement/bounce structure when those historical
+        # replay features are available.
         same_ticker_edge = _num(ml.get("ml_edge_score"))
         same_ticker_gate = bool(ml.get("gate_passed"))
         try:
@@ -222,7 +224,7 @@ def install_ml_analysis(sa):
         elif peer_edge is not None:
             ml["edge_method"] = str(ml.get("edge_method") or "validated_models_only") + "_peer_advisory"
 
-        ml["version"] = "ml-v1.2-peer"
+        ml["version"] = "ml-v1.3-impulse-peer"
         metrics["ml_prediction"] = ml
 
         # Validation gate: only a model that beats naive baselines on unseen,
