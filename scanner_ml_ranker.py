@@ -117,6 +117,16 @@ def _feature_dict(row, scan_time=None):
         "impulse_max_retracement_pct": _num(row.get("impulse_max_retracement_pct")),
         "impulse_bounce_recovery_pct": _num(row.get("impulse_bounce_recovery_pct")),
         "pullback_volume_ratio": _num(row.get("pullback_volume_ratio")),
+        "bounce_count": _num(row.get("bounce_count")),
+        "last_bounce_pct": _num(row.get("last_bounce_pct")),
+        "bounce_decay_ratio": _num(row.get("bounce_decay_ratio")),
+        "bounce_volume_decay_ratio": _num(row.get("bounce_volume_decay_ratio")),
+        "lower_high_streak": _num(row.get("lower_high_streak")),
+        "higher_low_streak": _num(row.get("higher_low_streak")),
+        "sequence_health_score": _num(row.get("sequence_health_score")),
+        "current_pullback_pct": _num(row.get("current_pullback_pct")),
+        "ongoing_bounce_pct": _num(row.get("ongoing_bounce_pct")),
+        "bounce_leg_code": _num(row.get("bounce_leg_code")),
         "above_vwap": 1.0 if bool(row.get("above_vwap")) else 0.0,
         "log_liquidity": (
             math.log1p(max(0.0, liquidity)) if liquidity is not None else None
