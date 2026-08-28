@@ -4,12 +4,18 @@ on:
   schedule:
     - cron: "0 13 * * 0"
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "trading_research_agent.py"
+      - ".github/workflows/trading-research.yml"
 
 permissions:
   contents: write
 
 jobs:
   research:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, 'Run trading research')
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
