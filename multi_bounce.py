@@ -241,7 +241,9 @@ def detect_bounce_sequence(
                     {
                         "number": len(bounces) + 1,
                         "pullback_low": round(trough_price, 4),
+                        "pullback_low_index": int(trough_idx),
                         "bounce_peak": round(bounce_peak, 4),
+                        "bounce_peak_index": int(bounce_peak_idx),
                         "pullback_drop_pct": round(pullback_drop_pct, 2)
                         if pullback_drop_pct is not None
                         else None,
