@@ -3,6 +3,7 @@ from collections import defaultdict
 from statistics import median
 
 from multi_bounce import detect_bounce_sequence
+from stair_step import detect_stair_step
 
 _CACHE = {}
 
@@ -212,6 +213,25 @@ def _intraday_stats(symbol, now, candidate_dates, fetch_bars, et):
         bounce3=(seq_bounces[2].get("bounce_pct") if len(seq_bounces)>=3 else None)
         decay21=(bounce2/bounce1 if bounce1 and bounce2 is not None else None)
 
+        def drop_after_bounce(bounce):
+            if not bounce:
+                return None
+            peak=_fnum(bounce.get("bounce_peak"))
+            peak_idx=int(bounce.get("bounce_peak_index") or -1)
+            if not peak or peak_idx<0 or peak_idx>=len(daybars)-1:
+                return None
+            future_lows=[
+                _fnum(b.get("l"))
+                for b in daybars[peak_idx+1:]
+                if _fnum(b.get("l")) is not None
+            ]
+            if not future_lows:
+                return None
+            return _pct(min(future_lows),peak)
+
+        post2_drop=drop_after_bounce(seq_bounces[1] if len(seq_bounces)>=2 else None)
+        post3_drop=drop_after_bounce(seq_bounces[2] if len(seq_bounces)>=3 else None)
+
         rows.append({
             "date": date,
             **impulse_stats,
@@ -225,6 +245,12 @@ def _intraday_stats(symbol, now, candidate_dates, fetch_bars, et):
             "had_second_bounce":bool(len(seq_bounces)>=2),
             "had_third_bounce":bool(len(seq_bounces)>=3),
             "second_bounce_lower_high":bool(len(seq_bounces)>=2 and seq_bounces[1].get("lower_high")),
+            "post_second_bounce_max_drop_pct":round(post2_drop,2) if post2_drop is not None else None,
+            "post_third_bounce_max_drop_pct":round(post3_drop,2) if post3_drop is not None else None,
+            "post_second_bounce_drop5":bool(post2_drop is not None and post2_drop<=-5.0),
+            "post_second_bounce_drop10":bool(post2_drop is not None and post2_drop<=-10.0),
+            "post_third_bounce_drop5":bool(post3_drop is not None and post3_drop<=-5.0),
+            "post_third_bounce_drop10":bool(post3_drop is not None and post3_drop<=-10.0),
             "first_pullback_pct": round(early_pullback, 2) if early_pullback is not None else None,
             "vwap_reclaimed": reclaim_idx is not None,
             "vwap_reclaim_follow": reclaim_follow,
@@ -274,6 +300,30 @@ def _intraday_stats(symbol, now, candidate_dates, fetch_bars, et):
             "second_bounce_lower_high",
         ),
         "median_bounce_sequence_health": _median(rows, "bounce_sequence_health"),
+        "median_post_second_bounce_max_drop_pct": _median(
+            [r for r in rows if r.get("post_second_bounce_max_drop_pct") is not None],
+            "post_second_bounce_max_drop_pct",
+        ),
+        "post_second_bounce_drop5_rate_pct": _rate(
+            [r for r in rows if r.get("post_second_bounce_max_drop_pct") is not None],
+            "post_second_bounce_drop5",
+        ),
+        "post_second_bounce_drop10_rate_pct": _rate(
+            [r for r in rows if r.get("post_second_bounce_max_drop_pct") is not None],
+            "post_second_bounce_drop10",
+        ),
+        "median_post_third_bounce_max_drop_pct": _median(
+            [r for r in rows if r.get("post_third_bounce_max_drop_pct") is not None],
+            "post_third_bounce_max_drop_pct",
+        ),
+        "post_third_bounce_drop5_rate_pct": _rate(
+            [r for r in rows if r.get("post_third_bounce_max_drop_pct") is not None],
+            "post_third_bounce_drop5",
+        ),
+        "post_third_bounce_drop10_rate_pct": _rate(
+            [r for r in rows if r.get("post_third_bounce_max_drop_pct") is not None],
+            "post_third_bounce_drop10",
+        ),
         "vwap_reclaim_rate_pct": round(100 * len(reclaim_rows) / len(rows), 1),
         "vwap_reclaim_follow_through_pct": _rate(reclaim_rows, "vwap_reclaim_follow"),
         "median_reclaim_close_gain_pct": _median(reclaim_rows, "vwap_reclaim_close_gain_pct"),
@@ -285,6 +335,57 @@ def _intraday_stats(symbol, now, candidate_dates, fetch_bars, et):
         "session_high_distribution": dict(buckets),
         "samples": rows,
     }
+
+def _stair_step_event_study(daily):
+    events=[]
+    if not daily or len(daily)<30:
+        return {"event_count":0}
+    for i in range(20,len(daily)-3):
+        window=daily[max(0,i-20):i+1]
+        ctx=detect_stair_step(window,atr_pct=None)
+        if not ctx.get("detected"):
+            continue
+        state=str(ctx.get("state") or "")
+        score=_fnum(ctx.get("structure_score")) or 0.0
+        if state not in {"HIGHER PLATEAU / COILING","REACCELERATING STAIR-STEP","STAIR-STEP TREND"} or score<55:
+            continue
+        base=_fnum(daily[i].get("c"))
+        if not base:
+            continue
+        future=daily[i+1:min(len(daily),i+4)]
+        highs=[_fnum(b.get("h")) for b in future]
+        lows=[_fnum(b.get("l")) for b in future]
+        closes=[_fnum(b.get("c")) for b in future]
+        highs=[x for x in highs if x is not None]
+        lows=[x for x in lows if x is not None]
+        closes=[x for x in closes if x is not None]
+        if not highs or not lows or not closes:
+            continue
+        next_close=_fnum(daily[i+1].get("c"))
+        mfe=_pct(max(highs),base)
+        mae=_pct(min(lows),base)
+        events.append({
+            "state":state,
+            "score":score,
+            "next_day_up":bool(next_close is not None and next_close>base),
+            "next3d_mfe_pct":mfe,
+            "next3d_mae_pct":mae,
+            "hit5":bool(mfe is not None and mfe>=5),
+            "hit10":bool(mfe is not None and mfe>=10),
+            "fail5":bool(mae is not None and mae<=-5),
+        })
+    if not events:
+        return {"event_count":0}
+    return {
+        "event_count":len(events),
+        "next_day_up_pct":_rate(events,"next_day_up"),
+        "next3d_hit5_rate_pct":_rate(events,"hit5"),
+        "next3d_hit10_rate_pct":_rate(events,"hit10"),
+        "next3d_failure5_rate_pct":_rate(events,"fail5"),
+        "median_next3d_mfe_pct":_median(events,"next3d_mfe_pct"),
+        "median_next3d_mae_pct":_median(events,"next3d_mae_pct"),
+    }
+
 
 def analyze_historical_patterns(symbol, now, current_day_pct, current_gap_pct, current_volume_pace, fetch_bars, et):
     """Find same-ticker historical days that resemble today's setup.
@@ -306,6 +407,7 @@ def analyze_historical_patterns(symbol, now, current_day_pct, current_gap_pct, c
     current_move = _fnum(current_day_pct) or 0
     current_gap = _fnum(current_gap_pct) or 0
     current_rvol = max(0.15, _fnum(current_volume_pace) or 1.0)
+    stair_history=_stair_step_event_study(daily)
     candidates = []
 
     for i in range(20, len(daily) - 1):
@@ -461,6 +563,21 @@ def analyze_historical_patterns(symbol, now, current_day_pct, current_gap_pct, c
             f"Second bounces formed a lower high on "
             f"{intraday['second_bounce_lower_high_rate_pct']:.0f}% of days where a second bounce occurred."
         )
+    if intraday.get("post_third_bounce_drop5_rate_pct") is not None:
+        notes.append(
+            f"After a completed third bounce, price later fell at least 5% on "
+            f"{intraday['post_third_bounce_drop5_rate_pct']:.0f}% of measured sessions."
+        )
+    elif intraday.get("post_second_bounce_drop5_rate_pct") is not None:
+        notes.append(
+            f"After a completed second bounce, price later fell at least 5% on "
+            f"{intraday['post_second_bounce_drop5_rate_pct']:.0f}% of measured sessions."
+        )
+    if int(stair_history.get("event_count") or 0)>=3:
+        notes.append(
+            f"Historical stair-step / higher-plateau structures re-expanded by at least 5% within three sessions "
+            f"{(stair_history.get('next3d_hit5_rate_pct') or 0):.0f}% of the time (n={stair_history['event_count']})."
+        )
     if intraday.get("session_high_most_common"):
         notes.append(f"Matched days most often made their session high in the {intraday['session_high_most_common'].lower()} window.")
 
@@ -494,6 +611,13 @@ def analyze_historical_patterns(symbol, now, current_day_pct, current_gap_pct, c
         "median_bounce2_pct": intraday.get("median_bounce2_pct"),
         "median_bounce2_vs_bounce1_ratio": intraday.get("median_bounce2_vs_bounce1_ratio"),
         "second_bounce_lower_high_rate_pct": intraday.get("second_bounce_lower_high_rate_pct"),
+        "post_second_bounce_drop5_rate_pct": intraday.get("post_second_bounce_drop5_rate_pct"),
+        "post_second_bounce_drop10_rate_pct": intraday.get("post_second_bounce_drop10_rate_pct"),
+        "median_post_second_bounce_max_drop_pct": intraday.get("median_post_second_bounce_max_drop_pct"),
+        "post_third_bounce_drop5_rate_pct": intraday.get("post_third_bounce_drop5_rate_pct"),
+        "post_third_bounce_drop10_rate_pct": intraday.get("post_third_bounce_drop10_rate_pct"),
+        "median_post_third_bounce_max_drop_pct": intraday.get("median_post_third_bounce_max_drop_pct"),
+        "stair_step_history": stair_history,
         "intraday": intraday,
         "notes": notes,
         "matches": matches[:15],
