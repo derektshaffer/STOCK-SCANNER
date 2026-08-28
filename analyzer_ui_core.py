@@ -203,6 +203,7 @@ TERM_GLOSSARY = {
     "Breakout confirmation": "Evidence that a breakout is real rather than a quick false move, such as price holding above the level, increasing volume, a tight spread, or a successful retest.",
     "False breakout": "A move above resistance that quickly fails and falls back below the level. False breakouts are one reason the analyzer can recommend waiting for confirmation rather than buying the first tick above resistance.",
     "Pullback": "A temporary move lower during a broader upward move. Traders often look for pullbacks toward VWAP, prior resistance, or support to obtain a better entry than chasing a spike.",
+    "Power hour": "The final hour of the regular U.S. stock-market session, usually 3:00–4:00 PM Eastern. Trading volume and volatility often increase as institutions and day traders adjust or close positions before the 4:00 PM close.",
     "Entry zone": "A price range where the analyzer sees a more favorable balance of upside versus downside. It is a zone rather than one exact price because real markets rarely turn at a single penny.",
     "Stop / invalidation": "The price area where the original trade thesis is considered wrong or materially weakened. It is based on technical structure and volatility rather than an arbitrary percentage loss.",
     "Target 1": "The first, usually more conservative, profit objective. It is commonly based on nearby resistance or another technically meaningful level.",
@@ -242,6 +243,7 @@ TERM_ALIASES = {
     "invalidation": "Stop / invalidation",
     "analog": "Historical spike analog",
     "historical analog": "Historical spike analog",
+    "power hour": "Power hour",
     "warrant overhang": "Warrant overhang",
     "warrants": "Warrant",
 }
@@ -697,18 +699,29 @@ def zone_text(plan):
     lo=plan.get("entry_low"); hi=plan.get("entry_high")
     return f"{money(lo)}–{money(hi)}" if lo is not None and hi is not None else "—"
 
-def card(col,k,v,n="",cls="",tooltip=None):
+def card(col,k,v,n="",cls="",tooltip=None,n_tooltip_term=None,n_tooltip=None):
     label=html.escape(str(k))
     if tooltip:
         label=(
             f'<span class="metric-term" title="{html.escape(str(tooltip), quote=True)}">'
             f'{label}</span>'
         )
+
+    note_text=str(n)
+    note_html=html.escape(note_text)
+    if n_tooltip_term and n_tooltip and str(n_tooltip_term) in note_text:
+        safe_term=html.escape(str(n_tooltip_term))
+        hover=(
+            f'<span class="metric-term" title="{html.escape(str(n_tooltip), quote=True)}">'
+            f'{safe_term}</span>'
+        )
+        note_html=note_html.replace(safe_term,hover,1)
+
     with col:
         st.markdown(
             f'<div class="card"><div class="k">{label}</div>'
             f'<div class="v {cls}">{html.escape(str(v))}</div>'
-            f'<div class="n">{html.escape(str(n))}</div></div>',
+            f'<div class="n">{note_html}</div></div>',
             unsafe_allow_html=True,
         )
 
