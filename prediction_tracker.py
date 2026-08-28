@@ -13,8 +13,8 @@ from zoneinfo import ZoneInfo
 LOG_PATH = Path(os.environ.get("ANALYZER_PREDICTION_LOG", "analysis_logs/analyzer_predictions.json"))
 BUCKET_MINUTES = 5
 ET = ZoneInfo("America/New_York")
-ANALYZER_FEATURE_VERSION = "analyzer-features-v2-consolidated"
-DECISION_SCORE_VERSION = "decision-v2.2-peer-ml"
+ANALYZER_FEATURE_VERSION = "analyzer-features-v6-sequence-regimes"
+DECISION_SCORE_VERSION = "decision-v2.6-sequence-regimes"
 
 GITHUB_TOKEN = (
     os.environ.get("ANALYZER_GITHUB_TOKEN", "").strip()
@@ -269,6 +269,11 @@ def record_prediction(metrics, now=None):
     market = v2.get("market_context") or {}
     fundamental = v2.get("fundamental_context") or {}
     stream = v2.get("live_stream_status") or {}
+    sequence = metrics.get("bounce_sequence") or {}
+    stair = metrics.get("stair_step") or {}
+    repeat_plan = plan.get("repeat_bounce") or {}
+    models = ml.get("models") or {}
+    scenarios = (v2.get("full_spectrum") or {}).get("scenarios") or {}
 
     row = {
         "id": f"{key}:{len(rows)+1}",
@@ -335,6 +340,59 @@ def record_prediction(metrics, now=None):
         "peer_ml_blend_weight_pct": int(
             ml.get("peer_blend_weight_pct") or 0
         ),
+        # Bounce-specific live state and dedicated plan geometry. These fields
+        # let us later test whether Bounce #2/#3 entries actually behaved as
+        # predicted instead of only evaluating the generic Analyzer signal.
+        "bounce_sequence_detected": bool(sequence.get("detected")),
+        "bounce_count": int(sequence.get("completed_bounces") or 0),
+        "next_bounce_number": int(sequence.get("next_bounce_number") or 0),
+        "bounce_current_leg": sequence.get("current_leg"),
+        "bounce_sequence_state": sequence.get("sequence_state"),
+        "bounce_sequence_health": _num(sequence.get("sequence_health_score")),
+        "bounce1_pct": _num(sequence.get("bounce1_pct")),
+        "bounce2_pct": _num(sequence.get("bounce2_pct")),
+        "bounce3_pct": _num(sequence.get("bounce3_pct")),
+        "bounce_decay_ratio": _num(sequence.get("bounce_decay_ratio")),
+        "bounce_volume_decay_ratio": _num(sequence.get("bounce_volume_decay_ratio")),
+        "bounce_lower_high_streak": int(sequence.get("lower_high_streak") or 0),
+        "bounce_higher_low_streak": int(sequence.get("higher_low_streak") or 0),
+        "bounce_current_dip_low": _num(sequence.get("current_dip_low")),
+        "bounce_reference_peak": _num(sequence.get("reference_peak")),
+        "repeat_bounce_plan_available": bool(repeat_plan),
+        "repeat_bounce_plan_number": int(repeat_plan.get("bounce_number") or 0),
+        "repeat_bounce_entry_low": _num(repeat_plan.get("entry_low")),
+        "repeat_bounce_entry_high": _num(repeat_plan.get("entry_high")),
+        "repeat_bounce_confirmation": _num(repeat_plan.get("confirmation_level")),
+        "repeat_bounce_target1": _num(repeat_plan.get("target1")),
+        "repeat_bounce_target2": _num(repeat_plan.get("target2")),
+        "repeat_bounce_stop": _num(repeat_plan.get("stop")),
+        "repeat_bounce_rr": _num(repeat_plan.get("risk_reward")),
+        "repeat_bounce_expected_pct": _num(repeat_plan.get("expected_bounce_pct")),
+        "repeat_bounce_historical_rate_pct": _num(repeat_plan.get("historical_bounce_rate_pct")),
+        "repeat_bounce_30_probability_pct": _num((models.get("repeat_bounce_30") or {}).get("probability_pct")),
+        "repeat_bounce_30_validated": bool((models.get("repeat_bounce_30") or {}).get("validated")),
+        "new_high_60_probability_pct": _num((models.get("new_high_60") or {}).get("probability_pct")),
+        "new_high_60_validated": bool((models.get("new_high_60") or {}).get("validated")),
+        "post_bounce_failure_60_probability_pct": _num((models.get("post_bounce_failure_60") or {}).get("probability_pct")),
+        "post_bounce_failure_60_validated": bool((models.get("post_bounce_failure_60") or {}).get("validated")),
+        # Multi-session stair-step / plateau state.
+        "stair_step_detected": bool(stair.get("detected")),
+        "stair_step_state": stair.get("state"),
+        "stair_step_count": int(stair.get("step_count") or 0),
+        "stair_structure_score": _num(stair.get("structure_score")),
+        "stair_last_step_pct": _num(stair.get("last_step_pct")),
+        "stair_plateau_days": int(stair.get("current_plateau_days") or 0),
+        "stair_plateau_range_pct": _num(stair.get("current_plateau_range_pct")),
+        "stair_plateau_retention_pct": _num(stair.get("current_plateau_retention_pct")),
+        "stair_plateau_volume_ratio": _num(stair.get("plateau_volume_ratio")),
+        "stair_reaccelerating": bool(stair.get("reaccelerating")),
+        "stair_breakdown": bool(stair.get("breakdown")),
+        "stair_reacceleration_60_probability_pct": _num((models.get("stair_reacceleration_60") or {}).get("probability_pct")),
+        "stair_reacceleration_60_validated": bool((models.get("stair_reacceleration_60") or {}).get("validated")),
+        "scenario_continuation_weight": _num((scenarios.get("continuation") or {}).get("weight_pct")),
+        "scenario_pullback_bounce_weight": _num((scenarios.get("pullback_bounce") or {}).get("weight_pct")),
+        "scenario_reversal_failure_weight": _num((scenarios.get("reversal_failure") or {}).get("weight_pct")),
+        "scenario_sideways_chop_weight": _num((scenarios.get("sideways_chop") or {}).get("weight_pct")),
         "historical_bias": hist.get("bias_label"),
         "historical_bias_score": _num(hist.get("bias_score")),
         "historical_samples": int(hist.get("sample_count") or 0),
@@ -404,6 +462,25 @@ def _first_touch(bars, target, stop):
     return None
 
 
+def _window_excursions(bars, created, price, minutes):
+    if created is None or price is None or price <= 0:
+        return None, None
+    end = created + timedelta(minutes=minutes)
+    window = []
+    for bar in bars:
+        dt = _bar_dt(bar)
+        if dt is None or dt < created or dt > end:
+            continue
+        window.append(bar)
+    highs = [_num(b.get("h")) for b in window]
+    lows = [_num(b.get("l")) for b in window]
+    highs = [v for v in highs if v is not None]
+    lows = [v for v in lows if v is not None]
+    mfe = ((max(highs) / price - 1.0) * 100.0) if highs else None
+    mae = ((min(lows) / price - 1.0) * 100.0) if lows else None
+    return mfe, mae
+
+
 def resolve_symbol_predictions(sa, symbol, now=None, current_metrics=None):
     """Resolve older predictions opportunistically using delayed SIP bars.
 
@@ -461,6 +538,65 @@ def resolve_symbol_predictions(sa, symbol, now=None, current_metrics=None):
             if touch:
                 outcomes["target1_first_touch"] = touch
                 changed = True
+
+        # Dedicated later-bounce outcome path.
+        if row.get("repeat_bounce_plan_available") and future:
+            rb_target1 = _num(row.get("repeat_bounce_target1"))
+            rb_target2 = _num(row.get("repeat_bounce_target2"))
+            rb_stop = _num(row.get("repeat_bounce_stop"))
+            if "repeat_bounce_target1_first_touch" not in outcomes:
+                touch = _first_touch(future, rb_target1, rb_stop)
+                if touch:
+                    outcomes["repeat_bounce_target1_first_touch"] = touch
+                    changed = True
+            if "repeat_bounce_target2_first_touch" not in outcomes:
+                touch2 = _first_touch(future, rb_target2, rb_stop)
+                if touch2:
+                    outcomes["repeat_bounce_target2_first_touch"] = touch2
+                    changed = True
+
+            for mins in (30, 60):
+                mfe_key=f"repeat_bounce_mfe_{mins}m_pct"
+                mae_key=f"repeat_bounce_mae_{mins}m_pct"
+                if safe_end >= created + timedelta(minutes=mins) and (mfe_key not in outcomes or mae_key not in outcomes):
+                    mfe,mae=_window_excursions(future,created,price,mins)
+                    if mfe is not None:
+                        outcomes[mfe_key]=round(mfe,3)
+                        changed=True
+                    if mae is not None:
+                        outcomes[mae_key]=round(mae,3)
+                        changed=True
+
+            ref_peak=_num(row.get("bounce_reference_peak"))
+            if (
+                "repeat_bounce_reference_peak_reclaimed_60m" not in outcomes
+                and ref_peak is not None
+                and safe_end >= created + timedelta(minutes=60)
+            ):
+                within60=[
+                    b for b in future
+                    if (_bar_dt(b) is not None and _bar_dt(b) <= created + timedelta(minutes=60))
+                ]
+                highs=[_num(b.get("h")) for b in within60]
+                highs=[v for v in highs if v is not None]
+                if highs:
+                    outcomes["repeat_bounce_reference_peak_reclaimed_60m"]=bool(max(highs)>=ref_peak)
+                    changed=True
+
+        # Mature-sequence falloff severity is logged even when no bounce entry
+        # is offered, so failure models can be calibrated on live observations.
+        if int(row.get("bounce_count") or 0) >= 2:
+            for mins in (30,60):
+                drop_key=f"post_bounce_max_drop_{mins}m_pct"
+                rise_key=f"post_bounce_max_rise_{mins}m_pct"
+                if safe_end >= created + timedelta(minutes=mins) and (drop_key not in outcomes or rise_key not in outcomes):
+                    mfe,mae=_window_excursions(future,created,price,mins)
+                    if mae is not None:
+                        outcomes[drop_key]=round(mae,3)
+                        changed=True
+                    if mfe is not None:
+                        outcomes[rise_key]=round(mfe,3)
+                        changed=True
 
     if changed:
         _save(rows)
