@@ -1,0 +1,53 @@
+name: Trading Research Agent
+
+on:
+  schedule:
+    - cron: "0 13 * * 0"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  research:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Validate research agent syntax
+        run: python -m py_compile trading_research_agent.py
+
+      - name: Research trading hypotheses
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          TRADING_RESEARCH_MODEL: ${{ vars.TRADING_RESEARCH_MODEL }}
+        run: python trading_research_agent.py
+
+      - name: Commit research queue
+        shell: bash
+        run: |
+          if [ ! -f research/latest_research.json ]; then
+            echo "No research artifact was produced. OPENAI_API_KEY may not be configured in GitHub Actions."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add research/latest_research.json research/archive/
+          if git diff --cached --quiet; then
+            echo "Research queue is unchanged."
+          else
+            git commit -m "Update background trading research queue"
+            git pull --rebase origin "${GITHUB_REF_NAME}"
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+          fi
