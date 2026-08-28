@@ -27,8 +27,8 @@ USE_TRADIER = bool(
 )
 LIVE_MARKET_PROVIDER = "tradier" if USE_TRADIER else "alpaca"
 LIVE_MARKET_LABEL = "TRADIER CONSOLIDATED" if USE_TRADIER else LIVE_FEED.upper()
-ANALYZER_FEATURE_VERSION = "analyzer-features-v2-consolidated"
-ANALYZER_ENGINE_VERSION = "trade-plan-v3-consolidated-live"
+ANALYZER_FEATURE_VERSION = "analyzer-features-v3-impulse-pullback"
+ANALYZER_ENGINE_VERSION = "trade-plan-v4-impulse-confirmation"
 ET = ZoneInfo("America/New_York")
 
 CATALYST_RULES = [
@@ -145,6 +145,113 @@ def _regular_session_bar(b):
         return False
     minute = dt.hour * 60 + dt.minute
     return dt.weekday() < 5 and 570 <= minute < 960
+
+
+def impulse_pullback_context(bs, current_price=None, atr_pct=None):
+    """Describe the strongest recent impulse -> pullback -> bounce structure.
+
+    The detector searches for a meaningful low-to-later-high impulse, measures
+    how much of THAT move has been retraced, and tracks whether price has begun
+    recovering from the deepest pullback. Retracement is therefore expressed as
+    a percentage of the preceding impulse, not simply percent below the day high.
+    """
+    rows=[]
+    for b in bs or []:
+        h=fnum(b.get("h")); l=fnum(b.get("l")); close=fnum(b.get("c")); vol=fnum(b.get("v")) or 0.0
+        if h is None or l is None or close is None or h <= 0 or l <= 0:
+            continue
+        rows.append({"h":h,"l":l,"c":close,"v":vol,"t":b.get("t")})
+    if len(rows) < 8:
+        return {"status":"insufficient_data","detected":False}
+
+    price=fnum(current_price) or rows[-1]["c"]
+    min_impulse=max(7.0, min(18.0, (fnum(atr_pct) or 8.0)*0.75))
+    candidates=[]
+    n=len(rows)
+    # Local impulses are more useful than always anchoring at the session low.
+    # Search up to roughly two hours behind each peak for the lowest prior low.
+    for peak_idx in range(5,n-1):
+        start=max(0,peak_idx-120)
+        low_idx=min(range(start,peak_idx), key=lambda i: rows[i]["l"])
+        low=rows[low_idx]["l"]; peak=rows[peak_idx]["h"]
+        if peak <= low:
+            continue
+        move_pct=(peak/low-1.0)*100.0
+        duration=peak_idx-low_idx
+        if move_pct < min_impulse or duration < 3:
+            continue
+        after=rows[peak_idx+1:]
+        if not after:
+            continue
+        post_rel=min(range(len(after)), key=lambda i: after[i]["l"])
+        trough_idx=peak_idx+1+post_rel
+        trough=rows[trough_idx]["l"]
+        run=peak-low
+        max_retrace=(peak-trough)/run*100.0
+        current_retrace=(peak-price)/run*100.0
+        recovery=max_retrace-current_retrace
+        # Favor large, recent impulses that have actually begun a pullback.
+        age=n-1-peak_idx
+        recency=max(0.35,1.0-age/max(30.0,n*0.9))
+        shape=1.0 if 12 <= max_retrace <= 72 else 0.72
+        score=move_pct*recency*shape
+        candidates.append((score,low_idx,peak_idx,trough_idx,low,peak,trough,move_pct,max_retrace,current_retrace,recovery))
+
+    if not candidates:
+        return {"status":"no_clear_impulse","detected":False}
+
+    _,low_idx,peak_idx,trough_idx,low,peak,trough,move_pct,max_retrace,current_retrace,recovery=max(candidates,key=lambda x:x[0])
+    run=peak-low
+
+    impulse_vols=[rows[i]["v"] for i in range(low_idx,peak_idx+1) if rows[i]["v"]>0]
+    pull_vols=[rows[i]["v"] for i in range(peak_idx+1,trough_idx+1) if rows[i]["v"]>0]
+    impulse_avg=sum(impulse_vols)/len(impulse_vols) if impulse_vols else None
+    pull_avg=sum(pull_vols)/len(pull_vols) if pull_vols else None
+    vol_ratio=(pull_avg/impulse_avg) if impulse_avg and pull_avg is not None else None
+
+    levels={}
+    for label,frac in (("25%",0.25),("33%",1/3),("38.2%",0.382),("50%",0.50),("61.8%",0.618)):
+        levels[label]=round(peak-run*frac,4)
+
+    # A bounce needs actual recovery off the deepest pullback, not merely a
+    # touch of a retracement level while price is still falling.
+    bounce_confirmed=bool(
+        20 <= max_retrace <= 68
+        and recovery >= 6.0
+        and price > trough*1.01
+    )
+    if max_retrace > 78 and current_retrace > 62:
+        phase="DEEP / POSSIBLE FAILURE"
+    elif bounce_confirmed:
+        phase="BOUNCE CONFIRMED"
+    elif current_retrace < 20:
+        phase="STILL EXTENDED"
+    elif current_retrace <= 62:
+        phase="PULLBACK FORMING"
+    else:
+        phase="DEEP PULLBACK"
+
+    return {
+        "status":"ok",
+        "detected":True,
+        "phase":phase,
+        "impulse_low":round(low,4),
+        "impulse_high":round(peak,4),
+        "impulse_move_pct":round(move_pct,2),
+        "impulse_duration_bars":int(peak_idx-low_idx),
+        "peak_bars_ago":int(len(rows)-1-peak_idx),
+        "pullback_low":round(trough,4),
+        "current_retracement_pct":round(current_retrace,2),
+        "max_retracement_pct":round(max_retrace,2),
+        "bounce_recovery_pct":round(recovery,2),
+        "bounce_confirmed":bounce_confirmed,
+        "pullback_volume_ratio":round(vol_ratio,3) if vol_ratio is not None else None,
+        "pullback_volume_contracting":bool(vol_ratio is not None and vol_ratio < 0.85),
+        "levels":levels,
+        "default_zone_low":levels["50%"],
+        "default_zone_high":levels["33%"],
+        "run_size":round(run,4),
+    }
 
 
 def latest_session_bars(symbol, now):
@@ -591,6 +698,9 @@ def build_trade_plan(metrics, now):
     vwap_ext=fnum(metrics.get("vwap_extension_pct")) or 0
     setup_score=fnum(metrics.get("score")) or 50
     hist=_hist_trade_context(metrics.get("historical_analogs"))
+    impulse=metrics.get("impulse_pullback") or {}
+    hist_setup=metrics.get("historical_setup") or {}
+    hist_intraday=hist_setup.get("intraday") or {}
     catalyst=_catalyst_bias(metrics.get("news") or [])
     liquidity=metrics.get("liquidity") or {}
 
@@ -599,30 +709,80 @@ def build_trade_plan(metrics, now):
     support_price=fnum((nearest_support or {}).get("price"))
     resistance_price=fnum((nearest_resistance or {}).get("price"))
 
-    # Pullback anchor: prefer a nearby high-quality support/VWAP confluence.
-    anchors=[]
-    if vwap and vwap < price and (price/vwap-1)*100 <= max(18,atr_pct*1.8):
-        anchors.append((vwap,55,"VWAP"))
-    for level in supports:
-        lp=fnum(level.get("price"))
-        if lp and lp < price and (price/lp-1)*100 <= max(20,atr_pct*2):
-            anchors.append((lp,float(level.get("quality_score") or 35),f"{level.get('quality','')} support".strip()))
-    if anchors:
-        # Balance proximity and quality. Higher result is preferred.
-        pull_anchor,_,pull_source=max(anchors,key=lambda x:x[1]-(price/x[0]-1)*100*1.6)
-    else:
-        pull_anchor=price-max(atr*0.55,price*0.03)
-        pull_source="volatility pullback"
+    # Pullback anchor: use the impulse retracement structure first when a
+    # meaningful run exists, then look for VWAP/support confluence inside it.
+    impulse_detected=bool(impulse.get("detected"))
+    impulse_low=fnum(impulse.get("impulse_low"))
+    impulse_high=fnum(impulse.get("impulse_high"))
+    impulse_run=(impulse_high-impulse_low) if impulse_low and impulse_high and impulse_high>impulse_low else None
+    hist_retrace=fnum(hist_intraday.get("median_impulse_retracement_pct"))
 
-    zone_half=_clamp(atr_pct*0.055,0.35,1.15)
-    pull_zone=_price_zone(pull_anchor,zone_half)
+    retrace_shallow=33.0
+    retrace_deep=50.0
+    if hist_retrace is not None and 25 <= hist_retrace <= 62:
+        # Let the stock's own historical behavior shift the preferred zone,
+        # while keeping it inside a sensible first-pullback envelope.
+        retrace_shallow=max(25.0,hist_retrace-8.0)
+        retrace_deep=min(62.0,hist_retrace+8.0)
+
+    impulse_zone=None
+    if impulse_detected and impulse_run and (fnum(impulse.get("impulse_move_pct")) or 0)>=8:
+        iz_high=impulse_high-impulse_run*(retrace_shallow/100.0)
+        iz_low=impulse_high-impulse_run*(retrace_deep/100.0)
+        impulse_zone={"low":round(min(iz_low,iz_high),4),"high":round(max(iz_low,iz_high),4)}
+        pull_anchor=(impulse_zone["low"]+impulse_zone["high"])/2
+        pull_source=(
+            f"historical {retrace_shallow:.0f}–{retrace_deep:.0f}% impulse retracement"
+            if hist_retrace is not None
+            else "33–50% impulse retracement"
+        )
+
+        confluence=[]
+        if vwap and impulse_zone["low"]*0.97 <= vwap <= impulse_zone["high"]*1.03:
+            confluence.append((vwap,70,"VWAP + impulse retracement"))
+        for level in supports:
+            lp=fnum(level.get("price"))
+            if lp and impulse_zone["low"]*0.97 <= lp <= impulse_zone["high"]*1.03:
+                confluence.append((lp,float(level.get("quality_score") or 45)+18,f"{level.get('quality','')} support + retracement".strip()))
+        if confluence:
+            pull_anchor,_,pull_source=max(confluence,key=lambda x:x[1])
+    else:
+        anchors=[]
+        if vwap and vwap < price and (price/vwap-1)*100 <= max(18,atr_pct*1.8):
+            anchors.append((vwap,55,"VWAP"))
+        for level in supports:
+            lp=fnum(level.get("price"))
+            if lp and lp < price and (price/lp-1)*100 <= max(20,atr_pct*2):
+                anchors.append((lp,float(level.get("quality_score") or 35),f"{level.get('quality','')} support".strip()))
+        if anchors:
+            pull_anchor,_,pull_source=max(anchors,key=lambda x:x[1]-(price/x[0]-1)*100*1.6)
+        else:
+            pull_anchor=price-max(atr*0.75,price*0.04)
+            pull_source="volatility pullback"
+
+    if impulse_zone:
+        # Preserve the meaningful retracement width instead of collapsing a
+        # large impulse to a tiny ATR-sized band.
+        pull_zone=dict(impulse_zone)
+    else:
+        zone_half=_clamp(atr_pct*0.055,0.35,1.15)
+        pull_zone=_price_zone(pull_anchor,zone_half)
+
     stop_buffer_pct=_clamp(atr_pct*0.16,0.9,3.5)
     structural=nearest_support
     structural_price=fnum((structural or {}).get("price"))
+    retrace_618=fnum((impulse.get("levels") or {}).get("61.8%"))
+    stop_candidates=[]
     if structural_price and structural_price < pull_zone["low"]:
-        pull_stop=structural_price*(1-stop_buffer_pct/100)
+        stop_candidates.append(structural_price*(1-stop_buffer_pct/100))
+    if retrace_618 and retrace_618 < pull_zone["low"]:
+        stop_candidates.append(retrace_618*(1-stop_buffer_pct/100))
+    if stop_candidates:
+        # Use the closest meaningful invalidation below the zone, rather than
+        # an unnecessarily distant stop.
+        pull_stop=max(stop_candidates)
     else:
-        pull_stop=pull_anchor*(1-stop_buffer_pct/100)
+        pull_stop=pull_zone["low"]*(1-stop_buffer_pct/100)
     pull_stop=round(pull_stop,4)
     pull_entry=(pull_zone["low"]+pull_zone["high"])/2
 
@@ -694,29 +854,71 @@ def build_trade_plan(metrics, now):
             "risk_reward":round(rr,2),
         }
 
-    pull_targets=targets_for(pull_entry,pull_stop,False)
-    breakout_targets=targets_for(breakout_entry,breakout_stop,True)
+    def finalize_zone(zone,stop,breakout=False):
+        low=float(zone["low"]); high=float(zone["high"])
+        mid=(low+high)/2
+        targets=targets_for(mid,stop,breakout)
+        target=fnum(targets.get("target1"))
+        # Do not advertise the upper part of an entry zone if its Target-1
+        # reward/risk falls below the minimum acceptable 1.3:1.
+        if target and target>low and stop<low:
+            rr_limit=(target+1.30*stop)/2.30
+            high=min(high,rr_limit)
+            if high < low:
+                high=low
+            mid=(low+high)/2
+            targets=targets_for(mid,stop,breakout)
+        rr_low=(fnum(targets.get("target1"))-low)/(low-stop) if fnum(targets.get("target1")) and low>stop else None
+        rr_high=(fnum(targets.get("target1"))-high)/(high-stop) if fnum(targets.get("target1")) and high>stop else None
+        return {
+            "entry_low":round(low,4),"entry_high":round(high,4),"entry_mid":round(mid,4),
+            "rr_at_low":round(rr_low,2) if rr_low is not None else None,
+            "rr_at_high":round(rr_high,2) if rr_high is not None else None,
+            **targets,
+        }
 
     pull_plan={
-        "entry_low":pull_zone["low"],"entry_high":pull_zone["high"],"entry_mid":round(pull_entry,4),
-        "entry_source":pull_source,"stop":pull_stop,"stop_reason":"below nearby structure with ATR volatility buffer",
-        **pull_targets,
+        **finalize_zone(pull_zone,pull_stop,False),
+        "entry_source":pull_source,
+        "stop":pull_stop,
+        "stop_reason":"below nearby structure / deep retracement with ATR volatility buffer",
+        "confirmation":"A zone touch is not an entry by itself. Prefer support hold, higher low or reclaim with positive short-term momentum and renewed volume.",
+        "retracement_shallow_pct":round(retrace_shallow,1) if impulse_zone else None,
+        "retracement_deep_pct":round(retrace_deep,1) if impulse_zone else None,
     }
     breakout_plan={
         "breakout_level":round(breakout_level,4),"breakout_source":breakout_source,
-        "entry_low":breakout_zone["low"],"entry_high":breakout_zone["high"],"entry_mid":round(breakout_entry,4),
+        **finalize_zone(breakout_zone,breakout_stop,True),
         "stop":breakout_stop,"stop_reason":"back below breakout level with ATR volatility buffer",
-        **breakout_targets,
-        "confirmation":"Prefer volume pace ≥1.5x with positive 5m momentum; avoid a thin/low-volume poke above the level.",
+        "confirmation":"Require the breakout to clear and hold with positive 5m momentum and preferably ≥1.5x volume pace; avoid a thin poke above resistance.",
     }
+    # Use the tightened zones for all following trigger logic.
+    pull_zone={"low":pull_plan["entry_low"],"high":pull_plan["entry_high"]}
+    breakout_zone={"low":breakout_plan["entry_low"],"high":breakout_plan["entry_high"]}
 
     in_pull=pull_zone["low"] <= price <= pull_zone["high"]
     in_break=breakout_zone["low"] <= price <= breakout_zone["high"]
-    bullish_momentum=(m5 is None or m5>=0) and (m15 is None or m15>=-1.0)
-    breakout_confirm=(pace is None or pace>=1.5) and (m5 is None or m5>0)
+    bullish_momentum=(m5 is not None and m5>0) and (m15 is None or m15>=-1.0)
+    impulse_recovery=fnum(impulse.get("bounce_recovery_pct")) or 0.0
+    impulse_bounce=bool(impulse.get("bounce_confirmed")) or (
+        impulse_detected and impulse_recovery>=6.0 and bullish_momentum
+    )
+    pullback_confirm=bool(
+        bullish_momentum
+        and (
+            not impulse_detected
+            or impulse_bounce
+        )
+    )
+    breakout_confirm=(pace is None or pace>=1.5) and (m5 is not None and m5>0)
     severe_risk=(spread is not None and spread>7) or liquidity.get("label")=="LOW" and (spread is not None and spread>4.5)
     below_vwap_weak=(vwap is not None and price<vwap and (m5 or 0)<0 and (m15 or 0)<0)
-    overextended=vwap_ext>max(10,atr_pct*1.1) or day_pct>60
+    current_retrace=fnum(impulse.get("current_retracement_pct"))
+    overextended=(
+        vwap_ext>max(10,atr_pct*1.1)
+        or day_pct>60
+        or (impulse_detected and current_retrace is not None and current_retrace<25 and (fnum(impulse.get("impulse_move_pct")) or 0)>=15)
+    )
     negative_catalyst=catalyst.get("score",0)<=-5
 
     preferred="pullback"
@@ -758,11 +960,11 @@ def build_trade_plan(metrics, now):
         status="NO TRADE"
         action="NO TRADE — reward/risk is unattractive"
         reasons.append(f"Preferred plan offers only about {rr:.2f}:1 reward/risk to Target 1.")
-    elif in_pull and bullish_momentum and setup_score>=62 and pull_plan["risk_reward"]>=1.3:
+    elif in_pull and pullback_confirm and setup_score>=62 and pull_plan["risk_reward"]>=1.3:
         status="ENTRY AVAILABLE"
         preferred="pullback"; chosen=pull_plan
-        action="ENTRY AVAILABLE — pullback zone"
-        reasons.append("Price is inside the preferred support/VWAP pullback zone and momentum has not broken down.")
+        action="ENTRY AVAILABLE — pullback confirmed"
+        reasons.append("Price is in the preferred pullback zone and has shown a bounce/reclaim rather than merely touching the zone.")
     elif in_break and breakout_confirm and setup_score>=65 and breakout_plan["risk_reward"]>=1.3:
         status="ENTRY AVAILABLE"
         preferred="breakout"; chosen=breakout_plan
@@ -772,8 +974,19 @@ def build_trade_plan(metrics, now):
         status="WAIT"
         if overextended:
             preferred="pullback"; chosen=pull_plan
-            action="WAIT FOR PULLBACK — price is extended"
-            reasons.append("Current price is stretched relative to VWAP/normal volatility; chasing raises reversal risk.")
+            action="WAIT FOR REAL PULLBACK — price is extended"
+            if impulse_zone:
+                reasons.append(
+                    f"The last impulse has retraced only {current_retrace:.0f}% so far; the preferred structure is roughly {retrace_shallow:.0f}–{retrace_deep:.0f}% of the impulse before confirmation."
+                    if current_retrace is not None
+                    else "The current move is still extended; wait for a meaningful impulse retracement before considering entry."
+                )
+            else:
+                reasons.append("Current price is stretched relative to VWAP/normal volatility; chasing raises reversal risk.")
+        elif in_pull and not pullback_confirm:
+            preferred="pullback"; chosen=pull_plan
+            action="WAIT FOR PULLBACK TO HOLD / BOUNCE"
+            reasons.append("Price reached the pullback zone, but a zone touch alone is not enough; wait for a hold, higher low or reclaim with positive momentum.")
         elif price < breakout_zone["low"] and price > pull_zone["high"]:
             if pull_plan["risk_reward"] >= breakout_plan["risk_reward"]:
                 preferred="pullback"; chosen=pull_plan
@@ -800,6 +1013,7 @@ def build_trade_plan(metrics, now):
         "confidence":confidence,
         "confidence_label":"HIGH" if confidence>=75 else "MODERATE" if confidence>=58 else "LOW",
         "pullback":pull_plan,"breakout":breakout_plan,"selected":chosen,
+        "impulse_pullback":impulse,
         "nearest_support":support_price,"nearest_support_quality":(nearest_support or {}).get("quality"),
         "nearest_resistance":resistance_price,"support_distance_pct":round(support_distance,2) if support_distance is not None else None,
         "resistance_distance_pct":round(resistance_distance,2) if resistance_distance is not None else None,
@@ -807,7 +1021,7 @@ def build_trade_plan(metrics, now):
         "atr":round(atr,4),"atr_pct":round(atr_pct,2),
         "reasons":reasons,
         "updated":now.astimezone(ET).isoformat(),
-        "method_note":"Rule-based long momentum decision support using VWAP, support/resistance, ATR, momentum, volume pace, spread/liquidity, same-ticker historical spike behavior and catalyst context. Targets are scenarios, not guarantees.",
+        "method_note":"Rule-based long momentum decision support using impulse/retracement structure, confirmation, VWAP, support/resistance, ATR, momentum, volume pace, spread/liquidity, same-ticker historical behavior and catalyst context. Pullback zones are not automatic entries; targets are scenarios, not guarantees.",
     }
 
 def score_setup(metrics):
@@ -817,7 +1031,8 @@ def score_setup(metrics):
         ext=pct(p,vwap)
         if ext>=0: score+=8; reasons.append("above VWAP")
         else: score-=8; reasons.append("below VWAP")
-        if ext>12: score-=10; reasons.append("extended >12% above VWAP")
+        if ext>20: score-=16; reasons.append("severely extended >20% above VWAP")
+        elif ext>12: score-=10; reasons.append("extended >12% above VWAP")
     m5=metrics.get("momentum_5m")
     m15=metrics.get("momentum_15m")
     if m5 is not None: score+=max(-8,min(8,m5*2))
@@ -965,6 +1180,7 @@ def analyze(symbol):
     except Exception: pass
 
     liquidity=liquidity_context(price,avgvol,pace,spread_pct)
+    impulse=impulse_pullback_context(intraday,price,atr14_pct)
     metrics={
         "engine_version":ANALYZER_ENGINE_VERSION,
         "feature_version":ANALYZER_FEATURE_VERSION,
@@ -1002,6 +1218,7 @@ def analyze(symbol):
         "volume_source":volume_source,
         "atr_14":round(atr14,4) if atr14 is not None else None,
         "atr_14_pct":round(atr14_pct,2) if atr14_pct is not None else None,
+        "impulse_pullback":impulse,
         "liquidity":liquidity,
         "supports":supports,
         "resistances":resist,
