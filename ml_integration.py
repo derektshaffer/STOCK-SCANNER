@@ -28,10 +28,11 @@ def _validated_edge_only(ml):
 
     models = ml.get("models") or {}
     weights = {
-        "target_before_stop": 0.45,
-        "higher_60": 0.25,
-        "higher_30": 0.15,
-        "breakout_hold": 0.15,
+        "target_before_stop": 0.38,
+        "higher_60": 0.22,
+        "higher_30": 0.14,
+        "breakout_hold": 0.11,
+        "reversal_30": 0.15,
     }
     used = []
     weighted = []
@@ -45,6 +46,8 @@ def _validated_edge_only(ml):
         probability = _num(model.get("probability_pct"))
         if probability is None:
             continue
+        if name == "reversal_30":
+            probability = 100.0 - probability
         used.append(name)
         weighted.append((probability, weight))
 
@@ -191,6 +194,9 @@ def install_ml_analysis(sa):
         ml["peer_edge_score"] = _num(peer.get("peer_edge_score"))
         ml["peer_probability_pct"] = _num(peer.get("probability_pct"))
         ml["peer_validated"] = bool(peer.get("validated"))
+        reversal_model=(ml.get("models") or {}).get("reversal_30") or {}
+        ml["reversal_30_probability_pct"] = _num(reversal_model.get("probability_pct"))
+        ml["reversal_30_validated"] = bool(reversal_model.get("validated"))
         ml["peer_blend_weight_pct"] = 0
         ml["hybrid_ml_edge_score"] = (
             round(same_ticker_edge, 1)
@@ -224,7 +230,7 @@ def install_ml_analysis(sa):
         elif peer_edge is not None:
             ml["edge_method"] = str(ml.get("edge_method") or "validated_models_only") + "_peer_advisory"
 
-        ml["version"] = "ml-v1.3-impulse-peer"
+        ml["version"] = "ml-v1.4-full-spectrum-peer"
         metrics["ml_prediction"] = ml
 
         # Validation gate: only a model that beats naive baselines on unseen,
