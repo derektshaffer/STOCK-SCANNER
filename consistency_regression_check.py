@@ -109,7 +109,7 @@ def test_analyzer_prefers_tradier():
     result = sa.analyze("TEST")
     assert result["market_provider"] == "tradier", result
     assert result["live_feed"] == "TRADIER CONSOLIDATED", result
-    assert result["feature_version"] == "analyzer-features-v3-impulse-pullback", result
+    assert result["feature_version"] == "analyzer-features-v4-full-spectrum", result
     assert abs(result["price"] - 10.10) < 1e-9, result
     assert result["bid"] == 10.09 and result["ask"] == 10.11, result
     assert result["volume_source"] == "TRADIER CONSOLIDATED", result
@@ -800,6 +800,69 @@ def test_entry_readiness_penalizes_unconfirmed_shallow_retrace():
     assert any("retraced enough" in str(x) for x in blockers), blockers
 
 
+def test_run_exhaustion_flags_rejected_mature_run():
+    import stock_analyzer as sa
+
+    bars=[]
+    # Strong run, then repeated upper-wick rejection / lower highs.
+    for i in range(16):
+        close=10.0+i*0.55
+        bars.append({"o":close-0.2,"h":close+0.25,"l":close-0.25,"c":close,"v":1000+i*80})
+    peak=bars[-1]["h"]
+    for j,(o,h,l,cc,v) in enumerate([
+        (18.5,19.1,18.0,18.35,4200),
+        (18.4,19.0,17.8,18.05,3600),
+        (18.1,18.8,17.4,17.75,3000),
+        (17.8,18.5,17.0,17.35,2500),
+        (17.4,18.2,16.8,17.0,2100),
+        (17.0,17.8,16.4,16.7,1800),
+    ]):
+        bars.append({"o":o,"h":h,"l":l,"c":cc,"v":v})
+
+    impulse=sa.impulse_pullback_context(bars,current_price=16.7,atr_pct=8)
+    ex=sa.run_exhaustion_context(bars,current_price=16.7,vwap=14.0,atr_pct=8,impulse=impulse)
+    assert ex.get("score") is not None, ex
+    assert float(ex.get("score")) >= 60, ex
+    assert ex.get("label") in {"HIGH","VERY HIGH"}, ex
+
+
+def test_full_spectrum_exposes_all_scenarios():
+    import analyzer_v2_integration as v2
+
+    metrics={
+        "price":10.0,"day_pct":25.0,"vwap_position":"ABOVE","vwap_extension_pct":7.0,
+        "momentum_5m":1.2,"momentum_15m":2.0,"momentum_30m":3.0,
+        "volume_pace":2.2,"from_high_pct":4.0,"spread_pct":0.8,
+        "score":70.0,"liquidity":{"label":"HIGH"},
+        "impulse_pullback":{
+            "detected":True,"current_retracement_pct":38.0,
+            "max_retracement_pct":42.0,"bounce_recovery_pct":9.0,
+            "bounce_confirmed":True,"pullback_volume_ratio":0.7,
+        },
+        "run_exhaustion":{"score":28.0},
+        "historical_setup":{
+            "status":"ok","bias_score":5.0,"breakout_failure_pct":35.0,
+            "breakout_follow_through_pct":60.0,"impulse_bounce_5pct_rate":64.0,
+        },
+        "ml_prediction":{"ml_edge_score":62.0,"models":{"reversal_30":{"probability_pct":32.0,"validated":True}}},
+        "decision_v2":{"potential_score":68.0},
+        "market_provider":"tradier","live_feed":"TRADIER CONSOLIDATED",
+    }
+    fs=v2._full_spectrum_analysis(
+        metrics,
+        {"status":"ok","dilution_risk":"NONE FOUND"},
+        {"label":"RISK-ON","broad_market_avg_pct":0.8,"sector_move_pct":1.2},
+        {"score":4.0},
+        {"float_turnover":0.6},
+    )
+    assert fs.get("version")=="full-spectrum-v1", fs
+    assert set((fs.get("scenarios") or {}).keys())=={
+        "continuation","pullback_bounce","reversal_failure","sideways_chop"
+    }, fs
+    total=sum(float(v.get("relative_weight_pct") or 0) for v in fs["scenarios"].values())
+    assert 99.0 <= total <= 101.0, fs
+
+
 if __name__ == "__main__":
     tests = [
         test_analyzer_prefers_tradier,
@@ -831,6 +894,8 @@ if __name__ == "__main__":
         test_replay_requires_live_confirmation_before_full_badge,
         test_impulse_detector_measures_fraction_of_run,
         test_entry_readiness_penalizes_unconfirmed_shallow_retrace,
+        test_run_exhaustion_flags_rejected_mature_run,
+        test_full_spectrum_exposes_all_scenarios,
     ]
     for test in tests:
         test()
