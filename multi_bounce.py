@@ -292,12 +292,16 @@ def detect_bounce_sequence(
     current_leg_move_pct = None
     current_pullback_pct = None
     ongoing_bounce_pct = None
+    current_dip_low = None
+    current_bounce_high = None
 
     if state == "seek_peak" and trough_price is not None:
         current_leg = "BOUNCING"
+        current_dip_low = trough_price
         ongoing_high = max(
             [r["h"] for r in rows[trough_idx:]] + [price]
         )
+        current_bounce_high = ongoing_high
         ongoing_bounce_pct = (
             (ongoing_high / trough_price - 1.0) * 100.0
             if trough_price
@@ -309,6 +313,7 @@ def detect_bounce_sequence(
         current_low = min(
             [r["l"] for r in rows[prior_peak_idx + 1:]] + [price]
         ) if prior_peak_idx + 1 < len(rows) else price
+        current_dip_low = current_low
         current_pullback_pct = (
             (prior_peak_price / current_low - 1.0) * 100.0
             if current_low and prior_peak_price
@@ -414,6 +419,11 @@ def detect_bounce_sequence(
         "impulse_high": round(impulse_high, 4),
         "impulse_move_pct": round(impulse_move_pct, 2),
         "completed_bounces": len(bounces),
+        "next_bounce_number": len(bounces) + 1,
+        "reference_peak": round(prior_peak_price, 4) if prior_peak_price is not None else None,
+        "reference_peak_index": int(prior_peak_idx) if prior_peak_idx is not None else None,
+        "current_dip_low": round(current_dip_low, 4) if current_dip_low is not None else None,
+        "current_bounce_high": round(current_bounce_high, 4) if current_bounce_high is not None else None,
         "bounces": bounces,
         "bounce1_pct": round(bounce1, 2) if bounce1 is not None else None,
         "bounce2_pct": round(bounce2, 2) if bounce2 is not None else None,
@@ -459,4 +469,9 @@ def bounce_feature_values(sequence):
         "current_pullback_pct": _num(seq.get("current_pullback_pct")),
         "ongoing_bounce_pct": _num(seq.get("ongoing_bounce_pct")),
         "bounce_leg_code": leg_code,
+        "reference_peak_pct_above_dip": (
+            ((_num(seq.get("reference_peak")) / _num(seq.get("current_dip_low")) - 1.0) * 100.0)
+            if _num(seq.get("reference_peak")) and _num(seq.get("current_dip_low"))
+            else None
+        ),
     }
