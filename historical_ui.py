@@ -53,13 +53,17 @@ def render_historical_setup(st, pd, result, card, pp):
         )
 
         pb = intr.get("median_first_pullback_pct")
+        high_period = str(intr.get("session_high_most_common") or "—")
         card(
             cols[5],
             "EARLY PULLBACK",
             pp(pb),
-            f'High most often: {intr.get("session_high_most_common") or "—"}',
+            f"High most often: {high_period}",
             "",
-            "Median size of the first meaningful pullback after the early push on comparable historical days. A negative value means price pulled back from the prior reference level."
+            "Median size of the first meaningful pullback after the early push on comparable historical days. A negative value means price pulled back from the prior reference level.",
+            "POWER HOUR" if high_period.upper() == "POWER HOUR" else None,
+            "Power Hour is the final hour of regular U.S. stock trading, usually 3:00–4:00 PM Eastern. Volume and volatility often increase as traders and institutions reposition before the 4:00 PM close."
+            if high_period.upper() == "POWER HOUR" else None,
         )
 
         for note in (setup.get("notes") or [])[:5]:
