@@ -204,6 +204,10 @@ TERM_GLOSSARY = {
     "False breakout": "A move above resistance that quickly fails and falls back below the level. False breakouts are one reason the analyzer can recommend waiting for confirmation rather than buying the first tick above resistance.",
     "Pullback": "A temporary move lower during a broader upward move. Traders often look for pullbacks toward VWAP, prior resistance, or support to obtain a better entry than chasing a spike.",
     "Power hour": "The final hour of the regular U.S. stock-market session, usually 3:00–4:00 PM Eastern. Trading volume and volatility often increase as institutions and day traders adjust or close positions before the 4:00 PM close.",
+    "Stair-step": "A price pattern where a stock makes a strong move higher, stabilizes at a new higher level, then makes another expansion leg. The analyzer looks for repeated higher accepted levels rather than one uninterrupted spike.",
+    "Plateau": "A period where price stabilizes in a relatively tight range after a strong move. A healthy plateau can show that the market is accepting the new higher price before another expansion attempt.",
+    "Reacceleration": "A fresh increase in upward momentum after price has paused or consolidated. In a stair-step pattern, reacceleration is the next strong leg higher after the plateau.",
+    "Bounce scalp": "A short-duration trade aimed at capturing part of a rebound from a dip. It does not assume the stock will return to its prior high or continue the entire larger run.",
     "Entry zone": "A price range where the analyzer sees a more favorable balance of upside versus downside. It is a zone rather than one exact price because real markets rarely turn at a single penny.",
     "Stop / invalidation": "The price area where the original trade thesis is considered wrong or materially weakened. It is based on technical structure and volatility rather than an arbitrary percentage loss.",
     "Target 1": "The first, usually more conservative, profit objective. It is commonly based on nearby resistance or another technically meaningful level.",
@@ -244,6 +248,11 @@ TERM_ALIASES = {
     "analog": "Historical spike analog",
     "historical analog": "Historical spike analog",
     "power hour": "Power hour",
+    "stair step": "Stair-step",
+    "stair-step": "Stair-step",
+    "plateau": "Plateau",
+    "reacceleration": "Reacceleration",
+    "bounce scalp": "Bounce scalp",
     "warrant overhang": "Warrant overhang",
     "warrants": "Warrant",
 }
@@ -877,6 +886,36 @@ if _sequence.get("detected"):
         "A second or third bounce can still offer a short-duration opportunity even when the larger run is weakening."
     )
 
+    _post2 = _hist_intr.get("post_second_bounce_drop5_rate_pct")
+    _post3 = _hist_intr.get("post_third_bounce_drop5_rate_pct")
+    _post3med = _hist_intr.get("median_post_third_bounce_max_drop_pct")
+    if any(_x is not None for _x in (_post2,_post3,_post3med)):
+        _pf = st.columns(3)
+        card(
+            _pf[0],
+            "DROP ≥5% AFTER BOUNCE #2",
+            f'{float(_post2):.0f}%' if _post2 is not None else "—",
+            "same-ticker matched sessions",
+            "bad" if (_post2 or 0)>=55 else "warn",
+            "How often price fell at least 5% after the second completed bounce peak on comparable historical sessions.",
+        )
+        card(
+            _pf[1],
+            "DROP ≥5% AFTER BOUNCE #3",
+            f'{float(_post3):.0f}%' if _post3 is not None else "—",
+            "same-ticker matched sessions",
+            "bad" if (_post3 or 0)>=55 else "warn",
+            "How often price fell at least 5% after the third completed bounce peak. This helps measure the kind of late-bounce falloff shown in your examples.",
+        )
+        card(
+            _pf[2],
+            "MEDIAN DROP AFTER #3",
+            pp(_post3med),
+            "peak-to-later-session-low",
+            "bad" if _post3med is not None and _post3med<=-8 else "warn",
+            "Median worst percentage decline after a confirmed third-bounce peak on comparable historical sessions.",
+        )
+
     _bounce_rows = _sequence.get("bounces") or []
     if _bounce_rows:
         with st.expander("Multi-bounce details"):
@@ -897,16 +936,82 @@ if _sequence.get("detected"):
             st.dataframe(pd.DataFrame(_show_rows), width="stretch", hide_index=True)
 
 
+_stair = r.get("stair_step") or {}
+if _stair.get("detected"):
+    st.markdown(
+        '<div class="section">Multi-session stair-step / plateau '
+        '<span style="font-size:12px;color:#91a7c2">step higher · stabilize · reaccelerate</span></div>',
+        unsafe_allow_html=True,
+    )
+    _sc = st.columns(6)
+    _sscore=_stair.get("structure_score")
+    _ret=_stair.get("current_plateau_retention_pct")
+    _prange=_stair.get("current_plateau_range_pct")
+    _pvol=_stair.get("plateau_volume_ratio")
+    card(
+        _sc[0],
+        "STAIR-STEP STATE",
+        str(_stair.get("state") or "—"),
+        f'{float(_sscore):.0f}/100 structure' if _sscore is not None else "multi-session structure",
+        "good" if _stair.get("reaccelerating") else "bad" if _stair.get("breakdown") else "warn",
+        "The current multi-session read: repeated step higher, higher plateau, reacceleration, or loss of the higher accepted level.",
+    )
+    card(
+        _sc[1],
+        "STEPS DETECTED",
+        str(int(_stair.get("step_count") or 0)),
+        f'Last step {pp(_stair.get("last_step_pct"))}',
+        "good",
+        "Number of meaningful multi-session expansion legs detected in the recent sequence.",
+    )
+    card(
+        _sc[2],
+        "PLATEAU AGE",
+        f'{int(_stair.get("current_plateau_days") or 0)} day(s)',
+        "time stabilizing after latest step",
+        "good" if int(_stair.get("current_plateau_days") or 0)>=1 else "warn",
+        "How many sessions price has spent stabilizing after the latest step higher.",
+    )
+    card(
+        _sc[3],
+        "STEP RETAINED",
+        f'{float(_ret):.0f}%' if _ret is not None else "—",
+        "accepted gain held by plateau",
+        "good" if (_ret or 0)>=60 else "bad" if _ret is not None and _ret<35 else "warn",
+        "How much of the latest step higher is still retained by the current plateau. Higher retention suggests stronger price acceptance.",
+    )
+    card(
+        _sc[4],
+        "PLATEAU RANGE",
+        f'{float(_prange):.1f}%' if _prange is not None else "—",
+        f'Volume {_pvol:.2f}x step-day' if _pvol is not None else "range compression",
+        "good" if _stair.get("plateau_tight") else "warn",
+        "The high-to-low width of the current plateau. A tighter range with cooling volume can precede another expansion, but it is not a guarantee.",
+    )
+    card(
+        _sc[5],
+        "REACCELERATION",
+        "ACTIVE" if _stair.get("reaccelerating") else "WAITING" if not _stair.get("breakdown") else "FAILED",
+        "new expansion leg" if _stair.get("reaccelerating") else "higher level still being tested",
+        "good" if _stair.get("reaccelerating") else "bad" if _stair.get("breakdown") else "warn",
+        "Whether price has started another meaningful expansion leg after the higher plateau.",
+    )
+    _steps=_stair.get("steps") or []
+    if _steps:
+        with st.expander("Stair-step details"):
+            st.dataframe(pd.DataFrame(_steps),width="stretch",hide_index=True)
+
+
 _full = ((r.get("decision_v2") or {}).get("full_spectrum") or {})
 _exhaust = r.get("run_exhaustion") or {}
 if _full:
     st.markdown(
         '<div class="section">Full-spectrum trader view '
-        '<span style="font-size:12px;color:#91a7c2">continuation · bounce · reversal · chop</span></div>',
+        '<span style="font-size:12px;color:#91a7c2">continuation · bounce · stair-step · reversal · chop</span></div>',
         unsafe_allow_html=True,
     )
     _scenarios = _full.get("scenarios") or {}
-    _fc = st.columns(5)
+    _fc = st.columns(6)
     _rev_score = _full.get("reversal_risk_score")
     card(
         _fc[0],
@@ -918,6 +1023,7 @@ if _full:
     _scenario_cards = (
         ("continuation", "CONTINUATION", "good"),
         ("pullback_bounce", "PULLBACK → BOUNCE", "good"),
+        ("stair_reacceleration", "STAIR → REACCEL", "good"),
         ("reversal_failure", "REVERSAL / FAILURE", "bad"),
         ("sideways_chop", "SIDEWAYS / CHOP", "warn"),
     )
@@ -947,6 +1053,7 @@ if _full:
             "volume_participation":"Volume / participation",
             "price_structure":"Price structure / pullback",
             "multi_bounce_sequence":"Multi-bounce sequence",
+            "multi_session_stair_step":"Multi-session stair-step / plateau",
             "historical_behavior":"Same-ticker history",
             "validated_ml":"Validated ML",
             "catalyst":"Catalyst / news",
@@ -1159,7 +1266,7 @@ if not _position_enabled:
     card(tp[5],"REWARD / RISK",rr(selected.get("risk_reward")),"to Target 1","good" if (selected.get("risk_reward") or 0)>=1.5 else "warn")
     card(tp[6],"PLAN CONFIDENCE",f'{plan.get("confidence","—")} / 100',plan.get("confidence_label") or "","good" if (plan.get("confidence") or 0)>=75 else "warn")
 
-    with st.expander("Trade plan details — pullback vs breakout"):
+    with st.expander("Trade plan details — pullback · repeat bounce · breakout"):
         pc1,pc2=st.columns(2)
         pull=plan.get("pullback") or {}
         brk=plan.get("breakout") or {}
@@ -1182,6 +1289,26 @@ if not _position_enabled:
             st.write(f'**Stretch:** {money(brk.get("stretch_target"))} — {brk.get("stretch_reason") or "—"}')
             st.write(f'**Reward/risk to T1:** {rr(brk.get("risk_reward"))}')
             st.caption(brk.get("confirmation") or "")
+
+        rb=plan.get("repeat_bounce") or {}
+        if rb:
+            st.markdown(f"#### Bounce #{int(rb.get('bounce_number') or 0)} quick-trade plan")
+            _rb1,_rb2,_rb3=st.columns(3)
+            with _rb1:
+                st.write(f'**Developing dip:** {money(rb.get("dip_low"))}')
+                st.write(f'**Confirmation / reclaim:** {money(rb.get("confirmation_level"))}')
+                st.write(f'**Entry zone:** {zone_text(rb)}')
+            with _rb2:
+                st.write(f'**Stop / invalidation:** {money(rb.get("stop"))}')
+                st.write(f'**Target 1:** {money(rb.get("target1"))} — {rb.get("target1_reason") or "—"}')
+                st.write(f'**Target 2:** {money(rb.get("target2"))} — {rb.get("target2_reason") or "—"}')
+            with _rb3:
+                st.write(f'**Prior bounce peak:** {money(rb.get("prior_bounce_peak"))}')
+                st.write(f'**Expected bounce:** {pp(rb.get("expected_bounce_pct"))}')
+                st.write(f'**Reward/risk to T1:** {rr(rb.get("risk_reward"))}')
+                if rb.get("historical_bounce_rate_pct") is not None:
+                    st.write(f'**Historical occurrence rate:** {float(rb.get("historical_bounce_rate_pct")):.1f}%')
+            st.caption(rb.get("confirmation") or "")
 
         histctx=plan.get("historical") or {}
         cat=plan.get("catalyst") or {}
