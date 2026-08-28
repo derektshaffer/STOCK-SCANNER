@@ -9,10 +9,16 @@ import urllib.request
 import zipfile
 from bisect import bisect_left
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 from statistics import mean, median
 from zoneinfo import ZoneInfo
+
+try:
+    from tradier_live import get_timesales_bars as get_tradier_timesales_bars
+except Exception:
+    get_tradier_timesales_bars = None
 
 # ============================================================
 # MOMENTUM SCANNER OUTCOME TRACKER - v2.8
@@ -27,7 +33,7 @@ from zoneinfo import ZoneInfo
 # This is research/performance measurement only. It does not trade.
 # ============================================================
 
-VERSION = "2.9"
+VERSION = "3.0"
 SCANNER_FEATURE_VERSION = "scanner-features-v2-consolidated"
 GITHUB_API = "https://api.github.com"
 ALPACA_DATA_BASE = "https://data.alpaca.markets"
@@ -43,6 +49,15 @@ GITHUB_TOKEN = (
 )
 ALPACA_API_KEY = os.environ.get("ALPACA_API_KEY", "").strip()
 ALPACA_SECRET_KEY = os.environ.get("ALPACA_SECRET_KEY", "").strip()
+ALPACA_CONFIGURED = bool(ALPACA_API_KEY and ALPACA_SECRET_KEY)
+TRADIER_TOKEN = (
+    os.environ.get("TRADIER_ACCESS_TOKEN", "").strip()
+    or os.environ.get("TRADIER_TOKEN", "").strip()
+)
+OUTCOME_MARKET_PROVIDER = (
+    os.environ.get("OUTCOME_MARKET_PROVIDER", "tradier").strip().lower()
+    or "tradier"
+)
 
 HORIZONS_MINUTES = (15, 30, 60)
 SIP_FEED = "sip"
@@ -55,8 +70,10 @@ if not GITHUB_TOKEN:
     print("ERROR: GH_TOKEN/GITHUB_TOKEN is missing.")
     sys.exit(1)
 
-if not ALPACA_API_KEY or not ALPACA_SECRET_KEY:
-    print("ERROR: Missing ALPACA_API_KEY or ALPACA_SECRET_KEY.")
+if not TRADIER_TOKEN and not ALPACA_CONFIGURED:
+    print(
+        "ERROR: Outcome scoring needs either a Tradier token or Alpaca credentials."
+    )
     sys.exit(1)
 
 
@@ -309,6 +326,109 @@ def get_multi_bars(symbols, start_et, end_et):
             break
 
     return dict(merged)
+
+
+def _tradier_symbol_bars(symbol, start_et, end_et):
+    if not TRADIER_TOKEN or get_tradier_timesales_bars is None:
+        return symbol, []
+
+    delay = 1.0
+    for attempt in range(4):
+        try:
+            bars = get_tradier_timesales_bars(
+                symbol,
+                TRADIER_TOKEN,
+                start_et.astimezone(timezone.utc),
+                end_et.astimezone(timezone.utc),
+                interval="1min",
+                session_filter="open",
+            )
+            return symbol, bars or []
+        except urllib.error.HTTPError as exc:
+            if exc.code not in {429, 500, 502, 503, 504} or attempt >= 3:
+                raise
+        except urllib.error.URLError:
+            if attempt >= 3:
+                raise
+        import time as _time
+        _time.sleep(delay)
+        delay = min(6.0, delay * 2.0)
+    return symbol, []
+
+
+def get_tradier_bars(symbols, start_et, end_et):
+    symbols = sorted({str(symbol).upper().strip() for symbol in symbols if symbol})
+    if not symbols:
+        return {}
+
+    merged = {}
+    worker_count = min(6, max(1, len(symbols)))
+    with ThreadPoolExecutor(max_workers=worker_count) as executor:
+        futures = {
+            executor.submit(
+                _tradier_symbol_bars,
+                symbol,
+                start_et,
+                end_et,
+            ): symbol
+            for symbol in symbols
+        }
+        for future in as_completed(futures):
+            symbol = futures[future]
+            try:
+                resolved_symbol, bars = future.result()
+                if bars:
+                    merged[resolved_symbol] = bars
+            except Exception as exc:
+                print(f"WARN Tradier outcome bars {symbol}: {exc}")
+    return merged
+
+
+def get_outcome_bars(symbols, start_et, end_et):
+    """Resolve outcome prices without making either provider mandatory."""
+    symbols = sorted({str(symbol).upper().strip() for symbol in symbols if symbol})
+    merged = {}
+    sources = []
+
+    prefer_tradier = OUTCOME_MARKET_PROVIDER != "alpaca"
+    if prefer_tradier and TRADIER_TOKEN and get_tradier_timesales_bars is not None:
+        try:
+            tradier = get_tradier_bars(symbols, start_et, end_et)
+            merged.update(tradier)
+            if tradier:
+                sources.append("tradier_1min_open")
+        except Exception as exc:
+            print(f"WARN Tradier outcome data failed: {exc}")
+
+    missing = [symbol for symbol in symbols if symbol not in merged]
+    if missing and ALPACA_CONFIGURED:
+        try:
+            alpaca = get_multi_bars(missing, start_et, end_et)
+            for symbol, bars in alpaca.items():
+                if bars:
+                    merged[symbol] = bars
+            if alpaca:
+                sources.append("alpaca_sip_1min")
+        except Exception as exc:
+            print(f"WARN Alpaca outcome fallback failed: {exc}")
+
+    if (
+        not prefer_tradier
+        and not merged
+        and TRADIER_TOKEN
+        and get_tradier_timesales_bars is not None
+    ):
+        tradier = get_tradier_bars(symbols, start_et, end_et)
+        merged.update(tradier)
+        if tradier:
+            sources.append("tradier_1min_open")
+
+    if not merged:
+        raise RuntimeError(
+            "No outcome bars were available from Tradier or Alpaca."
+        )
+
+    return merged, " + ".join(sources) if sources else "unknown"
 
 
 def index_bars(bars_by_symbol):
@@ -779,8 +899,19 @@ def main():
     session_end = datetime.combine(target_date, time(16, 1), tzinfo=ET)
 
     try:
-        bars = get_multi_bars(symbols, session_open, session_end)
+        bars, outcome_source = get_outcome_bars(
+            symbols,
+            session_open,
+            session_end,
+        )
+        discovery["outcome_market_data_source"] = outcome_source
+        discovery["outcome_symbols_requested"] = len(symbols)
+        discovery["outcome_symbols_resolved"] = len(bars)
         bars_index = index_bars(bars)
+        print(
+            f"Outcome market data: {outcome_source} "
+            f"({len(bars)}/{len(symbols)} symbols)"
+        )
     except Exception as exc:
         write_reports(
             target_date,
