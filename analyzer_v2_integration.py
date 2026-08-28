@@ -857,6 +857,14 @@ def _full_spectrum_analysis(metrics, sec, market, catalyst, turnover):
         second_bounce_rate=_num(hist.get("second_bounce_rate_pct"))
         if second_bounce_rate is not None:
             history += (second_bounce_rate-50.0)*0.08
+        stair_hist=hist.get("stair_step_history") or {}
+        if stair.get("detected") and int(stair_hist.get("event_count") or 0)>=3:
+            stair_hit5=_num(stair_hist.get("next3d_hit5_rate_pct"))
+            stair_fail5=_num(stair_hist.get("next3d_failure5_rate_pct"))
+            if stair_hit5 is not None:
+                history += (stair_hit5-50.0)*0.08
+            if stair_fail5 is not None:
+                history -= max(0.0,stair_fail5-35.0)*0.06
     history=cap(history)
 
     # 5) Validated ML continuation plus reversal model.
@@ -924,9 +932,17 @@ def _full_spectrum_analysis(metrics, sec, market, catalyst, turnover):
     hist_rev=None
     vals=[x for x in (fail,fade) if x is not None]
     if vals:hist_rev=sum(vals)/len(vals)
-    if hist_rev is not None:reversal_parts.append((hist_rev,0.15))
-    if reversal_ml is not None and reversal_ml_valid:reversal_parts.append((reversal_ml,0.15))
-    if int(sequence.get("completed_bounces") or 0)>=2 and post_failure_valid and post_failure_ml is not None:
+    if hist_rev is not None:reversal_parts.append((hist_rev,0.12))
+    if reversal_ml is not None and reversal_ml_valid:reversal_parts.append((reversal_ml,0.14))
+    completed_for_failure=int(sequence.get("completed_bounces") or 0)
+    historical_post_bounce=None
+    if completed_for_failure>=3:
+        historical_post_bounce=_num(hist.get("post_third_bounce_drop5_rate_pct"))
+    elif completed_for_failure>=2:
+        historical_post_bounce=_num(hist.get("post_second_bounce_drop5_rate_pct"))
+    if historical_post_bounce is not None:
+        reversal_parts.append((historical_post_bounce,0.12))
+    if completed_for_failure>=2 and post_failure_valid and post_failure_ml is not None:
         reversal_parts.append((post_failure_ml,0.20))
     if reversal_parts:
         tw=sum(w for _,w in reversal_parts)
@@ -987,6 +1003,14 @@ def _full_spectrum_analysis(metrics, sec, market, catalyst, turnover):
     )
 
     stair_base=stair_score
+    stair_history=hist.get("stair_step_history") or {}
+    if int(stair_history.get("event_count") or 0)>=3:
+        historical_stair_hit5=_num(stair_history.get("next3d_hit5_rate_pct"))
+        historical_stair_fail5=_num(stair_history.get("next3d_failure5_rate_pct"))
+        if historical_stair_hit5 is not None:
+            stair_base+=(historical_stair_hit5-50.0)*0.20
+        if historical_stair_fail5 is not None:
+            stair_base-=max(0.0,historical_stair_fail5-35.0)*0.15
     if stair.get("reaccelerating"):stair_base+=14
     elif stair.get("state")=="HIGHER PLATEAU / COILING":stair_base+=8
     if stair.get("volume_cooled"):stair_base+=4
