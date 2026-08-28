@@ -25,6 +25,11 @@ except Exception:
     get_tradier_quotes = None
     get_tradier_timesales_bars = None
 
+try:
+    from scanner_discovery import discover_tradier_candidates
+except Exception:
+    discover_tradier_candidates = None
+
 # ============================================================
 # MOMENTUM STOCK SCANNER - v2.9
 #
@@ -120,10 +125,21 @@ SCANNER_FEATURE_VERSION = "scanner-features-v2-consolidated"
 
 API_KEY = os.environ.get("ALPACA_API_KEY", "").strip()
 API_SECRET = os.environ.get("ALPACA_SECRET_KEY", "").strip()
+ALPACA_CONFIGURED = bool(API_KEY and API_SECRET)
+FORCE_TRADIER_DISCOVERY = (
+    os.environ.get("SCANNER_TRADIER_DISCOVERY", "").strip().lower()
+    in {"1", "true", "yes", "on"}
+)
 
-if not API_KEY or not API_SECRET:
-    print("ERROR: Missing ALPACA_API_KEY or ALPACA_SECRET_KEY GitHub secret.")
+if not ALPACA_CONFIGURED and not USE_TRADIER:
+    print(
+        "ERROR: Scanner needs either valid Alpaca credentials or a Tradier token."
+    )
     sys.exit(1)
+elif not ALPACA_CONFIGURED and USE_TRADIER:
+    print(
+        "WARN Alpaca credentials are not configured; continuing in Tradier-first mode."
+    )
 
 HEADERS = {
     "APCA-API-KEY-ID": API_KEY,
@@ -343,12 +359,38 @@ def get_most_actives(by="volume", top=100):
 
 
 def get_candidate_universe(now_et):
-    """Use movers in regular hours and real-time activity in extended hours.
+    """Discover momentum candidates without a hard Alpaca dependency.
 
-    Alpaca's stock movers list does not reset for the new day until the regular
-    open, so pre-market discovery cannot rely on movers alone.
+    Scheduled durable-learning runs can explicitly use Tradier discovery. The
+    interactive app keeps the existing Alpaca screener behavior unless Tradier
+    discovery is forced or Alpaca credentials are absent.
     """
     phase = market_session_mode(now_et)
+
+    if (
+        USE_TRADIER
+        and discover_tradier_candidates is not None
+        and (FORCE_TRADIER_DISCOVERY or not ALPACA_CONFIGURED)
+    ):
+        try:
+            rows, meta = discover_tradier_candidates(
+                TRADIER_TOKEN,
+                likely_common_stock,
+                top=100,
+            )
+            if rows:
+                print(
+                    "Tradier discovery: "
+                    f"{meta.get('candidates_returned', len(rows))} candidates "
+                    f"from {meta.get('symbols', '?')} cached-universe symbols "
+                    f"(cache_hit={meta.get('cache_hit')})."
+                )
+                return rows
+        except Exception as exc:
+            print(f"WARN Tradier discovery failed: {exc}")
+            if not ALPACA_CONFIGURED:
+                raise
+
     if phase == "regular":
         return get_movers()
 
