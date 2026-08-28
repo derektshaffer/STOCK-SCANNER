@@ -165,7 +165,9 @@ def render_v2_decision(st, metrics):
                     ("momentum", "Momentum"),
                     ("execution_quality", "Execution"),
                     ("extension", "Extension"),
+                    ("pullback_structure", "Pullback"),
                     ("plan_status_cap", "Plan cap"),
+                    ("evidence_safety_cap", "Evidence cap"),
                 ],
             )
             if entry_makeup:
