@@ -402,7 +402,9 @@ if _COMBINED_WORKSPACE:
         .tradewhy { font-size: 11px !important; line-height: 1.25 !important; }
         .section {
             font-size: 15px !important;
-            margin: 9px 0 4px !important;
+            line-height: 1.28 !important;
+            margin: 11px 0 10px !important;
+            padding-bottom: 2px !important;
         }
         .callout {
             padding: 8px 10px !important;
