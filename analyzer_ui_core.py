@@ -698,6 +698,67 @@ with st.container(key="analyzer_metrics_top"):
 with st.container(key="analyzer_decision_v2"):
     render_v2_decision(st, r)
 
+_impulse = r.get("impulse_pullback") or {}
+if _impulse.get("detected"):
+    st.markdown(
+        '<div class="section">Impulse / pullback structure '
+        '<span style="font-size:12px;color:#91a7c2">first-pullback model</span></div>',
+        unsafe_allow_html=True,
+    )
+    _ic = st.columns(5)
+    _move = _impulse.get("impulse_move_pct")
+    _retrace = _impulse.get("current_retracement_pct")
+    _max_retrace = _impulse.get("max_retracement_pct")
+    _recovery = _impulse.get("bounce_recovery_pct")
+    _vr = _impulse.get("pullback_volume_ratio")
+    _levels = _impulse.get("levels") or {}
+    _hist_retrace = ((r.get("historical_setup") or {}).get("intraday") or {}).get("median_impulse_retracement_pct")
+    _zone_low = (r.get("trade_plan") or {}).get("pullback",{}).get("entry_low")
+    _zone_high = (r.get("trade_plan") or {}).get("pullback",{}).get("entry_high")
+
+    card(
+        _ic[0],
+        "INITIAL IMPULSE",
+        f'{money(_impulse.get("impulse_low"))} → {money(_impulse.get("impulse_high"))}',
+        f'{_move:.1f}% run' if _move is not None else "—",
+        "good",
+    )
+    card(
+        _ic[1],
+        "CURRENT RETRACEMENT",
+        f'{_retrace:.0f}%' if _retrace is not None else "—",
+        f'Max {_max_retrace:.0f}% · 38.2% level {money(_levels.get("38.2%"))}' if _max_retrace is not None else "fraction of impulse retraced",
+        "warn" if not _impulse.get("bounce_confirmed") else "good",
+    )
+    card(
+        _ic[2],
+        "PREFERRED PULLBACK",
+        f'{money(_zone_low)}–{money(_zone_high)}' if _zone_low is not None and _zone_high is not None else "—",
+        (
+            f'Own-history median {_hist_retrace:.0f}% retrace'
+            if _hist_retrace is not None
+            else "Default 33–50% impulse zone"
+        ),
+        "good",
+    )
+    card(
+        _ic[3],
+        "BOUNCE / RECLAIM",
+        "CONFIRMED" if _impulse.get("bounce_confirmed") else "WAIT",
+        f'Recovered {_recovery:.0f}% of impulse from pullback low' if _recovery is not None else str(_impulse.get("phase") or "—"),
+        "good" if _impulse.get("bounce_confirmed") else "warn",
+    )
+    card(
+        _ic[4],
+        "PULLBACK VOLUME",
+        f'{_vr:.2f}x' if _vr is not None else "—",
+        "contracting vs impulse" if _impulse.get("pullback_volume_contracting") else "not clearly contracting",
+        "good" if _impulse.get("pullback_volume_contracting") else "warn",
+    )
+    st.caption(
+        "The analyzer measures the pullback as a fraction of the preceding impulse. "
+        "A touch of the preferred zone is not an automatic entry; the trade plan waits for a hold/bounce/reclaim."
+    )
 
 
 if _trade_age is not None and float(_trade_age) > max(30, AUTO_REFRESH_SECONDS*2):
