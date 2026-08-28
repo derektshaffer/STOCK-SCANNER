@@ -751,6 +751,63 @@ def _bucket_calibration(rows, score_field):
     return out
 
 
+def _repeat_bounce_summary(rows):
+    candidates=[
+        row for row in rows
+        if row.get("repeat_bounce_plan_available")
+        and row.get("preferred_plan")=="repeat_bounce"
+        and row.get("plan_status")=="ENTRY AVAILABLE"
+    ]
+    resolved=[
+        row for row in candidates
+        if (row.get("outcomes") or {}).get("repeat_bounce_target1_first_touch") in {"target","stop"}
+    ]
+    wins=[
+        row for row in resolved
+        if (row.get("outcomes") or {}).get("repeat_bounce_target1_first_touch")=="target"
+    ]
+    mfe=[
+        _num((row.get("outcomes") or {}).get("repeat_bounce_mfe_30m_pct"))
+        for row in candidates
+    ]
+    mfe=[v for v in mfe if v is not None]
+    mae=[
+        _num((row.get("outcomes") or {}).get("repeat_bounce_mae_30m_pct"))
+        for row in candidates
+    ]
+    mae=[v for v in mae if v is not None]
+    return {
+        "entry_signals":len(candidates),
+        "resolved_target_stop":len(resolved),
+        "target_before_stop_rate":(
+            round(len(wins)/len(resolved)*100.0,1) if resolved else None
+        ),
+        "avg_mfe_30m_pct":round(sum(mfe)/len(mfe),3) if mfe else None,
+        "avg_mae_30m_pct":round(sum(mae)/len(mae),3) if mae else None,
+    }
+
+
+def _mature_bounce_failure_summary(rows):
+    mature=[row for row in rows if int(row.get("bounce_count") or 0)>=2]
+    drops=[
+        _num((row.get("outcomes") or {}).get("post_bounce_max_drop_60m_pct"))
+        for row in mature
+    ]
+    drops=[v for v in drops if v is not None]
+    return {
+        "observations":len(mature),
+        "resolved_60m_excursions":len(drops),
+        "drop_5pct_rate":(
+            round(sum(v<=-5.0 for v in drops)/len(drops)*100.0,1)
+            if drops else None
+        ),
+        "drop_10pct_rate":(
+            round(sum(v<=-10.0 for v in drops)/len(drops)*100.0,1)
+            if drops else None
+        ),
+    }
+
+
 def tracker_summary(rows=None, symbol=None, current_metrics=None):
     all_rows = rows if rows is not None else _load()
     current_rows = [
@@ -863,6 +920,14 @@ def tracker_summary(rows=None, symbol=None, current_metrics=None):
             or _bucket_calibration(calibration_rows, "entry_readiness")
         ),
         "entry_signal_calibration": durable.get("entry_signal_calibration") or {},
+        "repeat_bounce_calibration": (
+            durable.get("repeat_bounce_calibration")
+            or _repeat_bounce_summary(calibration_rows)
+        ),
+        "mature_bounce_failure_calibration": (
+            durable.get("mature_bounce_failure_calibration")
+            or _mature_bounce_failure_summary(calibration_rows)
+        ),
         "calibration_ready": (
             bool(durable.get("calibration_ready"))
             or len(resolved_60) >= 30
