@@ -60,7 +60,7 @@ def install_historical_analysis(sa):
 
     base_analyze = getattr(sa, "_base_analyze_for_history", None) or sa.analyze
     sa._base_analyze_for_history = base_analyze
-    sa.ANALYZER_ENGINE_VERSION = "trade-plan-v3-historical-patterns"
+    sa.ANALYZER_ENGINE_VERSION = "trade-plan-v4-historical-impulse"
 
     def enhanced_analyze(symbol):
         metrics = base_analyze(symbol)
@@ -134,6 +134,15 @@ def install_historical_analysis(sa):
         metrics["grade"] = "A" if new_score >= 78 else "B" if new_score >= 65 else "C" if new_score >= 52 else "REJECT"
         metrics["entry_quality"] = "FAVORABLE" if new_score >= 72 and chase < 10 else "WAIT / CONFIRM" if new_score >= 55 else "POOR / HIGH RISK"
 
+        # Rebuild the trade plan now that same-ticker pullback history is
+        # available. build_trade_plan can use the stock's historical median
+        # impulse retracement to shift the preferred pullback zone rather than
+        # assuming every ticker should retrace exactly the same amount.
+        try:
+            metrics["trade_plan"] = sa.build_trade_plan(metrics, now)
+        except Exception:
+            pass
+
         plan = metrics.get("trade_plan") or {}
         if plan:
             plan["historical_setup"] = setup
@@ -157,6 +166,12 @@ def install_historical_analysis(sa):
             plan["confidence_label"] = "HIGH" if confidence >= 75 else "MODERATE" if confidence >= 58 else "LOW"
 
             reasons = list(plan.get("reasons") or [])
+            hist_retrace = _num((setup.get("intraday") or {}).get("median_impulse_retracement_pct"))
+            if hist_retrace is not None:
+                reasons.insert(
+                    0,
+                    f"Same-ticker impulse history favors roughly a {hist_retrace:.0f}% retracement before the next bounce attempt."
+                )
             if setup.get("bias_label") == "BULLISH":
                 reasons.insert(0, "Same-ticker historical setup matches lean bullish.")
             elif setup.get("bias_label") == "BEARISH":
@@ -172,7 +187,7 @@ def install_historical_analysis(sa):
                 "Rule-based long momentum decision support using VWAP, support/resistance, ATR, "
                 "momentum, volume pace, spread/liquidity, same-ticker spike analogs plus setup-"
                 "matched gap/run-vs-fade behavior, breakout failure/follow-through, VWAP reclaim "
-                "tendencies, early pullback depth, time-of-day behavior and catalyst context. "
+                "tendencies, impulse retracement depth/bounce behavior, time-of-day behavior and catalyst context. "
                 "Targets are scenarios, not guarantees."
             )
             metrics["trade_plan"] = plan
