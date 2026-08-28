@@ -423,6 +423,19 @@ def _potential_score(metrics, sec, market, catalyst):
         elif from_high >= 12:
             technical -= 6.0
 
+    impulse = metrics.get("impulse_pullback") or {}
+    if impulse.get("detected"):
+        retrace = _num(impulse.get("current_retracement_pct"))
+        max_retrace = _num(impulse.get("max_retracement_pct"))
+        if impulse.get("bounce_confirmed"):
+            technical += 4.0
+            reasons.append("impulse pullback has started bouncing")
+        elif retrace is not None and retrace < 20:
+            technical -= 3.0
+        if max_retrace is not None and max_retrace > 78:
+            technical -= 4.0
+            reasons.append("deep impulse retracement raises failure risk")
+
     hist = metrics.get("historical_setup") or {}
     if hist.get("status") == "ok":
         bias = _num(hist.get("bias_score")) or 0.0
@@ -504,6 +517,7 @@ def _entry_readiness(metrics):
     momentum_points = 0.0
     execution_points = 0.0
     extension_points = 0.0
+    structure_points = 0.0
     blockers = []
 
     entry_low = _num(selected.get("entry_low"))
@@ -563,11 +577,41 @@ def _entry_readiness(metrics):
 
     ext = _num(metrics.get("vwap_extension_pct"))
     if ext is not None:
-        if ext > 12:
+        if ext > 20:
+            extension_points = -16.0
+            blockers.append("severely extended above VWAP")
+        elif ext > 12:
             extension_points = -10.0
             blockers.append("extended above VWAP")
         elif ext > 8:
             extension_points = -4.0
+
+    impulse = metrics.get("impulse_pullback") or {}
+    if impulse.get("detected"):
+        impulse_move = _num(impulse.get("impulse_move_pct")) or 0.0
+        current_retrace = _num(impulse.get("current_retracement_pct"))
+        max_retrace = _num(impulse.get("max_retracement_pct"))
+        recovery = _num(impulse.get("bounce_recovery_pct")) or 0.0
+        volume_ratio = _num(impulse.get("pullback_volume_ratio"))
+
+        if current_retrace is not None and current_retrace < 25 and impulse_move >= 15:
+            structure_points -= 12.0
+            blockers.append("initial run has not retraced enough yet")
+        elif current_retrace is not None and 28 <= current_retrace <= 62:
+            if impulse.get("bounce_confirmed") or recovery >= 6:
+                structure_points += 9.0
+            else:
+                structure_points -= 5.0
+                blockers.append("pullback zone reached but bounce is not confirmed")
+        if max_retrace is not None and max_retrace > 78:
+            structure_points -= 10.0
+            blockers.append("retracement is deep enough to threaten the impulse")
+        if volume_ratio is not None:
+            if volume_ratio < 0.80:
+                structure_points += 3.0
+            elif volume_ratio > 1.20:
+                structure_points -= 3.0
+                blockers.append("pullback volume is expanding")
 
     components = {
         "base": round(base, 1),
@@ -577,6 +621,7 @@ def _entry_readiness(metrics):
         "momentum": round(momentum_points, 1),
         "execution_quality": round(execution_points, 1),
         "extension": round(extension_points, 1),
+        "pullback_structure": round(structure_points, 1),
     }
     raw_score = sum(components.values())
     capped_score = raw_score
@@ -722,8 +767,34 @@ def install_v2_analysis(sa):
         readiness, blockers, entry_components = _entry_readiness(metrics)
         evidence, evidence_reasons = _evidence_strength(metrics, sec, market, catalyst)
 
+        # Final safety gate: a precise-looking entry should not be promoted when
+        # the timing score or supporting evidence is still weak. Keep the price
+        # zone visible as a watch area, but require stronger confirmation.
+        plan = metrics.get("trade_plan") or {}
+        if str(plan.get("status") or "") == "ENTRY AVAILABLE":
+            safety_reasons = []
+            if readiness < 60:
+                safety_reasons.append("entry readiness is below 60/100")
+            if evidence < 50:
+                safety_reasons.append("evidence strength is below 50/100")
+            if safety_reasons:
+                plan["status"] = "WAIT"
+                plan["action"] = "WAIT FOR STRONGER CONFIRMATION"
+                plan_reasons = list(plan.get("reasons") or [])
+                plan_reasons.insert(
+                    0,
+                    "Entry withheld because " + " and ".join(safety_reasons) + "."
+                )
+                plan["reasons"] = plan_reasons
+                metrics["trade_plan"] = plan
+                blockers = ["WAIT FOR STRONGER CONFIRMATION"] + list(blockers)
+                old_readiness = readiness
+                readiness = min(readiness, 59.0)
+                if old_readiness != readiness:
+                    entry_components["evidence_safety_cap"] = round(readiness - old_readiness, 1)
+
         metrics["decision_v2"] = {
-            "version": "decision-v2.2-peer-ml",
+            "version": "decision-v2.3-impulse-confirmation",
             "potential_score": potential,
             "potential_label": _label(potential, 72, 52),
             "entry_readiness": readiness,
