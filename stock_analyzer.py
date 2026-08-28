@@ -256,7 +256,7 @@ def impulse_pullback_context(bs, current_price=None, atr_pct=None):
     }
 
 
-def run_exhaustion_context(bs, current_price=None, vwap=None, atr_pct=None, impulse=None):
+def run_exhaustion_context(bs, current_price=None, vwap=None, atr_pct=None, impulse=None, sequence=None):
     """Estimate whether a momentum run is stalling or transitioning into reversal."""
     rows=[]
     for b in bs or []:
@@ -271,6 +271,7 @@ def run_exhaustion_context(bs, current_price=None, vwap=None, atr_pct=None, impu
     price=fnum(current_price) or rows[-1]["c"]
     atrp=max(1.0,fnum(atr_pct) or 6.0)
     imp=impulse or {}
+    seq=sequence or {}
     session_high=max(r["h"] for r in rows)
     from_high=(session_high-price)/session_high*100.0 if session_high else 0.0
     vwap_ext=((price/vwap)-1.0)*100.0 if vwap and vwap>0 else None
@@ -370,6 +371,27 @@ def run_exhaustion_context(bs, current_price=None, vwap=None, atr_pct=None, impu
             add(-8,"healthy pullback has produced a confirmed recovery")
         if current_retrace is not None and current_retrace<20 and mom3 is not None and mom3>0:
             add(-5,"price remains near the high with positive momentum")
+
+    # Multi-bounce decay is a separate exhaustion clue. A second/third bounce
+    # can remain tradable while the larger run is deteriorating, so this affects
+    # reversal risk without automatically declaring every later bounce "bad."
+    completed=int(seq.get("completed_bounces") or 0)
+    decay=fnum(seq.get("bounce_decay_ratio"))
+    vol_decay=fnum(seq.get("bounce_volume_decay_ratio"))
+    lh=int(seq.get("lower_high_streak") or 0)
+    hl=int(seq.get("higher_low_streak") or 0)
+    health=fnum(seq.get("sequence_health_score"))
+    if completed>=2:
+        if decay is not None and decay<0.55:add(13,"latest bounce is less than 55% as strong as the prior bounce")
+        elif decay is not None and decay<0.75:add(8,"latest bounce is materially weaker than the prior bounce")
+        if vol_decay is not None and vol_decay<0.60:add(7,"bounce participation is fading sharply")
+        elif vol_decay is not None and vol_decay<0.80:add(4,"bounce volume is fading")
+    if lh>=2:add(12,"multiple bounces are forming progressively lower highs")
+    elif lh==1:add(5,"latest bounce formed a lower high")
+    if hl>=2:add(-6,"successive pullbacks are holding higher lows")
+    if health is not None:
+        if health<35:add(10,"multi-bounce sequence health is poor")
+        elif health>=72:add(-6,"multi-bounce sequence remains structurally healthy")
 
     score=max(0.0,min(100.0,score))
     label="VERY HIGH" if score>=78 else "HIGH" if score>=62 else "MODERATE" if score>=42 else "LOW"
@@ -1363,7 +1385,7 @@ def analyze(symbol):
     liquidity=liquidity_context(price,avgvol,pace,spread_pct)
     impulse=impulse_pullback_context(intraday,price,atr14_pct)
     sequence=detect_bounce_sequence(intraday,current_price=price,atr_pct=atr14_pct)
-    exhaustion=run_exhaustion_context(intraday,price,vwap,atr14_pct,impulse)
+    exhaustion=run_exhaustion_context(intraday,price,vwap,atr14_pct,impulse,sequence)
     metrics={
         "engine_version":ANALYZER_ENGINE_VERSION,
         "feature_version":ANALYZER_FEATURE_VERSION,
