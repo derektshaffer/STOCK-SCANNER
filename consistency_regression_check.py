@@ -109,7 +109,7 @@ def test_analyzer_prefers_tradier():
     result = sa.analyze("TEST")
     assert result["market_provider"] == "tradier", result
     assert result["live_feed"] == "TRADIER CONSOLIDATED", result
-    assert result["feature_version"] == "analyzer-features-v5-multi-bounce", result
+    assert result["feature_version"] == "analyzer-features-v6-sequence-regimes", result
     assert abs(result["price"] - 10.10) < 1e-9, result
     assert result["bid"] == 10.09 and result["ask"] == 10.11, result
     assert result["volume_source"] == "TRADIER CONSOLIDATED", result
@@ -855,9 +855,10 @@ def test_full_spectrum_exposes_all_scenarios():
         {"score":4.0},
         {"float_turnover":0.6},
     )
-    assert fs.get("version")=="full-spectrum-v2-multi-bounce", fs
+    assert fs.get("version")=="full-spectrum-v3-sequence-regimes", fs
     assert set((fs.get("scenarios") or {}).keys())=={
-        "continuation","pullback_bounce","reversal_failure","sideways_chop"
+        "continuation","pullback_bounce","stair_reacceleration",
+        "reversal_failure","sideways_chop"
     }, fs
     total=sum(float(v.get("relative_weight_pct") or 0) for v in fs["scenarios"].values())
     assert 99.0 <= total <= 101.0, fs
@@ -942,6 +943,167 @@ def test_multi_bounce_full_spectrum_accepts_sequence_state():
     assert fs.get("scenarios",{}).get("pullback_bounce"), fs
 
 
+def test_stair_step_detector_finds_higher_plateau_sequence():
+    from stair_step import detect_stair_step, stair_step_feature_values
+
+    daily=[
+        {"t":"2026-08-20","o":9.9,"h":10.2,"l":9.8,"c":10.0,"v":1000},
+        {"t":"2026-08-21","o":10.0,"h":10.4,"l":9.9,"c":10.2,"v":1100},
+        {"t":"2026-08-24","o":10.3,"h":12.2,"l":10.2,"c":12.0,"v":4200},
+        {"t":"2026-08-25","o":12.0,"h":12.35,"l":11.8,"c":12.15,"v":1600},
+        {"t":"2026-08-26","o":12.1,"h":12.3,"l":11.95,"c":12.10,"v":1350},
+        {"t":"2026-08-27","o":12.2,"h":15.3,"l":12.15,"c":15.0,"v":5200},
+        {"t":"2026-08-28","o":15.0,"h":15.45,"l":14.75,"c":15.2,"v":1800},
+    ]
+    ctx=detect_stair_step(daily,atr_pct=8)
+    assert ctx.get("detected"), ctx
+    assert int(ctx.get("step_count") or 0) >= 2, ctx
+    assert float(ctx.get("structure_score") or 0) >= 55, ctx
+    assert ctx.get("state") in {
+        "HIGHER PLATEAU / COILING",
+        "STAIR-STEP TREND",
+        "REACCELERATING STAIR-STEP",
+    }, ctx
+    features=stair_step_feature_values(ctx)
+    assert features.get("stair_step_count",0) >= 2, features
+    assert features.get("stair_structure_score") is not None, features
+
+
+def test_dedicated_repeat_bounce_trade_plan_uses_latest_dip():
+    import stock_analyzer as sa
+
+    metrics={
+        "price":8.10,
+        "vwap":8.00,
+        "vwap_extension_pct":1.25,
+        "day_pct":12.0,
+        "momentum_5m":0.8,
+        "momentum_15m":0.5,
+        "volume_pace":2.0,
+        "spread_pct":0.5,
+        "score":75.0,
+        "atr_14":0.81,
+        "atr_14_pct":10.0,
+        "supports":[{"price":7.85,"quality_score":70,"quality":"STRONG","side":"support"}],
+        "resistances":[{"price":10.0,"quality_score":70,"quality":"STRONG","side":"resistance"}],
+        "historical_analogs":{"status":"insufficient_history","samples":[]},
+        "historical_setup":{
+            "status":"ok",
+            "sample_count":20,
+            "next_day_up_pct":55.0,
+            "intraday":{
+                "median_bounce2_pct":7.0,
+                "second_bounce_rate_pct":62.0,
+                "median_bounce2_vs_bounce1_ratio":0.68,
+            },
+        },
+        "impulse_pullback":{"detected":False},
+        "bounce_sequence":{
+            "detected":True,
+            "completed_bounces":1,
+            "next_bounce_number":2,
+            "current_leg":"BOUNCING",
+            "current_dip_low":8.0,
+            "reference_peak":10.0,
+            "latest_bounce_pct":10.0,
+            "sequence_health_score":60.0,
+            "bounce_decay_ratio":0.75,
+            "lower_high_streak":1,
+        },
+        "stair_step":{"detected":False},
+        "run_exhaustion":{"score":45.0},
+        "liquidity":{"label":"HIGH","avg_dollar_volume":10_000_000},
+        "news":[],
+    }
+    plan=sa.build_trade_plan(metrics,datetime.now(timezone.utc))
+    rb=plan.get("repeat_bounce") or {}
+    assert rb, plan
+    assert int(rb.get("bounce_number") or 0)==2, rb
+    assert abs(float(rb.get("dip_low"))-8.0)<1e-9, rb
+    assert float(rb.get("confirmation_level"))>8.0, rb
+    assert float(rb.get("target1"))>float(rb.get("entry_mid")), rb
+    assert float(rb.get("stop"))<float(rb.get("entry_mid")), rb
+    assert plan.get("preferred_plan")=="repeat_bounce", plan
+    assert plan.get("status")=="ENTRY AVAILABLE", plan
+    assert "BOUNCE #2" in str(plan.get("action") or ""), plan
+
+
+def test_prediction_tracker_records_sequence_regime_fields():
+    import prediction_tracker as pt
+
+    original_load=pt._load
+    original_save=pt._save
+    try:
+        pt._load=lambda: []
+        pt._save=lambda rows, force_remote=False: True
+        metrics={
+            "symbol":"TEST",
+            "feature_version":pt.ANALYZER_FEATURE_VERSION,
+            "price":8.10,
+            "trade_plan":{
+                "status":"ENTRY AVAILABLE",
+                "action":"ENTRY AVAILABLE — BOUNCE #2 SCALP CONFIRMED",
+                "preferred_plan":"repeat_bounce",
+                "confidence":70,
+                "selected":{"entry_low":8.08,"entry_high":8.12,"target1":8.4,"stop":7.9},
+                "repeat_bounce":{
+                    "bounce_number":2,"entry_low":8.08,"entry_high":8.12,
+                    "confirmation_level":8.08,"target1":8.4,"target2":8.55,
+                    "stop":7.9,"risk_reward":1.5,"expected_bounce_pct":7.0,
+                    "historical_bounce_rate_pct":62.0,
+                },
+            },
+            "bounce_sequence":{
+                "detected":True,"completed_bounces":1,"next_bounce_number":2,
+                "current_leg":"BOUNCING","sequence_state":"MIXED MULTI-BOUNCE STRUCTURE",
+                "sequence_health_score":60,"current_dip_low":8.0,"reference_peak":10.0,
+            },
+            "stair_step":{
+                "detected":True,"state":"HIGHER PLATEAU / COILING","step_count":2,
+                "structure_score":70,"current_plateau_days":1,
+            },
+            "ml_prediction":{
+                "models":{
+                    "repeat_bounce_30":{"probability_pct":64,"validated":True},
+                    "post_bounce_failure_60":{"probability_pct":35,"validated":True},
+                    "stair_reacceleration_60":{"probability_pct":61,"validated":True},
+                },
+            },
+            "decision_v2":{
+                "version":pt.DECISION_SCORE_VERSION,
+                "full_spectrum":{
+                    "scenarios":{
+                        "continuation":{"relative_weight_pct":22},
+                        "pullback_bounce":{"relative_weight_pct":30},
+                        "stair_reacceleration":{"relative_weight_pct":24},
+                        "reversal_failure":{"relative_weight_pct":14},
+                        "sideways_chop":{"relative_weight_pct":10},
+                    },
+                },
+            },
+        }
+        captured=[]
+        def _capture(rows,force_remote=False):
+            captured.extend(rows)
+            return True
+        pt._save=_capture
+        result=pt.record_prediction(
+            metrics,
+            now=datetime(2026,8,28,15,0,tzinfo=timezone.utc),
+        )
+        assert result.get("recorded"), result
+        assert captured, result
+        row=captured[-1]
+        assert row.get("repeat_bounce_plan_available") is True, row
+        assert row.get("repeat_bounce_plan_number")==2, row
+        assert row.get("repeat_bounce_30_probability_pct")==64.0, row
+        assert row.get("scenario_stair_reacceleration_weight")==24.0, row
+        assert row.get("stair_step_count")==2, row
+    finally:
+        pt._load=original_load
+        pt._save=original_save
+
+
 if __name__ == "__main__":
     tests = [
         test_analyzer_prefers_tradier,
@@ -977,6 +1139,9 @@ if __name__ == "__main__":
         test_full_spectrum_exposes_all_scenarios,
         test_multi_bounce_detector_tracks_decay_and_lower_highs,
         test_multi_bounce_full_spectrum_accepts_sequence_state,
+        test_stair_step_detector_finds_higher_plateau_sequence,
+        test_dedicated_repeat_bounce_trade_plan_uses_latest_dip,
+        test_prediction_tracker_records_sequence_regime_fields,
     ]
     for test in tests:
         test()
