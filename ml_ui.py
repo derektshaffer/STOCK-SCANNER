@@ -68,8 +68,9 @@ def render_ml_prediction(st, pd, result, card):
     m30 = models.get("higher_30") or {}
     m60 = models.get("higher_60") or {}
     breakout = models.get("breakout_hold") or {}
+    reversal = models.get("reversal_30") or {}
 
-    cols = st.columns(6)
+    cols = st.columns(7)
     edge = ml.get("ml_edge_score")
     edge_count = int(ml.get("validated_edge_model_count") or 0)
     coverage = ml.get("ml_edge_coverage") or "NONE"
@@ -128,8 +129,15 @@ def render_ml_prediction(st, pd, result, card):
     )
     card(
         cols[5],
+        "30M REVERSAL RISK",
+        _pct_value(reversal),
+        _validation_note(reversal),
+        "bad" if (reversal.get("probability_pct") or 0) >= 60 else "good" if reversal.get("probability_pct") is not None and (reversal.get("probability_pct") or 0) <= 40 else "warn",
+    )
+    card(
+        cols[6],
         "VALIDATION",
-        f'{ml.get("validated_models", 0)} / 4',
+        f'{ml.get("validated_models", 0)} / 5',
         "models passed walk-forward gate",
         "good" if ml.get("gate_passed") else "warn",
     )
@@ -220,7 +228,8 @@ def render_ml_prediction(st, pd, result, card):
         st.write(
             "**Peer model:** It searches historical momentum observations from other tickers for "
             "setups resembling the current stock in price band, liquidity, day move, 5/15-minute "
-            "momentum, volume pace, VWAP extension, distance from the high, intraday range and time of day. "
+            "momentum, volume pace, VWAP extension, distance from the high, intraday range, time of day, "
+            "impulse size, retracement depth, bounce recovery and pullback-volume behavior. "
             "Its target is a +3% or greater move over the next 60 minutes."
         )
 
@@ -230,6 +239,7 @@ def render_ml_prediction(st, pd, result, card):
             "higher_30": "30m higher",
             "higher_60": "60m higher",
             "breakout_hold": "Breakout hold",
+            "reversal_30": "30m reversal risk",
         }
         for key, label in labels.items():
             m = models.get(key) or {}
@@ -274,6 +284,6 @@ def render_ml_prediction(st, pd, result, card):
             f'source: {ml.get("source")}. '
             f'Peer cohort: {int(peer.get("samples") or 0):,} similar observations across '
             f'{int(peer.get("peer_symbols") or 0)} other tickers. '
-            "ML v1.2 is a probability/decision-support layer, not a guaranteed forecast, "
+            "ML v1.4 is a probability/decision-support layer, not a guaranteed forecast, "
             "and it cannot override the rule-based trade action."
         )
