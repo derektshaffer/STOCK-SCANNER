@@ -25,6 +25,8 @@ jobs:
         run: |
           NY_DAY=$(TZ=America/New_York date +%u)
           NY_HM=$(TZ=America/New_York date +%H%M)
+          NY_DATE=$(TZ=America/New_York date +%Y-%m-%d)
+          echo "market_date=$NY_DATE" >> "$GITHUB_OUTPUT"
           FEED=$(printf '%s' "${ALPACA_LIVE_FEED:-iex}" | tr '[:upper:]' '[:lower:]')
 
           # Tradier consolidated live data is the preferred scanner source and
@@ -47,6 +49,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Restore daily Tradier discovery universe
+        if: github.event_name == 'workflow_dispatch' || steps.market_time.outputs.in_market_hours == 'true'
+        uses: actions/cache@v4
+        with:
+          path: scan_cache
+          key: tradier-discovery-${{ runner.os }}-${{ steps.market_time.outputs.market_date }}
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -64,6 +73,8 @@ jobs:
           ALPACA_LIVE_FEED: ${{ secrets.ALPACA_LIVE_FEED }}
           TRADIER_ACCESS_TOKEN: ${{ secrets.TRADIER_ACCESS_TOKEN }}
           TRADIER_TOKEN: ${{ secrets.TRADIER_TOKEN }}
+          SCANNER_TRADIER_DISCOVERY: "1"
+          SCANNER_DISCOVERY_UNIVERSE_SIZE: "1200"
           GH_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: python stock_scanner.py
