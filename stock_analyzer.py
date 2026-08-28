@@ -2,6 +2,8 @@ import json, math, os, urllib.parse, urllib.request, urllib.error
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from statistics import median
+
+from multi_bounce import detect_bounce_sequence
 from zoneinfo import ZoneInfo
 
 try:
@@ -27,8 +29,8 @@ USE_TRADIER = bool(
 )
 LIVE_MARKET_PROVIDER = "tradier" if USE_TRADIER else "alpaca"
 LIVE_MARKET_LABEL = "TRADIER CONSOLIDATED" if USE_TRADIER else LIVE_FEED.upper()
-ANALYZER_FEATURE_VERSION = "analyzer-features-v4-full-spectrum"
-ANALYZER_ENGINE_VERSION = "trade-plan-v5-full-spectrum"
+ANALYZER_FEATURE_VERSION = "analyzer-features-v5-multi-bounce"
+ANALYZER_ENGINE_VERSION = "trade-plan-v6-multi-bounce"
 ET = ZoneInfo("America/New_York")
 
 CATALYST_RULES = [
@@ -833,8 +835,26 @@ def build_trade_plan(metrics, now):
     setup_score=fnum(metrics.get("score")) or 50
     hist=_hist_trade_context(metrics.get("historical_analogs"))
     impulse=metrics.get("impulse_pullback") or {}
+    sequence=metrics.get("bounce_sequence") or {}
+    sequence=metrics.get("bounce_sequence") or {}
+    seq_health=fnum(sequence.get("sequence_health_score"))
+    seq_decay=fnum(sequence.get("bounce_decay_ratio"))
+    if seq_health is not None:
+        if seq_health>=68:score+=5; reasons.append("healthy multi-bounce structure")
+        elif seq_health<42:score-=9; reasons.append("multi-bounce sequence is decaying")
+    if int(sequence.get("lower_high_streak") or 0)>=2:
+        score-=7; reasons.append("repeated lower highs across bounces")
+    if seq_decay is not None and seq_decay<0.65:
+        score-=5; reasons.append("latest bounce is materially weaker than the prior bounce")
     exhaustion=metrics.get("run_exhaustion") or {}
     reversal_score=fnum(exhaustion.get("score")) or 0.0
+    sequence_health=fnum(sequence.get("sequence_health_score"))
+    sequence_decay=fnum(sequence.get("bounce_decay_ratio"))
+    lower_high_streak=int(sequence.get("lower_high_streak") or 0)
+    if sequence_health is not None and sequence_health < 42:
+        reversal_score=max(reversal_score, 68.0)
+    if lower_high_streak >= 2 and sequence_decay is not None and sequence_decay < 0.80:
+        reversal_score=max(reversal_score, 74.0)
     hist_setup=metrics.get("historical_setup") or {}
     hist_intraday=hist_setup.get("intraday") or {}
     catalyst=_catalyst_bias(metrics.get("news") or [])
@@ -1101,6 +1121,14 @@ def build_trade_plan(metrics, now):
         preferred="pullback"; chosen=pull_plan
         action="WAIT — HIGH RUN-EXHAUSTION RISK"
         reasons.append("The run is showing meaningful exhaustion/reversal evidence; require a fresh base and reclaim before considering another long entry.")
+    elif int(sequence.get("completed_bounces") or 0) >= 1 and str(sequence.get("current_leg") or "").upper().startswith("PULL"):
+        status="WAIT"
+        preferred="pullback"; chosen=pull_plan
+        action="WAIT FOR NEXT BOUNCE CONFIRMATION"
+        reasons.append(
+            "This is a later pullback in a multi-bounce sequence. A second or third bounce can still be tradable, "
+            "but later bounces often weaken, so require a hold/reclaim before treating the dip as an entry."
+        )
     elif rr < 1.15:
         status="NO TRADE"
         action="NO TRADE — reward/risk is unattractive"
@@ -1159,6 +1187,7 @@ def build_trade_plan(metrics, now):
         "confidence_label":"HIGH" if confidence>=75 else "MODERATE" if confidence>=58 else "LOW",
         "pullback":pull_plan,"breakout":breakout_plan,"selected":chosen,
         "impulse_pullback":impulse,
+        "bounce_sequence":sequence,
         "run_exhaustion":exhaustion,
         "nearest_support":support_price,"nearest_support_quality":(nearest_support or {}).get("quality"),
         "nearest_resistance":resistance_price,"support_distance_pct":round(support_distance,2) if support_distance is not None else None,
@@ -1167,7 +1196,7 @@ def build_trade_plan(metrics, now):
         "atr":round(atr,4),"atr_pct":round(atr_pct,2),
         "reasons":reasons,
         "updated":now.astimezone(ET).isoformat(),
-        "method_note":"Rule-based long momentum decision support using impulse/retracement structure, confirmation, VWAP, support/resistance, ATR, momentum, volume pace, spread/liquidity, same-ticker historical behavior and catalyst context. Pullback zones are not automatic entries; targets are scenarios, not guarantees.",
+        "method_note":"Rule-based long momentum decision support using impulse/retracement and multi-bounce sequence structure, confirmation, VWAP, support/resistance, ATR, momentum, volume pace, spread/liquidity, same-ticker historical behavior and catalyst context. Pullback zones are not automatic entries; targets are scenarios, not guarantees.",
     }
 
 def score_setup(metrics):
@@ -1333,6 +1362,7 @@ def analyze(symbol):
 
     liquidity=liquidity_context(price,avgvol,pace,spread_pct)
     impulse=impulse_pullback_context(intraday,price,atr14_pct)
+    sequence=detect_bounce_sequence(intraday,current_price=price,atr_pct=atr14_pct)
     exhaustion=run_exhaustion_context(intraday,price,vwap,atr14_pct,impulse)
     metrics={
         "engine_version":ANALYZER_ENGINE_VERSION,
@@ -1372,6 +1402,7 @@ def analyze(symbol):
         "atr_14":round(atr14,4) if atr14 is not None else None,
         "atr_14_pct":round(atr14_pct,2) if atr14_pct is not None else None,
         "impulse_pullback":impulse,
+        "bounce_sequence":sequence,
         "run_exhaustion":exhaustion,
         "liquidity":liquidity,
         "supports":supports,
