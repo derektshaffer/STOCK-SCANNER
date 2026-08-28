@@ -66,6 +66,54 @@ def render_historical_setup(st, pd, result, card, pp):
             if high_period.upper() == "POWER HOUR" else None,
         )
 
+        second_rate = intr.get("second_bounce_rate_pct")
+        third_rate = intr.get("third_bounce_rate_pct")
+        b1_med = intr.get("median_bounce1_pct")
+        b2_med = intr.get("median_bounce2_pct")
+        b2_lower = intr.get("second_bounce_lower_high_rate_pct")
+        if any(v is not None for v in (second_rate, third_rate, b1_med, b2_med, b2_lower)):
+            bc = st.columns(5)
+            card(
+                bc[0],
+                "2ND BOUNCE RATE",
+                f"{second_rate:.0f}%" if second_rate is not None else "—",
+                "matched intraday days",
+                "good" if second_rate is not None and second_rate >= 55 else "warn",
+                "How often historically similar days produced a second completed pullback-to-rebound cycle after the first bounce.",
+            )
+            card(
+                bc[1],
+                "3RD BOUNCE RATE",
+                f"{third_rate:.0f}%" if third_rate is not None else "—",
+                "matched intraday days",
+                "good" if third_rate is not None and third_rate >= 45 else "warn",
+                "How often historically similar days produced a third completed rebound after two earlier bounce cycles.",
+            )
+            card(
+                bc[2],
+                "MEDIAN BOUNCE #1",
+                f"{b1_med:.1f}%" if b1_med is not None else "—",
+                "first rebound size",
+                "",
+                "Median percentage gain from the first pullback low to the first confirmed bounce peak on comparable historical days.",
+            )
+            card(
+                bc[3],
+                "MEDIAN BOUNCE #2",
+                f"{b2_med:.1f}%" if b2_med is not None else "—",
+                "second rebound size",
+                "",
+                "Median percentage gain from the second dip to the second confirmed bounce peak on comparable historical days.",
+            )
+            card(
+                bc[4],
+                "2ND BOUNCE LOWER HIGH",
+                f"{b2_lower:.0f}%" if b2_lower is not None else "—",
+                "of days with a second bounce",
+                "bad" if b2_lower is not None and b2_lower >= 60 else "warn",
+                "Among days that produced a second bounce, the percentage where that second bounce peaked below the previous bounce high. Higher values suggest later bounces often weaken.",
+            )
+
         for note in (setup.get("notes") or [])[:5]:
             st.caption("• " + str(note))
 
