@@ -6,6 +6,8 @@ from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from statistics import median
 
+from multi_bounce import bounce_feature_values, detect_bounce_sequence
+
 FEATURES = [
     "day_pct",
     "gap_pct",
@@ -27,6 +29,17 @@ FEATURES = [
     "impulse_max_retracement_pct",
     "impulse_bounce_recovery_pct",
     "pullback_volume_ratio",
+    # Multi-bounce sequence features shared with the live analyzer.
+    "bounce_count",
+    "last_bounce_pct",
+    "bounce_decay_ratio",
+    "bounce_volume_decay_ratio",
+    "lower_high_streak",
+    "higher_low_streak",
+    "sequence_health_score",
+    "current_pullback_pct",
+    "ongoing_bounce_pct",
+    "bounce_leg_code",
 ]
 
 _CACHE = {}
@@ -234,6 +247,12 @@ def _feature_row(day, prev_close, avg20_vol, atr_pct, idx):
     close_location = (price - session_low) / rng if rng > 0 else 0.5
     range_pct = rng / price * 100.0 if price else None
     impulse = _impulse_features(bars, idx)
+    sequence = detect_bounce_sequence(
+        upto,
+        current_price=price,
+        atr_pct=atr_pct,
+    )
+    bounce_features = bounce_feature_values(sequence)
 
     return {
         "day_pct": _pct(price, prev_close),
@@ -249,6 +268,7 @@ def _feature_row(day, prev_close, avg20_vol, atr_pct, idx):
         "close_location": close_location,
         "range_pct": range_pct,
         **impulse,
+        **bounce_features,
         "_price": price,
         "_idx": idx,
         "_session_high": session_high,
@@ -356,6 +376,57 @@ def _build_dataset(bars5, et, target_pct, stop_pct):
                     reversal_30=0
                     break
 
+            # Later-bounce question: after at least one completed bounce and
+            # while price is pulling back / basing, does another quick rebound
+            # occur before the dip breaks down? Ambiguous same-bar touches are
+            # censored because 5-minute OHLC cannot reveal which traded first.
+            bounce_count=int(_fnum(feat.get("bounce_count")) or 0)
+            bounce_leg=_fnum(feat.get("bounce_leg_code")) or 0.0
+            repeat_bounce_30=None
+            bounce_up=_clamp(atr_here*0.48,2.0,7.0)
+            bounce_down=_clamp(atr_here*0.48,2.0,7.0)
+            bounce_eligible=bool(bounce_count>=1 and bounce_leg<=0.0)
+            if bounce_eligible:
+                for fb in future30:
+                    fh=_fnum(fb.get("h")); fl=_fnum(fb.get("l"))
+                    hit_up=bool(fh is not None and fh >= price*(1.0+bounce_up/100.0))
+                    hit_down=bool(fl is not None and fl <= price*(1.0-bounce_down/100.0))
+                    if hit_up and hit_down:
+                        repeat_bounce_30=None
+                        break
+                    if hit_up:
+                        repeat_bounce_30=1
+                        break
+                    if hit_down:
+                        repeat_bounce_30=0
+                        break
+
+            # After a mature sequence, distinguish a simple scalp bounce from a
+            # genuine re-expansion to a fresh session high.
+            new_high_60=None
+            prior_session_high=_fnum(feat.get("_session_high"))
+            new_high_eligible=bool(
+                bounce_count>=1
+                and prior_session_high
+                and price < prior_session_high*0.997
+            )
+            if new_high_eligible:
+                new_high_level=prior_session_high*1.002
+                failure_level=price*(1.0-bounce_down/100.0)
+                for fb in future60:
+                    fh=_fnum(fb.get("h")); fl=_fnum(fb.get("l"))
+                    hit_high=bool(fh is not None and fh >= new_high_level)
+                    hit_fail=bool(fl is not None and fl <= failure_level)
+                    if hit_high and hit_fail:
+                        new_high_60=None
+                        break
+                    if hit_high:
+                        new_high_60=1
+                        break
+                    if hit_fail:
+                        new_high_60=0
+                        break
+
             # Target 1 is a day-trade first-touch question, not a 60-minute
             # continuation question. Evaluate it through the rest of this same
             # session. Timeouts are censored instead of being mislabeled losses.
@@ -380,8 +451,12 @@ def _build_dataset(bars5, et, target_pct, stop_pct):
                     "target_before_stop_outcome": target_outcome,
                     "breakout_hold": breakout_hold,
                     "reversal_30": reversal_30,
+                    "repeat_bounce_30": repeat_bounce_30,
+                    "new_high_60": new_high_60,
                     "reversal_down_pct": round(reversal_down,2),
                     "reversal_up_pct": round(reversal_up,2),
+                    "bounce_up_pct": round(bounce_up,2),
+                    "bounce_down_pct": round(bounce_down,2),
                 }
             )
             samples.append(row)
@@ -543,6 +618,7 @@ def _current_features(metrics, now_et):
     time_fraction = _clamp((minute - 570) / 390.0, 1.0 / 78.0, 1.0)
 
     impulse = metrics.get("impulse_pullback") or {}
+    bounce_features = bounce_feature_values(metrics.get("bounce_sequence") or {})
 
     return {
         "day_pct": _fnum(metrics.get("day_pct")),
@@ -562,6 +638,7 @@ def _current_features(metrics, now_et):
         "impulse_max_retracement_pct": _fnum(impulse.get("max_retracement_pct")),
         "impulse_bounce_recovery_pct": _fnum(impulse.get("bounce_recovery_pct")),
         "pullback_volume_ratio": _fnum(impulse.get("pullback_volume_ratio")),
+        **bounce_features,
     }
 
 
@@ -585,11 +662,13 @@ def _plan_geometry(metrics):
 
 def _weighted_edge(models, plan):
     weights = {
-        "target_before_stop": 0.38,
-        "higher_60": 0.22,
-        "higher_30": 0.14,
-        "breakout_hold": 0.11,
-        "reversal_30": 0.15,
+        "target_before_stop": 0.30,
+        "higher_60": 0.17,
+        "higher_30": 0.10,
+        "breakout_hold": 0.08,
+        "reversal_30": 0.13,
+        "repeat_bounce_30": 0.13,
+        "new_high_60": 0.09,
     }
     probs = []
     for name, weight in weights.items():
@@ -598,6 +677,8 @@ def _weighted_edge(models, plan):
         if p is None or model.get("status") != "ok":
             continue
         if name == "breakout_hold" and not plan.get("breakout_relevant"):
+            continue
+        if name in {"repeat_bounce_30", "new_high_60"} and not plan.get("bounce_relevant"):
             continue
         if name == "reversal_30":
             p = 100.0 - p
@@ -659,7 +740,15 @@ def predict_ml(symbol, now, metrics, fetch_bars, et):
     current = _current_features(metrics, now_et)
 
     models = {}
-    for label in ("target_before_stop", "higher_30", "higher_60", "breakout_hold", "reversal_30"):
+    for label in (
+        "target_before_stop",
+        "higher_30",
+        "higher_60",
+        "breakout_hold",
+        "reversal_30",
+        "repeat_bounce_30",
+        "new_high_60",
+    ):
         models[label] = _walk_forward_fit(dataset, label, current)
 
     target_outcomes = {
@@ -683,6 +772,18 @@ def predict_ml(symbol, now, metrics, fetch_bars, et):
     reversal_model["direction"]="higher probability = higher reversal risk"
     models["reversal_30"]=reversal_model
 
+    bounce_model=models.get("repeat_bounce_30") or {}
+    bounce_model["horizon"]="30 minutes"
+    bounce_model["meaning"]="After at least one prior bounce, probability another rebound threshold is hit before an equal-sized breakdown threshold"
+    bounce_model["direction"]="higher probability = stronger repeat-bounce evidence"
+    models["repeat_bounce_30"]=bounce_model
+
+    new_high_model=models.get("new_high_60") or {}
+    new_high_model["horizon"]="60 minutes"
+    new_high_model["meaning"]="After at least one prior bounce, probability price reaches a fresh session high before an adaptive breakdown threshold"
+    new_high_model["direction"]="higher probability = stronger re-expansion / new-high evidence"
+    models["new_high_60"]=new_high_model
+
     breakout = plan.get("breakout") or {}
     breakout_level = _fnum(breakout.get("breakout_level"))
     price = _fnum(metrics.get("price"))
@@ -699,9 +800,14 @@ def predict_ml(symbol, now, metrics, fetch_bars, et):
     )
     gate_passed = target_valid and continuation_valid
 
+    bounce_sequence=metrics.get("bounce_sequence") or {}
+    bounce_relevant=bool(int(bounce_sequence.get("completed_bounces") or 0)>=1)
     edge = _weighted_edge(
         models,
-        {"breakout_relevant": breakout_relevant},
+        {
+            "breakout_relevant": breakout_relevant,
+            "bounce_relevant": bounce_relevant,
+        },
     )
     if edge is None:
         lean = "UNAVAILABLE"
@@ -719,12 +825,13 @@ def predict_ml(symbol, now, metrics, fetch_bars, et):
     result = {
         "status": "ok",
         "model_type": "XGBoost",
-        "version": "ml-v1.4-full-spectrum",
+        "version": "ml-v1.5-multi-bounce",
         "source": source,
         "training_samples": len(dataset),
         "target_pct": round(target_pct, 2),
         "stop_pct": round(stop_pct, 2),
         "breakout_relevant": breakout_relevant,
+        "bounce_relevant": bounce_relevant,
         "models": models,
         "validated_models": validated_count,
         "validation_gate": "PASSED" if gate_passed else "ADVISORY ONLY",
@@ -738,6 +845,7 @@ def predict_ml(symbol, now, metrics, fetch_bars, et):
             "Target 1 uses same-session first-touch outcomes; sessions where neither target nor stop is touched are excluded. "
             "Impulse size, retracement depth, bounce recovery and pullback-volume behavior are included as leakage-safe features. "
             "A separate 30-minute reversal model estimates whether downside is hit before renewed continuation. "
+            "Later-bounce models separately estimate repeat-bounce-before-breakdown and fresh-high-before-breakdown outcomes. "
             "ML only adjusts plan confidence when the validation gate passes; it does not override "
             "the rule-based entry/stop/target decision."
         ),
