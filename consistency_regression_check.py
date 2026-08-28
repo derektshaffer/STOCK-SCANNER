@@ -109,7 +109,7 @@ def test_analyzer_prefers_tradier():
     result = sa.analyze("TEST")
     assert result["market_provider"] == "tradier", result
     assert result["live_feed"] == "TRADIER CONSOLIDATED", result
-    assert result["feature_version"] == "analyzer-features-v2-consolidated", result
+    assert result["feature_version"] == "analyzer-features-v3-impulse-pullback", result
     assert abs(result["price"] - 10.10) < 1e-9, result
     assert result["bid"] == 10.09 and result["ask"] == 10.11, result
     assert result["volume_source"] == "TRADIER CONSOLIDATED", result
@@ -746,6 +746,60 @@ def test_replay_requires_live_confirmation_before_full_badge():
     assert sm.MIN_LIVE_CONFIRMATION_CLASS_COUNT >= 5
 
 
+def test_impulse_detector_measures_fraction_of_run():
+    import stock_analyzer as sa
+
+    bars = []
+    price = 10.0
+    # Build a clear impulse from ~10 to ~20, then a 40% retracement to ~16,
+    # followed by a partial bounce. Only past/current bars are supplied.
+    for i in range(12):
+        close = 10.0 + i * (10.0 / 11.0)
+        bars.append({"h": close * 1.01, "l": close * 0.99, "c": close, "v": 1000 + i * 50})
+    for close in (19.0, 18.0, 17.0, 16.0, 16.6, 17.2):
+        bars.append({"h": close * 1.01, "l": close * 0.99, "c": close, "v": 700})
+
+    ctx = sa.impulse_pullback_context(bars, current_price=17.2, atr_pct=8)
+    assert ctx.get("detected"), ctx
+    assert 25 <= float(ctx.get("max_retracement_pct")) <= 55, ctx
+    assert float(ctx.get("bounce_recovery_pct")) > 0, ctx
+    assert "38.2%" in (ctx.get("levels") or {}), ctx
+
+
+def test_entry_readiness_penalizes_unconfirmed_shallow_retrace():
+    import analyzer_v2_integration as v2
+
+    metrics = {
+        "price": 20.0,
+        "vwap_position": "ABOVE",
+        "vwap_extension_pct": 14.0,
+        "momentum_5m": 1.0,
+        "momentum_15m": 1.0,
+        "liquidity": {"label": "HIGH"},
+        "trade_plan": {
+            "status": "WAIT",
+            "action": "WAIT FOR REAL PULLBACK — price is extended",
+            "selected": {
+                "entry_low": 16.0,
+                "entry_high": 17.0,
+                "risk_reward": 2.0,
+            },
+        },
+        "impulse_pullback": {
+            "detected": True,
+            "impulse_move_pct": 80.0,
+            "current_retracement_pct": 12.0,
+            "max_retracement_pct": 12.0,
+            "bounce_recovery_pct": 0.0,
+            "pullback_volume_ratio": 0.9,
+            "bounce_confirmed": False,
+        },
+    }
+    score, blockers, components = v2._entry_readiness(metrics)
+    assert components.get("pullback_structure", 0) < 0, (score, blockers, components)
+    assert any("retraced enough" in str(x) for x in blockers), blockers
+
+
 if __name__ == "__main__":
     tests = [
         test_analyzer_prefers_tradier,
@@ -775,6 +829,8 @@ if __name__ == "__main__":
         test_historical_replay_universe_uses_prior_days_only,
         test_historical_replay_source_survives_ml_extraction,
         test_replay_requires_live_confirmation_before_full_badge,
+        test_impulse_detector_measures_fraction_of_run,
+        test_entry_readiness_penalizes_unconfirmed_shallow_retrace,
     ]
     for test in tests:
         test()
