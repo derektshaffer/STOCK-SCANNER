@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
 
 from ml_predictor import predict_ml
+from peer_ml_predictor import predict_peer_ml
 
 
 def _num(value):
@@ -159,6 +160,69 @@ def install_ml_analysis(sa):
             }
 
         ml = _validated_edge_only(ml)
+
+        # Keep the same-ticker model primary. The peer layer is trained
+        # separately on behaviorally similar setups from OTHER symbols.
+        same_ticker_edge = _num(ml.get("ml_edge_score"))
+        same_ticker_gate = bool(ml.get("gate_passed"))
+        try:
+            peer = predict_peer_ml(
+                symbol=symbol,
+                now=now,
+                metrics=metrics,
+                et=sa.ET,
+            )
+        except Exception as exc:
+            peer = {
+                "status": "unavailable",
+                "validated": False,
+                "version": "analyzer-peer-v1",
+                "error": str(exc)[:180],
+            }
+
+        ml["peer_model"] = peer
+        ml["same_ticker_edge_score"] = (
+            round(same_ticker_edge, 1)
+            if same_ticker_edge is not None
+            else None
+        )
+        ml["peer_edge_score"] = _num(peer.get("peer_edge_score"))
+        ml["peer_probability_pct"] = _num(peer.get("probability_pct"))
+        ml["peer_validated"] = bool(peer.get("validated"))
+        ml["peer_blend_weight_pct"] = 0
+        ml["hybrid_ml_edge_score"] = (
+            round(same_ticker_edge, 1)
+            if same_ticker_edge is not None
+            else None
+        )
+
+        # A validated peer model can contribute at most 30% and only when the
+        # existing same-ticker gate has already passed. If the stock-specific
+        # model has not proved itself, peer behavior remains visible/advisory
+        # and cannot move plan confidence.
+        peer_edge = _num(peer.get("peer_edge_score"))
+        if (
+            same_ticker_gate
+            and same_ticker_edge is not None
+            and bool(peer.get("validated"))
+            and peer_edge is not None
+        ):
+            hybrid_edge = 0.70 * same_ticker_edge + 0.30 * peer_edge
+            ml["hybrid_ml_edge_score"] = round(hybrid_edge, 1)
+            ml["ml_edge_score"] = round(hybrid_edge, 1)
+            ml["peer_blend_weight_pct"] = 30
+            ml["edge_method"] = "same_ticker_70_peer_30"
+            ml["ml_lean"] = (
+                "BULLISH / SUPPORTS ENTRY"
+                if hybrid_edge >= 65
+                else "BEARISH / CAUTION"
+                if hybrid_edge <= 45
+                else "MIXED"
+            )
+        elif peer_edge is not None:
+            ml["edge_method"] = str(ml.get("edge_method") or "validated_models_only") + "_peer_advisory"
+
+        ml["version"] = "ml-v1.2-peer"
         metrics["ml_prediction"] = ml
 
         # Validation gate: only a model that beats naive baselines on unseen,
@@ -180,11 +244,26 @@ def install_ml_analysis(sa):
                 )
                 reasons = list(plan.get("reasons") or [])
                 if edge >= 65:
-                    reasons.insert(0, "Validated ML v1 probabilities support the current setup.")
+                    reasons.insert(
+                        0,
+                        "Validated hybrid ML probabilities support the current setup."
+                        if ml.get("peer_blend_weight_pct")
+                        else "Validated same-ticker ML probabilities support the current setup."
+                    )
                 elif edge <= 45:
-                    reasons.insert(0, "Validated ML v1 probabilities argue for extra caution.")
+                    reasons.insert(
+                        0,
+                        "Validated hybrid ML probabilities argue for extra caution."
+                        if ml.get("peer_blend_weight_pct")
+                        else "Validated same-ticker ML probabilities argue for extra caution."
+                    )
                 else:
-                    reasons.insert(0, "Validated ML v1 probabilities are mixed.")
+                    reasons.insert(
+                        0,
+                        "Validated hybrid ML probabilities are mixed."
+                        if ml.get("peer_blend_weight_pct")
+                        else "Validated same-ticker ML probabilities are mixed."
+                    )
                 plan["reasons"] = reasons
                 plan["ml_confidence_adjustment"] = round(adjustment, 1)
                 metrics["trade_plan"] = plan
