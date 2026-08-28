@@ -805,10 +805,15 @@ def predict_ml(symbol, now, metrics, fetch_bars, et):
     if target_pct is None or stop_pct is None:
         target_pct, stop_pct = 5.0, -4.0
 
+    # Sequence-regime probabilities need to react to a new 5-minute bar.
+    # The older cache could stay unchanged for 15 minutes during a fast
+    # Bounce #2/#3 or plateau breakout, which is too stale for this use case.
+    five_minute_bucket = int(now.timestamp() // 300)
     key = (
         symbol.upper(),
         round(target_pct, 1),
         round(stop_pct, 1),
+        five_minute_bucket,
     )
     stamp = time.time()
     cached = _CACHE.get(key)
