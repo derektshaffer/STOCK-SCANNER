@@ -109,7 +109,7 @@ def test_analyzer_prefers_tradier():
     result = sa.analyze("TEST")
     assert result["market_provider"] == "tradier", result
     assert result["live_feed"] == "TRADIER CONSOLIDATED", result
-    assert result["feature_version"] == "analyzer-features-v4-full-spectrum", result
+    assert result["feature_version"] == "analyzer-features-v5-multi-bounce", result
     assert abs(result["price"] - 10.10) < 1e-9, result
     assert result["bid"] == 10.09 and result["ask"] == 10.11, result
     assert result["volume_source"] == "TRADIER CONSOLIDATED", result
@@ -855,12 +855,91 @@ def test_full_spectrum_exposes_all_scenarios():
         {"score":4.0},
         {"float_turnover":0.6},
     )
-    assert fs.get("version")=="full-spectrum-v1", fs
+    assert fs.get("version")=="full-spectrum-v2-multi-bounce", fs
     assert set((fs.get("scenarios") or {}).keys())=={
         "continuation","pullback_bounce","reversal_failure","sideways_chop"
     }, fs
     total=sum(float(v.get("relative_weight_pct") or 0) for v in fs["scenarios"].values())
     assert 99.0 <= total <= 101.0, fs
+
+
+def test_multi_bounce_detector_tracks_decay_and_lower_highs():
+    from multi_bounce import detect_bounce_sequence, bounce_feature_values
+
+    bars=[]
+    # Initial impulse ~10 -> 20
+    for i in range(12):
+        close=10.0+i*(10.0/11.0)
+        bars.append({"o":close-0.1,"h":close+0.15,"l":close-0.15,"c":close,"v":1000+i*80})
+    # Pullback -> bounce #1 -> pullback -> weaker bounce #2 -> pullback
+    closes=[18.8,17.4,16.0,16.8,17.8,18.6,18.2,17.1,16.5,17.0,17.5,17.9,17.3]
+    for j,close in enumerate(closes):
+        bars.append({
+            "o":close-0.08,
+            "h":close+0.18,
+            "l":close-0.18,
+            "c":close,
+            "v":900 if j<6 else 650,
+        })
+
+    seq=detect_bounce_sequence(bars,current_price=17.3,atr_pct=8)
+    assert seq.get("detected"), seq
+    assert int(seq.get("completed_bounces") or 0) >= 2, seq
+    assert seq.get("bounce1_pct") is not None and seq.get("bounce2_pct") is not None, seq
+    assert float(seq.get("bounce2_pct")) < float(seq.get("bounce1_pct")), seq
+    assert float(seq.get("bounce_decay_ratio")) < 1.0, seq
+    assert int(seq.get("lower_high_streak") or 0) >= 1, seq
+    features=bounce_feature_values(seq)
+    assert features.get("bounce_count") >= 2, features
+    assert features.get("bounce_decay_ratio") is not None, features
+
+
+def test_multi_bounce_full_spectrum_accepts_sequence_state():
+    import analyzer_v2_integration as v2
+
+    metrics={
+        "price":10.0,"day_pct":30.0,"vwap_position":"ABOVE","vwap_extension_pct":6.0,
+        "momentum_5m":0.5,"momentum_15m":1.0,"momentum_30m":2.0,
+        "volume_pace":2.0,"from_high_pct":8.0,"spread_pct":0.8,
+        "score":68.0,"liquidity":{"label":"HIGH"},
+        "impulse_pullback":{
+            "detected":True,"current_retracement_pct":42.0,
+            "max_retracement_pct":48.0,"bounce_recovery_pct":7.0,
+            "bounce_confirmed":True,"pullback_volume_ratio":0.75,
+        },
+        "bounce_sequence":{
+            "detected":True,"completed_bounces":2,"current_leg":"PULLING BACK",
+            "sequence_health_score":44.0,"bounce_decay_ratio":0.62,
+            "bounce_volume_decay_ratio":0.70,"lower_high_streak":2,
+            "higher_low_streak":0,
+        },
+        "run_exhaustion":{"score":65.0},
+        "historical_setup":{
+            "status":"ok","bias_score":2.0,"breakout_failure_pct":45.0,
+            "breakout_follow_through_pct":50.0,"impulse_bounce_5pct_rate":60.0,
+            "second_bounce_rate_pct":58.0,"third_bounce_rate_pct":34.0,
+        },
+        "ml_prediction":{
+            "ml_edge_score":52.0,
+            "models":{
+                "reversal_30":{"probability_pct":58.0,"validated":True},
+                "repeat_bounce_30":{"probability_pct":55.0,"validated":True},
+                "new_high_60":{"probability_pct":30.0,"validated":True},
+            },
+        },
+        "decision_v2":{"potential_score":60.0},
+        "market_provider":"tradier","live_feed":"TRADIER CONSOLIDATED",
+    }
+    fs=v2._full_spectrum_analysis(
+        metrics,
+        {"status":"ok","dilution_risk":"NONE FOUND"},
+        {"label":"NEUTRAL","broad_market_avg_pct":0.0,"sector_move_pct":0.0},
+        {"score":0.0},
+        {"float_turnover":0.5},
+    )
+    assert "multi_bounce_sequence" in (fs.get("categories") or {}), fs
+    assert fs["categories"]["multi_bounce_sequence"]["score"] == 44.0, fs
+    assert fs.get("scenarios",{}).get("pullback_bounce"), fs
 
 
 if __name__ == "__main__":
@@ -896,6 +975,8 @@ if __name__ == "__main__":
         test_entry_readiness_penalizes_unconfirmed_shallow_retrace,
         test_run_exhaustion_flags_rejected_mature_run,
         test_full_spectrum_exposes_all_scenarios,
+        test_multi_bounce_detector_tracks_decay_and_lower_highs,
+        test_multi_bounce_full_spectrum_accepts_sequence_state,
     ]
     for test in tests:
         test()
