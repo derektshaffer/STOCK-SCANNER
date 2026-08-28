@@ -860,14 +860,6 @@ def build_trade_plan(metrics, now):
     impulse=metrics.get("impulse_pullback") or {}
     sequence=metrics.get("bounce_sequence") or {}
     stair=metrics.get("stair_step") or {}
-    stair=metrics.get("stair_step") or {}
-    stair_score=fnum(stair.get("structure_score"))
-    if stair.get("reaccelerating") and stair_score is not None and stair_score>=65:
-        score+=7; reasons.append("multi-session stair-step is reaccelerating")
-    elif stair.get("state")=="HIGHER PLATEAU / COILING" and stair_score is not None and stair_score>=58:
-        score+=4; reasons.append("price is holding a higher multi-session plateau")
-    if stair.get("breakdown"):
-        score-=10; reasons.append("latest stair-step plateau has broken down")
     exhaustion=metrics.get("run_exhaustion") or {}
     reversal_score=fnum(exhaustion.get("score")) or 0.0
     sequence_health=fnum(sequence.get("sequence_health_score"))
@@ -1395,6 +1387,14 @@ def score_setup(metrics):
         score-=7; reasons.append("repeated lower highs across bounces")
     if seq_decay is not None and seq_decay<0.65:
         score-=5; reasons.append("latest bounce is materially weaker than the prior bounce")
+    stair=metrics.get("stair_step") or {}
+    stair_score=fnum(stair.get("structure_score"))
+    if stair.get("reaccelerating") and stair_score is not None and stair_score>=65:
+        score+=7; reasons.append("multi-session stair-step is reaccelerating")
+    elif stair.get("state")=="HIGHER PLATEAU / COILING" and stair_score is not None and stair_score>=58:
+        score+=4; reasons.append("price is holding a higher multi-session plateau")
+    if stair.get("breakdown"):
+        score-=10; reasons.append("latest stair-step plateau has broken down")
     exhaustion=metrics.get("run_exhaustion") or {}
     ex_score=fnum(exhaustion.get("score"))
     if ex_score is not None:
