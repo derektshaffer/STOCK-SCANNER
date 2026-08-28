@@ -60,7 +60,7 @@ def install_historical_analysis(sa):
 
     base_analyze = getattr(sa, "_base_analyze_for_history", None) or sa.analyze
     sa._base_analyze_for_history = base_analyze
-    sa.ANALYZER_ENGINE_VERSION = "trade-plan-v5-full-spectrum"
+    sa.ANALYZER_ENGINE_VERSION = "trade-plan-v6-multi-bounce"
 
     def enhanced_analyze(symbol):
         metrics = base_analyze(symbol)
