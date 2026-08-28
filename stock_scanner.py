@@ -1280,7 +1280,14 @@ def historical_volume_profile(symbol, now_utc, now_et):
     phase = market_session_mode(now_et)
     profile_feed = HISTORICAL_FEED
 
-    if USE_TRADIER and phase in {"premarket", "afterhours"}:
+    tradier_profile = bool(
+        USE_TRADIER
+        and (
+            phase in {"premarket", "afterhours"}
+            or FORCE_TRADIER_DISCOVERY
+        )
+    )
+    if tradier_profile:
         profile_feed = "tradier_consolidated"
         try:
             bars = get_tradier_timesales_bars(
@@ -1289,15 +1296,18 @@ def historical_volume_profile(symbol, now_utc, now_et):
                 now_utc - timedelta(days=TRADIER_VOLUME_PROFILE_LOOKBACK_DAYS),
                 now_utc,
                 interval="15min",
-                session_filter="all",
+                session_filter=(
+                    "open"
+                    if phase == "regular"
+                    else "all"
+                ),
             )
         except Exception:
             bars = []
 
-        # Tradier is the preferred extended-hours history source, but preserve
-        # the prior Alpaca fallback so one provider hiccup does not erase the
-        # metric entirely.
-        if not bars:
+        # Interactive scans can still fall back to Alpaca. Durable Tradier-only
+        # learning scans deliberately avoid a known-bad optional provider.
+        if not bars and not FORCE_TRADIER_DISCOVERY:
             profile_feed = HISTORICAL_FEED
             try:
                 bars = get_bars(
@@ -1353,7 +1363,6 @@ def historical_volume_profile(symbol, now_utc, now_et):
     bucket_minutes = (
         15
         if profile_feed == "tradier_consolidated"
-        and phase in {"premarket", "afterhours"}
         else 5
     )
     bucket_start = now_minute - (now_minute % bucket_minutes)
@@ -1815,6 +1824,12 @@ def enrich_news(rows, now_utc):
     targets = rows[:NEWS_TOP]
     symbols = [c["symbol"] for c in targets]
     if not symbols:
+        return
+
+    if FORCE_TRADIER_DISCOVERY:
+        for c in targets:
+            c["news_status"] = "not_requested_durable_tradier_scan"
+            c["news_bonus"] = 0.0
         return
 
     try:
@@ -2565,9 +2580,12 @@ def main():
     ]
     alpaca_snapshots = {}
     needs_alpaca_snapshots = (
-        not USE_TRADIER
-        or phase == "regular"
-        or len(tradier_quotes) < len(quote_symbols)
+        not FORCE_TRADIER_DISCOVERY
+        and (
+            not USE_TRADIER
+            or phase == "regular"
+            or len(tradier_quotes) < len(quote_symbols)
+        )
     )
     if needs_alpaca_snapshots:
         try:
@@ -2668,7 +2686,16 @@ def main():
     mark_stage("news")
 
     historical_targets = rows[:HISTORICAL_TOP]
-    if is_regular_session(now_et) and historical_targets:
+    if FORCE_TRADIER_DISCOVERY:
+        for c in historical_targets:
+            c["historical"] = {
+                "status": "not_requested_durable_tradier_scan",
+                "message": (
+                    "Same-ticker historical analog enrichment is skipped in the "
+                    "durable learning scan so Alpaca cannot block scan logging."
+                ),
+            }
+    elif is_regular_session(now_et) and historical_targets:
         worker_count = max(
             1,
             min(MAX_HISTORY_WORKERS, len(historical_targets)),
