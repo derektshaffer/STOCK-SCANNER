@@ -95,6 +95,7 @@ def render_ml_prediction(st, pd, result, card):
         f"{edge:.0f} / 100" if edge is not None else "—",
         edge_note,
         edge_class,
+        "The model's combined stock-specific directional score. Above 50 leans bullish; below 50 leans bearish. Only validated models count toward this score.",
     )
     target_note = _validation_note(target)
     if target.get("horizon") == "same_session" and target.get("status") == "ok":
@@ -105,6 +106,7 @@ def render_ml_prediction(st, pd, result, card):
         _pct_value(target),
         target_note,
         "good" if (target.get("probability_pct") or 0) >= 65 else "warn",
+        "Estimated probability that the analyzer's first upside target is reached before its stop during the same trading session.",
     )
     card(
         cols[2],
@@ -112,6 +114,7 @@ def render_ml_prediction(st, pd, result, card):
         _pct_value(m30),
         _validation_note(m30),
         "good" if (m30.get("probability_pct") or 0) >= 60 else "warn",
+        "Estimated probability that the stock price will be higher than it is now 30 minutes from the current snapshot.",
     )
     card(
         cols[3],
@@ -119,6 +122,7 @@ def render_ml_prediction(st, pd, result, card):
         _pct_value(m60),
         _validation_note(m60),
         "good" if (m60.get("probability_pct") or 0) >= 60 else "warn",
+        "Estimated probability that the stock price will be higher than it is now 60 minutes from the current snapshot.",
     )
     card(
         cols[4],
@@ -126,6 +130,7 @@ def render_ml_prediction(st, pd, result, card):
         _pct_value(breakout) if ml.get("breakout_relevant") else "N/A",
         _validation_note(breakout) if ml.get("breakout_relevant") else "not near breakout trigger",
         "good" if (breakout.get("probability_pct") or 0) >= 60 else "warn",
+        "When price is near a breakout level, this estimates whether the breakout will hold rather than quickly fail back below resistance.",
     )
     card(
         cols[5],
@@ -133,6 +138,7 @@ def render_ml_prediction(st, pd, result, card):
         _pct_value(reversal),
         _validation_note(reversal),
         "bad" if (reversal.get("probability_pct") or 0) >= 60 else "good" if reversal.get("probability_pct") is not None and (reversal.get("probability_pct") or 0) <= 40 else "warn",
+        "Estimated chance that a meaningful downside reversal occurs before another continuation push during the next 30 minutes.",
     )
     card(
         cols[6],
@@ -140,6 +146,7 @@ def render_ml_prediction(st, pd, result, card):
         f'{ml.get("validated_models", 0)} / 5',
         "models passed walk-forward gate",
         "good" if ml.get("gate_passed") else "warn",
+        "How many same-ticker ML models passed the walk-forward validation gate. Unvalidated models remain advisory and do not get full decision weight.",
     )
 
     peer_cols = st.columns([1.35, 1.0, 3.65])
@@ -158,6 +165,7 @@ def render_ml_prediction(st, pd, result, card):
         f"{float(peer_probability):.1f}%" if peer_probability is not None else "—",
         peer_note,
         "good" if peer_validated and (peer_edge or 50) >= 58 else "warn",
+        "Among historically similar setups from other tickers, the percentage that gained at least 3% over the following 60 minutes.",
     )
     card(
         peer_cols[1],
@@ -169,6 +177,7 @@ def render_ml_prediction(st, pd, result, card):
             else "advisory until both gates pass"
         ),
         "good" if peer_validated and (peer_edge or 50) >= 58 else "bad" if peer_validated and (peer_edge or 50) <= 42 else "warn",
+        "A normalized 0-100 score for how favorable the similar-ticker historical cohort is. It stays advisory until the peer and same-ticker validation gates both pass.",
     )
     with peer_cols[2]:
         top_peers = peer.get("top_peer_symbols") or []
