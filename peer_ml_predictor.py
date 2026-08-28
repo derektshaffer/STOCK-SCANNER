@@ -34,6 +34,8 @@ MAX_PER_SYMBOL_DAY = 12
 
 _CACHE = {}
 _CACHE_TTL = 900
+_TRAINING_CACHE = {"stamp": 0.0, "rows": None, "meta": None}
+_TRAINING_CACHE_TTL = 1800
 
 
 def _num(value):
@@ -453,7 +455,21 @@ def predict_peer_ml(symbol, now, metrics, et):
         return result
 
     try:
-        rows, source_meta = load_training_observations()
+        if (
+            _TRAINING_CACHE["rows"] is not None
+            and stamp - float(_TRAINING_CACHE["stamp"]) < _TRAINING_CACHE_TTL
+        ):
+            rows = _TRAINING_CACHE["rows"]
+            source_meta = _TRAINING_CACHE["meta"] or {}
+        else:
+            rows, source_meta = load_training_observations()
+            _TRAINING_CACHE.update(
+                {
+                    "stamp": stamp,
+                    "rows": rows,
+                    "meta": source_meta,
+                }
+            )
     except Exception as exc:
         return {
             "status": "unavailable",
@@ -467,6 +483,18 @@ def predict_peer_ml(symbol, now, metrics, et):
     result = _validate_and_predict(selected, current)
     result["source"] = "scanner historical replay + resolved live scanner outcomes"
     result["source_observations"] = len(rows)
+
+    probability = _num(result.get("probability_pct"))
+    base_rate = _num(result.get("cohort_positive_rate_pct"))
+    peer_edge = None
+    if probability is not None and base_rate is not None and base_rate > 0:
+        ratio = max(0.10, min(10.0, probability / base_rate))
+        peer_edge = _clamp(50.0 + 25.0 * math.log(ratio), 15.0, 85.0)
+    result["peer_edge_score"] = (
+        round(peer_edge, 1)
+        if peer_edge is not None
+        else None
+    )
     result["current_features"] = current
     result["cached"] = False
 
