@@ -1243,38 +1243,62 @@ def analyze_snapshot(symbol, tradier_quote=None, alpaca_snapshot=None):
     return c
 
 
-def avg_daily_volume(symbol, now_utc):
-    # Use consolidated historical SIP volume when available so Tradier's
-    # consolidated live volume is compared with a like-for-like baseline.
+def daily_history_context(symbol, now_utc, current_day=None):
+    """Return average volume plus causal multi-session structure."""
     try:
         bars = get_bars(
             symbol,
             "1Day",
-            now_utc - timedelta(days=45),
+            now_utc - timedelta(days=60),
             now_utc,
-            35,
+            45,
             feed=HISTORICAL_FEED,
         )
     except Exception:
         bars = get_bars(
             symbol,
             "1Day",
-            now_utc - timedelta(days=45),
+            now_utc - timedelta(days=60),
             now_utc,
-            35,
+            45,
             feed=LIVE_FEED,
         )
     if not bars:
-        return None
+        return {}
 
     today_et = now_utc.astimezone(ZoneInfo("America/New_York")).date().isoformat()
     completed = [
-        b for b in bars if str(b.get("t", ""))[:10] != today_et and b.get("v")
+        b for b in bars
+        if str(b.get("t", ""))[:10] != today_et
+    ][-20:]
+    volume_rows = [
+        float(b["v"])
+        for b in completed
+        if b.get("v") is not None and float(b.get("v") or 0) > 0
     ]
-    completed = completed[-20:]
-    if not completed:
-        return None
-    return sum(float(b["v"]) for b in completed) / len(completed)
+    context = {
+        "avg_daily_volume": (
+            sum(volume_rows) / len(volume_rows)
+            if volume_rows
+            else None
+        )
+    }
+    if multi_session_behavior_features is not None and current_day:
+        try:
+            context.update(
+                multi_session_behavior_features(
+                    completed,
+                    current_day,
+                    atr_pct=None,
+                )
+            )
+        except Exception:
+            pass
+    return context
+
+
+def avg_daily_volume(symbol, now_utc):
+    return daily_history_context(symbol, now_utc).get("avg_daily_volume")
 
 
 def historical_volume_profile(symbol, now_utc, now_et):
@@ -1523,16 +1547,29 @@ def current_session_live_metrics(symbol, now_utc, now_et, current_price):
     if len(bars) >= 16 and bars[-16].get("c"):
         m15 = pct_change(reference_price, float(bars[-16]["c"]))
 
+    behavior = {}
+    if intraday_behavior_features is not None:
+        try:
+            behavior = intraday_behavior_features(
+                bars,
+                current_price=reference_price,
+                atr_pct=None,
+            )
+        except Exception:
+            behavior = {}
+
     return {
         "phase": phase,
         "volume": volume,
         "dollar_volume": dollar,
         "high": high,
         "low": low,
+        "open": float(bars[0].get("o") or reference_price) if bars else reference_price,
         "vwap": (dollar / volume) if volume > 0 else None,
         "last_price": last_price or None,
         "momentum_5m": m5,
         "momentum_15m": m15,
+        "behavior_features": behavior,
         "live_source": (
             "tradier_consolidated"
             if USE_TRADIER
