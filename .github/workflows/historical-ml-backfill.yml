@@ -34,6 +34,7 @@ on:
     branches: [main]
     paths:
       - "historical_scanner_replay.py"
+      - "historical_timeframe_replay.py"
       - ".github/workflows/historical-ml-backfill.yml"
 
 permissions:
@@ -73,6 +74,18 @@ jobs:
           # Scheduled runs have no workflow_dispatch inputs; the replay script
           # safely falls back to its 20-day / 300-symbol defaults when blank.
         run: python historical_scanner_replay.py
+
+      - name: Run leakage-aware timeframe replay
+        env:
+          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+          ALPACA_HISTORICAL_FEED: ${{ secrets.ALPACA_HISTORICAL_FEED }}
+          SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
+          TIMEFRAME_REPLAY_TRADING_DAYS: "240"
+          TIMEFRAME_REPLAY_STRIDE_DAYS: "5"
+          TIMEFRAME_REPLAY_UNIVERSE_SIZE: "250"
+          TIMEFRAME_REPLAY_CANDIDATES_PER_DAY: "25"
+        run: python historical_timeframe_replay.py
 
       - name: Validate replay dataset and ML bootstrap
         env:
@@ -114,6 +127,20 @@ jobs:
           print("ML_STATUS=" + str(meta.get("status")))
           print("ML_WALK_FORWARD_AUC=" + str(meta.get("walk_forward_auc")))
           print("ML_LIVE_CONFIRMATION_AUC=" + str(meta.get("live_confirmation_auc")))
+
+          tf_path = Path("timeframe_replay/timeframe_historical_replay.json")
+          tf = json.loads(tf_path.read_text(encoding="utf-8"))
+          tf_summary = tf.get("summary") or {}
+          print("TIMEFRAME_OBSERVATIONS=" + str(tf_summary.get("observations", 0)))
+          print("TIMEFRAME_UNIQUE_SYMBOLS=" + str(tf_summary.get("unique_symbols", 0)))
+          print("TIMEFRAME_SWING_5D_RESOLVED=" + str(tf_summary.get("swing_5d_resolved", 0)))
+          print("TIMEFRAME_LONG_20D_RESOLVED=" + str(tf_summary.get("long_term_20d_resolved", 0)))
+          print("TIMEFRAME_LONG_60D_RESOLVED=" + str(tf_summary.get("long_term_60d_resolved", 0)))
+          print("TIMEFRAME_SEC_ENABLED=" + str(bool(((tf.get("replay") or {}).get("sec_point_in_time") or {}).get("enabled"))).lower())
+          print("TIMEFRAME_SWING_LIFT=" + json.dumps(tf_summary.get("swing_5d_directional_lift") or {}, sort_keys=True))
+          print("TIMEFRAME_LONG_LIFT=" + json.dumps(tf_summary.get("long_term_20d_directional_lift") or {}, sort_keys=True))
+          assert int(tf_summary.get("observations") or 0) >= 100
+          assert int(tf_summary.get("swing_5d_resolved") or 0) >= 100
           PY
 
       - name: Commit durable replay dataset
@@ -122,6 +149,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add outcome_reports/outcomes_historical_replay.json
+          git add timeframe_replay/timeframe_historical_replay.json
           if git diff --cached --quiet; then
             echo "Historical replay dataset is unchanged."
           else
@@ -135,6 +163,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: outcome-report-historical-${{ github.run_id }}-${{ github.run_attempt }}
-          path: outcome_reports/outcomes_historical_replay.json
+          path: |
+            outcome_reports/outcomes_historical_replay.json
+            timeframe_replay/timeframe_historical_replay.json
           if-no-files-found: warn
           retention-days: 90

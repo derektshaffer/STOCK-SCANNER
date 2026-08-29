@@ -112,7 +112,7 @@ def _latest_shares_outstanding(facts):
 
 
 
-def _companyfact_rows(facts, tags, unit="USD", require_start=False):
+def _companyfact_rows(facts, tags, unit="USD", require_start=False, as_of=None):
     root = ((facts.get("facts") or {}).get("us-gaap") or {})
     rows = []
     for tag in tags:
@@ -123,6 +123,10 @@ def _companyfact_rows(facts, tags, unit="USD", require_start=False):
                 continue
             if require_start and not row.get("start"):
                 continue
+            if as_of is not None:
+                filed = str(row.get("filed") or "")
+                if not filed or filed > str(as_of):
+                    continue
             form = str(row.get("form") or "")
             if form and not (
                 form.startswith("10-K")
@@ -141,8 +145,14 @@ def _companyfact_rows(facts, tags, unit="USD", require_start=False):
     return rows
 
 
-def _latest_companyfact(facts, tags, unit="USD", require_start=False):
-    rows = _companyfact_rows(facts, tags, unit=unit, require_start=require_start)
+def _latest_companyfact(facts, tags, unit="USD", require_start=False, as_of=None):
+    rows = _companyfact_rows(
+        facts,
+        tags,
+        unit=unit,
+        require_start=require_start,
+        as_of=as_of,
+    )
     return (rows[0] if rows else None), rows
 
 
@@ -183,7 +193,7 @@ def _matching_period_row(rows, reference):
     return rows[0] if rows else None
 
 
-def _shares_change_yoy_pct(facts):
+def _shares_change_yoy_pct(facts, as_of=None):
     try:
         rows = (
             facts.get("facts", {})
@@ -198,6 +208,9 @@ def _shares_change_yoy_pct(facts):
     for row in rows:
         value = _num(row.get("val"))
         end = row.get("end")
+        filed = str(row.get("filed") or "")
+        if as_of is not None and (not filed or filed > str(as_of)):
+            continue
         if value is not None and value > 0 and end:
             cleaned.append((str(end), value))
     cleaned.sort(reverse=True)
@@ -223,7 +236,7 @@ def _shares_change_yoy_pct(facts):
     return round((latest_value / prior_value - 1.0) * 100.0, 1)
 
 
-def _fundamental_snapshot(facts):
+def _fundamental_snapshot(facts, as_of=None):
     revenue_tags = (
         "RevenueFromContractWithCustomerExcludingAssessedTax",
         "Revenues",
@@ -254,7 +267,7 @@ def _fundamental_snapshot(facts):
     )
 
     revenue, revenue_rows = _latest_companyfact(
-        facts, revenue_tags, require_start=True
+        facts, revenue_tags, require_start=True, as_of=as_of
     )
     prior_revenue = _matching_prior_period(revenue_rows, revenue)
     revenue_value = _num((revenue or {}).get("_value"))
@@ -270,7 +283,7 @@ def _fundamental_snapshot(facts):
         )
 
     _income_latest, income_rows = _latest_companyfact(
-        facts, income_tags, require_start=True
+        facts, income_tags, require_start=True, as_of=as_of
     )
     income = _matching_period_row(income_rows, revenue)
     net_income = _num((income or {}).get("_value"))
@@ -284,11 +297,11 @@ def _fundamental_snapshot(facts):
     ):
         net_margin = round(net_income / revenue_value * 100.0, 1)
 
-    cash_row, _ = _latest_companyfact(facts, cash_tags)
-    equity_row, _ = _latest_companyfact(facts, equity_tags)
-    total_debt_row, _ = _latest_companyfact(facts, total_debt_tags)
-    current_debt_row, _ = _latest_companyfact(facts, current_debt_tags)
-    noncurrent_debt_row, _ = _latest_companyfact(facts, noncurrent_debt_tags)
+    cash_row, _ = _latest_companyfact(facts, cash_tags, as_of=as_of)
+    equity_row, _ = _latest_companyfact(facts, equity_tags, as_of=as_of)
+    total_debt_row, _ = _latest_companyfact(facts, total_debt_tags, as_of=as_of)
+    current_debt_row, _ = _latest_companyfact(facts, current_debt_tags, as_of=as_of)
+    noncurrent_debt_row, _ = _latest_companyfact(facts, noncurrent_debt_tags, as_of=as_of)
 
     cash = _num((cash_row or {}).get("_value"))
     equity = _num((equity_row or {}).get("_value"))
@@ -305,7 +318,7 @@ def _fundamental_snapshot(facts):
     if cash is not None and debt is not None and debt > 0:
         cash_to_debt = round(cash / debt, 2)
 
-    shares_change = _shares_change_yoy_pct(facts)
+    shares_change = _shares_change_yoy_pct(facts, as_of=as_of)
     coverage_values = (
         revenue_value,
         revenue_growth,
@@ -926,6 +939,42 @@ def _daily_trend_context(sa, symbol, metrics):
     return context
 
 
+
+def _timeframe_horizon_scores(
+    trend_score,
+    stair_score,
+    history_score,
+    catalyst_score,
+    market_score,
+    fundamental_score,
+    fundamental_coverage,
+):
+    """Shared Swing/Longer-term weighting used by live and historical replay."""
+    swing_score = round(
+        _clamp(
+            trend_score * 0.34
+            + stair_score * 0.22
+            + history_score * 0.16
+            + catalyst_score * 0.12
+            + market_score * 0.08
+            + fundamental_score * 0.08
+        ),
+        1,
+    )
+    long_term_score = round(
+        _clamp(
+            fundamental_score * 0.58
+            + trend_score * 0.30
+            + catalyst_score * 0.07
+            + market_score * 0.05
+        ),
+        1,
+    )
+    if int(fundamental_coverage or 0) < 3:
+        long_term_score = min(long_term_score, 57.0)
+    return swing_score, long_term_score
+
+
 def _timeframe_analysis(sa, symbol, metrics, sec, market, catalyst, potential, readiness):
     daily = _daily_trend_context(sa, symbol, metrics)
     trend_score = _num(daily.get("trend_score"))
@@ -985,29 +1034,15 @@ def _timeframe_analysis(sa, symbol, metrics, sec, market, catalyst, potential, r
 
     fundamental_score, fundamental_label, fundamental_reasons, fundamental_components, coverage = _fundamental_quality(sec)
 
-    swing_score = round(
-        _clamp(
-            trend_score * 0.34
-            + stair_score * 0.22
-            + history_score * 0.16
-            + catalyst_score * 0.12
-            + market_score * 0.08
-            + fundamental_score * 0.08
-        ),
-        1,
+    swing_score, long_term_score = _timeframe_horizon_scores(
+        trend_score,
+        stair_score,
+        history_score,
+        catalyst_score,
+        market_score,
+        fundamental_score,
+        coverage,
     )
-
-    long_term_score = round(
-        _clamp(
-            fundamental_score * 0.58
-            + trend_score * 0.30
-            + catalyst_score * 0.07
-            + market_score * 0.05
-        ),
-        1,
-    )
-    if coverage < 3:
-        long_term_score = min(long_term_score, 57.0)
 
     scores = {
         "intraday": intraday_score,
