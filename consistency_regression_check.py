@@ -777,7 +777,7 @@ def test_scanner_action_failed_breakout_forces_wait():
     assert "breakout failed" in str(action.get("reason") or "").lower(), action
 
 
-def test_scanner_action_vwap_reclaim_bounce_can_be_entry_ready():
+def test_scanner_action_b_grade_vwap_reclaim_stays_bounce_watch():
     import stock_scanner as ss
 
     row = _scanner_action_behavior_base()
@@ -789,9 +789,27 @@ def test_scanner_action_vwap_reclaim_bounce_can_be_entry_ready():
         "breakout_holding": 0.0,
     })
     action = ss.scanner_action_signal(row)
+    assert action.get("label") == "BOUNCE WATCH", action
+    assert action.get("tier") == "breakout", action
+    assert "still b-grade" in str(action.get("reason") or "").lower(), action
+
+
+def test_scanner_action_a_grade_vwap_reclaim_can_be_entry_ready():
+    import stock_scanner as ss
+
+    row = _scanner_action_behavior_base()
+    row["setup_grade"] = "A"
+    row.update({
+        "vwap_reclaim": 1.0,
+        "bounce_leg_code": 1.0,
+        "pullback_quality_score": 78.0,
+        "volume_accelerating": 0.0,
+        "breakout_holding": 0.0,
+    })
+    action = ss.scanner_action_signal(row)
     assert action.get("label") == "ENTRY READY", action
     assert action.get("tier") == "ready", action
-    assert "reclaimed vwap" in str(action.get("reason") or "").lower(), action
+    assert "a-grade pullback" in str(action.get("reason") or "").lower(), action
 
 
 def test_scanner_action_active_pullback_waits_for_confirmation():
@@ -1386,7 +1404,8 @@ if __name__ == "__main__":
         test_scanner_action_breakout_watch_near_high,
         test_scanner_action_reject_stays_no_trade,
         test_scanner_action_failed_breakout_forces_wait,
-        test_scanner_action_vwap_reclaim_bounce_can_be_entry_ready,
+        test_scanner_action_b_grade_vwap_reclaim_stays_bounce_watch,
+        test_scanner_action_a_grade_vwap_reclaim_can_be_entry_ready,
         test_scanner_action_active_pullback_waits_for_confirmation,
         test_scanner_action_behavior_never_overrides_reject,
         test_scanner_ui_auto_surfaces_validated_ml,

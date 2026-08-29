@@ -944,8 +944,9 @@ def scanner_action_signal(c, now_et=None):
     very_near_high = from_high is not None and from_high <= 1.25
     execution_ok = spread is None or spread <= 2.0
 
-    # Confirmed behavior setups can upgrade timing from WATCH to ENTRY READY,
-    # but only after the normal quality/execution/safety checks above pass.
+    # Behavior confirmation can improve timing, but it does not promote a
+    # merely B-grade setup all the way to ENTRY READY. Replay shows later-bounce
+    # structures can be explosive while still carrying meaningful downside.
     if (
         grade in {"A", "B"}
         and breakout_holding
@@ -953,10 +954,16 @@ def scanner_action_signal(c, now_et=None):
         and execution_ok
         and m5 is not None and m5 >= 0
     ):
+        if grade == "A":
+            return {
+                "label": "ENTRY READY",
+                "tier": "ready",
+                "reason": "The A-grade breakout is holding above prior resistance with accelerating volume and VWAP support; confirm the exact entry and stop in Analyzer.",
+            }
         return {
-            "label": "ENTRY READY",
-            "tier": "ready",
-            "reason": "The breakout is holding above prior resistance with accelerating volume and VWAP support; confirm the exact entry and stop in Analyzer.",
+            "label": "BREAKOUT WATCH",
+            "tier": "breakout",
+            "reason": "The breakout is holding with accelerating volume, but the overall setup is still B-grade; wait for Analyzer confirmation before entering.",
         }
 
     if (
@@ -967,10 +974,16 @@ def scanner_action_signal(c, now_et=None):
         and execution_ok
         and m5 is not None and m5 > 0
     ):
+        if grade == "A":
+            return {
+                "label": "ENTRY READY",
+                "tier": "ready",
+                "reason": "The A-grade pullback/bounce has reclaimed VWAP with constructive recovery; confirm the entry zone in Analyzer.",
+            }
         return {
-            "label": "ENTRY READY",
-            "tier": "ready",
-            "reason": "A constructive pullback/bounce has reclaimed VWAP with improving price action; confirm the entry zone in Analyzer.",
+            "label": "BOUNCE WATCH",
+            "tier": "breakout",
+            "reason": "A constructive bounce has reclaimed VWAP, but the overall setup is still B-grade; wait for Analyzer confirmation before entering.",
         }
 
     if (
