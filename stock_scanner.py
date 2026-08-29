@@ -1679,17 +1679,41 @@ def enrich_live(c, now_utc, now_et):
         else None
     )
 
+    if session_stats:
+        c.update(session_stats.get("behavior_features") or {})
+
+    current_day = None
+    if session_stats:
+        current_day = {
+            "date": now_et.date().isoformat(),
+            "o": session_stats.get("open") or c.get("price"),
+            "h": session_stats.get("high") or c.get("price"),
+            "l": session_stats.get("low") or c.get("price"),
+            "c": session_stats.get("last_price") or c.get("price"),
+            "v": session_stats.get("volume") or c.get("volume") or 0,
+        }
+
+    daily_context = {}
+    try:
+        daily_context = daily_history_context(
+            c["symbol"],
+            now_utc,
+            current_day=current_day,
+        )
+    except Exception as exc:
+        c["daily_context_error"] = str(exc)
+
     avg_vol = c.get("avg_20d_volume")
     try:
         avg_vol = float(avg_vol) if avg_vol is not None else None
     except (TypeError, ValueError):
         avg_vol = None
     if not avg_vol or avg_vol <= 0:
-        try:
-            avg_vol = avg_daily_volume(c["symbol"], now_utc)
-        except Exception as exc:
-            c["avg_volume_error"] = str(exc)
-            avg_vol = None
+        avg_vol = daily_context.get("avg_daily_volume")
+
+    for key, value in daily_context.items():
+        if key != "avg_daily_volume":
+            c[key] = value
 
     try:
         volume_profile = historical_volume_profile(
