@@ -251,6 +251,45 @@ def test_scanner_outcome_metadata():
     assert row["volume_pace_display"] == 2.4, row
 
 
+def test_scanner_trade_quality_path_is_causal_and_conservative():
+    import score_outcomes as so
+
+    scan_time = datetime(2026, 8, 27, 10, 0, tzinfo=ET)
+    session_close = datetime(2026, 8, 27, 16, 0, tzinfo=ET)
+
+    target_first = so.index_bars({
+        "TEST": [
+            {"t": "2026-08-27T14:00:00Z", "c": 10.0, "h": 10.8, "l": 9.2},
+            {"t": "2026-08-27T14:01:00Z", "c": 10.08, "h": 10.12, "l": 9.98},
+            {"t": "2026-08-27T14:02:00Z", "c": 10.15, "h": 10.18, "l": 10.05},
+        ]
+    })["TEST"]
+    result = so.trade_quality_path(
+        target_first,
+        scan_time,
+        session_close,
+        10.0,
+    )
+    assert result.get("trade_quality_barrier") == "target_first", result
+    assert result.get("target_before_stop") is True, result
+
+    # If both barriers are inside the same 1-minute OHLC bar, the true order
+    # is unknowable; score the stop first rather than flattering the model.
+    ambiguous = so.index_bars({
+        "TEST": [
+            {"t": "2026-08-27T14:01:00Z", "c": 10.0, "h": 10.2, "l": 9.9},
+        ]
+    })["TEST"]
+    result = so.trade_quality_path(
+        ambiguous,
+        scan_time,
+        session_close,
+        10.0,
+    )
+    assert result.get("trade_quality_barrier") == "stop_first", result
+    assert result.get("target_before_stop") is False, result
+
+
 def test_stream_seed_rejects_non_tradier_metrics():
     import tradier_live_stream as tls
 
@@ -1305,6 +1344,7 @@ if __name__ == "__main__":
         test_scanner_ml_version_gate,
         test_analyzer_calibration_version_gate,
         test_scanner_outcome_metadata,
+        test_scanner_trade_quality_path_is_causal_and_conservative,
         test_stream_seed_rejects_non_tradier_metrics,
         test_stream_vwap_ignores_cvol_as_denominator,
         test_stream_reports_trade_and_quote_freshness,
