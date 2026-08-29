@@ -777,6 +777,24 @@ def test_scanner_action_failed_breakout_forces_wait():
     assert "breakout failed" in str(action.get("reason") or "").lower(), action
 
 
+def test_scanner_action_production_default_ignores_unvalidated_behavior():
+    import stock_scanner as ss
+
+    row = _scanner_action_behavior_base()
+    row.update({
+        "failed_breakout": 1.0,
+        "vwap_rejection": 1.0,
+        "bounce_leg_code": -1.0,
+        "pullback_quality_score": 20.0,
+    })
+    default_action = ss.scanner_action_signal(row)
+    legacy_action = ss.scanner_action_signal(row, use_behavior=False)
+    research_action = ss.scanner_action_signal(row, use_behavior=True)
+    assert default_action == legacy_action, (default_action, legacy_action)
+    assert research_action.get("label") == "WAIT", research_action
+    assert default_action.get("label") != "WAIT", default_action
+
+
 def test_scanner_action_legacy_mode_ignores_behavior_state():
     import stock_scanner as ss
 
@@ -1456,6 +1474,7 @@ if __name__ == "__main__":
         test_scanner_action_breakout_watch_near_high,
         test_scanner_action_reject_stays_no_trade,
         test_scanner_action_failed_breakout_forces_wait,
+        test_scanner_action_production_default_ignores_unvalidated_behavior,
         test_scanner_action_legacy_mode_ignores_behavior_state,
         test_scanner_action_b_grade_vwap_reclaim_stays_bounce_watch,
         test_scanner_action_a_grade_vwap_reclaim_can_be_entry_ready,
