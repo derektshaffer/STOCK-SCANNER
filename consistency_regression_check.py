@@ -1054,6 +1054,86 @@ def test_dedicated_repeat_bounce_trade_plan_uses_latest_dip():
     assert "BOUNCE #2" in str(plan.get("action") or ""), plan
 
 
+def test_scanner_behavior_detects_reclaim_acceleration_and_breakout():
+    import scanner_behavior as sb
+
+    bars = []
+    closes = [10.00, 9.92, 9.84, 9.78, 9.72, 9.88, 10.04, 10.18, 10.26, 10.34]
+    volumes = [100, 100, 100, 100, 110, 120, 180, 420, 520, 600]
+    for i, (close, volume) in enumerate(zip(closes, volumes)):
+        minute = 30 + i * 5
+        hour = 9 + minute // 60
+        minute = minute % 60
+        bars.append({
+            "t": f"2026-08-28T{hour + 4:02d}:{minute:02d}:00Z",
+            "o": close - 0.03,
+            "h": close + 0.08,
+            "l": close - 0.08,
+            "c": close,
+            "v": volume,
+            "vw": close,
+        })
+
+    features = sb.intraday_behavior_features(
+        bars,
+        current_price=closes[-1],
+    )
+    assert features.get("vwap_reclaim") == 1.0, features
+    assert features.get("volume_accelerating") == 1.0, features
+    assert float(features.get("volume_acceleration_ratio") or 0) > 1.35, features
+    assert features.get("breakout_recent") == 1.0, features
+    assert features.get("breakout_holding") == 1.0, features
+    assert features.get("failed_breakout") == 0.0, features
+
+
+def test_scanner_behavior_detects_failed_breakout():
+    import scanner_behavior as sb
+
+    bars = []
+    closes = [10.0, 10.02, 10.01, 10.03, 10.02, 10.04, 10.16, 9.96]
+    highs = [10.05, 10.06, 10.05, 10.07, 10.06, 10.08, 10.30, 10.02]
+    for i, (close, high) in enumerate(zip(closes, highs)):
+        bars.append({
+            "t": f"2026-08-28T14:{30 + i * 5:02d}:00Z",
+            "o": close,
+            "h": high,
+            "l": close - 0.06,
+            "c": close,
+            "v": 100 + i * 10,
+            "vw": close,
+        })
+
+    features = sb.intraday_behavior_features(
+        bars,
+        current_price=closes[-1],
+    )
+    assert features.get("breakout_recent") == 1.0, features
+    assert features.get("breakout_holding") == 0.0, features
+    assert features.get("failed_breakout") == 1.0, features
+
+
+def test_scanner_behavior_fields_survive_scan_logging():
+    import stock_scanner as ss
+
+    candidate = {
+        "symbol": "TEST",
+        "price": 10.0,
+        "vwap_reclaim": 1.0,
+        "volume_acceleration_ratio": 1.8,
+        "breakout_holding": 1.0,
+        "pullback_quality_score": 76.0,
+        "bounce_count": 2.0,
+        "stair_reaccelerating": 1.0,
+    }
+    row = ss.candidate_log_record(candidate, 1)
+    assert row.get("vwap_reclaim") == 1.0, row
+    assert row.get("volume_acceleration_ratio") == 1.8, row
+    assert row.get("breakout_holding") == 1.0, row
+    assert row.get("pullback_quality_score") == 76.0, row
+    assert row.get("bounce_count") == 2.0, row
+    assert row.get("stair_reaccelerating") == 1.0, row
+
+
 def test_prediction_tracker_records_sequence_regime_fields():
     import prediction_tracker as pt
 
@@ -1167,6 +1247,9 @@ if __name__ == "__main__":
         test_multi_bounce_detector_tracks_decay_and_lower_highs,
         test_multi_bounce_full_spectrum_accepts_sequence_state,
         test_stair_step_detector_finds_higher_plateau_sequence,
+        test_scanner_behavior_detects_reclaim_acceleration_and_breakout,
+        test_scanner_behavior_detects_failed_breakout,
+        test_scanner_behavior_fields_survive_scan_logging,
         test_dedicated_repeat_bounce_trade_plan_uses_latest_dip,
         test_prediction_tracker_records_sequence_regime_fields,
     ]
