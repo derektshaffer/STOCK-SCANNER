@@ -525,7 +525,7 @@ def _all_rows():
     rows = []
     if not OUT_DIR.exists():
         return rows
-    files = sorted(OUT_DIR.glob("predictions_*.json"))[-60:]
+    files = sorted(OUT_DIR.glob("predictions_*.json"))[-100:]
     for path in files:
         try:
             payload = json.loads(path.read_text(encoding="utf-8"))
