@@ -1030,6 +1030,11 @@ def tracker_summary(rows=None, symbol=None, current_metrics=None):
         or durable.get("decision_score_version") != DECISION_SCORE_VERSION
     ):
         durable = {}
+    durable_timeframe = (
+        durable
+        if durable.get("timeframe_score_version") == TIMEFRAME_SCORE_VERSION
+        else {}
+    )
     durable_resolved = int(durable.get("resolved_60m") or 0)
     effective_resolved = max(durable_resolved, len(resolved_60))
     progress = durable.get("calibration_progress")
@@ -1093,7 +1098,7 @@ def tracker_summary(rows=None, symbol=None, current_metrics=None):
         ),
         "entry_signal_calibration": durable.get("entry_signal_calibration") or {},
         "timeframe_calibration": (
-            durable.get("timeframe_calibration")
+            durable_timeframe.get("timeframe_calibration")
             or {
                 "intraday_60m": _timeframe_bucket_calibration(
                     calibration_rows, "timeframe_intraday_score", "return_60m_pct"
@@ -1113,11 +1118,11 @@ def tracker_summary(rows=None, symbol=None, current_metrics=None):
             }
         ),
         "timeframe_best_fit_calibration": (
-            durable.get("timeframe_best_fit_calibration")
+            durable_timeframe.get("timeframe_best_fit_calibration")
             or _timeframe_best_fit_summary(calibration_rows)
         ),
         "timeframe_learning_progress": (
-            durable.get("timeframe_learning_progress")
+            durable_timeframe.get("timeframe_learning_progress")
             or _timeframe_learning_progress(calibration_rows)
         ),
         "repeat_bounce_calibration": (
