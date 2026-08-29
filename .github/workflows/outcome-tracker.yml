@@ -2,8 +2,10 @@ name: Momentum Outcome Tracker
 
 on:
   schedule:
-    # Runs twice in UTC so the New York-time gate works in both EDT and EST.
-    - cron: '30 20-21 * * 1-5'
+    # 21:30 UTC is after the U.S. regular-session close year-round:
+    # 17:30 ET during EDT and 16:30 ET during EST. GitHub may start scheduled
+    # jobs late, so scoring must not depend on the job's actual start minute.
+    - cron: '30 21 * * 1-5'
   workflow_dispatch:
     inputs:
       date:
@@ -20,19 +22,6 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Check scoring time
-        id: score_time
-        shell: bash
-        run: |
-          NY_DAY=$(TZ=America/New_York date +%u)
-          NY_HM=$(TZ=America/New_York date +%H%M)
-
-          if [ "$NY_DAY" -le 5 ] && [ "$NY_HM" -ge 1630 ] && [ "$NY_HM" -lt 1700 ]; then
-            echo "should_score=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "should_score=false" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -42,7 +31,6 @@ jobs:
           python-version: '3.12'
 
       - name: Score scanner outcomes
-        if: github.event_name == 'workflow_dispatch' || steps.score_time.outputs.should_score == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
@@ -55,7 +43,6 @@ jobs:
         run: python score_outcomes.py
 
       - name: Score Analyzer outcomes
-        if: github.event_name == 'workflow_dispatch' || steps.score_time.outputs.should_score == 'true'
         continue-on-error: true
         env:
           OUTCOME_DATE: ${{ inputs.date }}
@@ -64,7 +51,7 @@ jobs:
         run: python score_analyzer_outcomes.py
 
       - name: Commit durable outcome history
-        if: always() && (github.event_name == 'workflow_dispatch' || steps.score_time.outputs.should_score == 'true')
+        if: always()
         shell: bash
         run: |
           git config user.name "github-actions[bot]"
@@ -80,7 +67,7 @@ jobs:
           fi
 
       - name: Preserve outcome reports
-        if: always() && (github.event_name == 'workflow_dispatch' || steps.score_time.outputs.should_score == 'true')
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: outcome-report-${{ github.run_id }}-${{ github.run_attempt }}
