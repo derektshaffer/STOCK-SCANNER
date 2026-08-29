@@ -8,12 +8,12 @@ from __future__ import annotations
 
 import math
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from multi_bounce import bounce_feature_values, detect_bounce_sequence
 from stair_step import detect_stair_step, stair_step_feature_values
 
-BEHAVIOR_FEATURE_VERSION = "scanner-behavior-v1"
+BEHAVIOR_FEATURE_VERSION = "scanner-behavior-v2-completed-bars"
 
 
 def _num(value):
@@ -33,8 +33,8 @@ def _dt(value):
         return None
 
 
-def resample_to_5min(bars):
-    """Aggregate chronological intraday bars into causal 5-minute buckets."""
+def resample_to_5min(bars, *, as_of=None, completed_only=False):
+    """Aggregate bars into causal five-minute buckets.\n\n    When completed_only is true, emit a bucket only after all five minutes\n    have elapsed so live confirmations match historical replay.\n    """
     buckets = defaultdict(list)
     order = []
     for bar in bars or []:
@@ -47,10 +47,7 @@ def resample_to_5min(bars):
             order.append(key)
         buckets[key].append(bar)
 
-    out = []
-    for key in sorted(order):
-        group = buckets[key]
-        if not group:
+    as_of_dt = _dt(as_of) if as_of is not None else None\n    out = []\n    for key in sorted(order):\n        if completed_only and as_of_dt is not None:\n            compare_as_of = as_of_dt\n            if key.tzinfo is None and compare_as_of.tzinfo is not None:\n                compare_as_of = compare_as_of.replace(tzinfo=None)\n            elif key.tzinfo is not None and compare_as_of.tzinfo is None:\n                compare_as_of = compare_as_of.replace(tzinfo=key.tzinfo)\n            if key + timedelta(minutes=5) > compare_as_of:\n                continue\n        group = buckets[key]\n        if not group:
             continue
         opens = [_num(b.get("o")) for b in group]
         highs = [_num(b.get("h")) for b in group]
@@ -344,27 +341,7 @@ def breakout_behavior_features(bars):
     }
 
 
-def intraday_behavior_features(bars, current_price=None, atr_pct=None):
-    """Return compact 5-minute behavior features from bars available now."""
-    bars5 = resample_to_5min(bars)
-    if not bars5:
-        return {}
-    price = _num(current_price) or _num(bars5[-1].get("c"))
-    features = {}
-    features.update(impulse_pullback_features(bars5))
-    sequence = detect_bounce_sequence(
-        bars5,
-        current_price=price,
-        atr_pct=atr_pct,
-    )
-    features.update(bounce_feature_values(sequence))
-    features.update(vwap_interaction_features(bars5))
-    features.update(volume_acceleration_features(bars5))
-    features.update(breakout_behavior_features(bars5))
-    return features
-
-
-def multi_session_behavior_features(daily_bars, current_day, atr_pct=None):
+def intraday_behavior_features(\n    bars,\n    current_price=None,\n    atr_pct=None,\n    *,\n    as_of=None,\n    completed_only=False,\n):\n    """Return compact behavior features confirmed by the observation time."""\n    bars5 = resample_to_5min(\n        bars,\n        as_of=as_of,\n        completed_only=completed_only,\n    )\n    if not bars5:\n        return {}\n    price = (\n        _num(bars5[-1].get("c"))\n        if completed_only\n        else (_num(current_price) or _num(bars5[-1].get("c")))\n    )\n    features = {}\n    features.update(impulse_pullback_features(bars5))\n    sequence = detect_bounce_sequence(\n        bars5,\n        current_price=price,\n        atr_pct=atr_pct,\n    )\n    features.update(bounce_feature_values(sequence))\n    features.update(vwap_interaction_features(bars5))\n    features.update(volume_acceleration_features(bars5))\n    features.update(breakout_behavior_features(bars5))\n    return features\n\ndef multi_session_behavior_features(daily_bars, current_day, atr_pct=None):
     stair = detect_stair_step(
         daily_bars or [],
         current_day=current_day,

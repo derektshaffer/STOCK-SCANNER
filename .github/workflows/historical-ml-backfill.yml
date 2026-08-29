@@ -90,6 +90,17 @@ jobs:
           print("REPLAY_UNIQUE_SCANS=" + str(summary.get("unique_scans", 0)))
           print("REPLAY_POSITIVE_60M=" + str(summary.get("positive_3pct_60m", 0)))
           print("REPLAY_NEGATIVE_60M=" + str(summary.get("non_positive_3pct_60m", 0)))
+          action = summary.get("action_benchmark") or {}
+          current = action.get("current") or {}
+          legacy = action.get("legacy") or {}
+          changes = action.get("paired_changes") or {}
+          print("ACTION_CHANGED_N=" + str(changes.get("changed_n", 0)))
+          print("ACTION_CURRENT_ENTRY_READY=" + json.dumps(current.get("entry_ready") or {}, sort_keys=True))
+          print("ACTION_LEGACY_ENTRY_READY=" + json.dumps(legacy.get("entry_ready") or {}, sort_keys=True))
+          print("ACTION_CURRENT_ENTRY_LIFT_PP=" + str(current.get("entry_ready_quality_lift_pp")))
+          print("ACTION_LEGACY_ENTRY_LIFT_PP=" + str(legacy.get("entry_ready_quality_lift_pp")))
+          print("ACTION_DOWNGRADED_OUTCOMES=" + json.dumps(changes.get("downgraded_outcomes") or {}, sort_keys=True))
+          print("ACTION_UPGRADED_OUTCOMES=" + json.dumps(changes.get("upgraded_outcomes") or {}, sort_keys=True))
 
           rows, source = sm.load_training_observations()
           _, meta = sm._validation_and_model(rows)

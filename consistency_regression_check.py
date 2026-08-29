@@ -777,6 +777,22 @@ def test_scanner_action_failed_breakout_forces_wait():
     assert "breakout failed" in str(action.get("reason") or "").lower(), action
 
 
+def test_scanner_action_legacy_mode_ignores_behavior_state():
+    import stock_scanner as ss
+
+    row = _scanner_action_behavior_base()
+    row.update({
+        "failed_breakout": 1.0,
+        "vwap_rejection": 1.0,
+        "bounce_leg_code": -1.0,
+        "pullback_quality_score": 20.0,
+    })
+    behavior_action = ss.scanner_action_signal(row, use_behavior=True)
+    legacy_action = ss.scanner_action_signal(row, use_behavior=False)
+    assert behavior_action.get("label") == "WAIT", behavior_action
+    assert legacy_action.get("label") != "WAIT", legacy_action
+
+
 def test_scanner_action_b_grade_vwap_reclaim_stays_bounce_watch():
     import stock_scanner as ss
 
@@ -1217,6 +1233,42 @@ def test_dedicated_repeat_bounce_trade_plan_uses_latest_dip():
     assert "BOUNCE #2" in str(plan.get("action") or ""), plan
 
 
+def test_scanner_behavior_completed_bar_parity():
+    import scanner_behavior as sb
+
+    start = datetime(2026, 8, 28, 14, 0, tzinfo=timezone.utc)
+    bars = []
+    for i in range(8):
+        px = 10.0 + i * 0.01
+        bars.append(
+            {
+                "t": (start + timedelta(minutes=i)).isoformat(),
+                "o": px,
+                "h": px + 0.02,
+                "l": px - 0.02,
+                "c": px,
+                "v": 100 + i,
+                "vw": px,
+            }
+        )
+
+    at_1407 = sb.resample_to_5min(
+        bars,
+        as_of=datetime(2026, 8, 28, 14, 7, tzinfo=timezone.utc),
+        completed_only=True,
+    )
+    assert len(at_1407) == 1, at_1407
+    assert str(at_1407[-1]["t"]).startswith("2026-08-28T14:00"), at_1407
+
+    at_1410 = sb.resample_to_5min(
+        bars,
+        as_of=datetime(2026, 8, 28, 14, 10, tzinfo=timezone.utc),
+        completed_only=True,
+    )
+    assert len(at_1410) == 2, at_1410
+    assert str(at_1410[-1]["t"]).startswith("2026-08-28T14:05"), at_1410
+
+
 def test_scanner_behavior_detects_reclaim_acceleration_and_breakout():
     import scanner_behavior as sb
 
@@ -1404,6 +1456,7 @@ if __name__ == "__main__":
         test_scanner_action_breakout_watch_near_high,
         test_scanner_action_reject_stays_no_trade,
         test_scanner_action_failed_breakout_forces_wait,
+        test_scanner_action_legacy_mode_ignores_behavior_state,
         test_scanner_action_b_grade_vwap_reclaim_stays_bounce_watch,
         test_scanner_action_a_grade_vwap_reclaim_can_be_entry_ready,
         test_scanner_action_active_pullback_waits_for_confirmation,
@@ -1420,6 +1473,7 @@ if __name__ == "__main__":
         test_multi_bounce_detector_tracks_decay_and_lower_highs,
         test_multi_bounce_full_spectrum_accepts_sequence_state,
         test_stair_step_detector_finds_higher_plateau_sequence,
+        test_scanner_behavior_completed_bar_parity,
         test_scanner_behavior_detects_reclaim_acceleration_and_breakout,
         test_scanner_behavior_detects_failed_breakout,
         test_scanner_behavior_fields_survive_scan_logging,
