@@ -19,6 +19,7 @@ def _load_streamlit_secrets_into_env():
         "TRADIER_TOKEN",
         "OPENAI_API_KEY",
         "OPENAI_MODEL",
+        "SEC_USER_AGENT",
     )
 
     try:

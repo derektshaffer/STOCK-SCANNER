@@ -1446,6 +1446,155 @@ def test_prediction_tracker_records_sequence_regime_fields():
         pt._save=original_save
 
 
+def test_sec_fundamental_snapshot_extracts_comparable_periods():
+    import analyzer_v2_integration as v2
+
+    facts = {
+        "facts": {
+            "us-gaap": {
+                "RevenueFromContractWithCustomerExcludingAssessedTax": {
+                    "units": {
+                        "USD": [
+                            {
+                                "val": 100.0,
+                                "start": "2025-01-01",
+                                "end": "2025-06-30",
+                                "filed": "2025-08-01",
+                                "form": "10-Q",
+                                "fy": 2025,
+                                "fp": "Q2",
+                            },
+                            {
+                                "val": 150.0,
+                                "start": "2026-01-01",
+                                "end": "2026-06-30",
+                                "filed": "2026-08-01",
+                                "form": "10-Q",
+                                "fy": 2026,
+                                "fp": "Q2",
+                            },
+                        ]
+                    }
+                },
+                "NetIncomeLoss": {
+                    "units": {
+                        "USD": [
+                            {
+                                "val": 15.0,
+                                "start": "2026-01-01",
+                                "end": "2026-06-30",
+                                "filed": "2026-08-01",
+                                "form": "10-Q",
+                                "fy": 2026,
+                                "fp": "Q2",
+                            }
+                        ]
+                    }
+                },
+                "CashAndCashEquivalentsAtCarryingValue": {
+                    "units": {
+                        "USD": [
+                            {
+                                "val": 80.0,
+                                "end": "2026-06-30",
+                                "filed": "2026-08-01",
+                                "form": "10-Q",
+                                "fy": 2026,
+                                "fp": "Q2",
+                            }
+                        ]
+                    }
+                },
+                "LongTermDebt": {
+                    "units": {
+                        "USD": [
+                            {
+                                "val": 40.0,
+                                "end": "2026-06-30",
+                                "filed": "2026-08-01",
+                                "form": "10-Q",
+                                "fy": 2026,
+                                "fp": "Q2",
+                            }
+                        ]
+                    }
+                },
+                "StockholdersEquity": {
+                    "units": {
+                        "USD": [
+                            {
+                                "val": 120.0,
+                                "end": "2026-06-30",
+                                "filed": "2026-08-01",
+                                "form": "10-Q",
+                                "fy": 2026,
+                                "fp": "Q2",
+                            }
+                        ]
+                    }
+                },
+            },
+            "dei": {
+                "EntityCommonStockSharesOutstanding": {
+                    "units": {
+                        "shares": [
+                            {"val": 1000.0, "end": "2025-06-30", "filed": "2025-08-01"},
+                            {"val": 1100.0, "end": "2026-06-30", "filed": "2026-08-01"},
+                        ]
+                    }
+                }
+            },
+        }
+    }
+
+    result = v2._fundamental_snapshot(facts)
+    assert result["status"] == "ok", result
+    assert result["revenue_yoy_pct"] == 50.0, result
+    assert result["net_margin_pct"] == 10.0, result
+    assert result["cash_to_debt"] == 2.0, result
+    assert result["shares_change_yoy_pct"] == 10.0, result
+
+
+def test_timeframe_analysis_caps_long_term_when_fundamentals_are_sparse():
+    import analyzer_v2_integration as v2
+
+    original = v2._daily_trend_context
+    try:
+        v2._daily_trend_context = lambda sa, symbol, metrics: {
+            "status": "ok",
+            "trend_score": 90.0,
+            "return_20d_pct": 20.0,
+            "return_60d_pct": 40.0,
+            "return_120d_pct": 60.0,
+        }
+        metrics = {
+            "price": 10.0,
+            "day_pct": 0.0,
+            "volume_pace": 1.0,
+            "momentum_5m": 0.0,
+            "momentum_15m": 0.0,
+            "vwap_position": "ABOVE",
+            "liquidity": {"label": "HIGH"},
+            "historical_setup": {"status": "insufficient_history"},
+            "stair_step": {"structure_score": 50.0},
+        }
+        result = v2._timeframe_analysis(
+            object(),
+            "TEST",
+            metrics,
+            {"status": "ok", "dilution_risk": "NONE FOUND", "fundamentals": {"coverage_count": 0}},
+            {"label": "MIXED"},
+            {"score": 0.0},
+            50.0,
+            50.0,
+        )
+        assert result["scores"]["long_term"] <= 57.0, result
+        assert result["fundamental_coverage_count"] == 0, result
+        assert "fundamental coverage is limited" in " ".join(result["long_term_reasons"]), result
+    finally:
+        v2._daily_trend_context = original
+
+
 if __name__ == "__main__":
     tests = [
         test_analyzer_prefers_tradier,
@@ -1498,6 +1647,8 @@ if __name__ == "__main__":
         test_scanner_behavior_fields_survive_scan_logging,
         test_dedicated_repeat_bounce_trade_plan_uses_latest_dip,
         test_prediction_tracker_records_sequence_regime_fields,
+        test_sec_fundamental_snapshot_extracts_comparable_periods,
+        test_timeframe_analysis_caps_long_term_when_fundamentals_are_sparse,
     ]
     for test in tests:
         test()
