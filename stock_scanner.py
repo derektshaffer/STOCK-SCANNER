@@ -32,10 +32,12 @@ except Exception:
 
 try:
     from scanner_behavior import (
+        BEHAVIOR_FEATURE_VERSION,
         intraday_behavior_features,
         multi_session_behavior_features,
     )
 except Exception:
+    BEHAVIOR_FEATURE_VERSION = None
     intraday_behavior_features = None
     multi_session_behavior_features = None
 
@@ -2255,6 +2257,7 @@ def candidate_log_record(c, rank):
     return {
         "rank": rank,
         "feature_version": SCANNER_FEATURE_VERSION,
+        "behavior_feature_version": BEHAVIOR_FEATURE_VERSION,
         "symbol": c.get("symbol"),
         "price": c.get("price"),
         "prev_close": c.get("prev_close"),
@@ -2388,6 +2391,7 @@ def write_scan_logs(
             "schema_version": 2,
             "scanner_version": SCANNER_VERSION,
             "feature_version": SCANNER_FEATURE_VERSION,
+            "behavior_feature_version": BEHAVIOR_FEATURE_VERSION,
             "scan_id": scan_id,
             "scan_time_utc": now_utc.isoformat(),
             "scan_time_et": now_et.isoformat(),
