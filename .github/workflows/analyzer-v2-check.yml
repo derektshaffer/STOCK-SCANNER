@@ -43,6 +43,8 @@ on:
       - ".github/workflows/outcome-tracker.yml"
       - ".github/workflows/historical-ml-backfill.yml"
       - "requirements.txt"
+      - "APP_BOUNDARY.md"
+      - "app_boundary_check.py"
       - "tradier_live_stream.py"
       - "live_market_stream.py"
       - ".github/workflows/analyzer-v2-check.yml"
@@ -188,6 +190,8 @@ jobs:
           assert bool(meta.get("historical_validated")), meta
           assert meta.get("validation_split_unit") == "trading_day", meta
           PY
+      - name: Enforce standalone Scanner / Analyzer boundary
+        run: python app_boundary_check.py
       - name: Run provider/version consistency regressions
         run: python consistency_regression_check.py
       # Re-run marker for secret verification
