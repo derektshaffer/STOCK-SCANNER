@@ -440,11 +440,27 @@ def index_bars(bars_by_symbol):
             close = bar.get("c")
             if ts is None or close in (None, 0):
                 continue
-            parsed.append((ts.astimezone(ET), float(close)))
-        parsed.sort(key=lambda x: x[0])
+            high = bar.get("h")
+            low = bar.get("l")
+            try:
+                high = float(high) if high is not None else float(close)
+                low = float(low) if low is not None else float(close)
+            except (TypeError, ValueError):
+                high = float(close)
+                low = float(close)
+            parsed.append(
+                {
+                    "time": ts.astimezone(ET),
+                    "close": float(close),
+                    "high": high,
+                    "low": low,
+                }
+            )
+        parsed.sort(key=lambda x: x["time"])
         indexed[symbol] = {
-            "times": [x[0] for x in parsed],
-            "prices": [x[1] for x in parsed],
+            "times": [x["time"] for x in parsed],
+            "prices": [x["close"] for x in parsed],
+            "bars": parsed,
         }
     return indexed
 
@@ -470,6 +486,91 @@ def pct_return(exit_price, entry_price):
     if exit_price in (None, 0) or entry_price in (None, 0):
         return None
     return round((float(exit_price) / float(entry_price) - 1.0) * 100.0, 3)
+
+
+def trade_quality_path(
+    indexed_symbol,
+    scan_time,
+    session_close,
+    entry_price,
+    *,
+    horizon_minutes=60,
+    target_pct=1.0,
+    stop_pct=0.75,
+):
+    """Measure target-vs-stop path after a live scanner observation.
+
+    The first full 1-minute bar after the scan is used so price action that
+    occurred before the observation is not credited to it. If target and stop
+    touch in the same minute, resolve stop-first conservatively.
+    """
+    if not indexed_symbol or entry_price in (None, 0):
+        return {
+            "trade_quality_barrier": None,
+            "trade_quality_decisive": False,
+            "target_before_stop": None,
+            "mfe_60m_pct": None,
+            "mae_60m_pct": None,
+        }
+
+    end_time = scan_time + timedelta(minutes=horizon_minutes)
+    if end_time > session_close:
+        return {
+            "trade_quality_barrier": None,
+            "trade_quality_decisive": False,
+            "target_before_stop": None,
+            "mfe_60m_pct": None,
+            "mae_60m_pct": None,
+        }
+
+    entry_price = float(entry_price)
+    target = entry_price * (1.0 + target_pct / 100.0)
+    stop = entry_price * (1.0 - stop_pct / 100.0)
+    bars = indexed_symbol.get("bars") or []
+    start_pos = bisect_left(
+        indexed_symbol.get("times") or [],
+        scan_time + timedelta(minutes=1),
+    )
+
+    barrier = "neither"
+    mfe = 0.0
+    mae = 0.0
+    bars_seen = 0
+    for bar in bars[start_pos:]:
+        ts = bar["time"]
+        if ts > end_time or ts > session_close:
+            break
+        high = float(bar["high"])
+        low = float(bar["low"])
+        bars_seen += 1
+        mfe = max(mfe, (high / entry_price - 1.0) * 100.0)
+        mae = min(mae, (low / entry_price - 1.0) * 100.0)
+
+        hit_target = high >= target
+        hit_stop = low <= stop
+        if hit_stop:
+            barrier = "stop_first"
+            break
+        if hit_target:
+            barrier = "target_first"
+            break
+
+    decisive = barrier in {"target_first", "stop_first"}
+    return {
+        "trade_quality_target_pct": target_pct,
+        "trade_quality_stop_pct": stop_pct,
+        "trade_quality_horizon_minutes": horizon_minutes,
+        "trade_quality_barrier": barrier,
+        "trade_quality_decisive": decisive,
+        "target_before_stop": (
+            barrier == "target_first"
+            if decisive
+            else None
+        ),
+        "mfe_60m_pct": round(mfe, 3),
+        "mae_60m_pct": round(mae, 3),
+        "trade_quality_bars_seen": bars_seen,
+    }
 
 
 def build_observations(scans, target_date, bars_index):
@@ -602,6 +703,14 @@ def build_observations(scans, target_date, bars_index):
             }
 
             symbol_index = bars_index.get(symbol)
+            row.update(
+                trade_quality_path(
+                    symbol_index,
+                    scan_time,
+                    session_close,
+                    entry_price,
+                )
+            )
             for minutes in HORIZONS_MINUTES:
                 target_time = scan_time + timedelta(minutes=minutes)
                 exit_price, exit_time = price_at_or_after(
