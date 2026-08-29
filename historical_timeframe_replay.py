@@ -35,8 +35,8 @@ from analyzer_v2_integration import (
 )
 from historical_scanner_replay import (
     _daily_index,
+    _fetch_tradier_daily_history,
     _num,
-    fetch_multi_bars_complete,
     select_daily_universe,
 )
 from scanner_behavior import multi_session_behavior_features
@@ -594,20 +594,28 @@ def main():
 
     now = datetime.now(timezone.utc)
     start = now - timedelta(days=max(900, DEFAULT_LOOKBACK_CALENDAR_DAYS))
-    feed = os.environ.get("ALPACA_HISTORICAL_FEED", "").strip().lower() or "sip"
+    token = (
+        os.environ.get("TRADIER_ACCESS_TOKEN", "").strip()
+        or os.environ.get("TRADIER_TOKEN", "").strip()
+    )
+    if not token:
+        raise RuntimeError(
+            "Historical timeframe replay requires TRADIER_ACCESS_TOKEN or TRADIER_TOKEN."
+        )
+    feed = "tradier_consolidated_daily"
     print(
         f"Historical timeframe replay {REPLAY_VERSION}: "
         f"symbols={len(fetch_symbols)} days={replay_days} stride={stride} "
         f"feed={feed}"
     )
-    daily_bars = fetch_multi_bars_complete(
-        ss,
+    # Use Tradier here as well as in the intraday replay. The GitHub-hosted
+    # Alpaca credentials are not guaranteed to carry historical SIP entitlement,
+    # while the connected Tradier feed already powers the leakage-safe replay.
+    daily_bars = _fetch_tradier_daily_history(
         fetch_symbols,
-        "1Day",
+        token,
         start,
         now,
-        feed=feed,
-        chunk_size=20,
     )
     daily_index = _daily_index(daily_bars)
     dates = _liquid_dates(daily_index)
