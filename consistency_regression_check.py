@@ -746,6 +746,28 @@ def test_replay_requires_live_confirmation_before_full_badge():
     assert sm.MIN_LIVE_CONFIRMATION_CLASS_COUNT >= 5
 
 
+def test_analyzer_ml_validation_requires_probability_skill():
+    import ml_predictor as ml
+
+    actual = [0, 1] * 40
+    strong = [0.15 if value == 0 else 0.85 for value in actual]
+    naive = [0.5] * len(actual)
+    good = ml._probability_validation_summary(actual, strong, naive)
+    assert good["validated"] is True, good
+    assert float(good["auc"]) > 0.95, good
+    assert float(good["brier"]) < float(good["baseline_brier"]), good
+
+    # High classification accuracy alone is not enough if probability quality
+    # does not beat a proper naive probability forecast.
+    imbalanced = [0] * 72 + [1] * 8
+    weak = [0.10] * len(imbalanced)
+    base = [0.10] * len(imbalanced)
+    bad = ml._probability_validation_summary(imbalanced, weak, base)
+    assert bad["accuracy"] >= 0.85, bad
+    assert bad["validated"] is False, bad
+    assert abs(float(bad["brier"]) - float(bad["baseline_brier"])) < 1e-12, bad
+
+
 def test_impulse_detector_measures_fraction_of_run():
     import stock_analyzer as sa
 
@@ -1133,6 +1155,7 @@ if __name__ == "__main__":
         test_historical_replay_universe_uses_prior_days_only,
         test_historical_replay_source_survives_ml_extraction,
         test_replay_requires_live_confirmation_before_full_badge,
+        test_analyzer_ml_validation_requires_probability_skill,
         test_impulse_detector_measures_fraction_of_run,
         test_entry_readiness_penalizes_unconfirmed_shallow_retrace,
         test_run_exhaustion_flags_rejected_mature_run,
