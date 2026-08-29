@@ -1595,6 +1595,121 @@ def test_timeframe_analysis_caps_long_term_when_fundamentals_are_sparse():
         v2._daily_trend_context = original
 
 
+
+def test_prediction_tracker_records_timeframe_scores():
+    import prediction_tracker as pt
+
+    original_load = pt._load
+    original_save = pt._save
+    captured = []
+    try:
+        pt._load = lambda: []
+
+        def _capture(rows, force_remote=False):
+            captured.extend(rows)
+            return True
+
+        pt._save = _capture
+        metrics = {
+            "symbol": "TEST",
+            "feature_version": pt.ANALYZER_FEATURE_VERSION,
+            "price": 10.0,
+            "trade_plan": {"selected": {}},
+            "decision_v2": {
+                "version": pt.DECISION_SCORE_VERSION,
+                "timeframe_analysis": {
+                    "version": pt.TIMEFRAME_SCORE_VERSION,
+                    "best_fit": "SWING",
+                    "scores": {
+                        "intraday": 58.0,
+                        "swing": 74.0,
+                        "long_term": 62.0,
+                    },
+                    "fundamental_quality_score": 66.0,
+                    "fundamental_coverage_count": 5,
+                    "daily_trend": {
+                        "trend_score": 71.0,
+                        "return_20d_pct": 12.0,
+                        "return_60d_pct": 25.0,
+                        "return_120d_pct": 40.0,
+                    },
+                },
+            },
+        }
+        result = pt.record_prediction(
+            metrics,
+            now=datetime(2026, 8, 29, 15, 0, tzinfo=timezone.utc),
+        )
+        assert result.get("recorded"), result
+        row = captured[-1]
+        assert row.get("timeframe_score_version") == pt.TIMEFRAME_SCORE_VERSION, row
+        assert row.get("timeframe_best_fit") == "SWING", row
+        assert row.get("timeframe_swing_score") == 74.0, row
+        assert row.get("timeframe_fundamental_coverage_count") == 5, row
+        assert row.get("timeframe_trend_score") == 71.0, row
+    finally:
+        pt._load = original_load
+        pt._save = original_save
+
+
+def test_timeframe_trading_day_outcomes_skip_weekends():
+    import prediction_tracker as pt
+
+    row = {
+        "timestamp": "2026-08-28T15:00:00+00:00",
+        "price": 10.0,
+        "outcomes": {},
+    }
+    bars = [
+        {"t": "2026-08-31T04:00:00Z", "c": 10.5},
+        {"t": "2026-09-01T04:00:00Z", "c": 10.8},
+        {"t": "2026-09-02T04:00:00Z", "c": 11.0},
+        {"t": "2026-09-03T04:00:00Z", "c": 10.7},
+        {"t": "2026-09-04T04:00:00Z", "c": 11.5},
+    ]
+    changed = pt._resolve_trading_day_returns(row, bars)
+    assert changed is True, row
+    outcomes = row["outcomes"]
+    assert outcomes.get("return_1d_pct") == 5.0, outcomes
+    assert outcomes.get("return_3d_pct") == 10.0, outcomes
+    assert outcomes.get("return_5d_pct") == 15.0, outcomes
+    assert outcomes.get("return_20d_pct") is None, outcomes
+
+
+def test_timeframe_calibration_uses_matched_horizons():
+    import score_analyzer_outcomes as sao
+
+    rows = [
+        {
+            "timeframe_score_version": sao.TIMEFRAME_SCORE_VERSION,
+            "timeframe_best_fit": "SWING",
+            "timeframe_swing_score": 80.0,
+            "outcomes": {"return_5d_pct": 8.0},
+        },
+        {
+            "timeframe_score_version": sao.TIMEFRAME_SCORE_VERSION,
+            "timeframe_best_fit": "SWING",
+            "timeframe_swing_score": 82.0,
+            "outcomes": {"return_5d_pct": -2.0},
+        },
+        {
+            "timeframe_score_version": sao.TIMEFRAME_SCORE_VERSION,
+            "timeframe_best_fit": "LONGER-TERM",
+            "timeframe_long_term_score": 70.0,
+            "outcomes": {"return_20d_pct": 12.0},
+        },
+    ]
+    swing = sao._timeframe_calibrate(
+        rows, "timeframe_swing_score", "return_5d_pct"
+    )
+    assert swing["80-100"]["n"] == 2, swing
+    assert swing["80-100"]["higher_rate"] == 50.0, swing
+    best = sao._timeframe_best_fit_calibration(rows)
+    assert best["SWING"]["resolved"] == 2, best
+    assert best["SWING"]["horizon"] == "5 trading days", best
+    assert best["LONGER-TERM"]["resolved"] == 1, best
+
+
 if __name__ == "__main__":
     tests = [
         test_analyzer_prefers_tradier,
@@ -1649,6 +1764,9 @@ if __name__ == "__main__":
         test_prediction_tracker_records_sequence_regime_fields,
         test_sec_fundamental_snapshot_extracts_comparable_periods,
         test_timeframe_analysis_caps_long_term_when_fundamentals_are_sparse,
+        test_prediction_tracker_records_timeframe_scores,
+        test_timeframe_trading_day_outcomes_skip_weekends,
+        test_timeframe_calibration_uses_matched_horizons,
     ]
     for test in tests:
         test()
