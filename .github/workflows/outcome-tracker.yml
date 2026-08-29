@@ -51,7 +51,7 @@ jobs:
         run: python score_analyzer_outcomes.py
 
       - name: Commit durable outcome history
-        if: always() && (github.event_name == 'workflow_dispatch' || steps.score_time.outputs.should_score == 'true')
+        if: always()
         shell: bash
         run: |
           git config user.name "github-actions[bot]"
@@ -67,7 +67,7 @@ jobs:
           fi
 
       - name: Preserve outcome reports
-        if: always() && (github.event_name == 'workflow_dispatch' || steps.score_time.outputs.should_score == 'true')
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: outcome-report-${{ github.run_id }}-${{ github.run_attempt }}
