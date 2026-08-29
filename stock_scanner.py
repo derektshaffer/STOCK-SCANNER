@@ -854,6 +854,15 @@ def scanner_action_signal(c, now_et=None):
     m15 = num(m15)
     pace = num(pace)
 
+    failed_breakout = bool(num(c.get("failed_breakout")) or 0)
+    vwap_rejection = bool(num(c.get("vwap_rejection")) or 0)
+    vwap_reclaim = bool(num(c.get("vwap_reclaim")) or 0)
+    volume_accelerating = bool(num(c.get("volume_accelerating")) or 0)
+    breakout_holding = bool(num(c.get("breakout_holding")) or 0)
+    stair_breakdown = bool(num(c.get("stair_breakdown")) or 0)
+    bounce_leg_code = num(c.get("bounce_leg_code"))
+    pullback_quality = num(c.get("pullback_quality_score"))
+
     if phase != "regular":
         return {
             "label": "EXTENDED WATCH",
@@ -880,6 +889,29 @@ def scanner_action_signal(c, now_et=None):
             "label": "CAUTION",
             "tier": "caution",
             "reason": "Setup or execution quality still has a material warning.",
+        }
+
+    # Behavior-state checks refine *timing* only. They never override hard
+    # filters, spread/liquidity warnings, or the Analyzer's final trade plan.
+    if failed_breakout:
+        return {
+            "label": "WAIT",
+            "tier": "caution",
+            "reason": "A recent breakout failed back below its trigger; wait for a reclaim or a fresh base before entering.",
+        }
+
+    if vwap_rejection:
+        return {
+            "label": "WAIT",
+            "tier": "caution",
+            "reason": "Price recently rejected at VWAP; wait for a clean reclaim and hold before entering.",
+        }
+
+    if stair_breakdown:
+        return {
+            "label": "CAUTION",
+            "tier": "caution",
+            "reason": "The higher multi-session plateau has broken down; continuation risk is elevated.",
         }
 
     if not bool(c.get("above_vwap")):
@@ -909,6 +941,46 @@ def scanner_action_signal(c, now_et=None):
     near_high = from_high is not None and from_high <= 3.0
     very_near_high = from_high is not None and from_high <= 1.25
     execution_ok = spread is None or spread <= 2.0
+
+    # Confirmed behavior setups can upgrade timing from WATCH to ENTRY READY,
+    # but only after the normal quality/execution/safety checks above pass.
+    if (
+        grade in {"A", "B"}
+        and breakout_holding
+        and volume_accelerating
+        and execution_ok
+        and m5 is not None and m5 >= 0
+    ):
+        return {
+            "label": "ENTRY READY",
+            "tier": "ready",
+            "reason": "The breakout is holding above prior resistance with accelerating volume and VWAP support; confirm the exact entry and stop in Analyzer.",
+        }
+
+    if (
+        grade in {"A", "B"}
+        and vwap_reclaim
+        and bounce_leg_code is not None and bounce_leg_code > 0
+        and pullback_quality is not None and pullback_quality >= 65
+        and execution_ok
+        and m5 is not None and m5 > 0
+    ):
+        return {
+            "label": "ENTRY READY",
+            "tier": "ready",
+            "reason": "A constructive pullback/bounce has reclaimed VWAP with improving price action; confirm the entry zone in Analyzer.",
+        }
+
+    if (
+        grade in {"A", "B"}
+        and bounce_leg_code is not None and bounce_leg_code < 0
+        and (pullback_quality is None or pullback_quality < 75)
+    ):
+        return {
+            "label": "WAIT PULLBACK",
+            "tier": "pullback",
+            "reason": "The stock is still in a pullback leg; wait for the dip to hold and a bounce/reclaim to confirm.",
+        }
 
     if grade == "A" and strong_momentum and strong_participation and near_high and execution_ok:
         if very_near_high:
