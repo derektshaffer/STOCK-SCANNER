@@ -1464,6 +1464,7 @@ def main():
             "end_date": replay_dates[-1].isoformat(),
             "daily_universe_size": universe_size,
             "union_symbols": len(union),
+            "union_symbol_list": union,
             "candidates_per_scan": candidates_per_scan,
             "scan_step_minutes": scan_step,
             "bar_resolution": "5Min",
