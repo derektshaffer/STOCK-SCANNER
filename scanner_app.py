@@ -511,6 +511,19 @@ def card(c):
         ac = "green" if alert == "HIGH" else ("blue" if alert == "WATCH" else "amber")
         alert_badge = f'<span class="badge {ac}">ALERT {html.escape(str(alert))}</span>'
 
+    action = str(c.get("scanner_action") or "WATCH")
+    action_reason = str(c.get("scanner_action_reason") or "")
+    action_color = (
+        "red"
+        if action == "NO TRADE"
+        else "amber"
+        if action in {"CAUTION", "WAIT", "WAIT PULLBACK"}
+        else "blue"
+    )
+    action_badge = (
+        f'<span class="badge {action_color}">ACTION {html.escape(action)}</span>'
+    )
+
     ml_text, ml_cls = ml_display(c)
 
     spread = (
@@ -554,8 +567,9 @@ def card(c):
   </div>
   <div>
     <span class="badge {badge_cls}">GRADE {html.escape(grade)} · {html.escape(label)}</span>
-    {pass_badge}{alert_badge}{vwap_badge}
+    {action_badge}{pass_badge}{alert_badge}{vwap_badge}
   </div>
+  <div class="note"><div class="nk">ACTION</div><div class="nv">{html.escape(action_reason[:260])}</div></div>
   <div class="grid">
     {metric("5 MIN",f(c.get("momentum_5m"),2,"%"),"pos" if (c.get("momentum_5m") or 0)>0 else "muted")}
     {metric("15 MIN",f(c.get("momentum_15m"),2,"%"),"pos" if (c.get("momentum_15m") or 0)>0 else "muted")}
@@ -583,6 +597,8 @@ def to_df(records):
                 "Ticker": c.get("symbol"),
                 "Grade": c.get("setup_grade"),
                 "Status": c.get("setup_label"),
+                "Action": c.get("scanner_action"),
+                "Action Reason": c.get("scanner_action_reason"),
                 "Score": c.get("score"),
                 "Opportunity": c.get("opportunity_score"),
                 "ML 60m %": c.get("ml_continuation_prob_pct"),
