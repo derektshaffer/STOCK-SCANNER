@@ -13,6 +13,8 @@ from datetime import datetime
 from multi_bounce import bounce_feature_values, detect_bounce_sequence
 from stair_step import detect_stair_step, stair_step_feature_values
 
+BEHAVIOR_FEATURE_VERSION = "scanner-behavior-v1"
+
 
 def _num(value):
     try:
