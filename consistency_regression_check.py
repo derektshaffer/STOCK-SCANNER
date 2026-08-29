@@ -1093,8 +1093,11 @@ def test_scanner_behavior_detects_failed_breakout():
     closes = [10.0, 10.02, 10.01, 10.03, 10.02, 10.04, 10.16, 9.96]
     highs = [10.05, 10.06, 10.05, 10.07, 10.06, 10.08, 10.30, 10.02]
     for i, (close, high) in enumerate(zip(closes, highs)):
+        minute = 30 + i * 5
+        hour = 14 + minute // 60
+        minute = minute % 60
         bars.append({
-            "t": f"2026-08-28T14:{30 + i * 5:02d}:00Z",
+            "t": f"2026-08-28T{hour:02d}:{minute:02d}:00Z",
             "o": close,
             "h": high,
             "l": close - 0.06,
