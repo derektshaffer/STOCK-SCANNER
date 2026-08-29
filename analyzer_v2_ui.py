@@ -15,6 +15,22 @@ def _fmt_int(value):
     except Exception:
         return "—"
 
+
+def _fmt_money_compact(value):
+    try:
+        value = float(value)
+    except Exception:
+        return "—"
+    sign = "-" if value < 0 else ""
+    value = abs(value)
+    if value >= 1_000_000_000:
+        return f"{sign}$" + f"{value / 1_000_000_000:.2f}B"
+    if value >= 1_000_000:
+        return f"{sign}$" + f"{value / 1_000_000:.1f}M"
+    if value >= 1_000:
+        return f"{sign}$" + f"{value / 1_000:.1f}K"
+    return f"{sign}$" + f"{value:,.0f}"
+
 def _component_line(components, ordered_labels):
     if not isinstance(components, dict):
         return None
@@ -83,6 +99,16 @@ def _score_card(st, col, title, score, label, note):
         )
 
 
+def _text_card(st, col, title, value, note, cls="warn"):
+    with col:
+        st.markdown(
+            f'<div class="card"><div class="k">{html.escape(title)}</div>'
+            f'<div class="v {cls}">{html.escape(str(value))}</div>'
+            f'<div class="n">{html.escape(str(note))}</div></div>',
+            unsafe_allow_html=True,
+        )
+
+
 def render_v2_decision(st, metrics):
     v2 = metrics.get("decision_v2") or {}
     if not v2:
@@ -117,6 +143,51 @@ def render_v2_decision(st, metrics):
         str(v2.get("evidence_label") or "—"),
         "how much reliable data supports the read",
     )
+
+    timeframe = v2.get("timeframe_analysis") or {}
+    if timeframe:
+        st.markdown(
+            '<div class="section">Timeframe fit '
+            '<span style="font-size:12px;color:#91a7c2">intraday · swing · longer-term</span></div>',
+            unsafe_allow_html=True,
+        )
+        tf_scores = timeframe.get("scores") or {}
+        tf_labels = timeframe.get("labels") or {}
+        best_fit = str(timeframe.get("best_fit") or "MIXED")
+        tf_cols = st.columns(4)
+        _text_card(
+            st,
+            tf_cols[0],
+            "BEST FIT",
+            best_fit,
+            "strongest current evidence match",
+            "good" if best_fit != "MIXED" else "warn",
+        )
+        _score_card(
+            st,
+            tf_cols[1],
+            "INTRADAY FIT",
+            float(tf_scores.get("intraday") or 0),
+            str(tf_labels.get("intraday") or "—"),
+            "today / live momentum",
+        )
+        _score_card(
+            st,
+            tf_cols[2],
+            "SWING FIT",
+            float(tf_scores.get("swing") or 0),
+            str(tf_labels.get("swing") or "—"),
+            "multi-day continuation",
+        )
+        _score_card(
+            st,
+            tf_cols[3],
+            "LONGER-TERM FIT",
+            float(tf_scores.get("long_term") or 0),
+            str(tf_labels.get("long_term") or "—"),
+            "fundamentals + multi-month trend",
+        )
+        st.caption(str(timeframe.get("note") or ""))
 
     tracking = v2.get("tracking") or {}
     lifecycle_html = _signal_progression_html(tracking.get("signal_lifecycle"))
@@ -272,6 +343,40 @@ def render_v2_decision(st, metrics):
             kws = sec.get("dilution_keywords") or []
             if kws:
                 st.caption("Detected filing terms: " + ", ".join(kws[:5]))
+
+        timeframe = v2.get("timeframe_analysis") or {}
+        if timeframe:
+            st.markdown("#### Timeframe evidence")
+            tfc1, tfc2, tfc3 = st.columns(3)
+            with tfc1:
+                st.markdown("**Intraday**")
+                for reason in timeframe.get("intraday_reasons") or []:
+                    st.write(f"• {reason}")
+            with tfc2:
+                st.markdown("**Swing**")
+                for reason in timeframe.get("swing_reasons") or []:
+                    st.write(f"• {reason}")
+            with tfc3:
+                st.markdown("**Longer-term**")
+                for reason in timeframe.get("long_term_reasons") or []:
+                    st.write(f"• {reason}")
+
+            trend = timeframe.get("daily_trend") or {}
+            fundamentals = sec.get("fundamentals") or {}
+            st.caption(
+                "Price trend · "
+                f"20d {_fmt_pct(trend.get('return_20d_pct'))} · "
+                f"60d {_fmt_pct(trend.get('return_60d_pct'))} · "
+                f"120d {_fmt_pct(trend.get('return_120d_pct'))}"
+            )
+            st.caption(
+                "Reported fundamentals · "
+                f"Revenue {_fmt_money_compact(fundamentals.get('revenue_latest'))} · "
+                f"YoY {_fmt_pct(fundamentals.get('revenue_yoy_pct'))} · "
+                f"Net income {_fmt_money_compact(fundamentals.get('net_income_latest'))} · "
+                f"Cash {_fmt_money_compact(fundamentals.get('cash_and_equivalents'))} · "
+                f"Long-term debt {_fmt_money_compact(fundamentals.get('long_term_debt'))}"
+            )
 
         st.markdown("#### Prediction tracking")
         effective_resolved = int(
