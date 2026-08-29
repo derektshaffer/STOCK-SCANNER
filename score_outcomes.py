@@ -747,6 +747,53 @@ def horizon_stats(rows, minutes):
     }
 
 
+def trade_quality_stats(rows):
+    decisive = [
+        row
+        for row in rows
+        if row.get("trade_quality_decisive")
+    ]
+    target_first = [
+        row for row in decisive
+        if row.get("target_before_stop") is True
+    ]
+    neither = [
+        row for row in rows
+        if row.get("trade_quality_barrier") == "neither"
+    ]
+    mfe = [
+        float(row["mfe_60m_pct"])
+        for row in rows
+        if row.get("mfe_60m_pct") is not None
+    ]
+    mae = [
+        float(row["mae_60m_pct"])
+        for row in rows
+        if row.get("mae_60m_pct") is not None
+    ]
+    return {
+        "eligible_n": sum(
+            row.get("trade_quality_barrier") is not None
+            for row in rows
+        ),
+        "decisive_n": len(decisive),
+        "target_first_n": len(target_first),
+        "stop_first_n": len(decisive) - len(target_first),
+        "neither_n": len(neither),
+        "target_before_stop_rate_pct": (
+            round(len(target_first) / len(decisive) * 100.0, 1)
+            if decisive
+            else None
+        ),
+        "median_mfe_60m_pct": (
+            round(median(mfe), 3) if mfe else None
+        ),
+        "median_mae_60m_pct": (
+            round(median(mae), 3) if mae else None
+        ),
+    }
+
+
 def selection_stats(rows):
     values = [
         r.get("return_60m_pct")
@@ -805,6 +852,7 @@ def summarize(rows):
         "overall": {
             f"{m}m": horizon_stats(rows, m) for m in HORIZONS_MINUTES
         },
+        "trade_quality": trade_quality_stats(rows),
         "by_grade": {},
         "by_alert_tier": {},
         "by_scanner_action": {},
@@ -842,6 +890,7 @@ def summarize(rows):
         summary["by_scanner_action"][action] = {
             "n": len(group),
             **{f"{m}m": horizon_stats(group, m) for m in HORIZONS_MINUTES},
+            "trade_quality": trade_quality_stats(group),
         }
 
     return summary
@@ -968,6 +1017,7 @@ def write_reports(target_date, discovery, rows, status, error=None):
 
     csv_fields = [
         "observation_id", "scan_id", "scan_time_et", "feature_version",
+        "behavior_feature_version",
         "observation_source", "market_provider", "live_feed", "rank", "symbol",
         "entry_price", "day_pct", "score", "base_score", "live_bonus", "news_bonus",
         "opportunity_score", "intraday_range_pct", "expected_volume_fraction_pct",
@@ -988,6 +1038,10 @@ def write_reports(target_date, discovery, rows, status, error=None):
         "price_15m", "time_15m_et", "return_15m_pct",
         "price_30m", "time_30m_et", "return_30m_pct",
         "price_60m", "time_60m_et", "return_60m_pct",
+        "trade_quality_target_pct", "trade_quality_stop_pct",
+        "trade_quality_horizon_minutes", "trade_quality_barrier",
+        "trade_quality_decisive", "target_before_stop",
+        "mfe_60m_pct", "mae_60m_pct", "trade_quality_bars_seen",
     ]
 
     with csv_path.open("w", newline="", encoding="utf-8") as handle:
@@ -1090,6 +1144,12 @@ def main():
                 f"win={s['win_rate_pct'] if s['win_rate_pct'] is not None else '-'}% | "
                 f"median={s['median_return_pct'] if s['median_return_pct'] is not None else '-'}%"
             )
+        quality = summary.get("trade_quality") or {}
+        print(
+            "Trade quality (+1% before -0.75%, 60m): "
+            f"decisive n={quality.get('decisive_n', 0)} | "
+            f"target-first={quality.get('target_before_stop_rate_pct')}"
+        )
 
 
 if __name__ == "__main__":
