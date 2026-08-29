@@ -32,7 +32,7 @@ from scanner_behavior import (
     multi_session_behavior_features,
 )
 
-REPLAY_VERSION = "historical-scanner-replay-v4.1-sequence-regimes"
+REPLAY_VERSION = "historical-scanner-replay-v4.2-trade-quality"
 ET = ZoneInfo("America/New_York")
 
 DEFAULT_TRADING_DAYS = int(os.environ.get("REPLAY_TRADING_DAYS", "20") or 20)
@@ -826,6 +826,67 @@ def _future_price(rows, idx, minutes=60):
     return None
 
 
+def _future_trade_quality(
+    rows,
+    idx,
+    entry_price,
+    *,
+    minutes=60,
+    target_pct=1.0,
+    stop_pct=0.75,
+):
+    """Causal path outcome after a replay checkpoint.
+
+    Same-bar target+stop touches are resolved stop-first to avoid flattering
+    results when 5-minute OHLC cannot reveal the true intrabar order.
+    """
+    if idx < 0 or idx >= len(rows) or not entry_price:
+        return {}
+    end_minute = rows[idx][0] + minutes
+    target = entry_price * (1.0 + target_pct / 100.0)
+    stop = entry_price * (1.0 - stop_pct / 100.0)
+    mfe = 0.0
+    mae = 0.0
+    barrier = "neither"
+    bars_seen = 0
+
+    for minute, bar in rows[idx + 1 :]:
+        if minute > end_minute:
+            break
+        high = _num(bar.get("h"))
+        low = _num(bar.get("l"))
+        if high is None or low is None:
+            continue
+        bars_seen += 1
+        mfe = max(mfe, (high / entry_price - 1.0) * 100.0)
+        mae = min(mae, (low / entry_price - 1.0) * 100.0)
+        hit_target = high >= target
+        hit_stop = low <= stop
+        if hit_stop:
+            barrier = "stop_first"
+            break
+        if hit_target:
+            barrier = "target_first"
+            break
+
+    decisive = barrier in {"target_first", "stop_first"}
+    return {
+        "trade_quality_target_pct": target_pct,
+        "trade_quality_stop_pct": stop_pct,
+        "trade_quality_horizon_minutes": minutes,
+        "trade_quality_barrier": barrier,
+        "trade_quality_decisive": decisive,
+        "target_before_stop": (
+            barrier == "target_first"
+            if decisive
+            else None
+        ),
+        "mfe_60m_pct": round(mfe, 4),
+        "mae_60m_pct": round(mae, 4),
+        "trade_quality_bars_seen": bars_seen,
+    }
+
+
 def build_replay_observations(
     ss,
     daily_index,
@@ -911,8 +972,19 @@ def build_replay_observations(
             for rank, (snap, future_price) in enumerate(chosen, start=1):
                 entry_price = snap["price"]
                 return_60 = (future_price / entry_price - 1.0) * 100.0
+                symbol_rows = (intraday.get(snap["symbol"]) or {}).get(replay_day) or []
+                symbol_index = {
+                    minute: i
+                    for i, (minute, _bar) in enumerate(symbol_rows)
+                }
+                quality = _future_trade_quality(
+                    symbol_rows,
+                    symbol_index.get(checkpoint_minute - 5, -1),
+                    entry_price,
+                )
                 observations.append(
                     {
+                        **quality,
                         "observation_id": (
                             f"replay:{replay_day.isoformat()}:"
                             f"{checkpoint:%H%M}:{snap['symbol']}"
@@ -1186,6 +1258,19 @@ def main():
     )
     negatives = len(observations) - positives
     unique_scans = len({row.get("scan_id") for row in observations})
+    quality_decisive = [
+        row for row in observations
+        if row.get("trade_quality_decisive")
+    ]
+    quality_target_first = sum(
+        row.get("target_before_stop") is True
+        for row in quality_decisive
+    )
+    quality_stop_first = len(quality_decisive) - quality_target_first
+    quality_neither = sum(
+        row.get("trade_quality_barrier") == "neither"
+        for row in observations
+    )
 
     payload = {
         "schema_version": 2,
@@ -1221,6 +1306,15 @@ def main():
             "unique_scans": unique_scans,
             "positive_3pct_60m": positives,
             "non_positive_3pct_60m": negatives,
+            "trade_quality_decisive": len(quality_decisive),
+            "trade_quality_target_first": quality_target_first,
+            "trade_quality_stop_first": quality_stop_first,
+            "trade_quality_neither": quality_neither,
+            "target_before_stop_rate_pct": (
+                round(quality_target_first / len(quality_decisive) * 100.0, 2)
+                if quality_decisive
+                else None
+            ),
         },
         "observations": observations,
     }
@@ -1230,7 +1324,9 @@ def main():
     print(f"Wrote replay dataset: {OUTPUT_PATH}")
     print(
         f"Observations={len(observations)} scans={unique_scans} "
-        f"positive={positives} negative={negatives}"
+        f"positive={positives} negative={negatives} "
+        f"quality_decisive={len(quality_decisive)} "
+        f"target_first={quality_target_first} stop_first={quality_stop_first}"
     )
 
 

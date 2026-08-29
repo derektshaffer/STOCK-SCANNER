@@ -251,6 +251,27 @@ def test_scanner_outcome_metadata():
     assert row["volume_pace_display"] == 2.4, row
 
 
+def test_historical_trade_quality_path_is_conservative():
+    import historical_scanner_replay as replay
+
+    rows = [
+        (600, {"h": 10.0, "l": 10.0, "c": 10.0}),
+        (605, {"h": 10.2, "l": 9.9, "c": 10.05}),
+        (610, {"h": 10.3, "l": 10.0, "c": 10.2}),
+    ]
+    result = replay._future_trade_quality(
+        rows,
+        0,
+        10.0,
+        minutes=60,
+        target_pct=1.0,
+        stop_pct=0.75,
+    )
+    assert result.get("trade_quality_barrier") == "stop_first", result
+    assert result.get("target_before_stop") is False, result
+    assert result.get("trade_quality_decisive") is True, result
+
+
 def test_scanner_trade_quality_path_is_causal_and_conservative():
     import score_outcomes as so
 
@@ -1344,6 +1365,7 @@ if __name__ == "__main__":
         test_scanner_ml_version_gate,
         test_analyzer_calibration_version_gate,
         test_scanner_outcome_metadata,
+        test_historical_trade_quality_path_is_conservative,
         test_scanner_trade_quality_path_is_causal_and_conservative,
         test_stream_seed_rejects_non_tradier_metrics,
         test_stream_vwap_ignores_cvol_as_denominator,
