@@ -1258,6 +1258,19 @@ def main():
     )
     negatives = len(observations) - positives
     unique_scans = len({row.get("scan_id") for row in observations})
+    quality_decisive = [
+        row for row in observations
+        if row.get("trade_quality_decisive")
+    ]
+    quality_target_first = sum(
+        row.get("target_before_stop") is True
+        for row in quality_decisive
+    )
+    quality_stop_first = len(quality_decisive) - quality_target_first
+    quality_neither = sum(
+        row.get("trade_quality_barrier") == "neither"
+        for row in observations
+    )
 
     payload = {
         "schema_version": 2,
@@ -1293,6 +1306,15 @@ def main():
             "unique_scans": unique_scans,
             "positive_3pct_60m": positives,
             "non_positive_3pct_60m": negatives,
+            "trade_quality_decisive": len(quality_decisive),
+            "trade_quality_target_first": quality_target_first,
+            "trade_quality_stop_first": quality_stop_first,
+            "trade_quality_neither": quality_neither,
+            "target_before_stop_rate_pct": (
+                round(quality_target_first / len(quality_decisive) * 100.0, 2)
+                if quality_decisive
+                else None
+            ),
         },
         "observations": observations,
     }
@@ -1302,7 +1324,9 @@ def main():
     print(f"Wrote replay dataset: {OUTPUT_PATH}")
     print(
         f"Observations={len(observations)} scans={unique_scans} "
-        f"positive={positives} negative={negatives}"
+        f"positive={positives} negative={negatives} "
+        f"quality_decisive={len(quality_decisive)} "
+        f"target_first={quality_target_first} stop_first={quality_stop_first}"
     )
 
 
