@@ -500,6 +500,10 @@ def build_observations(scans, target_date, bars_index):
                 "scan_id": scan.get("scan_id"),
                 "scan_time_et": scan_time.isoformat(),
                 "feature_version": scan_feature_version,
+                "behavior_feature_version": (
+                    c.get("behavior_feature_version")
+                    or scan.get("behavior_feature_version")
+                ),
                 "observation_source": "live_scan",
                 "market_provider": scan_provider,
                 "live_feed": scan_live_feed,
