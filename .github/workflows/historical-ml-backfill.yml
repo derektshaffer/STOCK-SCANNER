@@ -1,6 +1,7 @@
 name: Historical Scanner ML Backfill
 
 # Historical replay is manual-by-default; this marker intentionally triggers the current backfill.
+# Current run validates completed-bar behavior parity and Scanner ACTION quality.
 on:
   schedule:
     # Weekly deep historical refresh. Runs in GitHub's cloud even when the
