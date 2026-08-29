@@ -820,11 +820,12 @@ def assign_setup_grades(rows, now_et):
         assign_setup_grade(c, now_et)
 
 
-def scanner_action_signal(c, now_et=None, *, use_behavior=True):
+def scanner_action_signal(c, now_et=None, *, use_behavior=False):
     """Compact scanner-level entry cue; Analyzer remains final confirmation.
 
-    use_behavior=False reproduces the simpler pre-behavior action logic for
-    paired historical validation. Production calls keep behavior enabled.
+    Behavior-aware overrides remain available for paired research, but are
+    disabled by default because the first causal replay did not improve ACTION
+    quality. Production stays on the simpler validated rule path.
     """
     grade = str(c.get("setup_grade") or "REJECT").upper()
     phase = str(c.get("market_session") or "")
@@ -2979,8 +2980,9 @@ def main():
             row["ml_continuation_prob_pct"] = None
             row["opportunity_score"] = row.get("score")
 
-    # Scanner ACTION stays rule-based and auditable. Validated ML is surfaced
-    # alongside it in the UI, but does not silently override the action.
+    # Scanner ACTION stays on the simpler rule path. Advanced behavior context
+    # is still calculated/logged for research, but replay validation must improve
+    # before behavior-specific overrides are allowed to change production ACTION.
     assign_scanner_actions(rows, now_et)
 
     rows.sort(key=ranking_key, reverse=True)
