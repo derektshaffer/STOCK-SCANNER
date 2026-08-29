@@ -683,6 +683,91 @@ def test_scanner_ui_auto_surfaces_validated_ml():
     assert "combined-action-value" in source
 
 
+def _scanner_action_behavior_base():
+    return {
+        "market_session": "regular",
+        "setup_grade": "B",
+        "failed_count": 0,
+        "critical_fail_count": 0,
+        "tradability_warnings": [],
+        "spread_pct": 0.5,
+        "day_pct": 18.0,
+        "distance_from_high_pct": 2.0,
+        "distance_from_vwap_pct": 2.0,
+        "above_vwap": True,
+        "momentum_5m": 0.8,
+        "momentum_15m": 1.4,
+        "volume_pace": 1.7,
+        "volume_pace_display": 1.7,
+    }
+
+
+def test_scanner_action_failed_breakout_forces_wait():
+    import stock_scanner as ss
+
+    row = _scanner_action_behavior_base()
+    row.update({
+        "failed_breakout": 1.0,
+        "breakout_holding": 0.0,
+        "volume_accelerating": 1.0,
+    })
+    action = ss.scanner_action_signal(row)
+    assert action.get("label") == "WAIT", action
+    assert action.get("tier") == "caution", action
+    assert "breakout failed" in str(action.get("reason") or "").lower(), action
+
+
+def test_scanner_action_vwap_reclaim_bounce_can_be_entry_ready():
+    import stock_scanner as ss
+
+    row = _scanner_action_behavior_base()
+    row.update({
+        "vwap_reclaim": 1.0,
+        "bounce_leg_code": 1.0,
+        "pullback_quality_score": 78.0,
+        "volume_accelerating": 0.0,
+        "breakout_holding": 0.0,
+    })
+    action = ss.scanner_action_signal(row)
+    assert action.get("label") == "ENTRY READY", action
+    assert action.get("tier") == "ready", action
+    assert "reclaimed vwap" in str(action.get("reason") or "").lower(), action
+
+
+def test_scanner_action_active_pullback_waits_for_confirmation():
+    import stock_scanner as ss
+
+    row = _scanner_action_behavior_base()
+    row.update({
+        "bounce_leg_code": -1.0,
+        "pullback_quality_score": 58.0,
+        "vwap_reclaim": 0.0,
+        "breakout_holding": 0.0,
+    })
+    action = ss.scanner_action_signal(row)
+    assert action.get("label") == "WAIT PULLBACK", action
+    assert action.get("tier") == "pullback", action
+    assert "still in a pullback" in str(action.get("reason") or "").lower(), action
+
+
+def test_scanner_action_behavior_never_overrides_reject():
+    import stock_scanner as ss
+
+    row = _scanner_action_behavior_base()
+    row.update({
+        "setup_grade": "REJECT",
+        "failed_count": 2,
+        "failed_filters": ["liquidity failure", "below VWAP"],
+        "vwap_reclaim": 1.0,
+        "bounce_leg_code": 1.0,
+        "pullback_quality_score": 90.0,
+        "breakout_holding": 1.0,
+        "volume_accelerating": 1.0,
+    })
+    action = ss.scanner_action_signal(row)
+    assert action.get("label") == "NO TRADE", action
+
+
 def test_historical_replay_universe_uses_prior_days_only():
     import historical_scanner_replay as replay
 
@@ -1238,6 +1323,10 @@ if __name__ == "__main__":
         test_scanner_action_entry_ready_requires_aligned_conditions,
         test_scanner_action_breakout_watch_near_high,
         test_scanner_action_reject_stays_no_trade,
+        test_scanner_action_failed_breakout_forces_wait,
+        test_scanner_action_vwap_reclaim_bounce_can_be_entry_ready,
+        test_scanner_action_active_pullback_waits_for_confirmation,
+        test_scanner_action_behavior_never_overrides_reject,
         test_scanner_ui_auto_surfaces_validated_ml,
         test_historical_replay_universe_uses_prior_days_only,
         test_historical_replay_source_survives_ml_extraction,
