@@ -588,6 +588,86 @@ def _model_params():
     }
 
 
+def _auc(actual, probabilities):
+    positives = sum(int(value == 1) for value in actual)
+    negatives = len(actual) - positives
+    if positives == 0 or negatives == 0:
+        return None
+
+    pairs = sorted(zip(probabilities, actual), key=lambda item: item[0])
+    rank_sum_pos = 0.0
+    rank = 1
+    i = 0
+    while i < len(pairs):
+        j = i + 1
+        while j < len(pairs) and pairs[j][0] == pairs[i][0]:
+            j += 1
+        avg_rank = (rank + (rank + (j - i) - 1)) / 2.0
+        rank_sum_pos += avg_rank * sum(
+            int(pairs[k][1] == 1)
+            for k in range(i, j)
+        )
+        rank += j - i
+        i = j
+
+    return (
+        rank_sum_pos - positives * (positives + 1) / 2.0
+    ) / (positives * negatives)
+
+
+def _probability_validation_summary(actual, probabilities, baseline_probabilities):
+    if not actual:
+        return {
+            "auc": None,
+            "accuracy": None,
+            "baseline_accuracy": None,
+            "accuracy_edge": None,
+            "brier": None,
+            "baseline_brier": None,
+            "brier_skill": None,
+            "validated": False,
+        }
+
+    accuracy = sum(
+        (probability >= 0.5) == bool(value)
+        for probability, value in zip(probabilities, actual)
+    ) / len(actual)
+    baseline_accuracy = sum(
+        (probability >= 0.5) == bool(value)
+        for probability, value in zip(baseline_probabilities, actual)
+    ) / len(actual)
+    brier = sum(
+        (probability - value) ** 2
+        for probability, value in zip(probabilities, actual)
+    ) / len(actual)
+    baseline_brier = sum(
+        (probability - value) ** 2
+        for probability, value in zip(baseline_probabilities, actual)
+    ) / len(actual)
+    auc = _auc(actual, probabilities)
+    brier_skill = (
+        None
+        if baseline_brier <= 0
+        else 1.0 - (brier / baseline_brier)
+    )
+    validated = bool(
+        len(actual) >= 60
+        and auc is not None
+        and auc >= 0.55
+        and brier < baseline_brier
+    )
+    return {
+        "auc": auc,
+        "accuracy": accuracy,
+        "baseline_accuracy": baseline_accuracy,
+        "accuracy_edge": accuracy - baseline_accuracy,
+        "brier": brier,
+        "baseline_brier": baseline_brier,
+        "brier_skill": brier_skill,
+        "validated": validated,
+    }
+
+
 def _walk_forward_fit(rows, label, current_features):
     try:
         import numpy as np
@@ -613,7 +693,7 @@ def _walk_forward_fit(rows, label, current_features):
 
     val_probs = []
     val_y = []
-    baseline_preds = []
+    baseline_probs = []
     cut_fracs = (0.55, 0.70, 0.85)
     for fold, train_frac in enumerate(cut_fracs):
         train_end = max(80, int(n * train_frac))
@@ -631,10 +711,10 @@ def _walk_forward_fit(rows, label, current_features):
             verbose_eval=False,
         )
         probs = model.predict(xgb.DMatrix(Xv, feature_names=FEATURES))
-        train_base = 1 if float(ytr.mean()) >= 0.5 else 0
+        train_base_rate = float(ytr.mean())
         val_probs.extend(float(p) for p in probs)
         val_y.extend(int(v) for v in yv)
-        baseline_preds.extend([train_base] * len(yv))
+        baseline_probs.extend([train_base_rate] * len(yv))
 
     if len(val_y) < 60:
         return {
@@ -644,12 +724,18 @@ def _walk_forward_fit(rows, label, current_features):
             "validation_samples": len(val_y),
         }
 
-    correct = sum((p >= 0.5) == bool(y) for p, y in zip(val_probs, val_y))
-    baseline_correct = sum(bool(p) == bool(y) for p, y in zip(baseline_preds, val_y))
-    accuracy = correct / len(val_y)
-    baseline_accuracy = baseline_correct / len(val_y)
-    brier = sum((p - y) ** 2 for p, y in zip(val_probs, val_y)) / len(val_y)
-    edge = accuracy - baseline_accuracy
+    validation = _probability_validation_summary(
+        val_y,
+        val_probs,
+        baseline_probs,
+    )
+    accuracy = validation["accuracy"]
+    baseline_accuracy = validation["baseline_accuracy"]
+    brier = validation["brier"]
+    baseline_brier = validation["baseline_brier"]
+    edge = validation["accuracy_edge"]
+    auc = validation["auc"]
+    brier_skill = validation["brier_skill"]
 
     final_model = xgb.train(
         _model_params(),
@@ -677,12 +763,7 @@ def _walk_forward_fit(rows, label, current_features):
         for k, v in important
     ]
 
-    validated = (
-        len(val_y) >= 60
-        and edge >= 0.02
-        and brier <= 0.25
-        and accuracy >= 0.52
-    )
+    validated = bool(validation["validated"])
 
     return {
         "status": "ok",
@@ -695,7 +776,14 @@ def _walk_forward_fit(rows, label, current_features):
         "walk_forward_accuracy_pct": round(accuracy * 100.0, 1),
         "baseline_accuracy_pct": round(baseline_accuracy * 100.0, 1),
         "accuracy_edge_pct": round(edge * 100.0, 1),
+        "walk_forward_auc": round(auc, 3) if auc is not None else None,
         "brier": round(brier, 3),
+        "baseline_brier": round(baseline_brier, 3),
+        "brier_skill_vs_naive": (
+            round(brier_skill, 4)
+            if brier_skill is not None
+            else None
+        ),
         "validated": bool(validated),
         "top_features": importance,
     }
