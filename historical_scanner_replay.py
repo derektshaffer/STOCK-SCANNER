@@ -26,6 +26,10 @@ from zoneinfo import ZoneInfo
 from tradier_live import get_history_bars, get_timesales_bars, post_quotes
 from multi_bounce import bounce_feature_values, detect_bounce_sequence
 from stair_step import detect_stair_step, stair_step_feature_values
+from scanner_behavior import (
+    intraday_behavior_features,
+    multi_session_behavior_features,
+)
 
 REPLAY_VERSION = "historical-scanner-replay-v4.1-sequence-regimes"
 ET = ZoneInfo("America/New_York")
@@ -692,14 +696,12 @@ def _current_snapshot(ss, symbol, rows, idx, prev_close, avg_daily, day_map, rep
         tzinfo=ET,
     )
 
-    impulse = _impulse_snapshot(rows, idx)
     completed_bars = [bar for _, bar in completed]
-    sequence = detect_bounce_sequence(
+    behavior_features = intraday_behavior_features(
         completed_bars,
         current_price=price,
         atr_pct=None,
     )
-    bounce_features = bounce_feature_values(sequence)
 
     # Multi-session context built strictly from days before replay_day plus the
     # partial current day visible at this historical checkpoint.
@@ -724,24 +726,22 @@ def _current_snapshot(ss, symbol, rows, idx, prev_close, avg_daily, day_map, rep
                 "v":sum(vols_day),
             })
     current_open=_num(completed_bars[0].get("o")) if completed_bars else price
-    stair=detect_stair_step(
+    stair_features = multi_session_behavior_features(
         prior_daily,
         current_day={
-            "date":replay_day.isoformat(),
-            "o":current_open or price,
-            "h":session_high,
-            "l":session_low,
-            "c":price,
-            "v":session_volume,
+            "date": replay_day.isoformat(),
+            "o": current_open or price,
+            "h": session_high,
+            "l": session_low,
+            "c": price,
+            "v": session_volume,
         },
         atr_pct=None,
     )
-    stair_features=stair_step_feature_values(stair)
 
     c = {
         "symbol": symbol,
-        **impulse,
-        **bounce_features,
+        **behavior_features,
         **stair_features,
         "market_session": "regular",
         "session_date": replay_day.isoformat(),
