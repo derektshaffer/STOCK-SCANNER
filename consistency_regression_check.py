@@ -1710,6 +1710,129 @@ def test_timeframe_calibration_uses_matched_horizons():
     assert best["LONGER-TERM"]["resolved"] == 1, best
 
 
+
+def test_point_in_time_fundamentals_exclude_future_filings():
+    import analyzer_v2_integration as v2
+
+    facts = {
+        "facts": {
+            "us-gaap": {
+                "RevenueFromContractWithCustomerExcludingAssessedTax": {
+                    "units": {
+                        "USD": [
+                            {
+                                "val": 100.0,
+                                "start": "2024-01-01",
+                                "end": "2024-06-30",
+                                "filed": "2024-08-01",
+                                "form": "10-Q",
+                                "fy": 2024,
+                                "fp": "Q2",
+                            },
+                            {
+                                "val": 120.0,
+                                "start": "2025-01-01",
+                                "end": "2025-06-30",
+                                "filed": "2025-08-01",
+                                "form": "10-Q",
+                                "fy": 2025,
+                                "fp": "Q2",
+                            },
+                            {
+                                "val": 999.0,
+                                "start": "2026-01-01",
+                                "end": "2026-06-30",
+                                "filed": "2026-08-01",
+                                "form": "10-Q",
+                                "fy": 2026,
+                                "fp": "Q2",
+                            },
+                        ]
+                    }
+                },
+                "NetIncomeLoss": {
+                    "units": {
+                        "USD": [
+                            {
+                                "val": 12.0,
+                                "start": "2025-01-01",
+                                "end": "2025-06-30",
+                                "filed": "2025-08-01",
+                                "form": "10-Q",
+                                "fy": 2025,
+                                "fp": "Q2",
+                            },
+                            {
+                                "val": 500.0,
+                                "start": "2026-01-01",
+                                "end": "2026-06-30",
+                                "filed": "2026-08-01",
+                                "form": "10-Q",
+                                "fy": 2026,
+                                "fp": "Q2",
+                            },
+                        ]
+                    }
+                },
+            },
+            "dei": {
+                "EntityCommonStockSharesOutstanding": {
+                    "units": {
+                        "shares": [
+                            {"val": 1000.0, "end": "2024-06-30", "filed": "2024-08-01"},
+                            {"val": 1100.0, "end": "2025-06-30", "filed": "2025-08-01"},
+                            {"val": 9000.0, "end": "2026-06-30", "filed": "2026-08-01"},
+                        ]
+                    }
+                }
+            },
+        }
+    }
+
+    result = v2._fundamental_snapshot(facts, as_of="2025-12-31")
+    assert result["revenue_latest"] == 120.0, result
+    assert result["revenue_yoy_pct"] == 20.0, result
+    assert result["net_income_latest"] == 12.0, result
+    assert result["shares_change_yoy_pct"] == 10.0, result
+
+
+def test_shared_timeframe_horizon_weights_match_live_formula():
+    import analyzer_v2_integration as v2
+
+    swing, long_term = v2._timeframe_horizon_scores(
+        trend_score=70.0,
+        stair_score=60.0,
+        history_score=55.0,
+        catalyst_score=50.0,
+        market_score=52.0,
+        fundamental_score=65.0,
+        fundamental_coverage=5,
+    )
+    expected_swing = round(
+        70.0 * 0.34
+        + 60.0 * 0.22
+        + 55.0 * 0.16
+        + 50.0 * 0.12
+        + 52.0 * 0.08
+        + 65.0 * 0.08,
+        1,
+    )
+    expected_long = round(
+        65.0 * 0.58
+        + 70.0 * 0.30
+        + 50.0 * 0.07
+        + 52.0 * 0.05,
+        1,
+    )
+    assert swing == expected_swing, (swing, expected_swing)
+    assert long_term == expected_long, (long_term, expected_long)
+
+    _swing, capped = v2._timeframe_horizon_scores(
+        95.0, 95.0, 95.0, 95.0, 95.0, 95.0, 0
+    )
+    assert capped == 57.0, capped
+
+
 if __name__ == "__main__":
     tests = [
         test_analyzer_prefers_tradier,
@@ -1767,6 +1890,8 @@ if __name__ == "__main__":
         test_prediction_tracker_records_timeframe_scores,
         test_timeframe_trading_day_outcomes_skip_weekends,
         test_timeframe_calibration_uses_matched_horizons,
+        test_point_in_time_fundamentals_exclude_future_filings,
+        test_shared_timeframe_horizon_weights_match_live_formula,
     ]
     for test in tests:
         test()
