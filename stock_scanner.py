@@ -949,9 +949,8 @@ def scanner_action_signal(c, now_et=None, *, use_behavior=False):
     very_near_high = from_high is not None and from_high <= 1.25
     execution_ok = spread is None or spread <= 2.0
 
-    # Behavior confirmation can improve timing, but it does not promote a
-    # merely B-grade setup all the way to ENTRY READY. Replay shows later-bounce
-    # structures can be explosive while still carrying meaningful downside.
+    # Behavior-aware promotions remain research-only. Replay showed these
+    # structures can be explosive without reliably improving trade quality.
     if (
         grade in {"A", "B"}
         and breakout_holding
