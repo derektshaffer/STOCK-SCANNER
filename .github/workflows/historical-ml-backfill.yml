@@ -97,10 +97,10 @@ jobs:
           legacy = action.get("legacy") or {}
           changes = action.get("paired_changes") or {}
           print("ACTION_CHANGED_N=" + str(changes.get("changed_n", 0)))
-          print("ACTION_CURRENT_ENTRY_READY=" + json.dumps(current.get("entry_ready") or {}, sort_keys=True))
-          print("ACTION_LEGACY_ENTRY_READY=" + json.dumps(legacy.get("entry_ready") or {}, sort_keys=True))
-          print("ACTION_CURRENT_ENTRY_LIFT_PP=" + str(current.get("entry_ready_quality_lift_pp")))
-          print("ACTION_LEGACY_ENTRY_LIFT_PP=" + str(legacy.get("entry_ready_quality_lift_pp")))
+          print("ACTION_BEHAVIOR_ANALYZE_NOW=" + json.dumps(current.get("analyze_now") or {}, sort_keys=True))
+          print("ACTION_SIMPLE_ANALYZE_NOW=" + json.dumps(legacy.get("analyze_now") or {}, sort_keys=True))
+          print("ACTION_BEHAVIOR_ANALYZE_LIFT_PP=" + str(current.get("analyze_now_quality_lift_pp")))
+          print("ACTION_SIMPLE_ANALYZE_LIFT_PP=" + str(legacy.get("analyze_now_quality_lift_pp")))
           print("ACTION_DOWNGRADED_OUTCOMES=" + json.dumps(changes.get("downgraded_outcomes") or {}, sort_keys=True))
           print("ACTION_UPGRADED_OUTCOMES=" + json.dumps(changes.get("upgraded_outcomes") or {}, sort_keys=True))
 
