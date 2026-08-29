@@ -27,6 +27,7 @@ from tradier_live import get_history_bars, get_timesales_bars, post_quotes
 from multi_bounce import bounce_feature_values, detect_bounce_sequence
 from stair_step import detect_stair_step, stair_step_feature_values
 from scanner_behavior import (
+    BEHAVIOR_FEATURE_VERSION,
     intraday_behavior_features,
     multi_session_behavior_features,
 )
@@ -919,6 +920,7 @@ def build_replay_observations(
                         "observation_source": "historical_replay",
                         "replay_version": REPLAY_VERSION,
                         "feature_version": ss.SCANNER_FEATURE_VERSION,
+                        "behavior_feature_version": BEHAVIOR_FEATURE_VERSION,
                         "scan_id": scan_id,
                         "scan_time_et": checkpoint.isoformat(),
                         "rank": rank,
