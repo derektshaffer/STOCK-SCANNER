@@ -32,7 +32,7 @@ from scanner_behavior import (
     multi_session_behavior_features,
 )
 
-REPLAY_VERSION = "historical-scanner-replay-v4.2-trade-quality"
+REPLAY_VERSION = "historical-scanner-replay-v4.3-action-parity"
 ET = ZoneInfo("America/New_York")
 
 DEFAULT_TRADING_DAYS = int(os.environ.get("REPLAY_TRADING_DAYS", "20") or 20)
@@ -702,6 +702,8 @@ def _current_snapshot(ss, symbol, rows, idx, prev_close, avg_daily, day_map, rep
         completed_bars,
         current_price=price,
         atr_pct=None,
+        as_of=checkpoint.astimezone(timezone.utc),
+        completed_only=True,
     )
 
     # Multi-session context built strictly from days before replay_day plus the
@@ -887,6 +889,159 @@ def _future_trade_quality(
     }
 
 
+def _action_outcome_stats(rows):
+    rows = list(rows or [])
+    decisive = [
+        row for row in rows
+        if row.get("trade_quality_decisive")
+    ]
+    target_first = sum(
+        row.get("target_before_stop") is True
+        for row in decisive
+    )
+    returns = [
+        float(row["return_60m_pct"])
+        for row in rows
+        if row.get("return_60m_pct") is not None
+    ]
+    mfe = [
+        float(row["mfe_60m_pct"])
+        for row in rows
+        if row.get("mfe_60m_pct") is not None
+    ]
+    mae = [
+        float(row["mae_60m_pct"])
+        for row in rows
+        if row.get("mae_60m_pct") is not None
+    ]
+    return {
+        "n": len(rows),
+        "decisive_n": len(decisive),
+        "target_first_n": target_first,
+        "stop_first_n": len(decisive) - target_first,
+        "target_before_stop_rate_pct": (
+            round(target_first / len(decisive) * 100.0, 2)
+            if decisive
+            else None
+        ),
+        "hit_3pct_60m_rate_pct": (
+            round(
+                sum((row.get("return_60m_pct") or 0) >= 3.0 for row in rows)
+                / len(rows)
+                * 100.0,
+                2,
+            )
+            if rows
+            else None
+        ),
+        "median_return_60m_pct": round(median(returns), 3) if returns else None,
+        "median_mfe_60m_pct": round(median(mfe), 3) if mfe else None,
+        "median_mae_60m_pct": round(median(mae), 3) if mae else None,
+    }
+
+
+def _action_priority(label):
+    return {
+        "NO TRADE": -2,
+        "CAUTION": -1,
+        "WAIT": -1,
+        "WAIT PULLBACK": 0,
+        "WATCH": 1,
+        "EXTENDED WATCH": 1,
+        "BOUNCE WATCH": 2,
+        "BREAKOUT WATCH": 2,
+        "ENTRY READY": 3,
+    }.get(str(label or "").upper(), 0)
+
+
+def _action_system_summary(observations, label_key):
+    groups = defaultdict(list)
+    for row in observations:
+        groups[str(row.get(label_key) or "UNKNOWN")].append(row)
+
+    entry = groups.get("ENTRY READY", [])
+    non_entry = [
+        row for row in observations
+        if str(row.get(label_key) or "") != "ENTRY READY"
+    ]
+    entry_stats = _action_outcome_stats(entry)
+    non_entry_stats = _action_outcome_stats(non_entry)
+    entry_rate = entry_stats.get("target_before_stop_rate_pct")
+    non_entry_rate = non_entry_stats.get("target_before_stop_rate_pct")
+
+    return {
+        "by_label": {
+            label: _action_outcome_stats(rows)
+            for label, rows in sorted(groups.items())
+        },
+        "entry_ready": entry_stats,
+        "not_entry_ready": non_entry_stats,
+        "entry_ready_quality_lift_pp": (
+            round(entry_rate - non_entry_rate, 2)
+            if entry_rate is not None and non_entry_rate is not None
+            else None
+        ),
+        "entry_ready_share_pct": (
+            round(len(entry) / len(observations) * 100.0, 2)
+            if observations
+            else None
+        ),
+    }
+
+
+def _action_benchmark(observations):
+    changed = [
+        row for row in observations
+        if row.get("behavior_action_label") != row.get("legacy_action_label")
+    ]
+    upgraded = [
+        row for row in changed
+        if _action_priority(row.get("behavior_action_label"))
+        > _action_priority(row.get("legacy_action_label"))
+    ]
+    downgraded = [
+        row for row in changed
+        if _action_priority(row.get("behavior_action_label"))
+        < _action_priority(row.get("legacy_action_label"))
+    ]
+    neutral_change = [
+        row for row in changed
+        if _action_priority(row.get("behavior_action_label"))
+        == _action_priority(row.get("legacy_action_label"))
+    ]
+    return {
+        "comparison": "current behavior-aware ACTION vs simpler pre-behavior ACTION",
+        "observations": len(observations),
+        "current": _action_system_summary(
+            observations,
+            "behavior_action_label",
+        ),
+        "legacy": _action_system_summary(
+            observations,
+            "legacy_action_label",
+        ),
+        "paired_changes": {
+            "changed_n": len(changed),
+            "changed_pct": (
+                round(len(changed) / len(observations) * 100.0, 2)
+                if observations
+                else None
+            ),
+            "upgraded_n": len(upgraded),
+            "downgraded_n": len(downgraded),
+            "neutral_label_change_n": len(neutral_change),
+            "upgraded_outcomes": _action_outcome_stats(upgraded),
+            "downgraded_outcomes": _action_outcome_stats(downgraded),
+            "neutral_change_outcomes": _action_outcome_stats(neutral_change),
+        },
+        "limitations": [
+            "Historical bid/ask spread is not reconstructed, so both action systems are compared without historical spread warnings.",
+            "Historical catalysts/news are not reconstructed; missing news is treated as neutral for both systems.",
+            "Both systems see identical causal price, volume, VWAP, bounce, breakout and stair-step information at each checkpoint.",
+        ],
+    }
+
+
 def build_replay_observations(
     ss,
     daily_index,
@@ -982,6 +1137,23 @@ def build_replay_observations(
                     symbol_index.get(checkpoint_minute - 5, -1),
                     entry_price,
                 )
+
+                action_row = dict(snap)
+                action_row["news_bonus"] = 0.0
+                action_row["tradability_warnings"] = []
+                action_row["warning_count"] = 0
+                ss.assign_setup_grade(action_row, checkpoint)
+                behavior_action = ss.scanner_action_signal(
+                    action_row,
+                    checkpoint,
+                    use_behavior=True,
+                )
+                legacy_action = ss.scanner_action_signal(
+                    action_row,
+                    checkpoint,
+                    use_behavior=False,
+                )
+
                 observations.append(
                     {
                         **quality,
@@ -1019,6 +1191,13 @@ def build_replay_observations(
                         "ml_status": "historical_replay",
                         "setup_grade": None,
                         "setup_label": "HISTORICAL REPLAY",
+                        "benchmark_setup_grade": action_row.get("setup_grade"),
+                        "behavior_action_label": behavior_action.get("label"),
+                        "behavior_action_tier": behavior_action.get("tier"),
+                        "behavior_action_reason": behavior_action.get("reason"),
+                        "legacy_action_label": legacy_action.get("label"),
+                        "legacy_action_tier": legacy_action.get("tier"),
+                        "legacy_action_reason": legacy_action.get("reason"),
                         "alert_tier": None,
                         "alert_ready": False,
                         "passed_base_filters": snap[
@@ -1271,6 +1450,7 @@ def main():
         row.get("trade_quality_barrier") == "neither"
         for row in observations
     )
+    action_benchmark = _action_benchmark(observations)
 
     payload = {
         "schema_version": 2,
@@ -1315,6 +1495,7 @@ def main():
                 if quality_decisive
                 else None
             ),
+            "action_benchmark": action_benchmark,
         },
         "observations": observations,
     }
@@ -1328,6 +1509,7 @@ def main():
         f"quality_decisive={len(quality_decisive)} "
         f"target_first={quality_target_first} stop_first={quality_stop_first}"
     )
+    print("ACTION_BENCHMARK=" + json.dumps(action_benchmark, sort_keys=True))
 
 
 if __name__ == "__main__":
