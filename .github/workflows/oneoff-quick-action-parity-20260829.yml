@@ -1,0 +1,49 @@
+name: One-Off Quick ACTION Parity
+
+on:
+  push:
+    branches:
+      - experiment/quick-action-parity-20260829
+    paths:
+      - ".github/workflows/oneoff-quick-action-parity-20260829.yml"
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run quick causal ACTION replay
+        env:
+          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+          ALPACA_LIVE_FEED: ${{ secrets.ALPACA_LIVE_FEED }}
+          TRADIER_ACCESS_TOKEN: ${{ secrets.TRADIER_ACCESS_TOKEN }}
+          TRADIER_TOKEN: ${{ secrets.TRADIER_TOKEN }}
+          REPLAY_TRADING_DAYS: "5"
+          REPLAY_UNIVERSE_SIZE: "150"
+          REPLAY_CANDIDATES_PER_SCAN: "20"
+          REPLAY_SCAN_STEP_MINUTES: "10"
+          REPLAY_OUTPUT_PATH: "outcome_reports/quick_action_parity.json"
+        run: python historical_scanner_replay.py
+      - name: Print paired ACTION result
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=json.loads(Path("outcome_reports/quick_action_parity.json").read_text())
+          b=(p.get("summary") or {}).get("action_benchmark") or {}
+          print("QUICK_ACTION_BENCHMARK=" + json.dumps(b, sort_keys=True))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: quick-action-parity-result
+          path: outcome_reports/quick_action_parity.json
+          retention-days: 7
