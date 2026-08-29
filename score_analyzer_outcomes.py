@@ -16,6 +16,7 @@ OUTCOME_DATE = os.environ.get("OUTCOME_DATE", "").strip()
 OUT_DIR = Path(os.environ.get("ANALYZER_OUTCOME_DIR", "analyzer_outcomes"))
 ANALYZER_FEATURE_VERSION = "analyzer-features-v6-sequence-regimes"
 DECISION_SCORE_VERSION = "decision-v2.6-sequence-regimes"
+TIMEFRAME_SCORE_VERSION = "timeframe-fit-v1"
 
 
 def _headers():
@@ -262,6 +263,129 @@ def _resolve_rows(rows, day):
     return rows
 
 
+
+def _fetch_daily_bars(symbols, start, end):
+    """Fetch consolidated daily bars in batches to keep the nightly sweep cheap."""
+    symbols = sorted({str(symbol).upper().strip() for symbol in symbols if symbol})
+    result = {symbol: [] for symbol in symbols}
+    for offset in range(0, len(symbols), 40):
+        chunk = symbols[offset:offset + 40]
+        if not chunk:
+            continue
+        page_token = None
+        while True:
+            q = {
+                "symbols": ",".join(chunk),
+                "timeframe": "1Day",
+                "start": _iso(start),
+                "end": _iso(end),
+                "limit": 10000,
+                "adjustment": "raw",
+                "feed": "sip",
+                "sort": "asc",
+            }
+            if page_token:
+                q["page_token"] = page_token
+            payload = _request_json(
+                f"{DATA_BASE}/v2/stocks/bars?{urllib.parse.urlencode(q)}"
+            )
+            for symbol, bars in (payload.get("bars") or {}).items():
+                result.setdefault(str(symbol).upper(), []).extend(bars or [])
+            page_token = payload.get("next_page_token")
+            if not page_token:
+                break
+    return result
+
+
+def _daily_bar_date(bar):
+    dt = _bar_dt(bar)
+    if dt is None:
+        return None
+    return dt.astimezone(ET).date()
+
+
+def _resolve_trading_day_returns(row, daily_bars):
+    created = _parse_dt(row.get("timestamp"))
+    price = _num(row.get("price"))
+    if created is None or price is None or price <= 0:
+        return False
+    signal_day = created.astimezone(ET).date()
+    future = []
+    for bar in daily_bars or []:
+        bar_day = _daily_bar_date(bar)
+        close = _num(bar.get("c"))
+        if bar_day is not None and bar_day > signal_day and close is not None and close > 0:
+            future.append((bar_day, close))
+    future.sort(key=lambda item: item[0])
+
+    outcomes = row.setdefault("outcomes", {})
+    changed = False
+    for sessions in (1, 3, 5, 20, 60):
+        key = f"return_{sessions}d_pct"
+        if outcomes.get(key) is not None or len(future) < sessions:
+            continue
+        close = future[sessions - 1][1]
+        outcomes[key] = round((close / price - 1.0) * 100.0, 3)
+        outcomes[f"resolved_{sessions}d"] = True
+        changed = True
+    return changed
+
+
+def _resolve_multiday_history():
+    """Backfill due swing/longer-term outcomes across recent prediction files."""
+    if not OUT_DIR.exists():
+        return 0
+    paths = sorted(OUT_DIR.glob("predictions_*.json"))[-100:]
+    payloads = {}
+    pending = []
+    earliest = None
+    for path in paths:
+        try:
+            rows = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        if not isinstance(rows, list):
+            continue
+        payloads[path] = rows
+        for row in rows:
+            if row.get("timeframe_score_version") != TIMEFRAME_SCORE_VERSION:
+                continue
+            outcomes = row.get("outcomes") or {}
+            if all(outcomes.get(f"return_{sessions}d_pct") is not None for sessions in (1, 3, 5, 20, 60)):
+                continue
+            created = _parse_dt(row.get("timestamp"))
+            symbol = str(row.get("symbol") or "").upper().strip()
+            if created is None or not symbol:
+                continue
+            pending.append((path, row))
+            earliest = created if earliest is None else min(earliest, created)
+
+    if not pending or earliest is None:
+        return 0
+
+    symbols = {str(row.get("symbol") or "").upper().strip() for _path, row in pending}
+    end = datetime.now(timezone.utc)
+    bars_by_symbol = _fetch_daily_bars(
+        symbols,
+        earliest - timedelta(days=3),
+        end,
+    )
+
+    changed_paths = set()
+    resolved_fields = 0
+    for path, row in pending:
+        before = len(row.get("outcomes") or {})
+        symbol = str(row.get("symbol") or "").upper().strip()
+        if _resolve_trading_day_returns(row, bars_by_symbol.get(symbol) or []):
+            changed_paths.add(path)
+            after = len(row.get("outcomes") or {})
+            resolved_fields += max(0, after - before)
+
+    for path in changed_paths:
+        path.write_text(json.dumps(payloads[path], indent=2), encoding="utf-8")
+    return resolved_fields
+
+
 def _bucket(value):
     value = _num(value)
     if value is None:
@@ -488,6 +612,87 @@ def _mature_bounce_failure_calibration(rows):
     }
 
 
+
+def _timeframe_calibrate(rows, score_field, outcome_field):
+    groups = {}
+    for row in rows:
+        if row.get("timeframe_score_version") != TIMEFRAME_SCORE_VERSION:
+            continue
+        bucket = _bucket(row.get(score_field))
+        value = _num((row.get("outcomes") or {}).get(outcome_field))
+        if bucket is None or value is None:
+            continue
+        g = groups.setdefault(bucket, [])
+        g.append(value)
+    out = {}
+    for bucket, values in groups.items():
+        out[bucket] = {
+            "n": len(values),
+            "higher_rate": round(sum(value > 0 for value in values) / len(values) * 100.0, 1),
+            "avg_return_pct": round(sum(values) / len(values), 3),
+            "median_return_pct": round(statistics.median(values), 3),
+        }
+    return out
+
+
+def _timeframe_best_fit_calibration(rows):
+    specs = {
+        "INTRADAY": ("return_60m_pct", "60m"),
+        "SWING": ("return_5d_pct", "5 trading days"),
+        "LONGER-TERM": ("return_20d_pct", "20 trading days"),
+    }
+    out = {}
+    for fit, (field, horizon) in specs.items():
+        selected = [
+            row for row in rows
+            if row.get("timeframe_score_version") == TIMEFRAME_SCORE_VERSION
+            and row.get("timeframe_best_fit") == fit
+        ]
+        values = [
+            _num((row.get("outcomes") or {}).get(field))
+            for row in selected
+        ]
+        values = [value for value in values if value is not None]
+        out[fit] = {
+            "signals": len(selected),
+            "resolved": len(values),
+            "horizon": horizon,
+            "higher_rate": (
+                round(sum(value > 0 for value in values) / len(values) * 100.0, 1)
+                if values else None
+            ),
+            "avg_return_pct": (
+                round(sum(values) / len(values), 3) if values else None
+            ),
+            "median_return_pct": (
+                round(statistics.median(values), 3) if values else None
+            ),
+        }
+    return out
+
+
+def _timeframe_learning_progress(rows):
+    timeframe_rows = [
+        row for row in rows
+        if row.get("timeframe_score_version") == TIMEFRAME_SCORE_VERSION
+    ]
+    counts = {
+        "intraday": sum(
+            _num((row.get("outcomes") or {}).get("return_60m_pct")) is not None
+            for row in timeframe_rows
+        ),
+        "swing": sum(
+            _num((row.get("outcomes") or {}).get("return_5d_pct")) is not None
+            for row in timeframe_rows
+        ),
+        "long_term": sum(
+            _num((row.get("outcomes") or {}).get("return_20d_pct")) is not None
+            for row in timeframe_rows
+        ),
+    }
+    return {key: _calibration_stage(value) for key, value in counts.items()}
+
+
 def _write_calibration():
     all_rows = _all_rows()
     feature_rows = [
@@ -533,9 +738,10 @@ def _write_calibration():
     ]
 
     payload = {
-        "schema_version": 3,
+        "schema_version": 4,
         "feature_version": ANALYZER_FEATURE_VERSION,
         "decision_score_version": DECISION_SCORE_VERSION,
+        "timeframe_score_version": TIMEFRAME_SCORE_VERSION,
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
         "prediction_rows": len(rows),
         "legacy_prediction_rows_excluded": legacy_rows_excluded,
@@ -548,6 +754,25 @@ def _write_calibration():
         "potential_calibration": _calibrate(calibration_rows, "potential_score"),
         "entry_calibration": _calibrate(calibration_rows, "entry_readiness"),
         "evidence_calibration": _calibrate(calibration_rows, "evidence_strength"),
+        "timeframe_calibration": {
+            "intraday_60m": _timeframe_calibrate(
+                calibration_rows, "timeframe_intraday_score", "return_60m_pct"
+            ),
+            "swing_3d": _timeframe_calibrate(
+                calibration_rows, "timeframe_swing_score", "return_3d_pct"
+            ),
+            "swing_5d": _timeframe_calibrate(
+                calibration_rows, "timeframe_swing_score", "return_5d_pct"
+            ),
+            "long_term_20d": _timeframe_calibrate(
+                calibration_rows, "timeframe_long_term_score", "return_20d_pct"
+            ),
+            "long_term_60d": _timeframe_calibrate(
+                calibration_rows, "timeframe_long_term_score", "return_60d_pct"
+            ),
+        },
+        "timeframe_best_fit_calibration": _timeframe_best_fit_calibration(calibration_rows),
+        "timeframe_learning_progress": _timeframe_learning_progress(calibration_rows),
         "target_before_stop_rate": (
             round(len(target_wins) / len(touches) * 100.0, 1)
             if touches else None
@@ -596,6 +821,10 @@ def main():
             print(f"Scored Analyzer predictions: {path}")
     else:
         print(f"No Analyzer prediction file for {day}; calibration will still rebuild.")
+
+    resolved_multiday = _resolve_multiday_history()
+    if resolved_multiday:
+        print(f"Resolved {resolved_multiday} timeframe outcome fields across recent history.")
 
     _write_calibration()
 
