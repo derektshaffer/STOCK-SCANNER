@@ -15,6 +15,7 @@ BUCKET_MINUTES = 5
 ET = ZoneInfo("America/New_York")
 ANALYZER_FEATURE_VERSION = "analyzer-features-v6-sequence-regimes"
 DECISION_SCORE_VERSION = "decision-v2.6-sequence-regimes"
+TIMEFRAME_SCORE_VERSION = "timeframe-fit-v1"
 
 GITHUB_TOKEN = (
     os.environ.get("ANALYZER_GITHUB_TOKEN", "").strip()
@@ -274,6 +275,8 @@ def record_prediction(metrics, now=None):
     repeat_plan = plan.get("repeat_bounce") or {}
     models = ml.get("models") or {}
     scenarios = (v2.get("full_spectrum") or {}).get("scenarios") or {}
+    timeframe = v2.get("timeframe_analysis") or {}
+    daily_trend = timeframe.get("daily_trend") or {}
 
     row = {
         "id": f"{key}:{len(rows)+1}",
@@ -313,6 +316,20 @@ def record_prediction(metrics, now=None):
         "potential_score": _num(v2.get("potential_score")),
         "entry_readiness": _num(v2.get("entry_readiness")),
         "evidence_strength": _num(v2.get("evidence_strength")),
+        # Timeframe-fit scores are logged separately from the live trade-plan
+        # scores so they can be validated before they are ever allowed to
+        # influence production decisions.
+        "timeframe_score_version": timeframe.get("version"),
+        "timeframe_best_fit": timeframe.get("best_fit"),
+        "timeframe_intraday_score": _num((timeframe.get("scores") or {}).get("intraday")),
+        "timeframe_swing_score": _num((timeframe.get("scores") or {}).get("swing")),
+        "timeframe_long_term_score": _num((timeframe.get("scores") or {}).get("long_term")),
+        "timeframe_fundamental_quality_score": _num(timeframe.get("fundamental_quality_score")),
+        "timeframe_fundamental_coverage_count": int(timeframe.get("fundamental_coverage_count") or 0),
+        "timeframe_trend_score": _num(daily_trend.get("trend_score")),
+        "timeframe_return_20d_at_signal_pct": _num(daily_trend.get("return_20d_pct")),
+        "timeframe_return_60d_at_signal_pct": _num(daily_trend.get("return_60d_pct")),
+        "timeframe_return_120d_at_signal_pct": _num(daily_trend.get("return_120d_pct")),
         "entry_low": _num(selected.get("entry_low")),
         "entry_high": _num(selected.get("entry_high")),
         "target1": _num(selected.get("target1")),
@@ -482,6 +499,41 @@ def _window_excursions(bars, created, price, minutes):
     return mfe, mae
 
 
+
+def _daily_bar_date(bar):
+    dt = _bar_dt(bar)
+    if dt is None:
+        return None
+    return dt.astimezone(ET).date()
+
+
+def _resolve_trading_day_returns(row, daily_bars):
+    """Resolve 1/3/5/20/60 trading-day closes after the signal date."""
+    created = _parse_dt(row.get("timestamp"))
+    price = _num(row.get("price"))
+    if created is None or price is None or price <= 0:
+        return False
+    signal_day = created.astimezone(ET).date()
+    future = []
+    for bar in daily_bars or []:
+        bar_day = _daily_bar_date(bar)
+        close = _num(bar.get("c"))
+        if bar_day is not None and bar_day > signal_day and close is not None and close > 0:
+            future.append((bar_day, close))
+    future.sort(key=lambda item: item[0])
+    outcomes = row.setdefault("outcomes", {})
+    changed = False
+    for sessions in (1, 3, 5, 20, 60):
+        key = f"return_{sessions}d_pct"
+        if key in outcomes or len(future) < sessions:
+            continue
+        close = future[sessions - 1][1]
+        outcomes[key] = round((close / price - 1.0) * 100.0, 3)
+        outcomes[f"resolved_{sessions}d"] = True
+        changed = True
+    return changed
+
+
 def resolve_symbol_predictions(sa, symbol, now=None, current_metrics=None):
     """Resolve older predictions opportunistically using delayed SIP bars.
 
@@ -598,6 +650,33 @@ def resolve_symbol_predictions(sa, symbol, now=None, current_metrics=None):
                     if mfe is not None:
                         outcomes[rise_key]=round(mfe,3)
                         changed=True
+
+    # Resolve the slower timeframe labels opportunistically whenever this
+    # ticker is opened again. The nightly scorer performs the durable sweep;
+    # this path makes the UI learn sooner without waiting for that job.
+    timeframe_pending = [
+        row for row in pending
+        if row.get("timeframe_score_version") == TIMEFRAME_SCORE_VERSION
+        and any(
+            (row.get("outcomes") or {}).get(f"return_{sessions}d_pct") is None
+            for sessions in (1, 3, 5, 20, 60)
+        )
+    ]
+    if timeframe_pending:
+        earliest_tf = min(_parse_dt(row["timestamp"]) for row in timeframe_pending)
+        try:
+            daily_bars, _daily_source = sa.try_sip_delayed_bars(
+                symbol,
+                "1Day",
+                earliest_tf - timedelta(days=3),
+                safe_end,
+                500,
+            )
+        except Exception:
+            daily_bars = []
+        for row in timeframe_pending:
+            if _resolve_trading_day_returns(row, daily_bars):
+                changed = True
 
     if changed:
         _save(rows)
@@ -751,6 +830,99 @@ def _bucket_calibration(rows, score_field):
     return out
 
 
+
+def _timeframe_bucket_calibration(rows, score_field, outcome_field):
+    groups = {}
+    for row in rows:
+        if row.get("timeframe_score_version") != TIMEFRAME_SCORE_VERSION:
+            continue
+        value = _num((row.get("outcomes") or {}).get(outcome_field))
+        bucket = _score_bucket(row.get(score_field))
+        if value is None or bucket is None:
+            continue
+        g = groups.setdefault(bucket, {"n": 0, "wins": 0, "returns": []})
+        g["n"] += 1
+        g["wins"] += int(value > 0)
+        g["returns"].append(value)
+
+    out = {}
+    for bucket, g in groups.items():
+        out[bucket] = {
+            "n": g["n"],
+            "higher_rate": round(g["wins"] / g["n"] * 100.0, 1) if g["n"] else None,
+            "avg_return_pct": (
+                round(sum(g["returns"]) / len(g["returns"]), 3)
+                if g["returns"] else None
+            ),
+        }
+    return out
+
+
+def _timeframe_best_fit_summary(rows):
+    specs = {
+        "INTRADAY": ("return_60m_pct", "60m"),
+        "SWING": ("return_5d_pct", "5 trading days"),
+        "LONGER-TERM": ("return_20d_pct", "20 trading days"),
+    }
+    out = {}
+    for fit, (field, horizon) in specs.items():
+        selected = [
+            row for row in rows
+            if row.get("timeframe_score_version") == TIMEFRAME_SCORE_VERSION
+            and row.get("timeframe_best_fit") == fit
+        ]
+        values = [
+            _num((row.get("outcomes") or {}).get(field))
+            for row in selected
+        ]
+        values = [value for value in values if value is not None]
+        out[fit] = {
+            "signals": len(selected),
+            "resolved": len(values),
+            "horizon": horizon,
+            "higher_rate": (
+                round(sum(value > 0 for value in values) / len(values) * 100.0, 1)
+                if values else None
+            ),
+            "avg_return_pct": (
+                round(sum(values) / len(values), 3) if values else None
+            ),
+        }
+    return out
+
+
+def _timeframe_learning_progress(rows):
+    tf_rows = [
+        row for row in rows
+        if row.get("timeframe_score_version") == TIMEFRAME_SCORE_VERSION
+    ]
+    counts = {
+        "intraday": sum(
+            (row.get("outcomes") or {}).get("return_60m_pct") is not None
+            for row in tf_rows
+        ),
+        "swing": sum(
+            (row.get("outcomes") or {}).get("return_5d_pct") is not None
+            for row in tf_rows
+        ),
+        "long_term": sum(
+            (row.get("outcomes") or {}).get("return_20d_pct") is not None
+            for row in tf_rows
+        ),
+    }
+
+    def stage(n):
+        if n < 30:
+            return {"stage": "COLLECTING", "resolved": n, "next_threshold": 30}
+        if n < 100:
+            return {"stage": "EARLY READ", "resolved": n, "next_threshold": 100}
+        if n < 300:
+            return {"stage": "USEFUL", "resolved": n, "next_threshold": 300}
+        return {"stage": "STRONGER SAMPLE", "resolved": n, "next_threshold": None}
+
+    return {key: stage(value) for key, value in counts.items()}
+
+
 def _repeat_bounce_summary(rows):
     candidates=[
         row for row in rows
@@ -858,6 +1030,11 @@ def tracker_summary(rows=None, symbol=None, current_metrics=None):
         or durable.get("decision_score_version") != DECISION_SCORE_VERSION
     ):
         durable = {}
+    durable_timeframe = (
+        durable
+        if durable.get("timeframe_score_version") == TIMEFRAME_SCORE_VERSION
+        else {}
+    )
     durable_resolved = int(durable.get("resolved_60m") or 0)
     effective_resolved = max(durable_resolved, len(resolved_60))
     progress = durable.get("calibration_progress")
@@ -920,6 +1097,34 @@ def tracker_summary(rows=None, symbol=None, current_metrics=None):
             or _bucket_calibration(calibration_rows, "entry_readiness")
         ),
         "entry_signal_calibration": durable.get("entry_signal_calibration") or {},
+        "timeframe_calibration": (
+            durable_timeframe.get("timeframe_calibration")
+            or {
+                "intraday_60m": _timeframe_bucket_calibration(
+                    calibration_rows, "timeframe_intraday_score", "return_60m_pct"
+                ),
+                "swing_3d": _timeframe_bucket_calibration(
+                    calibration_rows, "timeframe_swing_score", "return_3d_pct"
+                ),
+                "swing_5d": _timeframe_bucket_calibration(
+                    calibration_rows, "timeframe_swing_score", "return_5d_pct"
+                ),
+                "long_term_20d": _timeframe_bucket_calibration(
+                    calibration_rows, "timeframe_long_term_score", "return_20d_pct"
+                ),
+                "long_term_60d": _timeframe_bucket_calibration(
+                    calibration_rows, "timeframe_long_term_score", "return_60d_pct"
+                ),
+            }
+        ),
+        "timeframe_best_fit_calibration": (
+            durable_timeframe.get("timeframe_best_fit_calibration")
+            or _timeframe_best_fit_summary(calibration_rows)
+        ),
+        "timeframe_learning_progress": (
+            durable_timeframe.get("timeframe_learning_progress")
+            or _timeframe_learning_progress(calibration_rows)
+        ),
         "repeat_bounce_calibration": (
             durable.get("repeat_bounce_calibration")
             or _repeat_bounce_summary(calibration_rows)

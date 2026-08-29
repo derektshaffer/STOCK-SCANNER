@@ -445,6 +445,36 @@ def render_v2_decision(st, metrics):
                 f"across n={int(entry_signal_cal.get('resolved_60m') or 0)}."
             )
 
+        tf_progress = tracking.get("timeframe_learning_progress") or {}
+        tf_best = tracking.get("timeframe_best_fit_calibration") or {}
+        if tf_progress or tf_best:
+            st.markdown("#### Timeframe learning")
+            _ip = tf_progress.get("intraday") or {}
+            _sp = tf_progress.get("swing") or {}
+            _lp = tf_progress.get("long_term") or {}
+            st.write(
+                "**Resolved outcome samples:** "
+                f"Intraday 60m **{int(_ip.get('resolved') or 0)}** · "
+                f"Swing 5-day **{int(_sp.get('resolved') or 0)}** · "
+                f"Longer-term 20-day **{int(_lp.get('resolved') or 0)}**"
+            )
+            current_fit = str((v2.get("timeframe_analysis") or {}).get("best_fit") or "")
+            fit_stats = tf_best.get(current_fit) or {}
+            if int(fit_stats.get("resolved") or 0) >= 5:
+                st.write(
+                    f"**{current_fit} historical fit result:** "
+                    f"higher {_fmt_pct(fit_stats.get('higher_rate'))} · "
+                    f"avg return {_fmt_pct(fit_stats.get('avg_return_pct'))} · "
+                    f"n={int(fit_stats.get('resolved') or 0)} over {fit_stats.get('horizon') or 'matched horizon'}."
+                )
+            else:
+                st.caption(
+                    "The app is now recording Intraday, Swing, and Longer-term "
+                    "fit scores against their actual future outcomes. These "
+                    "results are tracking-only until enough independent samples "
+                    "exist to validate changing the score weights."
+                )
+
         repeat_cal = tracking.get("repeat_bounce_calibration") or {}
         if int(repeat_cal.get("entry_signals") or 0) > 0:
             st.write(
