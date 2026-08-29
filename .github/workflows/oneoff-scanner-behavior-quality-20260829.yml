@@ -1,0 +1,47 @@
+name: One-Off Scanner Behavior Quality Benchmark
+
+on:
+  push:
+    branches:
+      - experiment/scanner-behavior-quality-20260829
+    paths:
+      - ".github/workflows/oneoff-scanner-behavior-quality-20260829.yml"
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build causal replay with trade-quality paths
+        env:
+          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+          ALPACA_LIVE_FEED: ${{ secrets.ALPACA_LIVE_FEED }}
+          TRADIER_ACCESS_TOKEN: ${{ secrets.TRADIER_ACCESS_TOKEN }}
+          TRADIER_TOKEN: ${{ secrets.TRADIER_TOKEN }}
+          REPLAY_TRADING_DAYS: "20"
+          REPLAY_UNIVERSE_SIZE: "300"
+          REPLAY_CANDIDATES_PER_SCAN: "20"
+          REPLAY_SCAN_STEP_MINUTES: "10"
+          REPLAY_OUTPUT_PATH: "outcome_reports/outcomes_behavior_replay.json"
+        run: python historical_scanner_replay.py
+      - name: Benchmark continuation versus trade-quality targets
+        run: |
+          python -m pip install --disable-pip-version-check -q "xgboost>=2.1" "numpy>=1.26"
+          python oneoff_scanner_behavior_benchmark.py
+      - name: Upload benchmark
+        uses: actions/upload-artifact@v4
+        with:
+          name: scanner-behavior-quality-benchmark
+          path: |
+            outcome_reports/outcomes_behavior_replay.json
+            outcome_reports/scanner_behavior_benchmark.json
+          retention-days: 7
