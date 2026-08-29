@@ -771,7 +771,7 @@ def test_scanner_action_failed_breakout_forces_wait():
         "breakout_holding": 0.0,
         "volume_accelerating": 1.0,
     })
-    action = ss.scanner_action_signal(row)
+    action = ss.scanner_action_signal(row, use_behavior=True)
     assert action.get("label") == "WAIT", action
     assert action.get("tier") == "caution", action
     assert "breakout failed" in str(action.get("reason") or "").lower(), action
@@ -822,7 +822,7 @@ def test_scanner_action_b_grade_vwap_reclaim_stays_bounce_watch():
         "volume_accelerating": 0.0,
         "breakout_holding": 0.0,
     })
-    action = ss.scanner_action_signal(row)
+    action = ss.scanner_action_signal(row, use_behavior=True)
     assert action.get("label") == "BOUNCE WATCH", action
     assert action.get("tier") == "breakout", action
     assert "still b-grade" in str(action.get("reason") or "").lower(), action
@@ -840,7 +840,7 @@ def test_scanner_action_a_grade_vwap_reclaim_can_be_analyze_now():
         "volume_accelerating": 0.0,
         "breakout_holding": 0.0,
     })
-    action = ss.scanner_action_signal(row)
+    action = ss.scanner_action_signal(row, use_behavior=True)
     assert action.get("label") == "ANALYZE NOW", action
     assert action.get("tier") == "watch", action
     assert "a-grade pullback" in str(action.get("reason") or "").lower(), action
@@ -856,7 +856,7 @@ def test_scanner_action_active_pullback_waits_for_confirmation():
         "vwap_reclaim": 0.0,
         "breakout_holding": 0.0,
     })
-    action = ss.scanner_action_signal(row)
+    action = ss.scanner_action_signal(row, use_behavior=True)
     assert action.get("label") == "WAIT PULLBACK", action
     assert action.get("tier") == "pullback", action
     assert "still in a pullback" in str(action.get("reason") or "").lower(), action
@@ -876,7 +876,7 @@ def test_scanner_action_behavior_never_overrides_reject():
         "breakout_holding": 1.0,
         "volume_accelerating": 1.0,
     })
-    action = ss.scanner_action_signal(row)
+    action = ss.scanner_action_signal(row, use_behavior=True)
     assert action.get("label") == "NO TRADE", action
 
 
