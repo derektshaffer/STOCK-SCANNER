@@ -950,7 +950,7 @@ def _action_priority(label):
         "EXTENDED WATCH": 1,
         "BOUNCE WATCH": 2,
         "BREAKOUT WATCH": 2,
-        "ENTRY READY": 3,
+        "ANALYZE NOW": 3,
     }.get(str(label or "").upper(), 0)
 
 
@@ -959,10 +959,10 @@ def _action_system_summary(observations, label_key):
     for row in observations:
         groups[str(row.get(label_key) or "UNKNOWN")].append(row)
 
-    entry = groups.get("ENTRY READY", [])
+    entry = groups.get("ANALYZE NOW", [])
     non_entry = [
         row for row in observations
-        if str(row.get(label_key) or "") != "ENTRY READY"
+        if str(row.get(label_key) or "") != "ANALYZE NOW"
     ]
     entry_stats = _action_outcome_stats(entry)
     non_entry_stats = _action_outcome_stats(non_entry)
@@ -974,14 +974,14 @@ def _action_system_summary(observations, label_key):
             label: _action_outcome_stats(rows)
             for label, rows in sorted(groups.items())
         },
-        "entry_ready": entry_stats,
+        "analyze_now": entry_stats,
         "not_entry_ready": non_entry_stats,
-        "entry_ready_quality_lift_pp": (
+        "analyze_now_quality_lift_pp": (
             round(entry_rate - non_entry_rate, 2)
             if entry_rate is not None and non_entry_rate is not None
             else None
         ),
-        "entry_ready_share_pct": (
+        "analyze_now_share_pct": (
             round(len(entry) / len(observations) * 100.0, 2)
             if observations
             else None

@@ -821,7 +821,7 @@ def assign_setup_grades(rows, now_et):
 
 
 def scanner_action_signal(c, now_et=None, *, use_behavior=False):
-    """Compact scanner-level entry cue; Analyzer remains final confirmation.
+    """Compact scanner-level review cue; Analyzer remains final confirmation.
 
     Behavior-aware overrides remain available for paired research, but are
     disabled by default because the first causal replay did not improve ACTION
@@ -949,9 +949,8 @@ def scanner_action_signal(c, now_et=None, *, use_behavior=False):
     very_near_high = from_high is not None and from_high <= 1.25
     execution_ok = spread is None or spread <= 2.0
 
-    # Behavior confirmation can improve timing, but it does not promote a
-    # merely B-grade setup all the way to ENTRY READY. Replay shows later-bounce
-    # structures can be explosive while still carrying meaningful downside.
+    # Behavior-aware promotions remain research-only. Replay showed these
+    # structures can be explosive without reliably improving trade quality.
     if (
         grade in {"A", "B"}
         and breakout_holding
@@ -961,9 +960,9 @@ def scanner_action_signal(c, now_et=None, *, use_behavior=False):
     ):
         if grade == "A":
             return {
-                "label": "ENTRY READY",
-                "tier": "ready",
-                "reason": "The A-grade breakout is holding above prior resistance with accelerating volume and VWAP support; confirm the exact entry and stop in Analyzer.",
+                "label": "ANALYZE NOW",
+                "tier": "watch",
+                "reason": "The A-grade breakout deserves immediate review, but replay does not support an automatic entry call; confirm the exact entry and stop in Analyzer.",
             }
         return {
             "label": "BREAKOUT WATCH",
@@ -981,9 +980,9 @@ def scanner_action_signal(c, now_et=None, *, use_behavior=False):
     ):
         if grade == "A":
             return {
-                "label": "ENTRY READY",
-                "tier": "ready",
-                "reason": "The A-grade pullback/bounce has reclaimed VWAP with constructive recovery; confirm the entry zone in Analyzer.",
+                "label": "ANALYZE NOW",
+                "tier": "watch",
+                "reason": "The A-grade pullback/bounce deserves immediate review, but replay does not support an automatic entry call; confirm the entry zone in Analyzer.",
             }
         return {
             "label": "BOUNCE WATCH",
@@ -1010,9 +1009,9 @@ def scanner_action_signal(c, now_et=None, *, use_behavior=False):
                 "reason": "High-quality momentum is pressing the session high; confirm the breakout in Analyzer.",
             }
         return {
-            "label": "ENTRY READY",
-            "tier": "ready",
-            "reason": "Scanner-level momentum, participation, VWAP and execution checks are aligned.",
+            "label": "ANALYZE NOW",
+            "tier": "watch",
+            "reason": "Scanner-level momentum, participation, VWAP and execution checks are aligned; open Analyzer now for the actual entry, stop and targets.",
         }
 
     if (

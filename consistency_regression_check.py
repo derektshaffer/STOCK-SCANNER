@@ -229,8 +229,8 @@ def test_scanner_outcome_metadata():
                     "liquidity_source": "tradier_consolidated",
                     "live_quote_source": "tradier_consolidated",
                     "live_intraday_source": "tradier_timesales",
-                    "scanner_action": "ENTRY READY",
-                    "scanner_action_tier": "ready",
+                    "scanner_action": "ANALYZE NOW",
+                    "scanner_action_tier": "watch",
                     "scanner_action_reason": "test action",
                     "volume_pace_display": 2.4,
                     "volume_pace_display_source": "analyzer_aligned_regular",
@@ -247,7 +247,7 @@ def test_scanner_outcome_metadata():
     assert row["live_feed"] == "consolidated", row
     assert row["spread_pct"] == 0.11, row
     assert row["live_quote_source"] == "tradier_consolidated", row
-    assert row["scanner_action"] == "ENTRY READY", row
+    assert row["scanner_action"] == "ANALYZE NOW", row
     assert row["volume_pace_display"] == 2.4, row
 
 
@@ -696,14 +696,14 @@ def test_scanner_action_avoids_chasing_extreme_mover():
     assert action["label"] == "WAIT PULLBACK", action
 
 
-def test_scanner_action_entry_ready_requires_aligned_conditions():
+def test_scanner_action_analyze_now_requires_aligned_conditions():
     os.environ.setdefault("ALPACA_API_KEY", "test-key")
     os.environ.setdefault("ALPACA_SECRET_KEY", "test-secret")
     import stock_scanner as ss
 
     action = ss.scanner_action_signal(_scanner_action_row())
-    assert action["label"] == "ENTRY READY", action
-    assert action["tier"] == "ready", action
+    assert action["label"] == "ANALYZE NOW", action
+    assert action["tier"] == "watch", action
 
 
 def test_scanner_action_breakout_watch_near_high():
@@ -828,7 +828,7 @@ def test_scanner_action_b_grade_vwap_reclaim_stays_bounce_watch():
     assert "still b-grade" in str(action.get("reason") or "").lower(), action
 
 
-def test_scanner_action_a_grade_vwap_reclaim_can_be_entry_ready():
+def test_scanner_action_a_grade_vwap_reclaim_can_be_analyze_now():
     import stock_scanner as ss
 
     row = _scanner_action_behavior_base()
@@ -841,8 +841,8 @@ def test_scanner_action_a_grade_vwap_reclaim_can_be_entry_ready():
         "breakout_holding": 0.0,
     })
     action = ss.scanner_action_signal(row)
-    assert action.get("label") == "ENTRY READY", action
-    assert action.get("tier") == "ready", action
+    assert action.get("label") == "ANALYZE NOW", action
+    assert action.get("tier") == "watch", action
     assert "a-grade pullback" in str(action.get("reason") or "").lower(), action
 
 
@@ -1470,14 +1470,14 @@ if __name__ == "__main__":
         test_analyzer_shared_button_styles_live_in_bootstrap,
         test_scanner_aligned_volume_pace_matches_analyzer_baseline,
         test_scanner_action_avoids_chasing_extreme_mover,
-        test_scanner_action_entry_ready_requires_aligned_conditions,
+        test_scanner_action_analyze_now_requires_aligned_conditions,
         test_scanner_action_breakout_watch_near_high,
         test_scanner_action_reject_stays_no_trade,
         test_scanner_action_failed_breakout_forces_wait,
         test_scanner_action_production_default_ignores_unvalidated_behavior,
         test_scanner_action_legacy_mode_ignores_behavior_state,
         test_scanner_action_b_grade_vwap_reclaim_stays_bounce_watch,
-        test_scanner_action_a_grade_vwap_reclaim_can_be_entry_ready,
+        test_scanner_action_a_grade_vwap_reclaim_can_be_analyze_now,
         test_scanner_action_active_pullback_waits_for_confirmation,
         test_scanner_action_behavior_never_overrides_reject,
         test_scanner_ui_auto_surfaces_validated_ml,
