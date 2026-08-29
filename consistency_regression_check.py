@@ -105,6 +105,10 @@ def test_analyzer_prefers_tradier():
     sa.get_tradier_timesales_bars = (
         lambda symbol, token, start, end, interval="1min", session_filter="all": bars
     )
+    # Keep this regression deterministic on weekends/holidays. The production
+    # helper intentionally filters Time & Sales to today's regular session;
+    # this test is about provider preference, not the calendar.
+    sa._tradier_regular_session_bars = lambda symbol, now: bars
 
     result = sa.analyze("TEST")
     assert result["market_provider"] == "tradier", result
