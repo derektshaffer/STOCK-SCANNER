@@ -30,6 +30,15 @@ try:
 except Exception:
     discover_tradier_candidates = None
 
+try:
+    from scanner_behavior import (
+        intraday_behavior_features,
+        multi_session_behavior_features,
+    )
+except Exception:
+    intraday_behavior_features = None
+    multi_session_behavior_features = None
+
 # ============================================================
 # MOMENTUM STOCK SCANNER - v2.9
 #
