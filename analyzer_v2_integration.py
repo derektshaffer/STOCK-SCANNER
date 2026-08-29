@@ -111,6 +111,231 @@ def _latest_shares_outstanding(facts):
     return value, end
 
 
+
+def _companyfact_rows(facts, tags, unit="USD", require_start=False):
+    root = ((facts.get("facts") or {}).get("us-gaap") or {})
+    rows = []
+    for tag in tags:
+        units = ((root.get(tag) or {}).get("units") or {})
+        for row in units.get(unit, []) or []:
+            value = _num(row.get("val"))
+            if value is None or not row.get("end"):
+                continue
+            if require_start and not row.get("start"):
+                continue
+            form = str(row.get("form") or "")
+            if form and not (
+                form.startswith("10-K")
+                or form.startswith("10-Q")
+                or form in {"20-F", "40-F"}
+            ):
+                continue
+            item = dict(row)
+            item["_tag"] = tag
+            item["_value"] = value
+            rows.append(item)
+    rows.sort(
+        key=lambda row: (str(row.get("end") or ""), str(row.get("filed") or "")),
+        reverse=True,
+    )
+    return rows
+
+
+def _latest_companyfact(facts, tags, unit="USD", require_start=False):
+    rows = _companyfact_rows(facts, tags, unit=unit, require_start=require_start)
+    return (rows[0] if rows else None), rows
+
+
+def _matching_prior_period(rows, latest):
+    if not latest:
+        return None
+    latest_fy = latest.get("fy")
+    latest_fp = str(latest.get("fp") or "")
+    try:
+        prior_fy = int(latest_fy) - 1
+    except Exception:
+        prior_fy = None
+    for row in rows:
+        if row is latest:
+            continue
+        try:
+            row_fy = int(row.get("fy"))
+        except Exception:
+            row_fy = None
+        if prior_fy is not None and row_fy == prior_fy and str(row.get("fp") or "") == latest_fp:
+            return row
+    return None
+
+
+def _matching_period_row(rows, reference):
+    if not reference:
+        return rows[0] if rows else None
+    ref_end = str(reference.get("end") or "")
+    ref_fp = str(reference.get("fp") or "")
+    ref_fy = str(reference.get("fy") or "")
+    for row in rows:
+        if (
+            str(row.get("end") or "") == ref_end
+            and str(row.get("fp") or "") == ref_fp
+            and str(row.get("fy") or "") == ref_fy
+        ):
+            return row
+    return rows[0] if rows else None
+
+
+def _shares_change_yoy_pct(facts):
+    try:
+        rows = (
+            facts.get("facts", {})
+            .get("dei", {})
+            .get("EntityCommonStockSharesOutstanding", {})
+            .get("units", {})
+            .get("shares", [])
+        )
+    except Exception:
+        rows = []
+    cleaned = []
+    for row in rows:
+        value = _num(row.get("val"))
+        end = row.get("end")
+        if value is not None and value > 0 and end:
+            cleaned.append((str(end), value))
+    cleaned.sort(reverse=True)
+    if len(cleaned) < 2:
+        return None
+    latest_end, latest_value = cleaned[0]
+    try:
+        latest_dt = datetime.fromisoformat(latest_end).date()
+    except Exception:
+        return None
+    candidates = []
+    for end, value in cleaned[1:]:
+        try:
+            age = (latest_dt - datetime.fromisoformat(end).date()).days
+        except Exception:
+            continue
+        if 250 <= age <= 500 and value > 0:
+            candidates.append((abs(age - 365), value))
+    if not candidates:
+        return None
+    candidates.sort(key=lambda item: item[0])
+    prior_value = candidates[0][1]
+    return round((latest_value / prior_value - 1.0) * 100.0, 1)
+
+
+def _fundamental_snapshot(facts):
+    revenue_tags = (
+        "RevenueFromContractWithCustomerExcludingAssessedTax",
+        "Revenues",
+        "SalesRevenueNet",
+    )
+    income_tags = ("NetIncomeLoss", "ProfitLoss")
+    cash_tags = (
+        "CashAndCashEquivalentsAtCarryingValue",
+        "CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents",
+    )
+    equity_tags = (
+        "StockholdersEquity",
+        "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest",
+    )
+    total_debt_tags = (
+        "LongTermDebtAndFinanceLeaseObligations",
+        "LongTermDebtAndCapitalLeaseObligations",
+        "LongTermDebt",
+    )
+    current_debt_tags = (
+        "LongTermDebtCurrent",
+        "LongTermDebtAndFinanceLeaseObligationsCurrent",
+        "LongTermDebtAndCapitalLeaseObligationsCurrent",
+    )
+    noncurrent_debt_tags = (
+        "LongTermDebtNoncurrent",
+        "LongTermDebtAndFinanceLeaseObligationsNoncurrent",
+    )
+
+    revenue, revenue_rows = _latest_companyfact(
+        facts, revenue_tags, require_start=True
+    )
+    prior_revenue = _matching_prior_period(revenue_rows, revenue)
+    revenue_value = _num((revenue or {}).get("_value"))
+    prior_revenue_value = _num((prior_revenue or {}).get("_value"))
+    revenue_growth = None
+    if (
+        revenue_value is not None
+        and prior_revenue_value is not None
+        and prior_revenue_value != 0
+    ):
+        revenue_growth = round(
+            (revenue_value / prior_revenue_value - 1.0) * 100.0, 1
+        )
+
+    _income_latest, income_rows = _latest_companyfact(
+        facts, income_tags, require_start=True
+    )
+    income = _matching_period_row(income_rows, revenue)
+    net_income = _num((income or {}).get("_value"))
+    net_margin = None
+    if (
+        revenue
+        and income
+        and str(revenue.get("end") or "") == str(income.get("end") or "")
+        and revenue_value not in (None, 0)
+        and net_income is not None
+    ):
+        net_margin = round(net_income / revenue_value * 100.0, 1)
+
+    cash_row, _ = _latest_companyfact(facts, cash_tags)
+    equity_row, _ = _latest_companyfact(facts, equity_tags)
+    total_debt_row, _ = _latest_companyfact(facts, total_debt_tags)
+    current_debt_row, _ = _latest_companyfact(facts, current_debt_tags)
+    noncurrent_debt_row, _ = _latest_companyfact(facts, noncurrent_debt_tags)
+
+    cash = _num((cash_row or {}).get("_value"))
+    equity = _num((equity_row or {}).get("_value"))
+    debt = _num((total_debt_row or {}).get("_value"))
+    debt_source = "reported total long-term debt" if debt is not None else None
+    if debt is None:
+        current_debt = _num((current_debt_row or {}).get("_value"))
+        noncurrent_debt = _num((noncurrent_debt_row or {}).get("_value"))
+        if current_debt is not None and noncurrent_debt is not None:
+            debt = current_debt + noncurrent_debt
+            debt_source = "current + noncurrent long-term debt"
+
+    cash_to_debt = None
+    if cash is not None and debt is not None and debt > 0:
+        cash_to_debt = round(cash / debt, 2)
+
+    shares_change = _shares_change_yoy_pct(facts)
+    coverage_values = (
+        revenue_value,
+        revenue_growth,
+        net_income,
+        cash,
+        debt,
+        equity,
+        shares_change,
+    )
+    coverage = sum(value is not None for value in coverage_values)
+    status = "ok" if coverage >= 4 else "limited" if coverage else "unavailable"
+
+    return {
+        "status": status,
+        "coverage_count": coverage,
+        "revenue_latest": revenue_value,
+        "revenue_period_end": (revenue or {}).get("end"),
+        "revenue_period": (revenue or {}).get("fp"),
+        "revenue_yoy_pct": revenue_growth,
+        "net_income_latest": net_income,
+        "net_margin_pct": net_margin,
+        "cash_and_equivalents": cash,
+        "long_term_debt": debt,
+        "debt_source": debt_source,
+        "cash_to_debt": cash_to_debt,
+        "stockholders_equity": equity,
+        "shares_change_yoy_pct": shares_change,
+    }
+
+
 def _sector_from_sic(sic):
     try:
         sic = int(sic)
@@ -151,6 +376,7 @@ def _recent_sec_risk(symbol):
         submissions = _sec_submissions(cik, bucket)
         facts = _company_facts(cik, bucket)
         shares, shares_as_of = _latest_shares_outstanding(facts)
+        fundamentals = _fundamental_snapshot(facts)
 
         sic = submissions.get("sic")
         sic_description = submissions.get("sicDescription")
@@ -219,6 +445,7 @@ def _recent_sec_risk(symbol):
             "dilution_risk": dilution,
             "recent_offering_forms": risk_forms[:8],
             "dilution_keywords": sorted(keywords),
+            "fundamentals": fundamentals,
         }
     except Exception as exc:
         return {"status": "unavailable", "error": str(exc)[:140]}
@@ -497,6 +724,370 @@ def _potential_score(metrics, sec, market, catalyst):
     }
     score = sum(components.values())
     return round(_clamp(score), 1), reasons[:6], components
+
+
+
+def _fundamental_quality(sec):
+    fundamentals = sec.get("fundamentals") or {}
+    coverage = int(fundamentals.get("coverage_count") or 0)
+    score = 50.0
+    reasons = []
+    components = {}
+
+    revenue_growth = _num(fundamentals.get("revenue_yoy_pct"))
+    if revenue_growth is not None:
+        if revenue_growth >= 30:
+            points = 15.0
+            reasons.append("reported revenue growth is very strong")
+        elif revenue_growth >= 10:
+            points = 9.0
+            reasons.append("reported revenue growth is positive")
+        elif revenue_growth >= 0:
+            points = 3.0
+        elif revenue_growth <= -25:
+            points = -18.0
+            reasons.append("reported revenue is contracting sharply")
+        elif revenue_growth <= -10:
+            points = -10.0
+            reasons.append("reported revenue is contracting")
+        else:
+            points = -4.0
+        score += points
+        components["revenue_growth"] = points
+
+    net_income = _num(fundamentals.get("net_income_latest"))
+    if net_income is not None:
+        points = 9.0 if net_income > 0 else -8.0
+        score += points
+        components["profitability"] = points
+        reasons.append(
+            "latest comparable filing period is profitable"
+            if net_income > 0
+            else "latest comparable filing period is loss-making"
+        )
+
+    cash_to_debt = _num(fundamentals.get("cash_to_debt"))
+    if cash_to_debt is not None:
+        if cash_to_debt >= 1.5:
+            points = 10.0
+            reasons.append("cash is strong relative to reported long-term debt")
+        elif cash_to_debt >= 0.75:
+            points = 4.0
+        elif cash_to_debt < 0.35:
+            points = -10.0
+            reasons.append("cash is low relative to reported long-term debt")
+        else:
+            points = -4.0
+        score += points
+        components["balance_sheet"] = points
+
+    equity = _num(fundamentals.get("stockholders_equity"))
+    if equity is not None:
+        points = 5.0 if equity > 0 else -12.0
+        score += points
+        components["equity"] = points
+        if equity <= 0:
+            reasons.append("reported stockholders' equity is non-positive")
+
+    shares_change = _num(fundamentals.get("shares_change_yoy_pct"))
+    if shares_change is not None:
+        if shares_change >= 25:
+            points = -16.0
+            reasons.append("shares outstanding have increased materially year over year")
+        elif shares_change >= 10:
+            points = -9.0
+            reasons.append("shares outstanding have increased year over year")
+        elif shares_change <= 2:
+            points = 3.0
+        else:
+            points = -2.0
+        score += points
+        components["share_count_change"] = points
+
+    dilution = str(sec.get("dilution_risk") or "")
+    if dilution == "HIGH":
+        points = -18.0
+        reasons.append("recent SEC filings show high dilution/financing risk")
+    elif dilution == "MODERATE":
+        points = -10.0
+        reasons.append("recent SEC filings show dilution/financing risk")
+    elif dilution == "LOW":
+        points = -3.0
+    elif dilution == "NONE FOUND":
+        points = 3.0
+    else:
+        points = 0.0
+    score += points
+    components["dilution"] = points
+
+    score = round(_clamp(score), 1)
+    label = (
+        "STRONG" if score >= 72
+        else "CONSTRUCTIVE" if score >= 60
+        else "MIXED" if score >= 45
+        else "WEAK"
+    )
+    return score, label, reasons[:6], components, coverage
+
+
+def _daily_trend_context(sa, symbol, metrics):
+    now = datetime.now(timezone.utc)
+    try:
+        daily, source = sa.try_sip_delayed_bars(
+            symbol,
+            "1Day",
+            now - timedelta(days=560),
+            now,
+            320,
+        )
+    except Exception as exc:
+        return {"status": "unavailable", "error": str(exc)[:120]}
+
+    cleaned = []
+    for bar in daily or []:
+        close = _num(bar.get("c"))
+        if close is None or close <= 0:
+            continue
+        cleaned.append(bar)
+    if len(cleaned) < 10:
+        return {
+            "status": "limited",
+            "source": source,
+            "bar_count": len(cleaned),
+        }
+
+    closes = [_num(bar.get("c")) for bar in cleaned]
+    current = _num(metrics.get("price")) or closes[-1]
+
+    def trailing_return(days):
+        if len(closes) <= days:
+            return None
+        base = closes[-1 - days]
+        if not base:
+            return None
+        return round((current / base - 1.0) * 100.0, 1)
+
+    def moving_average(days):
+        if len(closes) < days:
+            return None
+        return round(sum(closes[-days:]) / float(days), 4)
+
+    highs = [_num(bar.get("h")) for bar in cleaned[-252:]]
+    lows = [_num(bar.get("l")) for bar in cleaned[-252:]]
+    highs = [value for value in highs if value is not None]
+    lows = [value for value in lows if value is not None]
+    high_52w = max(highs) if highs else None
+    low_52w = min(lows) if lows else None
+
+    context = {
+        "status": "ok",
+        "source": source,
+        "bar_count": len(cleaned),
+        "return_5d_pct": trailing_return(5),
+        "return_20d_pct": trailing_return(20),
+        "return_60d_pct": trailing_return(60),
+        "return_120d_pct": trailing_return(120),
+        "return_250d_pct": trailing_return(250),
+        "ma_20": moving_average(20),
+        "ma_50": moving_average(50),
+        "ma_200": moving_average(200),
+        "high_52w": high_52w,
+        "low_52w": low_52w,
+    }
+    if high_52w:
+        context["from_52w_high_pct"] = round((current / high_52w - 1.0) * 100.0, 1)
+    if low_52w:
+        context["above_52w_low_pct"] = round((current / low_52w - 1.0) * 100.0, 1)
+
+    trend_score = 50.0
+    r20 = _num(context.get("return_20d_pct"))
+    r60 = _num(context.get("return_60d_pct"))
+    r120 = _num(context.get("return_120d_pct"))
+    if r20 is not None:
+        trend_score += 10 if r20 >= 10 else 5 if r20 > 0 else -10 if r20 <= -10 else -4
+    if r60 is not None:
+        trend_score += 12 if r60 >= 20 else 6 if r60 > 5 else -12 if r60 <= -15 else -4 if r60 < 0 else 0
+    if r120 is not None:
+        trend_score += 10 if r120 >= 30 else 4 if r120 > 0 else -10 if r120 <= -20 else -3
+
+    for days, points in ((20, 5), (50, 6), (200, 8)):
+        ma = _num(context.get(f"ma_{days}"))
+        if ma is not None:
+            trend_score += points if current >= ma else -points
+
+    from_high = _num(context.get("from_52w_high_pct"))
+    if from_high is not None:
+        if from_high >= -10:
+            trend_score += 5
+        elif from_high <= -50:
+            trend_score -= 10
+
+    context["trend_score"] = round(_clamp(trend_score), 1)
+    return context
+
+
+def _timeframe_analysis(sa, symbol, metrics, sec, market, catalyst, potential, readiness):
+    daily = _daily_trend_context(sa, symbol, metrics)
+    trend_score = _num(daily.get("trend_score"))
+    if trend_score is None:
+        trend_score = 50.0
+
+    live_score = 50.0
+    day_pct = _num(metrics.get("day_pct"))
+    pace = _num(metrics.get("volume_pace"))
+    m5 = _num(metrics.get("momentum_5m"))
+    m15 = _num(metrics.get("momentum_15m"))
+    if day_pct is not None:
+        live_score += _clamp(day_pct * 0.5, -12, 16)
+    if pace is not None:
+        live_score += 12 if pace >= 2 else 6 if pace >= 1.25 else -8 if pace < 0.7 else 0
+    if m5 is not None:
+        live_score += _clamp(m5 * 3.0, -8, 8)
+    if m15 is not None:
+        live_score += _clamp(m15 * 1.5, -8, 8)
+    if metrics.get("vwap_position") == "ABOVE":
+        live_score += 7
+    elif metrics.get("vwap_position") == "BELOW":
+        live_score -= 8
+    liquidity = str((metrics.get("liquidity") or {}).get("label") or "")
+    if liquidity == "HIGH":
+        live_score += 7
+    elif liquidity == "LOW":
+        live_score -= 12
+    live_score = _clamp(live_score)
+
+    intraday_score = round(
+        _clamp(potential * 0.42 + readiness * 0.33 + live_score * 0.25), 1
+    )
+
+    hist = metrics.get("historical_setup") or {}
+    history_score = 50.0
+    if hist.get("status") == "ok":
+        history_score += (_num(hist.get("bias_score")) or 0.0) * 1.6
+        next_day = _num(hist.get("next_day_up_pct"))
+        if next_day is not None:
+            history_score += (next_day - 50.0) * 0.15
+    history_score = _clamp(history_score)
+
+    stair_score = _num((metrics.get("stair_step") or {}).get("structure_score"))
+    if stair_score is None:
+        stair_score = 50.0
+
+    catalyst_score = _clamp(50.0 + (_num(catalyst.get("score")) or 0.0) * 4.0)
+    market_score = 50.0
+    broad = _num(market.get("broad_market_avg_pct"))
+    sector = _num(market.get("sector_move_pct"))
+    if broad is not None:
+        market_score += _clamp(broad * 5.0, -10, 10)
+    if sector is not None:
+        market_score += _clamp(sector * 5.0, -10, 10)
+    market_score = _clamp(market_score)
+
+    fundamental_score, fundamental_label, fundamental_reasons, fundamental_components, coverage = _fundamental_quality(sec)
+
+    swing_score = round(
+        _clamp(
+            trend_score * 0.34
+            + stair_score * 0.22
+            + history_score * 0.16
+            + catalyst_score * 0.12
+            + market_score * 0.08
+            + fundamental_score * 0.08
+        ),
+        1,
+    )
+
+    long_term_score = round(
+        _clamp(
+            fundamental_score * 0.58
+            + trend_score * 0.30
+            + catalyst_score * 0.07
+            + market_score * 0.05
+        ),
+        1,
+    )
+    if coverage < 3:
+        long_term_score = min(long_term_score, 57.0)
+
+    scores = {
+        "intraday": intraday_score,
+        "swing": swing_score,
+        "long_term": long_term_score,
+    }
+    ordered = sorted(scores.items(), key=lambda item: item[1], reverse=True)
+    top_key, top_score = ordered[0]
+    lead = top_score - ordered[1][1]
+    label_map = {
+        "intraday": "INTRADAY",
+        "swing": "SWING",
+        "long_term": "LONGER-TERM",
+    }
+    if top_score < 55 or lead < 4:
+        best_fit = "MIXED"
+    else:
+        best_fit = label_map[top_key]
+
+    def fit_label(score):
+        return (
+            "STRONG" if score >= 72
+            else "GOOD" if score >= 60
+            else "MIXED" if score >= 48
+            else "WEAK"
+        )
+
+    intraday_reasons = []
+    if potential >= 65:
+        intraday_reasons.append("strong current upside setup")
+    if readiness >= 65:
+        intraday_reasons.append("entry timing is relatively favorable")
+    if pace is not None and pace >= 1.5:
+        intraday_reasons.append("active volume participation")
+    if metrics.get("vwap_position") == "ABOVE":
+        intraday_reasons.append("price is holding above VWAP")
+    if liquidity == "LOW":
+        intraday_reasons.append("low liquidity reduces intraday quality")
+
+    swing_reasons = []
+    r20 = _num(daily.get("return_20d_pct"))
+    r60 = _num(daily.get("return_60d_pct"))
+    if r20 is not None:
+        swing_reasons.append(f"20-trading-day trend {r20:+.1f}%")
+    if r60 is not None:
+        swing_reasons.append(f"60-trading-day trend {r60:+.1f}%")
+    if stair_score >= 65:
+        swing_reasons.append("multi-session stair-step structure is constructive")
+    if catalyst_score >= 62:
+        swing_reasons.append("catalyst support is positive")
+    elif catalyst_score <= 38:
+        swing_reasons.append("catalyst pressure is negative")
+
+    long_reasons = list(fundamental_reasons)
+    if coverage < 3:
+        long_reasons.insert(0, "longer-term read is capped because fundamental coverage is limited")
+    elif trend_score >= 65:
+        long_reasons.append("multi-month price trend is constructive")
+    elif trend_score <= 40:
+        long_reasons.append("multi-month price trend is weak")
+
+    return {
+        "version": "timeframe-fit-v1",
+        "best_fit": best_fit,
+        "scores": scores,
+        "labels": {key: fit_label(value) for key, value in scores.items()},
+        "intraday_reasons": intraday_reasons[:5],
+        "swing_reasons": swing_reasons[:5],
+        "long_term_reasons": long_reasons[:6],
+        "daily_trend": daily,
+        "fundamental_quality_score": fundamental_score,
+        "fundamental_quality_label": fundamental_label,
+        "fundamental_components": fundamental_components,
+        "fundamental_coverage_count": coverage,
+        "note": (
+            "Best-fit timeframe is decision support, not a buy/sell signal. "
+            "The longer-term read uses reported SEC fundamentals and price trend, "
+            "but it does not yet include valuation or analyst estimates."
+        ),
+    }
 
 
 def _entry_readiness(metrics):
@@ -1157,6 +1748,16 @@ def install_v2_analysis(sa):
         )
         readiness, blockers, entry_components = _entry_readiness(metrics)
         evidence, evidence_reasons = _evidence_strength(metrics, sec, market, catalyst)
+        timeframe = _timeframe_analysis(
+            sa,
+            symbol_clean,
+            metrics,
+            sec,
+            market,
+            catalyst,
+            potential,
+            readiness,
+        )
 
         # Give the full-spectrum engine the current upside score before the
         # public decision_v2 object is assembled.
@@ -1222,6 +1823,7 @@ def install_v2_analysis(sa):
             "fundamental_context": sec,
             "float_context": float_context,
             "turnover_context": turnover,
+            "timeframe_analysis": timeframe,
             "full_spectrum": full_spectrum,
             "sip_status": sip_status,
             "live_stream_status": stream_status,
