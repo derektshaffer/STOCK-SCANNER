@@ -33,7 +33,7 @@ except Exception:
 # This is research/performance measurement only. It does not trade.
 # ============================================================
 
-VERSION = "3.0"
+VERSION = "3.1"
 SCANNER_FEATURE_VERSION = "scanner-features-v2-consolidated"
 GITHUB_API = "https://api.github.com"
 ALPACA_DATA_BASE = "https://data.alpaca.markets"
