@@ -26,6 +26,10 @@ from zoneinfo import ZoneInfo
 from tradier_live import get_history_bars, get_timesales_bars, post_quotes
 from multi_bounce import bounce_feature_values, detect_bounce_sequence
 from stair_step import detect_stair_step, stair_step_feature_values
+from scanner_behavior import (
+    intraday_behavior_features,
+    multi_session_behavior_features,
+)
 
 REPLAY_VERSION = "historical-scanner-replay-v4.1-sequence-regimes"
 ET = ZoneInfo("America/New_York")
@@ -692,14 +696,12 @@ def _current_snapshot(ss, symbol, rows, idx, prev_close, avg_daily, day_map, rep
         tzinfo=ET,
     )
 
-    impulse = _impulse_snapshot(rows, idx)
     completed_bars = [bar for _, bar in completed]
-    sequence = detect_bounce_sequence(
+    behavior_features = intraday_behavior_features(
         completed_bars,
         current_price=price,
         atr_pct=None,
     )
-    bounce_features = bounce_feature_values(sequence)
 
     # Multi-session context built strictly from days before replay_day plus the
     # partial current day visible at this historical checkpoint.
@@ -724,24 +726,22 @@ def _current_snapshot(ss, symbol, rows, idx, prev_close, avg_daily, day_map, rep
                 "v":sum(vols_day),
             })
     current_open=_num(completed_bars[0].get("o")) if completed_bars else price
-    stair=detect_stair_step(
+    stair_features = multi_session_behavior_features(
         prior_daily,
         current_day={
-            "date":replay_day.isoformat(),
-            "o":current_open or price,
-            "h":session_high,
-            "l":session_low,
-            "c":price,
-            "v":session_volume,
+            "date": replay_day.isoformat(),
+            "o": current_open or price,
+            "h": session_high,
+            "l": session_low,
+            "c": price,
+            "v": session_volume,
         },
         atr_pct=None,
     )
-    stair_features=stair_step_feature_values(stair)
 
     c = {
         "symbol": symbol,
-        **impulse,
-        **bounce_features,
+        **behavior_features,
         **stair_features,
         "market_session": "regular",
         "session_date": replay_day.isoformat(),
@@ -988,6 +988,20 @@ def build_replay_observations(
                         "ongoing_bounce_pct": snap.get("ongoing_bounce_pct"),
                         "bounce_leg_code": snap.get("bounce_leg_code"),
                         "reference_peak_pct_above_dip": snap.get("reference_peak_pct_above_dip"),
+                        "pullback_quality_score": snap.get("pullback_quality_score"),
+                        "vwap_hold_ratio_10": snap.get("vwap_hold_ratio_10"),
+                        "vwap_reclaim": snap.get("vwap_reclaim"),
+                        "vwap_rejection": snap.get("vwap_rejection"),
+                        "vwap_state_code": snap.get("vwap_state_code"),
+                        "vwap_crosses_10": snap.get("vwap_crosses_10"),
+                        "volume_acceleration_ratio": snap.get("volume_acceleration_ratio"),
+                        "volume_accelerating": snap.get("volume_accelerating"),
+                        "volume_contracting": snap.get("volume_contracting"),
+                        "breakout_recent": snap.get("breakout_recent"),
+                        "breakout_holding": snap.get("breakout_holding"),
+                        "failed_breakout": snap.get("failed_breakout"),
+                        "breakout_extension_pct": snap.get("breakout_extension_pct"),
+                        "breakout_bars_since": snap.get("breakout_bars_since"),
                         "stair_step_count": snap.get("stair_step_count"),
                         "stair_last_step_pct": snap.get("stair_last_step_pct"),
                         "stair_step_acceleration_ratio": snap.get("stair_step_acceleration_ratio"),

@@ -30,6 +30,15 @@ try:
 except Exception:
     discover_tradier_candidates = None
 
+try:
+    from scanner_behavior import (
+        intraday_behavior_features,
+        multi_session_behavior_features,
+    )
+except Exception:
+    intraday_behavior_features = None
+    multi_session_behavior_features = None
+
 # ============================================================
 # MOMENTUM STOCK SCANNER - v2.9
 #
@@ -1234,38 +1243,62 @@ def analyze_snapshot(symbol, tradier_quote=None, alpaca_snapshot=None):
     return c
 
 
-def avg_daily_volume(symbol, now_utc):
-    # Use consolidated historical SIP volume when available so Tradier's
-    # consolidated live volume is compared with a like-for-like baseline.
+def daily_history_context(symbol, now_utc, current_day=None):
+    """Return average volume plus causal multi-session structure."""
     try:
         bars = get_bars(
             symbol,
             "1Day",
-            now_utc - timedelta(days=45),
+            now_utc - timedelta(days=60),
             now_utc,
-            35,
+            45,
             feed=HISTORICAL_FEED,
         )
     except Exception:
         bars = get_bars(
             symbol,
             "1Day",
-            now_utc - timedelta(days=45),
+            now_utc - timedelta(days=60),
             now_utc,
-            35,
+            45,
             feed=LIVE_FEED,
         )
     if not bars:
-        return None
+        return {}
 
     today_et = now_utc.astimezone(ZoneInfo("America/New_York")).date().isoformat()
     completed = [
-        b for b in bars if str(b.get("t", ""))[:10] != today_et and b.get("v")
+        b for b in bars
+        if str(b.get("t", ""))[:10] != today_et
+    ][-20:]
+    volume_rows = [
+        float(b["v"])
+        for b in completed
+        if b.get("v") is not None and float(b.get("v") or 0) > 0
     ]
-    completed = completed[-20:]
-    if not completed:
-        return None
-    return sum(float(b["v"]) for b in completed) / len(completed)
+    context = {
+        "avg_daily_volume": (
+            sum(volume_rows) / len(volume_rows)
+            if volume_rows
+            else None
+        )
+    }
+    if multi_session_behavior_features is not None and current_day:
+        try:
+            context.update(
+                multi_session_behavior_features(
+                    completed,
+                    current_day,
+                    atr_pct=None,
+                )
+            )
+        except Exception:
+            pass
+    return context
+
+
+def avg_daily_volume(symbol, now_utc):
+    return daily_history_context(symbol, now_utc).get("avg_daily_volume")
 
 
 def historical_volume_profile(symbol, now_utc, now_et):
@@ -1514,16 +1547,29 @@ def current_session_live_metrics(symbol, now_utc, now_et, current_price):
     if len(bars) >= 16 and bars[-16].get("c"):
         m15 = pct_change(reference_price, float(bars[-16]["c"]))
 
+    behavior = {}
+    if intraday_behavior_features is not None:
+        try:
+            behavior = intraday_behavior_features(
+                bars,
+                current_price=reference_price,
+                atr_pct=None,
+            )
+        except Exception:
+            behavior = {}
+
     return {
         "phase": phase,
         "volume": volume,
         "dollar_volume": dollar,
         "high": high,
         "low": low,
+        "open": float(bars[0].get("o") or reference_price) if bars else reference_price,
         "vwap": (dollar / volume) if volume > 0 else None,
         "last_price": last_price or None,
         "momentum_5m": m5,
         "momentum_15m": m15,
+        "behavior_features": behavior,
         "live_source": (
             "tradier_consolidated"
             if USE_TRADIER
@@ -1633,17 +1679,41 @@ def enrich_live(c, now_utc, now_et):
         else None
     )
 
+    if session_stats:
+        c.update(session_stats.get("behavior_features") or {})
+
+    current_day = None
+    if session_stats:
+        current_day = {
+            "date": now_et.date().isoformat(),
+            "o": session_stats.get("open") or c.get("price"),
+            "h": session_stats.get("high") or c.get("price"),
+            "l": session_stats.get("low") or c.get("price"),
+            "c": session_stats.get("last_price") or c.get("price"),
+            "v": session_stats.get("volume") or c.get("volume") or 0,
+        }
+
+    daily_context = {}
+    try:
+        daily_context = daily_history_context(
+            c["symbol"],
+            now_utc,
+            current_day=current_day,
+        )
+    except Exception as exc:
+        c["daily_context_error"] = str(exc)
+
     avg_vol = c.get("avg_20d_volume")
     try:
         avg_vol = float(avg_vol) if avg_vol is not None else None
     except (TypeError, ValueError):
         avg_vol = None
     if not avg_vol or avg_vol <= 0:
-        try:
-            avg_vol = avg_daily_volume(c["symbol"], now_utc)
-        except Exception as exc:
-            c["avg_volume_error"] = str(exc)
-            avg_vol = None
+        avg_vol = daily_context.get("avg_daily_volume")
+
+    for key, value in daily_context.items():
+        if key != "avg_daily_volume":
+            c[key] = value
 
     try:
         volume_profile = historical_volume_profile(
@@ -2148,6 +2218,47 @@ def candidate_log_record(c, rank):
         "vwap": c.get("vwap"),
         "distance_from_vwap_pct": c.get("distance_from_vwap_pct"),
         "above_vwap": bool(c.get("above_vwap")),
+        "impulse_move_pct": c.get("impulse_move_pct"),
+        "impulse_retracement_pct": c.get("impulse_retracement_pct"),
+        "impulse_max_retracement_pct": c.get("impulse_max_retracement_pct"),
+        "impulse_bounce_recovery_pct": c.get("impulse_bounce_recovery_pct"),
+        "pullback_volume_ratio": c.get("pullback_volume_ratio"),
+        "pullback_quality_score": c.get("pullback_quality_score"),
+        "bounce_count": c.get("bounce_count"),
+        "last_bounce_pct": c.get("last_bounce_pct"),
+        "bounce_decay_ratio": c.get("bounce_decay_ratio"),
+        "bounce_volume_decay_ratio": c.get("bounce_volume_decay_ratio"),
+        "lower_high_streak": c.get("lower_high_streak"),
+        "higher_low_streak": c.get("higher_low_streak"),
+        "sequence_health_score": c.get("sequence_health_score"),
+        "current_pullback_pct": c.get("current_pullback_pct"),
+        "ongoing_bounce_pct": c.get("ongoing_bounce_pct"),
+        "bounce_leg_code": c.get("bounce_leg_code"),
+        "reference_peak_pct_above_dip": c.get("reference_peak_pct_above_dip"),
+        "vwap_hold_ratio_10": c.get("vwap_hold_ratio_10"),
+        "vwap_reclaim": c.get("vwap_reclaim"),
+        "vwap_rejection": c.get("vwap_rejection"),
+        "vwap_state_code": c.get("vwap_state_code"),
+        "vwap_crosses_10": c.get("vwap_crosses_10"),
+        "volume_acceleration_ratio": c.get("volume_acceleration_ratio"),
+        "volume_accelerating": c.get("volume_accelerating"),
+        "volume_contracting": c.get("volume_contracting"),
+        "breakout_recent": c.get("breakout_recent"),
+        "breakout_holding": c.get("breakout_holding"),
+        "failed_breakout": c.get("failed_breakout"),
+        "breakout_extension_pct": c.get("breakout_extension_pct"),
+        "breakout_bars_since": c.get("breakout_bars_since"),
+        "stair_step_count": c.get("stair_step_count"),
+        "stair_last_step_pct": c.get("stair_last_step_pct"),
+        "stair_step_acceleration_ratio": c.get("stair_step_acceleration_ratio"),
+        "stair_plateau_days": c.get("stair_plateau_days"),
+        "stair_plateau_range_pct": c.get("stair_plateau_range_pct"),
+        "stair_plateau_retention_pct": c.get("stair_plateau_retention_pct"),
+        "stair_plateau_volume_ratio": c.get("stair_plateau_volume_ratio"),
+        "stair_higher_plateau_count": c.get("stair_higher_plateau_count"),
+        "stair_structure_score": c.get("stair_structure_score"),
+        "stair_reaccelerating": c.get("stair_reaccelerating"),
+        "stair_breakdown": c.get("stair_breakdown"),
         "momentum_5m": c.get("momentum_5m"),
         "momentum_15m": c.get("momentum_15m"),
         "volume_pace": c.get("volume_pace"),
