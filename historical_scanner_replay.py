@@ -825,6 +825,62 @@ def _future_price(rows, idx, minutes=60):
     return None
 
 
+def _future_trade_quality(
+    rows,
+    idx,
+    entry_price,
+    *,
+    minutes=60,
+    target_pct=1.0,
+    stop_pct=0.75,
+):
+    """Causal path outcome after a replay checkpoint.
+
+    Same-bar target+stop touches are resolved stop-first to avoid flattering
+    results when 5-minute OHLC cannot reveal the true intrabar order.
+    """
+    if idx < 0 or idx >= len(rows) or not entry_price:
+        return {}
+    end_minute = rows[idx][0] + minutes
+    target = entry_price * (1.0 + target_pct / 100.0)
+    stop = entry_price * (1.0 - stop_pct / 100.0)
+    mfe = 0.0
+    mae = 0.0
+    barrier = "neither"
+    bars_seen = 0
+
+    for minute, bar in rows[idx + 1 :]:
+        if minute > end_minute:
+            break
+        high = _num(bar.get("h"))
+        low = _num(bar.get("l"))
+        if high is None or low is None:
+            continue
+        bars_seen += 1
+        mfe = max(mfe, (high / entry_price - 1.0) * 100.0)
+        mae = min(mae, (low / entry_price - 1.0) * 100.0)
+        hit_target = high >= target
+        hit_stop = low <= stop
+        if hit_stop:
+            barrier = "stop_first"
+            break
+        if hit_target:
+            barrier = "target_first"
+            break
+
+    return {
+        "trade_quality_target_pct": target_pct,
+        "trade_quality_stop_pct": stop_pct,
+        "trade_quality_horizon_minutes": minutes,
+        "trade_quality_barrier": barrier,
+        "target_before_stop": barrier == "target_first",
+        "trade_quality_decisive": barrier in {"target_first", "stop_first"},
+        "mfe_60m_pct": round(mfe, 4),
+        "mae_60m_pct": round(mae, 4),
+        "trade_quality_bars_seen": bars_seen,
+    }
+
+
 def build_replay_observations(
     ss,
     daily_index,
@@ -910,8 +966,19 @@ def build_replay_observations(
             for rank, (snap, future_price) in enumerate(chosen, start=1):
                 entry_price = snap["price"]
                 return_60 = (future_price / entry_price - 1.0) * 100.0
+                quality = _future_trade_quality(
+                    rows=(intraday.get(snap["symbol"]) or {}).get(replay_day) or [],
+                    idx={
+                        minute: i
+                        for i, (minute, _bar) in enumerate(
+                            (intraday.get(snap["symbol"]) or {}).get(replay_day) or []
+                        )
+                    }.get(checkpoint_minute - 5, -1),
+                    entry_price=entry_price,
+                )
                 observations.append(
                     {
+                        **quality,
                         "observation_id": (
                             f"replay:{replay_day.isoformat()}:"
                             f"{checkpoint:%H%M}:{snap['symbol']}"
