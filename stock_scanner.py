@@ -820,8 +820,12 @@ def assign_setup_grades(rows, now_et):
         assign_setup_grade(c, now_et)
 
 
-def scanner_action_signal(c, now_et=None):
-    """Compact scanner-level entry cue; the Analyzer remains final confirmation."""
+def scanner_action_signal(c, now_et=None, *, use_behavior=True):
+    """Compact scanner-level entry cue; Analyzer remains final confirmation.
+
+    use_behavior=False reproduces the simpler pre-behavior action logic for
+    paired historical validation. Production calls keep behavior enabled.
+    """
     grade = str(c.get("setup_grade") or "REJECT").upper()
     phase = str(c.get("market_session") or "")
     if now_et is not None:
@@ -856,14 +860,14 @@ def scanner_action_signal(c, now_et=None):
     m15 = num(m15)
     pace = num(pace)
 
-    failed_breakout = bool(num(c.get("failed_breakout")) or 0)
-    vwap_rejection = bool(num(c.get("vwap_rejection")) or 0)
-    vwap_reclaim = bool(num(c.get("vwap_reclaim")) or 0)
-    volume_accelerating = bool(num(c.get("volume_accelerating")) or 0)
-    breakout_holding = bool(num(c.get("breakout_holding")) or 0)
-    stair_breakdown = bool(num(c.get("stair_breakdown")) or 0)
-    bounce_leg_code = num(c.get("bounce_leg_code"))
-    pullback_quality = num(c.get("pullback_quality_score"))
+    failed_breakout = bool(num(c.get("failed_breakout")) or 0) if use_behavior else False
+    vwap_rejection = bool(num(c.get("vwap_rejection")) or 0) if use_behavior else False
+    vwap_reclaim = bool(num(c.get("vwap_reclaim")) or 0) if use_behavior else False
+    volume_accelerating = bool(num(c.get("volume_accelerating")) or 0) if use_behavior else False
+    breakout_holding = bool(num(c.get("breakout_holding")) or 0) if use_behavior else False
+    stair_breakdown = bool(num(c.get("stair_breakdown")) or 0) if use_behavior else False
+    bounce_leg_code = num(c.get("bounce_leg_code")) if use_behavior else None
+    pullback_quality = num(c.get("pullback_quality_score")) if use_behavior else None
 
     if phase != "regular":
         return {
@@ -1641,6 +1645,8 @@ def current_session_live_metrics(symbol, now_utc, now_et, current_price):
                 bars,
                 current_price=reference_price,
                 atr_pct=None,
+                as_of=now_utc,
+                completed_only=True,
             )
         except Exception:
             behavior = {}
