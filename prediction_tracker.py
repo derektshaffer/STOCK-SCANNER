@@ -564,26 +564,46 @@ def resolve_symbol_predictions(sa, symbol, now=None, current_metrics=None):
     now = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
     symbol = str(symbol or "").upper().strip()
     rows = _load()
-    pending = [
+    symbol_rows = [
         row for row in rows
         if row.get("symbol") == symbol
         and _parse_dt(row.get("timestamp"))
-        and not bool((row.get("outcomes") or {}).get("resolved_60m"))
+    ][-80:]
+    pending = [
+        row for row in symbol_rows
+        if not bool((row.get("outcomes") or {}).get("resolved_60m"))
     ][-40:]
-    if not pending:
-        return tracker_summary(rows, symbol, current_metrics=current_metrics)
-
-    earliest = min(_parse_dt(row["timestamp"]) for row in pending)
-    safe_end = now - timedelta(minutes=16)
-    if safe_end <= earliest:
-        return tracker_summary(rows, symbol, current_metrics=current_metrics)
-
-    try:
-        bars, _source = sa.try_sip_delayed_bars(
-            symbol, "5Min", earliest - timedelta(minutes=5), safe_end, 10000
+    timeframe_pending = [
+        row for row in symbol_rows
+        if row.get("timeframe_score_version") == TIMEFRAME_SCORE_VERSION
+        and (
+            any(
+                (row.get("outcomes") or {}).get(
+                    f"return_{sessions}d_pct"
+                ) is None
+                for sessions in (1, 3, 5, 20, 60)
+            )
+            or "swing_first_event_5d" not in (row.get("outcomes") or {})
         )
-    except Exception:
-        bars = []
+    ][-40:]
+    if not pending and not timeframe_pending:
+        return tracker_summary(rows, symbol, current_metrics=current_metrics)
+
+    safe_end = now - timedelta(minutes=16)
+    bars = []
+    if pending:
+        earliest = min(_parse_dt(row["timestamp"]) for row in pending)
+        if safe_end > earliest:
+            try:
+                bars, _source = sa.try_sip_delayed_bars(
+                    symbol,
+                    "5Min",
+                    earliest - timedelta(minutes=5),
+                    safe_end,
+                    10000,
+                )
+            except Exception:
+                bars = []
 
     changed = False
     for row in pending:
@@ -673,21 +693,8 @@ def resolve_symbol_predictions(sa, symbol, now=None, current_metrics=None):
                         changed=True
 
     # Resolve the slower timeframe labels opportunistically whenever this
-    # ticker is opened again. The nightly scorer performs the durable sweep;
-    # this path makes the UI learn sooner without waiting for that job.
-    timeframe_pending = [
-        row for row in pending
-        if row.get("timeframe_score_version") == TIMEFRAME_SCORE_VERSION
-        and (
-            any(
-                (row.get("outcomes") or {}).get(
-                    f"return_{sessions}d_pct"
-                ) is None
-                for sessions in (1, 3, 5, 20, 60)
-            )
-            or "swing_first_event_5d" not in (row.get("outcomes") or {})
-        )
-    ]
+    # ticker is opened again, even after its 60-minute outcome has matured.
+    # The nightly scorer remains the durable sweep.
     if timeframe_pending:
         earliest_tf = min(_parse_dt(row["timestamp"]) for row in timeframe_pending)
         try:
