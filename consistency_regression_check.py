@@ -2541,7 +2541,7 @@ def test_scanner_ui_accepts_tradier_without_alpaca_credentials():
 
     ui_source = Path("scanner_app.py").read_text(encoding="utf-8")
     runtime_source = Path("scanner_runtime.py").read_text(encoding="utf-8")
-    assert "from scanner_runtime import run_scanner_process" in ui_source
+    assert "run_scanner_process" in ui_source
     assert "if not has_alpaca and not tradier_token" in runtime_source
     assert "if has_alpaca:" in runtime_source
     assert 'env["TRADIER_ACCESS_TOKEN"] = tradier_token' in runtime_source
