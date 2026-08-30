@@ -17,6 +17,12 @@ import json
 import math
 from pathlib import Path
 
+from timeframe_targets import (
+    SWING_HORIZON_SESSIONS,
+    SWING_STOP_PCT,
+    SWING_TARGET_PCT,
+)
+
 DATA_PATH = Path("timeframe_replay/timeframe_historical_replay.json")
 DEFAULT_REPORT_PATH = Path("timeframe_replay/timeframe_ml_validation.json")
 MODEL_VERSION = "swing-timeframe-ml-v2-path-target-shadow"
@@ -447,7 +453,10 @@ def validate(rows):
         "status": status,
         "historical_validated": historical_validated,
         "production_enabled": False,
-        "target": "reach_+5pct_before_-4pct_within_5_trading_sessions",
+        "target": (
+            f"reach_+{SWING_TARGET_PCT:g}pct_before_-{SWING_STOP_PCT:g}pct_"
+            f"within_{SWING_HORIZON_SESSIONS}_trading_sessions"
+        ),
         "samples": len(rows),
         "unique_dates": len({row["date"] for row in rows}),
         "unique_symbols": len({row["symbol"] for row in rows}),
@@ -515,9 +524,19 @@ def main():
     report["skipped_ambiguous_same_day"] = int(
         payload.get("_ml_skipped_ambiguous_same_day") or 0
     )
-    report["path_target_spec"] = (
-        (payload.get("summary") or {}).get("swing_path_target") or {}
+    path_spec = (payload.get("summary") or {}).get("swing_path_target") or {}
+    report["path_target_spec"] = path_spec
+    target_spec_matches = bool(
+        _num(path_spec.get("target_pct")) == float(SWING_TARGET_PCT)
+        and _num(path_spec.get("stop_pct")) == float(SWING_STOP_PCT)
+        and int(path_spec.get("horizon_sessions") or 0)
+        == int(SWING_HORIZON_SESSIONS)
     )
+    report["target_spec_matches_shared_definition"] = target_spec_matches
+    if not target_spec_matches:
+        report["historical_validated"] = False
+        report["production_enabled"] = False
+        report["status"] = "target_definition_mismatch"
 
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
