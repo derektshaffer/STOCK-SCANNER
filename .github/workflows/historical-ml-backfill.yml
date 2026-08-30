@@ -38,6 +38,7 @@ on:
       - "timeframe_ml_ranker.py"
       - "timeframe_targets.py"
       - "market_regime.py"
+      - "swing_feature_research.py"
       - ".github/workflows/historical-ml-backfill.yml"
 
 permissions:
@@ -46,7 +47,7 @@ permissions:
 
 jobs:
   backfill:
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, 'Run historical ML backfill') || contains(github.event.head_commit.message, 'Run historical timeframe backfill') || contains(github.event.head_commit.message, 'Run timeframe ML validation')
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, 'Run historical ML backfill') || contains(github.event.head_commit.message, 'Run historical timeframe backfill') || contains(github.event.head_commit.message, 'Run timeframe ML validation') || contains(github.event.head_commit.message, 'Run Swing feature research')
     runs-on: ubuntu-latest
     timeout-minutes: 120
 
@@ -62,7 +63,7 @@ jobs:
           python-version: "3.12"
 
       - name: Run leakage-aware historical replay
-        if: github.event_name != 'push' || (!contains(github.event.head_commit.message, 'Run historical timeframe backfill') && !contains(github.event.head_commit.message, 'Run timeframe ML validation'))
+        if: github.event_name != 'push' || (!contains(github.event.head_commit.message, 'Run historical timeframe backfill') && !contains(github.event.head_commit.message, 'Run timeframe ML validation') && !contains(github.event.head_commit.message, 'Run Swing feature research'))
         env:
           # Alpaca values are only kept so stock_scanner's pure rule module
           # can import; the replay market data itself is Tradier-first.
@@ -80,7 +81,7 @@ jobs:
         run: python historical_scanner_replay.py
 
       - name: Run leakage-aware timeframe replay
-        if: github.event_name != 'push' || !contains(github.event.head_commit.message, 'Run timeframe ML validation')
+        if: github.event_name != 'push' || (!contains(github.event.head_commit.message, 'Run timeframe ML validation') && !contains(github.event.head_commit.message, 'Run Swing feature research'))
         env:
           ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
           ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
@@ -196,6 +197,62 @@ jobs:
           print("SWING_ML_FOLDS_BEATING_HAND=" + str(overall.get("folds_beating_hand_score")))
           PY
 
+      - name: Research robust Swing feature combinations
+        run: |
+          python swing_feature_research.py
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(
+              Path("timeframe_replay/swing_feature_research.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          summary = report.get("summary") or {}
+          print("SWING_RESEARCH_STATUS=" + str(report.get("status")))
+          print("SWING_RESEARCH_LABELED_ROWS=" + str(summary.get("labeled_rows")))
+          print("SWING_RESEARCH_DISCOVERY_SINGLES=" + str(summary.get("discovery_qualified_singles")))
+          print("SWING_RESEARCH_DISCOVERY_PAIRS=" + str(summary.get("discovery_qualified_pairs")))
+          print("SWING_RESEARCH_FROZEN_TESTED=" + str(summary.get("frozen_candidates_tested")))
+          print("SWING_RESEARCH_ROBUST_COUNT=" + str(summary.get("robust_research_candidates")))
+          print(
+              "SWING_RESEARCH_ROBUST="
+              + json.dumps(
+                  [
+                      {
+                          "setup": row.get("text"),
+                          "discovery_lift_pp": (row.get("discovery") or {}).get("lift_pp"),
+                          "confirmation_lift_pp": (row.get("confirmation") or {}).get("lift_pp"),
+                          "confirmation_n": (row.get("confirmation") or {}).get("n"),
+                          "positive_years": (row.get("year_stability") or {}).get("positive_lift_years"),
+                          "eligible_years": (row.get("year_stability") or {}).get("eligible_years"),
+                      }
+                      for row in (report.get("robust_candidates") or [])[:10]
+                  ],
+                  sort_keys=True,
+              )
+          )
+          print(
+              "SWING_RESEARCH_BEST_CONFIRMATION="
+              + json.dumps(
+                  [
+                      {
+                          "setup": row.get("text"),
+                          "robust": row.get("robust_research_candidate"),
+                          "discovery_lift_pp": (row.get("discovery") or {}).get("lift_pp"),
+                          "confirmation_lift_pp": (row.get("confirmation") or {}).get("lift_pp"),
+                          "confirmation_n": (row.get("confirmation") or {}).get("n"),
+                      }
+                      for row in (report.get("best_confirmation_candidates") or [])[:10]
+                  ],
+                  sort_keys=True,
+              )
+          )
+          assert int(summary.get("labeled_rows") or 0) >= 2500
+          assert int((report.get("design") or {}).get("confirmation_samples") or 0) >= 500
+          PY
+
       - name: Commit durable replay dataset
         shell: bash
         run: |
@@ -204,6 +261,7 @@ jobs:
           git add outcome_reports/outcomes_historical_replay.json
           git add timeframe_replay/timeframe_historical_replay.json
           git add timeframe_replay/timeframe_ml_validation.json
+          git add timeframe_replay/swing_feature_research.json
           if git diff --cached --quiet; then
             echo "Historical replay dataset is unchanged."
           else
@@ -221,5 +279,6 @@ jobs:
             outcome_reports/outcomes_historical_replay.json
             timeframe_replay/timeframe_historical_replay.json
             timeframe_replay/timeframe_ml_validation.json
+            timeframe_replay/swing_feature_research.json
           if-no-files-found: warn
           retention-days: 90
