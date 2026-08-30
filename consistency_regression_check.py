@@ -2957,6 +2957,83 @@ def test_scanner_ui_exposes_timeframe_filter_without_reranking():
     assert "Grade · Best Fit" in combined
 
 
+def test_actionable_momentum_alert_requires_existing_strong_scanner_state():
+    import momentum_alerts as ma
+
+    base = {
+        "symbol": "TEST",
+        "setup_grade": "A",
+        "scanner_action": "ANALYZE NOW",
+        "passed_base_filters": True,
+        "alert_ready": True,
+    }
+    assert ma.is_actionable_momentum_alert(base) is True
+
+    for field, value in (
+        ("setup_grade", "C"),
+        ("scanner_action", "WAIT PULLBACK"),
+        ("passed_base_filters", False),
+        ("alert_ready", False),
+    ):
+        row = dict(base)
+        row[field] = value
+        assert ma.is_actionable_momentum_alert(row) is False, (field, row)
+
+
+def test_momentum_alert_only_fires_when_symbol_newly_enters_ready_state():
+    import momentum_alerts as ma
+
+    payload = {
+        "candidates": [
+            {
+                "symbol": "AAA",
+                "setup_grade": "A",
+                "scanner_action": "ANALYZE NOW",
+                "passed_base_filters": True,
+                "alert_ready": True,
+            },
+            {
+                "symbol": "BBB",
+                "setup_grade": "B",
+                "scanner_action": "WATCH",
+                "passed_base_filters": True,
+                "alert_ready": True,
+            },
+        ]
+    }
+    new_rows, current = ma.newly_actionable(payload, [])
+    assert [row["symbol"] for row in new_rows] == ["AAA"], new_rows
+    assert current == {"AAA"}, current
+
+    new_rows, current = ma.newly_actionable(payload, {"AAA"})
+    assert new_rows == [], new_rows
+    assert current == {"AAA"}, current
+
+
+def test_combined_app_keeps_scanner_running_in_analyzer_without_double_loop():
+    from pathlib import Path
+
+    app_source = Path("app.py").read_text(encoding="utf-8")
+    scanner_source = Path("scanner_app.py").read_text(encoding="utf-8")
+    assert "def _workspace_scanner_monitor():" in app_source
+    assert 'view == "Stock Analyzer"' in app_source
+    assert "elapsed >= 120" in app_source
+    assert "_scanner_process_running" in app_source
+    assert "from scanner_runtime import run_scanner_process" in app_source
+    assert "from scanner_runtime import run_scanner_process" in scanner_source
+
+
+def test_momentum_alert_ui_has_in_app_and_optional_browser_notifications():
+    from pathlib import Path
+
+    source = Path("app.py").read_text(encoding="utf-8")
+    assert "ACTIONABLE MOMENTUM ALERT" in source
+    assert "Review it in Analyzer before deciding whether to trade." in source
+    assert "Enable browser alerts" in source
+    assert "Notification.requestPermission" in source
+    assert "not an automatic buy signal" in source
+
+
 if __name__ == "__main__":
     tests = [
         test_analyzer_daily_history_prefers_tradier,
@@ -3063,6 +3140,10 @@ if __name__ == "__main__":
         test_legacy_analyzer_entrypoint_cannot_drift,
         test_monday_readiness_blocks_stale_scan_handoffs,
         test_live_scanner_uses_two_minute_cadence,
+        test_actionable_momentum_alert_requires_existing_strong_scanner_state,
+        test_momentum_alert_only_fires_when_symbol_newly_enters_ready_state,
+        test_combined_app_keeps_scanner_running_in_analyzer_without_double_loop,
+        test_momentum_alert_ui_has_in_app_and_optional_browser_notifications,
         test_analyzer_live_test_status_exposes_tracking_health,
     ]
     for test in tests:

@@ -13,6 +13,8 @@ import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
 
+from scanner_runtime import run_scanner_process
+
 SCAN_FILE = Path("scan_logs/latest_scan.json")
 AUTO_SCAN_SECONDS = 120
 AUTO_STATUS_REFRESH_SECONDS = 15
@@ -349,65 +351,23 @@ def market_is_open():
 
 
 def run_scanner():
-    key = secret("ALPACA_API_KEY")
-    sec = secret("ALPACA_SECRET_KEY")
-    tradier_token = get_tradier_token()
-    has_alpaca = bool(key and sec)
-    if not has_alpaca and not tradier_token:
-        return (
-            False,
-            "No market-data provider is configured. Add either "
-            "TRADIER_ACCESS_TOKEN (preferred) or both ALPACA_API_KEY and "
-            "ALPACA_SECRET_KEY in Streamlit Secrets.",
-        )
-
-    env = os.environ.copy()
-    if has_alpaca:
-        env["ALPACA_API_KEY"] = key
-        env["ALPACA_SECRET_KEY"] = sec
-    else:
-        env.pop("ALPACA_API_KEY", None)
-        env.pop("ALPACA_SECRET_KEY", None)
-    env["ALPACA_LIVE_FEED"] = configured_live_feed()
-    if tradier_token:
-        env["TRADIER_ACCESS_TOKEN"] = tradier_token
-        # Keep the live Streamlit Scanner on the same broad candidate-discovery
-        # process as the scheduled GitHub collector used for forward validation.
-        env["SCANNER_TRADIER_DISCOVERY"] = "1"
-        env["SCANNER_DISCOVERY_UNIVERSE_SIZE"] = "1200"
-
-    started = time.perf_counter()
-    try:
-        p = subprocess.run(
-            [sys.executable, "stock_scanner.py"],
-            env=env,
-            capture_output=True,
-            text=True,
-            timeout=180,
-        )
-    except subprocess.TimeoutExpired:
-        return False, "The scanner exceeded its 3-minute timeout."
-
-    st.session_state["scanner_out"] = p.stdout[-12000:]
-    st.session_state["scanner_err"] = p.stderr[-6000:]
-
-    if p.returncode != 0:
-        error = p.stderr.strip() or p.stdout.strip() or "Unknown scanner error"
-        return False, error[-3000:]
-
-    elapsed = time.perf_counter() - started
-    st.session_state["scanner_last_runtime_seconds"] = round(elapsed, 1)
-
-    return (
-        SCAN_FILE.exists(),
-        f"Fresh scan complete in {elapsed:.1f}s."
-        if SCAN_FILE.exists()
-        else (
-            "Scanner ran, but latest_scan.json was not created "
-            f"(runtime {elapsed:.1f}s)."
-        ),
+    result = run_scanner_process(
+        alpaca_key=secret("ALPACA_API_KEY"),
+        alpaca_secret=secret("ALPACA_SECRET_KEY"),
+        alpaca_live_feed=configured_live_feed(),
+        tradier_token=get_tradier_token(),
+        discovery_universe_size="1200",
+        timeout_seconds=180,
     )
 
+    st.session_state["scanner_out"] = str(result.get("stdout") or "")[-12000:]
+    st.session_state["scanner_err"] = str(result.get("stderr") or "")[-6000:]
+    if result.get("runtime_seconds") is not None:
+        st.session_state["scanner_last_runtime_seconds"] = result.get(
+            "runtime_seconds"
+        )
+
+    return bool(result.get("ok")), str(result.get("message") or "")
 
 def load_scan():
     if not SCAN_FILE.exists():
