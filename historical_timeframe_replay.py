@@ -727,7 +727,7 @@ def main():
     # Five future sessions guarantee resolved Swing labels. Longer-term 20d/60d
     # outcomes resolve wherever enough future history exists inside the same
     # point-in-time daily dataset.
-    replay_pool = dates[:-5]
+    replay_pool = dates[:-SWING_HORIZON_SESSIONS]
     requested = replay_pool[-replay_days:]
     replay_dates = requested[::stride]
     # Require at least 252 sessions of pre-history for stable trend context.
