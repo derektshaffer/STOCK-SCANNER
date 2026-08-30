@@ -560,8 +560,13 @@ def inject_glass_theme():
         }
 
         /* ---------- Glass dropdowns / selectboxes ---------- */
+        /* Legacy BaseWeb selectbox (Streamlit <= 1.58) plus the newer
+           React-Aria combobox used by Streamlit 1.59+. Keep both so Community
+           Cloud upgrades cannot silently revert the control to a white box. */
         div[data-testid="stSelectbox"] div[data-baseweb="select"] > div,
-        div[data-testid="stMultiSelect"] div[data-baseweb="select"] > div {
+        div[data-testid="stMultiSelect"] div[data-baseweb="select"] > div,
+        div[data-testid="stSelectbox"] [role="combobox"],
+        div[data-testid="stSelectbox"] input[role="combobox"] {
             min-height: 46px !important;
             color: var(--glass-text) !important;
             border: 1px solid rgba(105,174,226,.30) !important;
@@ -577,8 +582,22 @@ def inject_glass_theme():
                 box-shadow .14s ease !important;
         }
 
+        div[data-testid="stSelectbox"] input[role="combobox"] {
+            -webkit-text-fill-color: #edf6ff !important;
+            caret-color: var(--glass-green) !important;
+            padding-left: .82rem !important;
+        }
+
+        div[data-testid="stSelectbox"] input[role="combobox"]::placeholder {
+            color: #8fa9c6 !important;
+            -webkit-text-fill-color: #8fa9c6 !important;
+            opacity: 1 !important;
+        }
+
         div[data-testid="stSelectbox"] div[data-baseweb="select"] > div:hover,
-        div[data-testid="stMultiSelect"] div[data-baseweb="select"] > div:hover {
+        div[data-testid="stMultiSelect"] div[data-baseweb="select"] > div:hover,
+        div[data-testid="stSelectbox"] [role="combobox"]:hover,
+        div[data-testid="stSelectbox"] input[role="combobox"]:hover {
             border-color: rgba(99,207,255,.48) !important;
             background:
                 linear-gradient(145deg, rgba(15,38,61,.97), rgba(9,25,41,.95)) !important;
@@ -588,7 +607,9 @@ def inject_glass_theme():
         }
 
         div[data-testid="stSelectbox"] div[data-baseweb="select"]:focus-within > div,
-        div[data-testid="stMultiSelect"] div[data-baseweb="select"]:focus-within > div {
+        div[data-testid="stMultiSelect"] div[data-baseweb="select"]:focus-within > div,
+        div[data-testid="stSelectbox"]:focus-within [role="combobox"],
+        div[data-testid="stSelectbox"]:focus-within input[role="combobox"] {
             border-color: var(--glass-green-line) !important;
             box-shadow:
                 inset 0 1px 0 rgba(255,255,255,.05),
@@ -614,8 +635,9 @@ def inject_glass_theme():
             font-weight: 750 !important;
         }
 
-        /* BaseWeb mounts the opened menu in a portal outside the widget. */
-        div[role="listbox"] {
+        /* BaseWeb and React-Aria mount opened menus differently. */
+        div[role="listbox"],
+        ul[data-testid="stSelectboxVirtualDropdown"] {
             padding: 5px !important;
             border: 1px solid rgba(105,174,226,.28) !important;
             border-radius: 12px !important;
@@ -626,7 +648,8 @@ def inject_glass_theme():
                 0 0 0 1px rgba(99,207,255,.035) !important;
         }
 
-        div[role="option"] {
+        div[role="option"],
+        ul[data-testid="stSelectboxVirtualDropdown"] li[role="option"] {
             min-height: 40px !important;
             color: #eaf4ff !important;
             border-radius: 8px !important;
@@ -634,12 +657,14 @@ def inject_glass_theme():
             font-weight: 680 !important;
         }
 
-        div[role="option"]:hover {
+        div[role="option"]:hover,
+        ul[data-testid="stSelectboxVirtualDropdown"] li[role="option"]:hover {
             color: #ffffff !important;
             background: rgba(99,207,255,.08) !important;
         }
 
-        div[role="option"][aria-selected="true"] {
+        div[role="option"][aria-selected="true"],
+        ul[data-testid="stSelectboxVirtualDropdown"] li[role="option"][aria-selected="true"] {
             color: #a9ffc4 !important;
             background: rgba(55,239,121,.12) !important;
         }
@@ -654,11 +679,22 @@ def inject_glass_theme():
             font-weight: 850 !important;
         }
 
-        .st-key-scanner_trade_horizon div[data-baseweb="select"] > div {
+        .st-key-scanner_trade_horizon div[data-baseweb="select"] > div,
+        .st-key-scanner_trade_horizon [role="combobox"],
+        .st-key-scanner_trade_horizon input[role="combobox"] {
             min-height: 48px !important;
             border-color: rgba(99,207,255,.34) !important;
             background:
                 linear-gradient(145deg, rgba(12,31,51,.96), rgba(7,21,36,.95)) !important;
+        }
+
+        ul[data-testid="stSelectboxVirtualDropdown"] {
+            z-index: 1000070 !important;
+        }
+
+        ul[data-testid="stSelectboxVirtualDropdown"] li[role="option"] p,
+        ul[data-testid="stSelectboxVirtualDropdown"] li[role="option"] span {
+            color: inherit !important;
         }
 
         /* ---------- Streamlit-native surfaces ---------- */

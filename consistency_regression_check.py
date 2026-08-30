@@ -412,7 +412,10 @@ def test_glass_theme_styles_selectboxes_and_trade_horizon():
     scanner_source = Path("scanner_app.py").read_text(encoding="utf-8")
     assert 'div[data-testid="stSelectbox"] div[data-baseweb="select"] > div' in source
     assert 'div[role="listbox"]' in source
+    assert 'ul[data-testid="stSelectboxVirtualDropdown"]' in source
+    assert 'input[role="combobox"]' in source
     assert 'div[role="option"][aria-selected="true"]' in source
+    assert 'li[role="option"][aria-selected="true"]' in source
     assert '.st-key-scanner_trade_horizon' in source
     assert '"Trade Horizon Focus"' in scanner_source
     assert '[1.10, 1.35, 2.65, 1.40]' in scanner_source
