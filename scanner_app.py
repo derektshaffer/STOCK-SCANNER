@@ -995,6 +995,10 @@ else:
     ml_pill_cls = "blue"
     ml_pill_text = f"ML LEARNING · {ml_days}/3 days · n={ml_samples}"
 
+stale_pill_html = (
+    '<span class="pill amber">⚠ STALE SNAPSHOT</span>'
+    if scan_is_stale else ''
+)
 st.markdown(
     f'<div class="header"><div class="title">Momentum Scanner</div>'
     '<div class="sub">Readable ranking of momentum, liquidity, VWAP position, '
@@ -1002,10 +1006,7 @@ st.markdown(
     f'<span class="pill {pill_cls}">{pill_text}</span>'
     f'<span class="pill {live_data_pill_cls}">{html.escape(live_data_pill)}</span>'
     f'<span class="pill {ml_pill_cls}">{html.escape(ml_pill_text)}</span>'
-    + (
-        '<span class="pill amber">⚠ STALE SNAPSHOT</span>'
-        if scan_is_stale else ''
-    )
+    f'{stale_pill_html}'
     f'<div class="sub">Last scan: {html.escape(str(when))} · '
     f'Scanner v{html.escape(str(payload.get("scanner_version","—")))}</div></div>',
     unsafe_allow_html=True,
