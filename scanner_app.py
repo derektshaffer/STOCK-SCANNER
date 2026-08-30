@@ -694,7 +694,7 @@ def styled(df):
                 "Day %": lambda x: "—" if pd.isna(x) else f"{x:.2f}%",
                 "5m %": lambda x: "—" if pd.isna(x) else f"{x:.2f}%",
                 "15m %": lambda x: "—" if pd.isna(x) else f"{x:.2f}%",
-                "Vol Pace": lambda x: "—" if pd.isna(x) else f"{x:.2f}x",
+                "TOD Vol Pace": lambda x: "—" if pd.isna(x) else f"{x:.2f}x",
                 "From High %": lambda x: "—" if pd.isna(x) else f"{x:.2f}%",
                 "VWAP $": lambda x: "—" if pd.isna(x) else f"${x:.2f}",
                 "Liquidity $M": "${:.2f}M",
