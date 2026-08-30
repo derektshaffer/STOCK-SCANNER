@@ -3,7 +3,7 @@
   "feature_version": "analyzer-features-v6-sequence-regimes",
   "decision_score_version": "decision-v2.6-sequence-regimes",
   "timeframe_score_version": "timeframe-fit-v1",
-  "generated_at_utc": "2026-08-30T02:50:55.654404+00:00",
+  "generated_at_utc": "2026-08-30T16:24:22.129092+00:00",
   "prediction_rows": 142,
   "legacy_prediction_rows_excluded": 220,
   "legacy_decision_rows_excluded": 1,

@@ -1,0 +1,873 @@
+{
+  "schema_version": 1,
+  "tracker_version": "offhours-timeframe-outcome-v1",
+  "signal_date": "2026-08-28",
+  "source_snapshot": "scan_logs/offhours_timeframe/offhours_timeframe_2026-08-28.json",
+  "source_snapshot_version": "offhours-timeframe-scan-v1",
+  "source_snapshot_generated_at_utc": "2026-08-30T15:45:44.970148+00:00",
+  "research_only": true,
+  "production_rank_impact": false,
+  "candidate_count": 30,
+  "last_checked_utc": "2026-08-30T16:24:22.447720+00:00",
+  "elapsed_trading_sessions": 0,
+  "fully_resolved": false,
+  "candidates": [
+    {
+      "symbol": "PD",
+      "signal_price": 13.83,
+      "daily_discovery_score": 100.0,
+      "daily_setup_grade": "A",
+      "timeframe_best_fit": "MIXED",
+      "timeframe_primary_fit": "LONGER-TERM",
+      "timeframe_swing_score": 98.0,
+      "timeframe_longer_term_score": 100.0,
+      "daily_setup_archetypes": [
+        "20D BREAKOUT",
+        "TREND CONTINUATION"
+      ],
+      "day_pct": 9.5,
+      "daily_return_5d_pct": 12.26,
+      "daily_return_20d_pct": 30.72,
+      "daily_return_40d_pct": 38.58,
+      "daily_volume_ratio": 3.07,
+      "relative_strength_vs_spy_20d_pct": 27.73,
+      "outcomes": {}
+    },
+    {
+      "symbol": "SIEB",
+      "signal_price": 2.19,
+      "daily_discovery_score": 100.0,
+      "daily_setup_grade": "A",
+      "timeframe_best_fit": "LONGER-TERM",
+      "timeframe_primary_fit": "LONGER-TERM",
+      "timeframe_swing_score": 93.0,
+      "timeframe_longer_term_score": 100.0,
+      "daily_setup_archetypes": [
+        "20D BREAKOUT",
+        "TREND CONTINUATION"
+      ],
+      "day_pct": 11.17,
+      "daily_return_5d_pct": 7.88,
+      "daily_return_20d_pct": 34.36,
+      "daily_return_40d_pct": 29.59,
+      "daily_volume_ratio": 17.23,
+      "relative_strength_vs_spy_20d_pct": 31.37,
+      "outcomes": {}
+    },
+    {
+      "symbol": "SWVL",
+      "signal_price": 3.12,
+      "daily_discovery_score": 96.2,
+      "daily_setup_grade": "A",
+      "timeframe_best_fit": "LONGER-TERM",
+      "timeframe_primary_fit": "LONGER-TERM",
+      "timeframe_swing_score": 91.0,
+      "timeframe_longer_term_score": 100.0,
+      "daily_setup_archetypes": [
+        "20D BREAKOUT",
+        "TREND CONTINUATION"
+      ],
+      "day_pct": 41.18,
+      "daily_return_5d_pct": 113.7,
+      "daily_return_20d_pct": 126.09,
+      "daily_return_40d_pct": 122.86,
+      "daily_volume_ratio": 1.24,
+      "relative_strength_vs_spy_20d_pct": 123.1,
+      "outcomes": {}
+    },
+    {
+      "symbol": "GAP",
+      "signal_price": 23.48,
+      "daily_discovery_score": 96.0,
+      "daily_setup_grade": "A",
+      "timeframe_best_fit": "MIXED",
+      "timeframe_primary_fit": "LONGER-TERM",
+      "timeframe_swing_score": 98.0,
+      "timeframe_longer_term_score": 99.0,
+      "daily_setup_archetypes": [
+        "20D BREAKOUT"
+      ],
+      "day_pct": 12.94,
+      "daily_return_5d_pct": 18.59,
+      "daily_return_20d_pct": 16.87,
+      "daily_return_40d_pct": 21.97,
+      "daily_volume_ratio": 4.0,
+      "relative_strength_vs_spy_20d_pct": 13.88,
+      "outcomes": {}
+    },
+    {
+      "symbol": "RCKT",
+      "signal_price": 3.86,
+      "daily_discovery_score": 95.9,
+      "daily_setup_grade": "A",
+      "timeframe_best_fit": "SWING",
+      "timeframe_primary_fit": "SWING",
+      "timeframe_swing_score": 98.0,
+      "timeframe_longer_term_score": 91.0,
+      "daily_setup_archetypes": [
+        "20D BREAKOUT"
+      ],
+      "day_pct": 6.63,
+      "daily_return_5d_pct": 9.97,
+      "daily_return_20d_pct": 24.12,
+      "daily_return_40d_pct": 0.52,
+      "daily_volume_ratio": 2.32,
+      "relative_strength_vs_spy_20d_pct": 21.13,
+      "outcomes": {}
+    },
+    {
+      "symbol": "CBAT",
+      "signal_price": 0.9301,
+      "daily_discovery_score": 95.6,
+      "daily_setup_grade": "A",
+      "timeframe_best_fit": "MIXED",
+      "timeframe_primary_fit": "LONGER-TERM",
+      "timeframe_swing_score": 98.0,
+      "timeframe_longer_term_score": 100.0,
+      "daily_setup_archetypes": [
+        "TREND CONTINUATION"
+      ],
+      "day_pct": 7.71,
+      "daily_return_5d_pct": 12.94,
+      "daily_return_20d_pct": 86.32,
+      "daily_return_40d_pct": 53.61,
+      "daily_volume_ratio": 1.54,
+      "relative_strength_vs_spy_20d_pct": 83.33,
+      "outcomes": {}
+    },
+    {
+      "symbol": "JELD",
+      "signal_price": 2.53,
+      "daily_discovery_score": 95.6,
+      "daily_setup_grade": "A",
+      "timeframe_best_fit": "MIXED",
+      "timeframe_primary_fit": "LONGER-TERM",
+      "timeframe_swing_score": 98.0,
+      "timeframe_longer_term_score": 100.0,
+      "daily_setup_archetypes": [
+        "TREND CONTINUATION"
+      ],
+      "day_pct": 16.06,
+      "daily_return_5d_pct": 10.0,
+      "daily_return_20d_pct": 78.17,
+      "daily_return_40d_pct": 75.69,
+      "daily_volume_ratio": 1.4,
+      "relative_strength_vs_spy_20d_pct": 75.18,
+      "outcomes": {}
+    },
+    {
+      "symbol": "PRZO",
+      "signal_price": 0.8403,
+      "daily_discovery_score": 93.6,
+      "daily_setup_grade": "A",
+      "timeframe_best_fit": "MIXED",
+      "timeframe_primary_fit": "LONGER-TERM",
+      "timeframe_swing_score": 98.0,
+      "timeframe_longer_term_score": 100.0,
+      "daily_setup_archetypes": [
+        "TREND CONTINUATION"
+      ],
+      "day_pct": 7.95,
+      "daily_return_5d_pct": 24.84,
+      "daily_return_20d_pct": 81.53,
+      "daily_return_40d_pct": 78.79,
+      "daily_volume_ratio": 0.74,
+      "relative_strength_vs_spy_20d_pct": 78.54,
+      "outcomes": {}
+    },
+    {
+      "symbol": "SLB",
+      "signal_price": 57.33,
+      "daily_discovery_score": 92.6,
+      "daily_setup_grade": "A",
+      "timeframe_best_fit": "LONGER-TERM",
+      "timeframe_primary_fit": "LONGER-TERM",
+      "timeframe_swing_score": 73.0,
+      "timeframe_longer_term_score": 100.0,
+      "daily_setup_archetypes": [
+        "20D BREAKOUT",
+        "TREND CONTINUATION"
+      ],
+      "day_pct": 4.22,
+      "daily_return_5d_pct": 6.42,
+      "daily_return_20d_pct": 15.61,
+      "daily_return_40d_pct": 27.03,
+      "daily_volume_ratio": 1.87,
+      "relative_strength_vs_spy_20d_pct": 12.62,
+      "outcomes": {}
+    },
+    {
+      "symbol": "ACCL",
+      "signal_price": 2.925,
+      "daily_discovery_score": 92.6,
+      "daily_setup_grade": "A",
+      "timeframe_best_fit": "LONGER-TERM",
+      "timeframe_primary_fit": "LONGER-TERM",
+      "timeframe_swing_score": 93.0,
+      "timeframe_longer_term_score": 100.0,
+      "daily_setup_archetypes": [
+        "TREND CONTINUATION",
+        "CONSTRUCTIVE PULLBACK"
+      ],
+      "day_pct": 5.6,
+      "daily_return_5d_pct": 0.17,
+      "daily_return_20d_pct": 31.17,
+      "daily_return_40d_pct": 70.06,
+      "daily_volume_ratio": 0.14,
+      "relative_strength_vs_spy_20d_pct": 28.18,
+      "outcomes": {}
+    },
+    {
+      "symbol": "EXK",
+      "signal_price": 10.76,
+      "daily_discovery_score": 92.2,
+      "daily_setup_grade": "A",
+      "timeframe_best_fit": "LONGER-TERM",
+      "timeframe_primary_fit": "LONGER-TERM",
+      "timeframe_swing_score": 81.0,
+      "timeframe_longer_term_score": 100.0,
+      "daily_setup_archetypes": [
+        "TREND CONTINUATION"
+      ],
+      "day_pct": -4.78,
+      "daily_return_5d_pct": 1.32,
+      "daily_return_20d_pct": 43.09,
+      "daily_return_40d_pct": 25.7,
+      "daily_volume_ratio": 1.51,
+      "relative_strength_vs_spy_20d_pct": 40.1,
+      "outcomes": {}
+    },
+    {
+      "symbol": "LHSW",
+      "signal_price": 4.16,
+      "daily_discovery_score": 91.6,
+      "daily_setup_grade": "A",
+      "timeframe_best_fit": "MIXED",
+      "timeframe_primary_fit": "LONGER-TERM",
+      "timeframe_swing_score": 98.0,
+      "timeframe_longer_term_score": 100.0,
+      "daily_setup_archetypes": [
+        "TREND CONTINUATION"
+      ],
+      "day_pct": 5.85,
+      "daily_return_5d_pct": 66.4,
+      "daily_return_20d_pct": 65.08,
+      "daily_return_40d_pct": 131.11,
+      "daily_volume_ratio": 1.48,
+      "relative_strength_vs_spy_20d_pct": 62.09,
+      "outcomes": {}
+    },
+    {
+      "symbol": "PATH",
+      "signal_price": 18.15,
+      "daily_discovery_score": 91.2,
+      "daily_setup_grade": "A",
+      "timeframe_best_fit": "LONGER-TERM",
+      "timeframe_primary_fit": "LONGER-TERM",
+      "timeframe_swing_score": 86.0,
+      "timeframe_longer_term_score": 100.0,
+      "daily_setup_archetypes": [
+        "TREND CONTINUATION"
+      ],
+      "day_pct": -0.98,
+      "daily_return_5d_pct": 10.74,
+      "daily_return_20d_pct": 42.24,
+      "daily_return_40d_pct": 55.0,
+      "daily_volume_ratio": 0.8,
+      "relative_strength_vs_spy_20d_pct": 39.25,
+      "outcomes": {}
+    },
+    {
+      "symbol": "GIS",
+      "signal_price": 41.55,
+      "daily_discovery_score": 91.2,
+      "daily_setup_grade": "A",
+      "timeframe_best_fit": "LONGER-TERM",
+      "timeframe_primary_fit": "LONGER-TERM",
+      "timeframe_swing_score": 76.0,
+      "timeframe_longer_term_score": 100.0,
+      "daily_setup_archetypes": [
+        "20D BREAKOUT",
+        "TREND CONTINUATION"
+      ],
+      "day_pct": 2.74,
+      "daily_return_5d_pct": 3.95,
+      "daily_return_20d_pct": 16.22,
+      "daily_return_40d_pct": 10.59,
+      "daily_volume_ratio": 1.11,
+      "relative_strength_vs_spy_20d_pct": 13.23,
+      "outcomes": {}
+    },
+    {
+      "symbol": "RMTI",
+      "signal_price": 8.17,
+      "daily_discovery_score": 90.6,
+      "daily_setup_grade": "A",
+      "timeframe_best_fit": "LONGER-TERM",
+      "timeframe_primary_fit": "LONGER-TERM",
+      "timeframe_swing_score": 93.0,
+      "timeframe_longer_term_score": 100.0,
+      "daily_setup_archetypes": [
+        "TREND CONTINUATION"
+      ],
+      "day_pct": 5.42,
+      "daily_return_5d_pct": 0.86,
+      "daily_return_20d_pct": 13.63,
+      "daily_return_40d_pct": 47.47,
+      "daily_volume_ratio": 1.28,
+      "relative_strength_vs_spy_20d_pct": 10.64,
+      "outcomes": {}
+    },
+    {
+      "symbol": "FIG",
+      "signal_price": 28.82,
+      "daily_discovery_score": 90.2,
+      "daily_setup_grade": "A",
+      "timeframe_best_fit": "LONGER-TERM",
+      "timeframe_primary_fit": "LONGER-TERM",
+      "timeframe_swing_score": 81.0,
+      "timeframe_longer_term_score": 100.0,
+      "daily_setup_archetypes": [
+        "TREND CONTINUATION"
+      ],
+      "day_pct": -5.88,
+      "daily_return_5d_pct": 6.35,
+      "daily_return_20d_pct": 18.5,
+      "daily_return_40d_pct": 35.05,
+      "daily_volume_ratio": 0.89,
+      "relative_strength_vs_spy_20d_pct": 15.51,
+      "outcomes": {}
+    },
+    {
+      "symbol": "B",
+      "signal_price": 45.65,
+      "daily_discovery_score": 89.2,
+      "daily_setup_grade": "A",
+      "timeframe_best_fit": "LONGER-TERM",
+      "timeframe_primary_fit": "LONGER-TERM",
+      "timeframe_swing_score": 76.0,
+      "timeframe_longer_term_score": 100.0,
+      "daily_setup_archetypes": [
+        "TREND CONTINUATION"
+      ],
+      "day_pct": -3.53,
+      "daily_return_5d_pct": -4.1,
+      "daily_return_20d_pct": 24.29,
+      "daily_return_40d_pct": 19.47,
+      "daily_volume_ratio": 1.26,
+      "relative_strength_vs_spy_20d_pct": 21.3,
+      "outcomes": {}
+    },
+    {
+      "symbol": "IVVD",
+      "signal_price": 0.9645,
+      "daily_discovery_score": 88.6,
+      "daily_setup_grade": "A",
+      "timeframe_best_fit": "LONGER-TERM",
+      "timeframe_primary_fit": "LONGER-TERM",
+      "timeframe_swing_score": 88.0,
+      "timeframe_longer_term_score": 100.0,
+      "daily_setup_archetypes": [
+        "MOMENTUM TREND"
+      ],
+      "day_pct": 7.15,
+      "daily_return_5d_pct": -3.21,
+      "daily_return_20d_pct": 80.28,
+      "daily_return_40d_pct": 7.91,
+      "daily_volume_ratio": 0.99,
+      "relative_strength_vs_spy_20d_pct": 77.29,
+      "outcomes": {}
+    },
+    {
+      "symbol": "GTM",
+      "signal_price": 4.2,
+      "daily_discovery_score": 87.2,
+      "daily_setup_grade": "B",
+      "timeframe_best_fit": "LONGER-TERM",
+      "timeframe_primary_fit": "LONGER-TERM",
+      "timeframe_swing_score": 81.0,
+      "timeframe_longer_term_score": 100.0,
+      "daily_setup_archetypes": [
+        "MOMENTUM TREND"
+      ],
+      "day_pct": 2.94,
+      "daily_return_5d_pct": 5.79,
+      "daily_return_20d_pct": 27.27,
+      "daily_return_40d_pct": 40.47,
+      "daily_volume_ratio": 0.8,
+      "relative_strength_vs_spy_20d_pct": 24.28,
+      "outcomes": {}
+    },
+    {
+      "symbol": "HTZ",
+      "signal_price": 2.14,
+      "daily_discovery_score": 84.7,
+      "daily_setup_grade": "B",
+      "timeframe_best_fit": "LONGER-TERM",
+      "timeframe_primary_fit": "LONGER-TERM",
+      "timeframe_swing_score": 88.0,
+      "timeframe_longer_term_score": 94.0,
+      "daily_setup_archetypes": [
+        "CONSTRUCTIVE PULLBACK"
+      ],
+      "day_pct": 4.9,
+      "daily_return_5d_pct": -4.89,
+      "daily_return_20d_pct": 35.02,
+      "daily_return_40d_pct": 0.94,
+      "daily_volume_ratio": 0.36,
+      "relative_strength_vs_spy_20d_pct": 32.03,
+      "outcomes": {}
+    },
+    {
+      "symbol": "HAL",
+      "signal_price": 36.18,
+      "daily_discovery_score": 84.3,
+      "daily_setup_grade": "B",
+      "timeframe_best_fit": "LONGER-TERM",
+      "timeframe_primary_fit": "LONGER-TERM",
+      "timeframe_swing_score": 76.0,
+      "timeframe_longer_term_score": 94.0,
+      "daily_setup_archetypes": [
+        "20D BREAKOUT"
+      ],
+      "day_pct": 1.94,
+      "daily_return_5d_pct": 2.38,
+      "daily_return_20d_pct": 12.19,
+      "daily_return_40d_pct": 9.77,
+      "daily_volume_ratio": 0.9,
+      "relative_strength_vs_spy_20d_pct": 9.2,
+      "outcomes": {}
+    },
+    {
+      "symbol": "UEC",
+      "signal_price": 12.4,
+      "daily_discovery_score": 84.2,
+      "daily_setup_grade": "B",
+      "timeframe_best_fit": "LONGER-TERM",
+      "timeframe_primary_fit": "LONGER-TERM",
+      "timeframe_swing_score": 54.0,
+      "timeframe_longer_term_score": 99.0,
+      "daily_setup_archetypes": [
+        "TREND CONTINUATION"
+      ],
+      "day_pct": -8.96,
+      "daily_return_5d_pct": -2.82,
+      "daily_return_20d_pct": 29.17,
+      "daily_return_40d_pct": 15.13,
+      "daily_volume_ratio": 1.25,
+      "relative_strength_vs_spy_20d_pct": 26.18,
+      "outcomes": {}
+    },
+    {
+      "symbol": "RZLV",
+      "signal_price": 2.97,
+      "daily_discovery_score": 81.4,
+      "daily_setup_grade": "B",
+      "timeframe_best_fit": "LONGER-TERM",
+      "timeframe_primary_fit": "LONGER-TERM",
+      "timeframe_swing_score": 81.0,
+      "timeframe_longer_term_score": 88.0,
+      "daily_setup_archetypes": [
+        "MOMENTUM TREND"
+      ],
+      "day_pct": 1.02,
+      "daily_return_5d_pct": 20.73,
+      "daily_return_20d_pct": 22.22,
+      "daily_return_40d_pct": 4.58,
+      "daily_volume_ratio": 1.42,
+      "relative_strength_vs_spy_20d_pct": 19.23,
+      "outcomes": {}
+    },
+    {
+      "symbol": "AR",
+      "signal_price": 38.45,
+      "daily_discovery_score": 81.0,
+      "daily_setup_grade": "B",
+      "timeframe_best_fit": "LONGER-TERM",
+      "timeframe_primary_fit": "LONGER-TERM",
+      "timeframe_swing_score": 70.0,
+      "timeframe_longer_term_score": 100.0,
+      "daily_setup_archetypes": [
+        "CONSTRUCTIVE PULLBACK"
+      ],
+      "day_pct": -0.18,
+      "daily_return_5d_pct": 1.34,
+      "daily_return_20d_pct": 6.39,
+      "daily_return_40d_pct": 8.68,
+      "daily_volume_ratio": 0.58,
+      "relative_strength_vs_spy_20d_pct": 3.4,
+      "outcomes": {}
+    },
+    {
+      "symbol": "T",
+      "signal_price": 26.01,
+      "daily_discovery_score": 79.3,
+      "daily_setup_grade": "B",
+      "timeframe_best_fit": "LONGER-TERM",
+      "timeframe_primary_fit": "LONGER-TERM",
+      "timeframe_swing_score": 53.0,
+      "timeframe_longer_term_score": 95.0,
+      "daily_setup_archetypes": [
+        "TREND CONTINUATION"
+      ],
+      "day_pct": 2.28,
+      "daily_return_5d_pct": 2.85,
+      "daily_return_20d_pct": 11.87,
+      "daily_return_40d_pct": 26.38,
+      "daily_volume_ratio": 0.6,
+      "relative_strength_vs_spy_20d_pct": 8.88,
+      "outcomes": {}
+    },
+    {
+      "symbol": "WCT",
+      "signal_price": 1.09,
+      "daily_discovery_score": 78.5,
+      "daily_setup_grade": "B",
+      "timeframe_best_fit": "SWING",
+      "timeframe_primary_fit": "SWING",
+      "timeframe_swing_score": 91.0,
+      "timeframe_longer_term_score": 67.0,
+      "daily_setup_archetypes": [
+        "MOMENTUM TREND"
+      ],
+      "day_pct": 45.53,
+      "daily_return_5d_pct": 20.23,
+      "daily_return_20d_pct": 35.88,
+      "daily_return_40d_pct": -8.4,
+      "daily_volume_ratio": 11.66,
+      "relative_strength_vs_spy_20d_pct": 32.89,
+      "outcomes": {}
+    },
+    {
+      "symbol": "WEN",
+      "signal_price": 8.27,
+      "daily_discovery_score": 78.2,
+      "daily_setup_grade": "B",
+      "timeframe_best_fit": "SWING",
+      "timeframe_primary_fit": "SWING",
+      "timeframe_swing_score": 88.0,
+      "timeframe_longer_term_score": 75.0,
+      "daily_setup_archetypes": [
+        "CONSTRUCTIVE PULLBACK"
+      ],
+      "day_pct": 5.82,
+      "daily_return_5d_pct": -8.21,
+      "daily_return_20d_pct": 12.36,
+      "daily_return_40d_pct": -3.84,
+      "daily_volume_ratio": 0.77,
+      "relative_strength_vs_spy_20d_pct": 9.37,
+      "outcomes": {}
+    },
+    {
+      "symbol": "CTRM",
+      "signal_price": 2.34,
+      "daily_discovery_score": 78.0,
+      "daily_setup_grade": "C",
+      "timeframe_best_fit": "LONGER-TERM",
+      "timeframe_primary_fit": "LONGER-TERM",
+      "timeframe_swing_score": 54.0,
+      "timeframe_longer_term_score": 91.0,
+      "daily_setup_archetypes": [
+        "CONSTRUCTIVE PULLBACK"
+      ],
+      "day_pct": -2.5,
+      "daily_return_5d_pct": -5.26,
+      "daily_return_20d_pct": 20.0,
+      "daily_return_40d_pct": 3.54,
+      "daily_volume_ratio": 1.17,
+      "relative_strength_vs_spy_20d_pct": 17.01,
+      "outcomes": {}
+    },
+    {
+      "symbol": "CMCSA",
+      "signal_price": 27.06,
+      "daily_discovery_score": 76.7,
+      "daily_setup_grade": "C",
+      "timeframe_best_fit": "LONGER-TERM",
+      "timeframe_primary_fit": "LONGER-TERM",
+      "timeframe_swing_score": 59.0,
+      "timeframe_longer_term_score": 89.0,
+      "daily_setup_archetypes": [
+        "TREND CONTINUATION"
+      ],
+      "day_pct": 2.46,
+      "daily_return_5d_pct": 0.78,
+      "daily_return_20d_pct": 12.94,
+      "daily_return_40d_pct": 13.75,
+      "daily_volume_ratio": 0.9,
+      "relative_strength_vs_spy_20d_pct": 9.95,
+      "outcomes": {}
+    },
+    {
+      "symbol": "PFE",
+      "signal_price": 27.96,
+      "daily_discovery_score": 76.5,
+      "daily_setup_grade": "C",
+      "timeframe_best_fit": "LONGER-TERM",
+      "timeframe_primary_fit": "LONGER-TERM",
+      "timeframe_swing_score": 48.0,
+      "timeframe_longer_term_score": 89.0,
+      "daily_setup_archetypes": [
+        "TREND CONTINUATION",
+        "CONSTRUCTIVE PULLBACK"
+      ],
+      "day_pct": -0.21,
+      "daily_return_5d_pct": -0.39,
+      "daily_return_20d_pct": 11.8,
+      "daily_return_40d_pct": 14.97,
+      "daily_volume_ratio": 0.7,
+      "relative_strength_vs_spy_20d_pct": 8.81,
+      "outcomes": {}
+    }
+  ],
+  "summary": {
+    "horizons": {
+      "1": {
+        "resolved": 0,
+        "avg_return_pct": null,
+        "median_return_pct": null,
+        "higher_rate_pct": null,
+        "avg_mfe_pct": null,
+        "avg_mae_pct": null,
+        "avg_excess_vs_spy_pct": null
+      },
+      "3": {
+        "resolved": 0,
+        "avg_return_pct": null,
+        "median_return_pct": null,
+        "higher_rate_pct": null,
+        "avg_mfe_pct": null,
+        "avg_mae_pct": null,
+        "avg_excess_vs_spy_pct": null
+      },
+      "5": {
+        "resolved": 0,
+        "avg_return_pct": null,
+        "median_return_pct": null,
+        "higher_rate_pct": null,
+        "avg_mfe_pct": null,
+        "avg_mae_pct": null,
+        "avg_excess_vs_spy_pct": null
+      },
+      "10": {
+        "resolved": 0,
+        "avg_return_pct": null,
+        "median_return_pct": null,
+        "higher_rate_pct": null,
+        "avg_mfe_pct": null,
+        "avg_mae_pct": null,
+        "avg_excess_vs_spy_pct": null
+      },
+      "20": {
+        "resolved": 0,
+        "avg_return_pct": null,
+        "median_return_pct": null,
+        "higher_rate_pct": null,
+        "avg_mfe_pct": null,
+        "avg_mae_pct": null,
+        "avg_excess_vs_spy_pct": null
+      },
+      "40": {
+        "resolved": 0,
+        "avg_return_pct": null,
+        "median_return_pct": null,
+        "higher_rate_pct": null,
+        "avg_mfe_pct": null,
+        "avg_mae_pct": null,
+        "avg_excess_vs_spy_pct": null
+      }
+    },
+    "swing_5d_by_grade": {
+      "A": {
+        "resolved": 0,
+        "avg_return_pct": null,
+        "median_return_pct": null,
+        "higher_rate_pct": null,
+        "avg_mfe_pct": null,
+        "avg_mae_pct": null,
+        "avg_excess_vs_spy_pct": null
+      },
+      "B": {
+        "resolved": 0,
+        "avg_return_pct": null,
+        "median_return_pct": null,
+        "higher_rate_pct": null,
+        "avg_mfe_pct": null,
+        "avg_mae_pct": null,
+        "avg_excess_vs_spy_pct": null
+      },
+      "C": {
+        "resolved": 0,
+        "avg_return_pct": null,
+        "median_return_pct": null,
+        "higher_rate_pct": null,
+        "avg_mfe_pct": null,
+        "avg_mae_pct": null,
+        "avg_excess_vs_spy_pct": null
+      }
+    },
+    "swing_5d_by_best_fit": {
+      "LONGER-TERM": {
+        "resolved": 0,
+        "avg_return_pct": null,
+        "median_return_pct": null,
+        "higher_rate_pct": null,
+        "avg_mfe_pct": null,
+        "avg_mae_pct": null,
+        "avg_excess_vs_spy_pct": null
+      },
+      "MIXED": {
+        "resolved": 0,
+        "avg_return_pct": null,
+        "median_return_pct": null,
+        "higher_rate_pct": null,
+        "avg_mfe_pct": null,
+        "avg_mae_pct": null,
+        "avg_excess_vs_spy_pct": null
+      },
+      "SWING": {
+        "resolved": 0,
+        "avg_return_pct": null,
+        "median_return_pct": null,
+        "higher_rate_pct": null,
+        "avg_mfe_pct": null,
+        "avg_mae_pct": null,
+        "avg_excess_vs_spy_pct": null
+      }
+    },
+    "swing_5d_by_archetype": {
+      "20D BREAKOUT": {
+        "resolved": 0,
+        "avg_return_pct": null,
+        "median_return_pct": null,
+        "higher_rate_pct": null,
+        "avg_mfe_pct": null,
+        "avg_mae_pct": null,
+        "avg_excess_vs_spy_pct": null
+      },
+      "CONSTRUCTIVE PULLBACK": {
+        "resolved": 0,
+        "avg_return_pct": null,
+        "median_return_pct": null,
+        "higher_rate_pct": null,
+        "avg_mfe_pct": null,
+        "avg_mae_pct": null,
+        "avg_excess_vs_spy_pct": null
+      },
+      "MOMENTUM TREND": {
+        "resolved": 0,
+        "avg_return_pct": null,
+        "median_return_pct": null,
+        "higher_rate_pct": null,
+        "avg_mfe_pct": null,
+        "avg_mae_pct": null,
+        "avg_excess_vs_spy_pct": null
+      },
+      "TREND CONTINUATION": {
+        "resolved": 0,
+        "avg_return_pct": null,
+        "median_return_pct": null,
+        "higher_rate_pct": null,
+        "avg_mfe_pct": null,
+        "avg_mae_pct": null,
+        "avg_excess_vs_spy_pct": null
+      }
+    },
+    "longer_20d_by_grade": {
+      "A": {
+        "resolved": 0,
+        "avg_return_pct": null,
+        "median_return_pct": null,
+        "higher_rate_pct": null,
+        "avg_mfe_pct": null,
+        "avg_mae_pct": null,
+        "avg_excess_vs_spy_pct": null
+      },
+      "B": {
+        "resolved": 0,
+        "avg_return_pct": null,
+        "median_return_pct": null,
+        "higher_rate_pct": null,
+        "avg_mfe_pct": null,
+        "avg_mae_pct": null,
+        "avg_excess_vs_spy_pct": null
+      },
+      "C": {
+        "resolved": 0,
+        "avg_return_pct": null,
+        "median_return_pct": null,
+        "higher_rate_pct": null,
+        "avg_mfe_pct": null,
+        "avg_mae_pct": null,
+        "avg_excess_vs_spy_pct": null
+      }
+    },
+    "longer_20d_by_best_fit": {
+      "LONGER-TERM": {
+        "resolved": 0,
+        "avg_return_pct": null,
+        "median_return_pct": null,
+        "higher_rate_pct": null,
+        "avg_mfe_pct": null,
+        "avg_mae_pct": null,
+        "avg_excess_vs_spy_pct": null
+      },
+      "MIXED": {
+        "resolved": 0,
+        "avg_return_pct": null,
+        "median_return_pct": null,
+        "higher_rate_pct": null,
+        "avg_mfe_pct": null,
+        "avg_mae_pct": null,
+        "avg_excess_vs_spy_pct": null
+      },
+      "SWING": {
+        "resolved": 0,
+        "avg_return_pct": null,
+        "median_return_pct": null,
+        "higher_rate_pct": null,
+        "avg_mfe_pct": null,
+        "avg_mae_pct": null,
+        "avg_excess_vs_spy_pct": null
+      }
+    },
+    "longer_20d_by_archetype": {
+      "20D BREAKOUT": {
+        "resolved": 0,
+        "avg_return_pct": null,
+        "median_return_pct": null,
+        "higher_rate_pct": null,
+        "avg_mfe_pct": null,
+        "avg_mae_pct": null,
+        "avg_excess_vs_spy_pct": null
+      },
+      "CONSTRUCTIVE PULLBACK": {
+        "resolved": 0,
+        "avg_return_pct": null,
+        "median_return_pct": null,
+        "higher_rate_pct": null,
+        "avg_mfe_pct": null,
+        "avg_mae_pct": null,
+        "avg_excess_vs_spy_pct": null
+      },
+      "MOMENTUM TREND": {
+        "resolved": 0,
+        "avg_return_pct": null,
+        "median_return_pct": null,
+        "higher_rate_pct": null,
+        "avg_mfe_pct": null,
+        "avg_mae_pct": null,
+        "avg_excess_vs_spy_pct": null
+      },
+      "TREND CONTINUATION": {
+        "resolved": 0,
+        "avg_return_pct": null,
+        "median_return_pct": null,
+        "higher_rate_pct": null,
+        "avg_mfe_pct": null,
+        "avg_mae_pct": null,
+        "avg_excess_vs_spy_pct": null
+      }
+    }
+  }
+}

@@ -3,8 +3,8 @@
   "tracker_version": "3.1",
   "current_feature_version": "scanner-features-v2-consolidated",
   "trading_date": "2026-08-28",
-  "status": "complete",
-  "generated_at_utc": "2026-08-30T02:50:51.263085+00:00",
+  "status": "complete_no_resolvable_horizons",
+  "generated_at_utc": "2026-08-30T16:24:18.444063+00:00",
   "discovery": {
     "artifact_count": 2,
     "scan_payload_count": 2,
@@ -13,7 +13,8 @@
     "wrong_date_scans_ignored": 0,
     "outcome_market_data_source": "tradier_1min_open",
     "outcome_symbols_requested": 30,
-    "outcome_symbols_resolved": 30
+    "outcome_symbols_resolved": 30,
+    "outcome_note": "Regular-session scans were found, but every saved observation was too close to the 4:00 PM ET close to resolve the configured +15/+30/+60 minute horizons."
   },
   "summary": {
     "observation_count": 30,
