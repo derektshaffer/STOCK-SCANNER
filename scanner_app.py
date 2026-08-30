@@ -14,8 +14,8 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 SCAN_FILE = Path("scan_logs/latest_scan.json")
-AUTO_SCAN_SECONDS = 300
-AUTO_STATUS_REFRESH_SECONDS = 30
+AUTO_SCAN_SECONDS = 120
+AUTO_STATUS_REFRESH_SECONDS = 15
 
 st.set_page_config(
     page_title="Momentum Scanner",
@@ -777,10 +777,11 @@ with controls_context:
             else "8:00 AM–5:00 PM ET"
         )
         st.toggle(
-            "Auto scan every 5 minutes",
+            "Auto scan every 2 minutes",
             key="auto_scan_enabled",
             help=(
-                f"Runs while this dashboard tab/session is active. Current live feed: "
+                f"Runs about every 2 minutes while the Momentum Scanner view is active. "
+                f"Browser backgrounding can delay refreshes. Current live feed: "
                 f"{feed_name}; live scanner coverage: {coverage} on weekdays."
             ),
         )
@@ -877,7 +878,7 @@ def auto_scan_controller():
     remaining = max(0, AUTO_SCAN_SECONDS - elapsed)
 
     if elapsed >= AUTO_SCAN_SECONDS:
-        with st.spinner("Automatic 5-minute scan running…"):
+        with st.spinner("Automatic 2-minute scan running…"):
             ok, msg = run_scanner()
         st.session_state["last_auto_scan_at"] = time.time()
         st.session_state["last_auto_message"] = msg
@@ -973,7 +974,7 @@ except Exception:
 _market_open_for_stale_check, _now_et_for_stale_check = market_is_open()
 scan_is_stale = bool(
     _market_open_for_stale_check
-    and (scan_age_seconds is None or scan_age_seconds > 8 * 60)
+    and (scan_age_seconds is None or scan_age_seconds > 4 * 60)
 )
 if scan_is_stale:
     age_text = (
