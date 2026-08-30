@@ -1028,6 +1028,15 @@ def main():
         "observations": observations,
     }
 
+    swing_path_summary = payload["summary"].get("swing_path_target") or {}
+    labeled_path_n = int(swing_path_summary.get("labeled") or 0)
+    target_first_n = int(swing_path_summary.get("target_first") or 0)
+    swing_path_summary["target_before_stop_rate_pct"] = (
+        round(target_first_n / labeled_path_n * 100.0, 1)
+        if labeled_path_n
+        else None
+    )
+
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     OUTPUT_PATH.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     print(f"Wrote historical timeframe replay: {OUTPUT_PATH}")
