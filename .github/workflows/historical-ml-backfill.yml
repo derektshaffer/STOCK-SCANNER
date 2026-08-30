@@ -36,6 +36,7 @@ on:
       - "historical_scanner_replay.py"
       - "historical_timeframe_replay.py"
       - "timeframe_ml_ranker.py"
+      - "timeframe_targets.py"
       - ".github/workflows/historical-ml-backfill.yml"
 
 permissions:
