@@ -2362,9 +2362,20 @@ def test_monday_readiness_blocks_stale_scan_handoffs():
 
     source = Path("app.py").read_text(encoding="utf-8")
     assert "latest_scan_stale" in source
-    assert "latest_scan_age > 8 * 60" in source
+    assert "latest_scan_age > 4 * 60" in source
     assert "disabled=latest_scan_stale" in source
     assert "old setup cannot be mistaken for a current one" in source
+
+
+def test_live_scanner_uses_two_minute_cadence():
+    from pathlib import Path
+
+    source = Path("scanner_app.py").read_text(encoding="utf-8")
+    assert "AUTO_SCAN_SECONDS = 120" in source
+    assert "AUTO_STATUS_REFRESH_SECONDS = 15" in source
+    assert "Auto scan every 2 minutes" in source
+    assert "Automatic 2-minute scan running" in source
+    assert "scan_age_seconds > 4 * 60" in source
 
 
 def test_analyzer_live_test_status_exposes_tracking_health():
@@ -3051,6 +3062,7 @@ if __name__ == "__main__":
         test_swing_research_ui_disclaims_historical_probability,
         test_legacy_analyzer_entrypoint_cannot_drift,
         test_monday_readiness_blocks_stale_scan_handoffs,
+        test_live_scanner_uses_two_minute_cadence,
         test_analyzer_live_test_status_exposes_tracking_health,
     ]
     for test in tests:
