@@ -871,7 +871,7 @@ with controls_context:
         st.success(str(flash_success))
 
     scan_col, auto_col, horizon_col, market_col = st.columns(
-        [1.15, 1.45, 2.45, 1.55],
+        [1.10, 1.35, 2.65, 1.40],
         vertical_alignment="center",
     )
     with scan_col:
@@ -914,7 +914,7 @@ with controls_context:
         )
     with horizon_col:
         st.selectbox(
-            "Trade horizon",
+            "Trade Horizon Focus",
             TRADE_HORIZON_OPTIONS,
             key="scanner_trade_horizon",
             format_func=lambda value: TRADE_HORIZON_LABELS.get(value, value),

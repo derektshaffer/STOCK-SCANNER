@@ -404,6 +404,20 @@ def test_mixed_timeframe_is_labeled_multiple_timeframes():
     assert "<b>Multiple Timeframes</b> means two horizons scored similarly." in scanner_source
 
 
+
+def test_glass_theme_styles_selectboxes_and_trade_horizon():
+    from pathlib import Path
+
+    source = Path("glass_theme.py").read_text(encoding="utf-8")
+    scanner_source = Path("scanner_app.py").read_text(encoding="utf-8")
+    assert 'div[data-testid="stSelectbox"] div[data-baseweb="select"] > div' in source
+    assert 'div[role="listbox"]' in source
+    assert 'div[role="option"][aria-selected="true"]' in source
+    assert '.st-key-scanner_trade_horizon' in source
+    assert '"Trade Horizon Focus"' in scanner_source
+    assert '[1.10, 1.35, 2.65, 1.40]' in scanner_source
+
+
 def test_historical_trade_quality_path_is_conservative():
     import historical_scanner_replay as replay
 
@@ -3106,7 +3120,7 @@ def test_scanner_ui_exposes_timeframe_filter_without_reranking():
     from pathlib import Path
 
     source = Path("scanner_app.py").read_text(encoding="utf-8")
-    assert '"Trade horizon"' in source
+    assert '"Trade Horizon Focus"' in source
     assert '"Short term (intraday)"' in source
     assert '"Medium term (swing)"' in source
     assert '"Long term"' in source
@@ -3532,6 +3546,7 @@ if __name__ == "__main__":
         test_uncapped_trend_candidate_score_is_preserved_in_outcome_cohort,
         test_combined_candidate_list_uses_shared_trade_horizon_filter,
         test_mixed_timeframe_is_labeled_multiple_timeframes,
+        test_glass_theme_styles_selectboxes_and_trade_horizon,
         test_historical_trade_quality_path_is_conservative,
         test_scanner_trade_quality_path_is_causal_and_conservative,
         test_stream_seed_rejects_non_tradier_metrics,

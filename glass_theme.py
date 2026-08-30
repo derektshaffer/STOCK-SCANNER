@@ -551,13 +551,114 @@ def inject_glass_theme():
             box-shadow: none !important;
         }
 
-        div[data-baseweb="select"] > div,
         [data-testid="stTextInput"] input,
         [data-testid="stNumberInput"] input {
             color: #eef6ff !important;
             border-color: rgba(105,151,197,.25) !important;
             background: rgba(10,25,42,.78) !important;
             box-shadow: inset 0 1px 0 rgba(255,255,255,.02) !important;
+        }
+
+        /* ---------- Glass dropdowns / selectboxes ---------- */
+        div[data-testid="stSelectbox"] div[data-baseweb="select"] > div,
+        div[data-testid="stMultiSelect"] div[data-baseweb="select"] > div {
+            min-height: 46px !important;
+            color: var(--glass-text) !important;
+            border: 1px solid rgba(105,174,226,.30) !important;
+            border-radius: 12px !important;
+            background:
+                linear-gradient(145deg, rgba(13,31,51,.94), rgba(8,21,36,.92)) !important;
+            box-shadow:
+                inset 0 1px 0 rgba(255,255,255,.035),
+                0 8px 22px rgba(0,0,0,.10) !important;
+            transition:
+                border-color .14s ease,
+                background .14s ease,
+                box-shadow .14s ease !important;
+        }
+
+        div[data-testid="stSelectbox"] div[data-baseweb="select"] > div:hover,
+        div[data-testid="stMultiSelect"] div[data-baseweb="select"] > div:hover {
+            border-color: rgba(99,207,255,.48) !important;
+            background:
+                linear-gradient(145deg, rgba(15,38,61,.97), rgba(9,25,41,.95)) !important;
+            box-shadow:
+                inset 0 1px 0 rgba(255,255,255,.045),
+                0 0 18px rgba(99,207,255,.07) !important;
+        }
+
+        div[data-testid="stSelectbox"] div[data-baseweb="select"]:focus-within > div,
+        div[data-testid="stMultiSelect"] div[data-baseweb="select"]:focus-within > div {
+            border-color: var(--glass-green-line) !important;
+            box-shadow:
+                inset 0 1px 0 rgba(255,255,255,.05),
+                0 0 0 1px rgba(55,239,121,.10),
+                0 0 20px rgba(55,239,121,.09) !important;
+        }
+
+        div[data-testid="stSelectbox"] div[data-baseweb="select"] span,
+        div[data-testid="stMultiSelect"] div[data-baseweb="select"] span {
+            color: #edf6ff !important;
+            font-weight: 760 !important;
+        }
+
+        div[data-testid="stSelectbox"] div[data-baseweb="select"] svg,
+        div[data-testid="stMultiSelect"] div[data-baseweb="select"] svg {
+            color: #9bdcff !important;
+            fill: #9bdcff !important;
+        }
+
+        div[data-testid="stSelectbox"] label p,
+        div[data-testid="stMultiSelect"] label p {
+            color: #91a9c5 !important;
+            font-weight: 750 !important;
+        }
+
+        /* BaseWeb mounts the opened menu in a portal outside the widget. */
+        div[role="listbox"] {
+            padding: 5px !important;
+            border: 1px solid rgba(105,174,226,.28) !important;
+            border-radius: 12px !important;
+            background:
+                linear-gradient(160deg, rgba(10,26,44,.985), rgba(5,15,27,.99)) !important;
+            box-shadow:
+                0 18px 45px rgba(0,0,0,.38),
+                0 0 0 1px rgba(99,207,255,.035) !important;
+        }
+
+        div[role="option"] {
+            min-height: 40px !important;
+            color: #eaf4ff !important;
+            border-radius: 8px !important;
+            background: transparent !important;
+            font-weight: 680 !important;
+        }
+
+        div[role="option"]:hover {
+            color: #ffffff !important;
+            background: rgba(99,207,255,.08) !important;
+        }
+
+        div[role="option"][aria-selected="true"] {
+            color: #a9ffc4 !important;
+            background: rgba(55,239,121,.12) !important;
+        }
+
+        /* Trade-horizon control: match scanner metric-label typography. */
+        .st-key-scanner_trade_horizon [data-testid="stWidgetLabel"] p,
+        .st-key-scanner_trade_horizon label p {
+            color: #8fa9c6 !important;
+            text-transform: uppercase !important;
+            letter-spacing: .075em !important;
+            font-size: .77rem !important;
+            font-weight: 850 !important;
+        }
+
+        .st-key-scanner_trade_horizon div[data-baseweb="select"] > div {
+            min-height: 48px !important;
+            border-color: rgba(99,207,255,.34) !important;
+            background:
+                linear-gradient(145deg, rgba(12,31,51,.96), rgba(7,21,36,.95)) !important;
         }
 
         /* ---------- Streamlit-native surfaces ---------- */
