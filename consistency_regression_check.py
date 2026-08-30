@@ -1856,11 +1856,21 @@ def test_swing_timeframe_ml_features_ignore_future_outcome_fields():
         "stair_context": {"stair_step_count": 2, "stair_structure_score": 65.0},
         "historical_context": {"bias_score": 4.0, "next_day_up_pct": 58.0, "sample_count": 20},
         "market_context": {"broad_market_avg_pct": 0.4},
-        "outcomes": {"return_5d_pct": 99.0},
+        "outcomes": {
+            "return_5d_pct": 99.0,
+            "swing_target_before_stop_5d": 1,
+            "swing_mfe_5d_pct": 12.0,
+            "swing_mae_5d_pct": -2.0,
+        },
         "swing_score": 99.0,
     }
     changed = dict(base)
-    changed["outcomes"] = {"return_5d_pct": -99.0}
+    changed["outcomes"] = {
+        "return_5d_pct": -99.0,
+        "swing_target_before_stop_5d": 0,
+        "swing_mfe_5d_pct": 1.0,
+        "swing_mae_5d_pct": -20.0,
+    }
     changed["swing_score"] = 1.0
 
     assert tml._feature_dict(base) == tml._feature_dict(changed)
@@ -1892,6 +1902,72 @@ def test_swing_timeframe_ml_folds_never_mix_same_replay_date():
         assert set(row["date"] for row in train).isdisjoint(
             set(row["date"] for row in test)
         )
+
+
+def test_swing_path_target_orders_daily_events_conservatively():
+    import historical_timeframe_replay as htr
+
+    entry = ("2026-01-02", {"c": 100.0, "h": 101.0, "l": 99.0})
+    target_first = [
+        entry,
+        ("2026-01-05", {"h": 106.0, "l": 98.0, "c": 105.0}),
+        ("2026-01-06", {"h": 107.0, "l": 95.0, "c": 96.0}),
+        ("2026-01-07", {"h": 101.0, "l": 97.0, "c": 100.0}),
+        ("2026-01-08", {"h": 102.0, "l": 98.0, "c": 101.0}),
+        ("2026-01-09", {"h": 103.0, "l": 99.0, "c": 102.0}),
+    ]
+    result = htr._swing_path_outcomes(target_first, 0, 100.0)
+    assert result["swing_target_before_stop_5d"] == 1, result
+    assert result["swing_first_event_5d"] == "TARGET", result
+    assert result["swing_first_hit_session"] == 1, result
+    assert result["swing_mfe_5d_pct"] == 7.0, result
+    assert result["swing_mae_5d_pct"] == -5.0, result
+
+    stop_first = [
+        entry,
+        ("2026-01-05", {"h": 103.0, "l": 95.0, "c": 96.0}),
+        ("2026-01-06", {"h": 108.0, "l": 97.0, "c": 107.0}),
+        ("2026-01-07", {"h": 106.0, "l": 99.0, "c": 105.0}),
+        ("2026-01-08", {"h": 104.0, "l": 98.0, "c": 103.0}),
+        ("2026-01-09", {"h": 105.0, "l": 99.0, "c": 104.0}),
+    ]
+    result = htr._swing_path_outcomes(stop_first, 0, 100.0)
+    assert result["swing_target_before_stop_5d"] == 0, result
+    assert result["swing_first_event_5d"] == "STOP", result
+
+
+def test_swing_path_target_excludes_same_day_order_ambiguity():
+    import historical_timeframe_replay as htr
+
+    rows = [
+        ("2026-01-02", {"c": 100.0}),
+        ("2026-01-05", {"h": 106.0, "l": 95.0, "c": 101.0}),
+        ("2026-01-06", {"h": 103.0, "l": 98.0, "c": 102.0}),
+        ("2026-01-07", {"h": 102.0, "l": 99.0, "c": 101.0}),
+        ("2026-01-08", {"h": 102.0, "l": 99.0, "c": 101.0}),
+        ("2026-01-09", {"h": 102.0, "l": 99.0, "c": 101.0}),
+    ]
+    result = htr._swing_path_outcomes(rows, 0, 100.0)
+    assert result["swing_target_before_stop_5d"] is None, result
+    assert result["swing_first_event_5d"] == "AMBIGUOUS_SAME_DAY", result
+    assert result["swing_ambiguous_same_day_5d"] is True, result
+
+
+def test_swing_path_target_treats_no_target_as_non_success():
+    import historical_timeframe_replay as htr
+
+    rows = [
+        ("2026-01-02", {"c": 100.0}),
+        ("2026-01-05", {"h": 103.0, "l": 98.0, "c": 101.0}),
+        ("2026-01-06", {"h": 104.0, "l": 97.0, "c": 103.0}),
+        ("2026-01-07", {"h": 104.5, "l": 97.5, "c": 104.0}),
+        ("2026-01-08", {"h": 104.0, "l": 98.0, "c": 102.0}),
+        ("2026-01-09", {"h": 103.0, "l": 98.0, "c": 102.0}),
+    ]
+    result = htr._swing_path_outcomes(rows, 0, 100.0)
+    assert result["swing_target_before_stop_5d"] == 0, result
+    assert result["swing_first_event_5d"] == "NEITHER", result
+    assert result["swing_mfe_5d_pct"] == 4.5, result
 
 
 if __name__ == "__main__":
@@ -1955,6 +2031,9 @@ if __name__ == "__main__":
         test_shared_timeframe_horizon_weights_match_live_formula,
         test_swing_timeframe_ml_features_ignore_future_outcome_fields,
         test_swing_timeframe_ml_folds_never_mix_same_replay_date,
+        test_swing_path_target_orders_daily_events_conservatively,
+        test_swing_path_target_excludes_same_day_order_ambiguity,
+        test_swing_path_target_treats_no_target_as_non_success,
     ]
     for test in tests:
         test()

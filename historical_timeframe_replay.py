@@ -40,10 +40,16 @@ from historical_scanner_replay import (
     select_daily_universe,
 )
 from scanner_behavior import multi_session_behavior_features
+from timeframe_targets import (
+    SWING_HORIZON_SESSIONS,
+    SWING_STOP_PCT,
+    SWING_TARGET_PCT,
+    resolve_swing_path_from_bars,
+)
 
 
 ET = ZoneInfo("America/New_York")
-REPLAY_VERSION = "historical-timeframe-replay-v1"
+REPLAY_VERSION = "historical-timeframe-replay-v2-path-target"
 TIMEFRAME_SCORE_VERSION = "timeframe-fit-v1"
 DEFAULT_REPLAY_DAYS = int(os.environ.get("TIMEFRAME_REPLAY_TRADING_DAYS", "240") or 240)
 DEFAULT_STRIDE = int(os.environ.get("TIMEFRAME_REPLAY_STRIDE_DAYS", "5") or 5)
@@ -271,6 +277,37 @@ def _future_returns(rows, idx, entry_price):
                 3,
             )
     return outcomes
+
+
+def _swing_path_outcomes(
+    rows,
+    idx,
+    entry_price,
+    *,
+    target_pct=SWING_TARGET_PCT,
+    stop_pct=SWING_STOP_PCT,
+    horizon_sessions=SWING_HORIZON_SESSIONS,
+):
+    future_bars = [
+        bar
+        for _day, bar in rows[idx + 1 : idx + 1 + int(horizon_sessions)]
+    ]
+    return resolve_swing_path_from_bars(
+        entry_price,
+        future_bars,
+        target_pct=target_pct,
+        stop_pct=stop_pct,
+        horizon_sessions=horizon_sessions,
+    )
+
+def _future_close_return(daily_index, symbol, replay_day, sessions):
+    rows = daily_index.get(symbol) or []
+    idx = _date_index(rows).get(replay_day)
+    if idx is None or idx + sessions >= len(rows):
+        return None
+    entry = _num(rows[idx][1].get("c"))
+    future = _num(rows[idx + sessions][1].get("c"))
+    return _pct(future, entry)
 
 
 def _daily_move_for(daily_index, symbol, replay_day):
@@ -506,6 +543,69 @@ def _directional_lift(rows, score_field, outcome_field):
     }
 
 
+
+def _binary_calibration(rows, score_field, outcome_field):
+    groups = {}
+    for row in rows:
+        score = _num(row.get(score_field))
+        outcome = (row.get("outcomes") or {}).get(outcome_field)
+        bucket = _bucket(score)
+        if bucket is None or outcome not in (0, 1):
+            continue
+        groups.setdefault(bucket, []).append(int(outcome))
+    out = {}
+    for bucket, values in groups.items():
+        out[bucket] = {
+            "n": len(values),
+            "target_before_stop_rate_pct": round(
+                sum(values) / len(values) * 100.0,
+                1,
+            ),
+        }
+    return out
+
+
+def _binary_lift(rows, score_field, outcome_field):
+    high = []
+    low = []
+    for row in rows:
+        score = _num(row.get(score_field))
+        outcome = (row.get("outcomes") or {}).get(outcome_field)
+        if score is None or outcome not in (0, 1):
+            continue
+        if score >= 72:
+            high.append(int(outcome))
+        elif score < 55:
+            low.append(int(outcome))
+
+    def stats(values):
+        return {
+            "n": len(values),
+            "target_before_stop_rate_pct": (
+                round(sum(values) / len(values) * 100.0, 1)
+                if values else None
+            ),
+        }
+
+    high_stats = stats(high)
+    low_stats = stats(low)
+    lift = None
+    if (
+        high_stats["target_before_stop_rate_pct"] is not None
+        and low_stats["target_before_stop_rate_pct"] is not None
+    ):
+        lift = round(
+            high_stats["target_before_stop_rate_pct"]
+            - low_stats["target_before_stop_rate_pct"],
+            1,
+        )
+    return {
+        "high_score_72_plus": high_stats,
+        "low_score_below_55": low_stats,
+        "target_rate_lift_pp": lift,
+    }
+
+
 def _candidate_rows(daily_index, replay_dates, universe_size, candidates_per_day):
     staged = []
     candidate_symbols = set()
@@ -627,7 +727,7 @@ def main():
     # Five future sessions guarantee resolved Swing labels. Longer-term 20d/60d
     # outcomes resolve wherever enough future history exists inside the same
     # point-in-time daily dataset.
-    replay_pool = dates[:-5]
+    replay_pool = dates[:-SWING_HORIZON_SESSIONS]
     requested = replay_pool[-replay_days:]
     replay_dates = requested[::stride]
     # Require at least 252 sessions of pre-history for stable trend context.
@@ -686,6 +786,21 @@ def main():
             coverage,
         )
         outcomes = _future_returns(history, idx, price)
+        outcomes.update(_swing_path_outcomes(history, idx, price))
+        spy_return_5d = _future_close_return(
+            daily_index,
+            "SPY",
+            replay_day,
+            SWING_HORIZON_SESSIONS,
+        )
+        if spy_return_5d is not None:
+            outcomes["spy_return_5d_pct"] = round(spy_return_5d, 3)
+            stock_return_5d = _num(outcomes.get("return_5d_pct"))
+            if stock_return_5d is not None:
+                outcomes["excess_return_vs_spy_5d_pct"] = round(
+                    stock_return_5d - spy_return_5d,
+                    3,
+                )
 
         if max(swing_score, long_term_score) < 55 or abs(swing_score - long_term_score) < 4:
             best_fit = "MIXED SWING/LONG"
@@ -749,6 +864,11 @@ def main():
     swing_5 = _calibration(observations, "swing_score", "return_5d_pct")
     long_20 = _calibration(observations, "long_term_score", "return_20d_pct")
     long_60 = _calibration(observations, "long_term_score", "return_60d_pct")
+    swing_path_calibration = _binary_calibration(
+        observations,
+        "swing_score",
+        "swing_target_before_stop_5d",
+    )
 
     fundamental_resolved = [
         row for row in observations
@@ -757,7 +877,7 @@ def main():
     scanner_summary = scanner_replay.get("summary") or {}
 
     payload = {
-        "schema_version": 1,
+        "schema_version": 2,
         "replay_version": REPLAY_VERSION,
         "timeframe_score_version": TIMEFRAME_SCORE_VERSION,
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
@@ -784,6 +904,7 @@ def main():
                 "historical analog score omits its intraday VWAP-reclaim subcomponent",
                 "SEC dilution replay uses filing-form recency and does not re-download old filing text keywords",
                 "daily replay validates Swing/Longer-term at EOD; intraday validation stays in the 5-minute scanner replay",
+                "when a +5% target and -4% stop are both touched on the same daily bar, ordering is unknowable and that row is excluded from the path-target ML label",
             ],
         },
         "summary": {
@@ -796,6 +917,79 @@ def main():
                 (row.get("outcomes") or {}).get("return_5d_pct") is not None
                 for row in observations
             ),
+            "swing_path_target": {
+                "target_pct": SWING_TARGET_PCT,
+                "stop_pct": SWING_STOP_PCT,
+                "horizon_sessions": SWING_HORIZON_SESSIONS,
+                "labeled": sum(
+                    (row.get("outcomes") or {}).get(
+                        "swing_target_before_stop_5d"
+                    ) is not None
+                    for row in observations
+                ),
+                "target_first": sum(
+                    (row.get("outcomes") or {}).get(
+                        "swing_target_before_stop_5d"
+                    ) == 1
+                    for row in observations
+                ),
+                "ambiguous_same_day": sum(
+                    bool(
+                        (row.get("outcomes") or {}).get(
+                            "swing_ambiguous_same_day_5d"
+                        )
+                    )
+                    for row in observations
+                ),
+                "avg_mfe_pct": round(
+                    statistics.mean(
+                        [
+                            value
+                            for row in observations
+                            for value in [
+                                _num(
+                                    (row.get("outcomes") or {}).get(
+                                        "swing_mfe_5d_pct"
+                                    )
+                                )
+                            ]
+                            if value is not None
+                        ]
+                    ),
+                    3,
+                )
+                if any(
+                    _num(
+                        (row.get("outcomes") or {}).get("swing_mfe_5d_pct")
+                    ) is not None
+                    for row in observations
+                )
+                else None,
+                "avg_mae_pct": round(
+                    statistics.mean(
+                        [
+                            value
+                            for row in observations
+                            for value in [
+                                _num(
+                                    (row.get("outcomes") or {}).get(
+                                        "swing_mae_5d_pct"
+                                    )
+                                )
+                            ]
+                            if value is not None
+                        ]
+                    ),
+                    3,
+                )
+                if any(
+                    _num(
+                        (row.get("outcomes") or {}).get("swing_mae_5d_pct")
+                    ) is not None
+                    for row in observations
+                )
+                else None,
+            },
             "long_term_20d_resolved": sum(
                 (row.get("outcomes") or {}).get("return_20d_pct") is not None
                 for row in observations
@@ -806,6 +1000,11 @@ def main():
             ),
             "swing_5d_directional_lift": _directional_lift(
                 observations, "swing_score", "return_5d_pct"
+            ),
+            "swing_path_target_lift": _binary_lift(
+                observations,
+                "swing_score",
+                "swing_target_before_stop_5d",
             ),
             "long_term_20d_directional_lift": _directional_lift(
                 observations, "long_term_score", "return_20d_pct"
@@ -822,17 +1021,35 @@ def main():
         "calibration": {
             "swing_3d": swing_3,
             "swing_5d": swing_5,
+            "swing_path_target_5d": swing_path_calibration,
             "long_term_20d": long_20,
             "long_term_60d": long_60,
         },
         "observations": observations,
     }
 
+    swing_path_summary = payload["summary"].get("swing_path_target") or {}
+    labeled_path_n = int(swing_path_summary.get("labeled") or 0)
+    target_first_n = int(swing_path_summary.get("target_first") or 0)
+    swing_path_summary["target_before_stop_rate_pct"] = (
+        round(target_first_n / labeled_path_n * 100.0, 1)
+        if labeled_path_n
+        else None
+    )
+
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     OUTPUT_PATH.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     print(f"Wrote historical timeframe replay: {OUTPUT_PATH}")
     print("TIMEFRAME_REPLAY_SUMMARY=" + json.dumps(payload["summary"], sort_keys=True))
     print("TIMEFRAME_REPLAY_SWING_5D=" + json.dumps(swing_5, sort_keys=True))
+    print(
+        "TIMEFRAME_REPLAY_SWING_PATH="
+        + json.dumps(payload["summary"]["swing_path_target"], sort_keys=True)
+    )
+    print(
+        "TIMEFRAME_REPLAY_SWING_PATH_CALIBRATION="
+        + json.dumps(swing_path_calibration, sort_keys=True)
+    )
     print("TIMEFRAME_REPLAY_LONG_20D=" + json.dumps(long_20, sort_keys=True))
 
 

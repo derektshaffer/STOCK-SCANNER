@@ -9,6 +9,11 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+from timeframe_targets import (
+    SWING_HORIZON_SESSIONS,
+    resolve_swing_path_from_bars,
+)
+
 
 LOG_PATH = Path(os.environ.get("ANALYZER_PREDICTION_LOG", "analysis_logs/analyzer_predictions.json"))
 BUCKET_MINUTES = 5
@@ -508,7 +513,7 @@ def _daily_bar_date(bar):
 
 
 def _resolve_trading_day_returns(row, daily_bars):
-    """Resolve 1/3/5/20/60 trading-day closes after the signal date."""
+    """Resolve close returns plus the shared five-session Swing path target."""
     created = _parse_dt(row.get("timestamp"))
     price = _num(row.get("price"))
     if created is None or price is None or price <= 0:
@@ -519,7 +524,7 @@ def _resolve_trading_day_returns(row, daily_bars):
         bar_day = _daily_bar_date(bar)
         close = _num(bar.get("c"))
         if bar_day is not None and bar_day > signal_day and close is not None and close > 0:
-            future.append((bar_day, close))
+            future.append((bar_day, bar))
     future.sort(key=lambda item: item[0])
     outcomes = row.setdefault("outcomes", {})
     changed = False
@@ -527,10 +532,26 @@ def _resolve_trading_day_returns(row, daily_bars):
         key = f"return_{sessions}d_pct"
         if key in outcomes or len(future) < sessions:
             continue
-        close = future[sessions - 1][1]
+        close = _num(future[sessions - 1][1].get("c"))
+        if close is None:
+            continue
         outcomes[key] = round((close / price - 1.0) * 100.0, 3)
         outcomes[f"resolved_{sessions}d"] = True
         changed = True
+
+    if (
+        row.get("timeframe_score_version") == TIMEFRAME_SCORE_VERSION
+        and "swing_first_event_5d" not in outcomes
+        and len(future) >= SWING_HORIZON_SESSIONS
+    ):
+        path = resolve_swing_path_from_bars(
+            price,
+            [bar for _day, bar in future[:SWING_HORIZON_SESSIONS]],
+        )
+        for key, value in path.items():
+            outcomes[key] = value
+        if path:
+            changed = True
     return changed
 
 
@@ -543,26 +564,46 @@ def resolve_symbol_predictions(sa, symbol, now=None, current_metrics=None):
     now = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
     symbol = str(symbol or "").upper().strip()
     rows = _load()
-    pending = [
+    symbol_rows = [
         row for row in rows
         if row.get("symbol") == symbol
         and _parse_dt(row.get("timestamp"))
-        and not bool((row.get("outcomes") or {}).get("resolved_60m"))
+    ][-80:]
+    pending = [
+        row for row in symbol_rows
+        if not bool((row.get("outcomes") or {}).get("resolved_60m"))
     ][-40:]
-    if not pending:
-        return tracker_summary(rows, symbol, current_metrics=current_metrics)
-
-    earliest = min(_parse_dt(row["timestamp"]) for row in pending)
-    safe_end = now - timedelta(minutes=16)
-    if safe_end <= earliest:
-        return tracker_summary(rows, symbol, current_metrics=current_metrics)
-
-    try:
-        bars, _source = sa.try_sip_delayed_bars(
-            symbol, "5Min", earliest - timedelta(minutes=5), safe_end, 10000
+    timeframe_pending = [
+        row for row in symbol_rows
+        if row.get("timeframe_score_version") == TIMEFRAME_SCORE_VERSION
+        and (
+            any(
+                (row.get("outcomes") or {}).get(
+                    f"return_{sessions}d_pct"
+                ) is None
+                for sessions in (1, 3, 5, 20, 60)
+            )
+            or "swing_first_event_5d" not in (row.get("outcomes") or {})
         )
-    except Exception:
-        bars = []
+    ][-40:]
+    if not pending and not timeframe_pending:
+        return tracker_summary(rows, symbol, current_metrics=current_metrics)
+
+    safe_end = now - timedelta(minutes=16)
+    bars = []
+    if pending:
+        earliest = min(_parse_dt(row["timestamp"]) for row in pending)
+        if safe_end > earliest:
+            try:
+                bars, _source = sa.try_sip_delayed_bars(
+                    symbol,
+                    "5Min",
+                    earliest - timedelta(minutes=5),
+                    safe_end,
+                    10000,
+                )
+            except Exception:
+                bars = []
 
     changed = False
     for row in pending:
@@ -652,16 +693,8 @@ def resolve_symbol_predictions(sa, symbol, now=None, current_metrics=None):
                         changed=True
 
     # Resolve the slower timeframe labels opportunistically whenever this
-    # ticker is opened again. The nightly scorer performs the durable sweep;
-    # this path makes the UI learn sooner without waiting for that job.
-    timeframe_pending = [
-        row for row in pending
-        if row.get("timeframe_score_version") == TIMEFRAME_SCORE_VERSION
-        and any(
-            (row.get("outcomes") or {}).get(f"return_{sessions}d_pct") is None
-            for sessions in (1, 3, 5, 20, 60)
-        )
-    ]
+    # ticker is opened again, even after its 60-minute outcome has matured.
+    # The nightly scorer remains the durable sweep.
     if timeframe_pending:
         earliest_tf = min(_parse_dt(row["timestamp"]) for row in timeframe_pending)
         try:
