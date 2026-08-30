@@ -1,6 +1,7 @@
 import json
 import os
 import statistics
+import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import datetime, time as dtime, timedelta, timezone
@@ -12,12 +13,17 @@ from timeframe_targets import (
     resolve_swing_path_from_bars,
 )
 from swing_research_flags import FLAG_VERSION as SWING_RESEARCH_FLAG_VERSION
+from tradier_live import get_history_bars, get_timesales_bars
 
 
 ET = ZoneInfo("America/New_York")
 DATA_BASE = "https://data.alpaca.markets"
 API_KEY = os.environ.get("ALPACA_API_KEY", "").strip()
 API_SECRET = os.environ.get("ALPACA_SECRET_KEY", "").strip()
+TRADIER_TOKEN = (
+    os.environ.get("TRADIER_ACCESS_TOKEN", "").strip()
+    or os.environ.get("TRADIER_TOKEN", "").strip()
+)
 OUTCOME_DATE = os.environ.get("OUTCOME_DATE", "").strip()
 OUT_DIR = Path(os.environ.get("ANALYZER_OUTCOME_DIR", "analyzer_outcomes"))
 ANALYZER_FEATURE_VERSION = "analyzer-features-v6-sequence-regimes"
@@ -74,7 +80,44 @@ def _target_date():
     return day
 
 
+def _tradier_retry(fn, *args, **kwargs):
+    delay = 1.0
+    for attempt in range(4):
+        try:
+            return fn(*args, **kwargs)
+        except urllib.error.HTTPError as exc:
+            if exc.code not in {429, 500, 502, 503, 504} or attempt >= 3:
+                raise
+        except urllib.error.URLError:
+            if attempt >= 3:
+                raise
+        import time as _time
+        _time.sleep(delay)
+        delay = min(6.0, delay * 2.0)
+    return []
+
+
 def _fetch_symbol_bars(symbol, start, end):
+    """Prefer Tradier consolidated 1-minute bars; fall back to Alpaca SIP."""
+    if TRADIER_TOKEN:
+        try:
+            bars = _tradier_retry(
+                get_timesales_bars,
+                symbol,
+                TRADIER_TOKEN,
+                start,
+                end,
+                interval="1min",
+                session_filter="open",
+            ) or []
+            if bars:
+                return bars
+        except Exception as exc:
+            print(f"WARN Tradier Analyzer intraday outcome bars {symbol}: {exc}")
+
+    if not API_KEY or not API_SECRET:
+        return []
+
     rows = []
     page_token = None
     while True:
@@ -271,11 +314,32 @@ def _resolve_rows(rows, day):
 
 
 def _fetch_daily_bars(symbols, start, end):
-    """Fetch consolidated daily bars in batches to keep the nightly sweep cheap."""
+    """Prefer Tradier daily history; use Alpaca SIP only for unresolved symbols."""
     symbols = sorted({str(symbol).upper().strip() for symbol in symbols if symbol})
     result = {symbol: [] for symbol in symbols}
-    for offset in range(0, len(symbols), 40):
-        chunk = symbols[offset:offset + 40]
+
+    if TRADIER_TOKEN:
+        for symbol in symbols:
+            try:
+                bars = _tradier_retry(
+                    get_history_bars,
+                    symbol,
+                    TRADIER_TOKEN,
+                    start,
+                    end,
+                    "daily",
+                ) or []
+                if bars:
+                    result[symbol] = bars
+            except Exception as exc:
+                print(f"WARN Tradier Analyzer daily outcome bars {symbol}: {exc}")
+
+    missing = [symbol for symbol in symbols if not result.get(symbol)]
+    if not missing or not API_KEY or not API_SECRET:
+        return result
+
+    for offset in range(0, len(missing), 40):
+        chunk = missing[offset:offset + 40]
         if not chunk:
             continue
         page_token = None
@@ -296,12 +360,12 @@ def _fetch_daily_bars(symbols, start, end):
                 f"{DATA_BASE}/v2/stocks/bars?{urllib.parse.urlencode(q)}"
             )
             for symbol, bars in (payload.get("bars") or {}).items():
-                result.setdefault(str(symbol).upper(), []).extend(bars or [])
+                if bars:
+                    result.setdefault(str(symbol).upper(), []).extend(bars or [])
             page_token = payload.get("next_page_token")
             if not page_token:
                 break
     return result
-
 
 def _daily_bar_date(bar):
     dt = _bar_dt(bar)
