@@ -508,23 +508,72 @@ def _horizon_stats(values):
     }
 
 
-def _independent_calibration_rows(rows):
-    """Keep one observation per ticker per clock hour for calibration.
+def _row_market_session(row):
+    explicit = str((row or {}).get("market_session") or "").lower().strip()
+    if explicit in {"regular", "regular_intraday"}:
+        return "regular"
+    if explicit in {"premarket", "afterhours", "closed"}:
+        return explicit
 
-    Raw 5-minute predictions remain in the durable files for lifecycle and
-    path analysis. Calibration uses a less-correlated sample so the apparent
-    n is not inflated by overlapping 60-minute outcome windows.
+    dt = _parse_dt((row or {}).get("timestamp"))
+    if dt is None:
+        return "unknown"
+    et = dt.astimezone(ET)
+    if et.weekday() >= 5:
+        return "closed"
+    minute = et.hour * 60 + et.minute
+    if 4 * 60 <= minute < 9 * 60 + 30:
+        return "premarket"
+    if 9 * 60 + 30 <= minute < 16 * 60:
+        return "regular"
+    if 16 * 60 <= minute < 20 * 60:
+        return "afterhours"
+    return "closed"
+
+
+def _independent_calibration_rows(rows):
+    """Keep one regular-session observation per ticker per ET clock hour.
+
+    Raw five-minute rows remain durable for lifecycle/path analysis. Intraday
+    calibration excludes pre/post-market, overnight and weekend observations,
+    and keys by New York time so UTC midnight cannot split one trading session.
     """
     chosen = {}
     ordered = sorted(rows, key=lambda row: str(row.get("timestamp") or ""))
     for row in ordered:
+        if _row_market_session(row) != "regular":
+            continue
         symbol = str(row.get("symbol") or "").upper().strip()
         dt = _parse_dt(row.get("timestamp"))
         if not symbol or dt is None:
             continue
-        key = (symbol, dt.date().isoformat(), dt.hour)
+        et = dt.astimezone(ET)
+        key = (symbol, et.date().isoformat(), et.hour)
         if key not in chosen:
             chosen[key] = row
+    return list(chosen.values())
+
+
+def _timeframe_daily_calibration_rows(rows):
+    """Keep the latest regular-session observation per ticker per ET day.
+
+    Swing and longer-term outcomes share the same future path for every
+    same-day refresh. Counting hourly copies would inflate n. The latest
+    regular-session snapshot is also the closest live analogue to the EOD
+    historical timeframe study.
+    """
+    chosen = {}
+    ordered = sorted(rows, key=lambda row: str(row.get("timestamp") or ""))
+    for row in ordered:
+        if _row_market_session(row) != "regular":
+            continue
+        symbol = str(row.get("symbol") or "").upper().strip()
+        dt = _parse_dt(row.get("timestamp"))
+        if not symbol or dt is None:
+            continue
+        et = dt.astimezone(ET)
+        key = (symbol, et.date().isoformat())
+        chosen[key] = row
     return list(chosen.values())
 
 
@@ -822,16 +871,17 @@ def _timeframe_calibrate(rows, score_field, outcome_field):
     return out
 
 
-def _timeframe_best_fit_calibration(rows):
+def _timeframe_best_fit_calibration(intraday_rows, daily_rows=None):
+    daily_rows = intraday_rows if daily_rows is None else daily_rows
     specs = {
-        "INTRADAY": ("return_60m_pct", "60m"),
-        "SWING": ("return_5d_pct", "5 trading days"),
-        "LONGER-TERM": ("return_20d_pct", "20 trading days"),
+        "INTRADAY": ("return_60m_pct", "60m", intraday_rows),
+        "SWING": ("return_5d_pct", "5 trading days", daily_rows),
+        "LONGER-TERM": ("return_20d_pct", "20 trading days", daily_rows),
     }
     out = {}
-    for fit, (field, horizon) in specs.items():
+    for fit, (field, horizon, source_rows) in specs.items():
         selected = [
-            row for row in rows
+            row for row in source_rows
             if row.get("timeframe_score_version") == TIMEFRAME_SCORE_VERSION
             and row.get("timeframe_best_fit") == fit
         ]
@@ -858,23 +908,28 @@ def _timeframe_best_fit_calibration(rows):
     return out
 
 
-def _timeframe_learning_progress(rows):
-    timeframe_rows = [
-        row for row in rows
+def _timeframe_learning_progress(intraday_rows, daily_rows=None):
+    daily_rows = intraday_rows if daily_rows is None else daily_rows
+    intraday_tf = [
+        row for row in intraday_rows
+        if row.get("timeframe_score_version") == TIMEFRAME_SCORE_VERSION
+    ]
+    daily_tf = [
+        row for row in daily_rows
         if row.get("timeframe_score_version") == TIMEFRAME_SCORE_VERSION
     ]
     counts = {
         "intraday": sum(
             _num((row.get("outcomes") or {}).get("return_60m_pct")) is not None
-            for row in timeframe_rows
+            for row in intraday_tf
         ),
         "swing": sum(
             _num((row.get("outcomes") or {}).get("return_5d_pct")) is not None
-            for row in timeframe_rows
+            for row in daily_tf
         ),
         "long_term": sum(
             _num((row.get("outcomes") or {}).get("return_20d_pct")) is not None
-            for row in timeframe_rows
+            for row in daily_tf
         ),
     }
     return {key: _calibration_stage(value) for key, value in counts.items()}
@@ -893,6 +948,7 @@ def _write_calibration():
     ]
     legacy_decision_rows_excluded = len(feature_rows) - len(rows)
     calibration_rows = _independent_calibration_rows(rows)
+    timeframe_daily_rows = _timeframe_daily_calibration_rows(rows)
     resolved = [
         row for row in calibration_rows
         if _num((row.get("outcomes") or {}).get("return_60m_pct")) is not None
@@ -925,7 +981,7 @@ def _write_calibration():
     ]
 
     payload = {
-        "schema_version": 6,
+        "schema_version": 7,
         "feature_version": ANALYZER_FEATURE_VERSION,
         "decision_score_version": DECISION_SCORE_VERSION,
         "timeframe_score_version": TIMEFRAME_SCORE_VERSION,
@@ -934,7 +990,12 @@ def _write_calibration():
         "legacy_prediction_rows_excluded": legacy_rows_excluded,
         "legacy_decision_rows_excluded": legacy_decision_rows_excluded,
         "calibration_rows": len(calibration_rows),
-        "calibration_sampling": "one observation per ticker per hour",
+        "calibration_sampling": "regular-session one observation per ticker per ET hour",
+        "timeframe_calibration_sampling": (
+            "Intraday: regular-session ticker-hour; Swing/Longer-term: "
+            "latest regular-session observation per ticker per ET day"
+        ),
+        "timeframe_daily_rows": len(timeframe_daily_rows),
         "resolved_60m": len(resolved),
         "calibration_ready": len(resolved) >= 30,
         "calibration_progress": _calibration_stage(len(resolved)),
@@ -946,20 +1007,24 @@ def _write_calibration():
                 calibration_rows, "timeframe_intraday_score", "return_60m_pct"
             ),
             "swing_3d": _timeframe_calibrate(
-                calibration_rows, "timeframe_swing_score", "return_3d_pct"
+                timeframe_daily_rows, "timeframe_swing_score", "return_3d_pct"
             ),
             "swing_5d": _timeframe_calibrate(
-                calibration_rows, "timeframe_swing_score", "return_5d_pct"
+                timeframe_daily_rows, "timeframe_swing_score", "return_5d_pct"
             ),
             "long_term_20d": _timeframe_calibrate(
-                calibration_rows, "timeframe_long_term_score", "return_20d_pct"
+                timeframe_daily_rows, "timeframe_long_term_score", "return_20d_pct"
             ),
             "long_term_60d": _timeframe_calibrate(
-                calibration_rows, "timeframe_long_term_score", "return_60d_pct"
+                timeframe_daily_rows, "timeframe_long_term_score", "return_60d_pct"
             ),
         },
-        "timeframe_best_fit_calibration": _timeframe_best_fit_calibration(calibration_rows),
-        "timeframe_learning_progress": _timeframe_learning_progress(calibration_rows),
+        "timeframe_best_fit_calibration": _timeframe_best_fit_calibration(
+            calibration_rows, timeframe_daily_rows
+        ),
+        "timeframe_learning_progress": _timeframe_learning_progress(
+            calibration_rows, timeframe_daily_rows
+        ),
         "swing_research_flag_version": SWING_RESEARCH_FLAG_VERSION,
         "swing_research_flag_calibration": _swing_research_flag_calibration(
             feature_rows

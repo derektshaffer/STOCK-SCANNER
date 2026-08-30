@@ -2545,7 +2545,7 @@ def test_analyzer_session_filter_uses_current_extended_session():
     # 2026-08-31 is a Monday in EDT.
     pre_now = datetime(2026, 8, 31, 12, 30, tzinfo=timezone.utc)  # 8:30 AM ET
     pre_raw = [
-        {"t": "2026-08-31T11:55:00Z", "c": 9.9},  # 7:55 ET, before premarket
+        {"t": "2026-08-31T07:55:00Z", "c": 9.9},  # 3:55 ET, before premarket
         {"t": "2026-08-31T12:05:00Z", "c": 10.0}, # 8:05 ET, premarket
         {"t": "2026-08-31T12:20:00Z", "c": 10.1}, # 8:20 ET, premarket
         {"t": "2026-08-28T19:55:00Z", "c": 9.8},  # prior regular session
@@ -2593,12 +2593,160 @@ def test_analyzer_does_not_fake_extended_hours_volume_pace():
     assert '"market_session":session_phase' in source
 
 
+def test_intraday_calibration_excludes_offhours_and_weekends():
+    import score_analyzer_outcomes as sao
+
+    rows = [
+        {
+            "symbol": "TEST",
+            "timestamp": "2026-08-28T13:15:00+00:00",  # 9:15 AM ET
+            "outcomes": {"return_60m_pct": 1.0},
+        },
+        {
+            "symbol": "TEST",
+            "timestamp": "2026-08-28T13:35:00+00:00",  # 9:35 AM ET
+            "outcomes": {"return_60m_pct": 2.0},
+        },
+        {
+            "symbol": "TEST",
+            "timestamp": "2026-08-28T13:50:00+00:00",  # same ET hour
+            "outcomes": {"return_60m_pct": 3.0},
+        },
+        {
+            "symbol": "TEST",
+            "timestamp": "2026-08-28T14:05:00+00:00",  # 10:05 AM ET
+            "outcomes": {"return_60m_pct": 4.0},
+        },
+        {
+            "symbol": "WEEKEND",
+            "timestamp": "2026-08-29T15:00:00+00:00",
+            "outcomes": {"return_60m_pct": 9.0},
+        },
+    ]
+    selected = sao._independent_calibration_rows(rows)
+    assert len(selected) == 2, selected
+    assert [row["outcomes"]["return_60m_pct"] for row in selected] == [2.0, 4.0], selected
+
+
+def test_timeframe_calibration_uses_one_latest_regular_row_per_ticker_day():
+    import score_analyzer_outcomes as sao
+
+    rows = [
+        {
+            "symbol": "TEST",
+            "timestamp": "2026-08-28T14:00:00+00:00",  # 10 AM ET
+            "timeframe_score_version": sao.TIMEFRAME_SCORE_VERSION,
+            "timeframe_swing_score": 60.0,
+            "outcomes": {"return_5d_pct": 1.0},
+        },
+        {
+            "symbol": "TEST",
+            "timestamp": "2026-08-28T18:00:00+00:00",  # 2 PM ET
+            "timeframe_score_version": sao.TIMEFRAME_SCORE_VERSION,
+            "timeframe_swing_score": 80.0,
+            "outcomes": {"return_5d_pct": 5.0},
+        },
+        {
+            "symbol": "TEST",
+            "timestamp": "2026-08-28T21:00:00+00:00",  # 5 PM ET
+            "timeframe_score_version": sao.TIMEFRAME_SCORE_VERSION,
+            "timeframe_swing_score": 95.0,
+            "outcomes": {"return_5d_pct": -8.0},
+        },
+        {
+            "symbol": "WEEKEND",
+            "timestamp": "2026-08-29T15:00:00+00:00",
+            "timeframe_score_version": sao.TIMEFRAME_SCORE_VERSION,
+            "timeframe_swing_score": 99.0,
+            "outcomes": {"return_5d_pct": 20.0},
+        },
+    ]
+    daily = sao._timeframe_daily_calibration_rows(rows)
+    assert len(daily) == 1, daily
+    assert daily[0]["timeframe_swing_score"] == 80.0, daily
+    calibrated = sao._timeframe_calibrate(
+        daily, "timeframe_swing_score", "return_5d_pct"
+    )
+    assert calibrated["80-100"]["n"] == 1, calibrated
+    assert calibrated["80-100"]["avg_return_pct"] == 5.0, calibrated
+
+
+def test_prediction_tracker_mirrors_daily_timeframe_sampling():
+    import prediction_tracker as pt
+
+    rows = [
+        {
+            "symbol": "TEST",
+            "timestamp": "2026-08-28T14:00:00+00:00",
+            "timeframe_score_version": pt.TIMEFRAME_SCORE_VERSION,
+            "timeframe_swing_score": 61.0,
+            "outcomes": {"return_5d_pct": 1.0},
+        },
+        {
+            "symbol": "TEST",
+            "timestamp": "2026-08-28T19:00:00+00:00",
+            "timeframe_score_version": pt.TIMEFRAME_SCORE_VERSION,
+            "timeframe_swing_score": 79.0,
+            "outcomes": {"return_5d_pct": 4.0},
+        },
+        {
+            "symbol": "TEST",
+            "timestamp": "2026-08-28T20:30:00+00:00",
+            "timeframe_score_version": pt.TIMEFRAME_SCORE_VERSION,
+            "timeframe_swing_score": 99.0,
+            "outcomes": {"return_5d_pct": -9.0},
+        },
+    ]
+    daily = pt._timeframe_daily_calibration_rows(rows)
+    assert len(daily) == 1, daily
+    assert daily[0]["timeframe_swing_score"] == 79.0, daily
+
+
+def test_old_calibration_schema_is_rejected():
+    from pathlib import Path
+
+    source = Path("prediction_tracker.py").read_text(encoding="utf-8")
+    assert 'int(durable.get("schema_version") or 0) < 7' in source
+    outcome_source = Path("score_analyzer_outcomes.py").read_text(encoding="utf-8")
+    assert '"schema_version": 7' in outcome_source
+
+
+def test_outcome_tracker_runs_after_extended_hours():
+    from pathlib import Path
+
+    source = Path(".github/workflows/outcome-tracker.yml").read_text(encoding="utf-8")
+    assert "- cron: '30 1 * * 2-6'" in source
+    assert "after the full 4:00 AM-8:00 PM ET extended session" in source
+
+
+def test_scanner_table_volume_pace_formatter_matches_column():
+    from pathlib import Path
+
+    source = Path("scanner_app.py").read_text(encoding="utf-8")
+    assert '"TOD Vol Pace": lambda x:' in source
+    assert '"Vol Pace": lambda x:' not in source
+
+
+def test_combined_scanner_uses_display_volume_pace_source():
+    from pathlib import Path
+
+    source = Path("app.py").read_text(encoding="utf-8")
+    assert 'row.get("volume_pace_display_source")' in source
+
+
 if __name__ == "__main__":
     tests = [
         test_analyzer_daily_history_prefers_tradier,
         test_analyzer_session_filter_uses_current_extended_session,
         test_analyzer_closed_preview_uses_latest_regular_session,
         test_analyzer_does_not_fake_extended_hours_volume_pace,
+        test_intraday_calibration_excludes_offhours_and_weekends,
+        test_timeframe_calibration_uses_one_latest_regular_row_per_ticker_day,
+        test_prediction_tracker_mirrors_daily_timeframe_sampling,
+        test_old_calibration_schema_is_rejected,
+        test_outcome_tracker_runs_after_extended_hours,
+        test_scanner_table_volume_pace_formatter_matches_column,
+        test_combined_scanner_uses_display_volume_pace_source,
         test_analyzer_tradier_does_not_block_on_alpaca_snapshot,
         test_analyzer_reports_actual_historical_provider,
         test_analyzer_prefers_tradier,

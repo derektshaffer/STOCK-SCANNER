@@ -525,7 +525,10 @@ def _latest_scan_candidates():
                 "day_pct": row.get("day_pct"),
                 "volume_pace": row.get("volume_pace"),
                 "volume_pace_display": row.get("volume_pace_display"),
-                "volume_pace_source": row.get("volume_pace_source"),
+                "volume_pace_source": (
+                    row.get("volume_pace_display_source")
+                    or row.get("volume_pace_source")
+                ),
             }
         )
     return out[:15]
