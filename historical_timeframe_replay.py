@@ -50,14 +50,14 @@ from timeframe_targets import (
 
 
 ET = ZoneInfo("America/New_York")
-REPLAY_VERSION = "historical-timeframe-replay-v3-market-regime"
+REPLAY_VERSION = "historical-timeframe-replay-v4-multiyear-regimes"
 TIMEFRAME_SCORE_VERSION = "timeframe-fit-v1"
-DEFAULT_REPLAY_DAYS = int(os.environ.get("TIMEFRAME_REPLAY_TRADING_DAYS", "240") or 240)
+DEFAULT_REPLAY_DAYS = int(os.environ.get("TIMEFRAME_REPLAY_TRADING_DAYS", "1250") or 1250)
 DEFAULT_STRIDE = int(os.environ.get("TIMEFRAME_REPLAY_STRIDE_DAYS", "5") or 5)
 DEFAULT_UNIVERSE_SIZE = int(os.environ.get("TIMEFRAME_REPLAY_UNIVERSE_SIZE", "250") or 250)
 DEFAULT_CANDIDATES = int(os.environ.get("TIMEFRAME_REPLAY_CANDIDATES_PER_DAY", "25") or 25)
 DEFAULT_LOOKBACK_CALENDAR_DAYS = int(
-    os.environ.get("TIMEFRAME_REPLAY_LOOKBACK_CALENDAR_DAYS", "1500") or 1500
+    os.environ.get("TIMEFRAME_REPLAY_LOOKBACK_CALENDAR_DAYS", "2800") or 2800
 )
 OUTPUT_PATH = Path(
     os.environ.get(
@@ -681,6 +681,72 @@ def _regime_outcome_summary(rows):
     return out
 
 
+
+def _year_outcome_summary(rows):
+    groups = {}
+    for row in rows:
+        date_text = str(row.get("as_of") or "")[:10]
+        try:
+            year = int(date_text[:4])
+        except Exception:
+            continue
+        outcome = (row.get("outcomes") or {}).get(
+            "swing_target_before_stop_5d"
+        )
+        if outcome not in (0, 1):
+            continue
+        group = groups.setdefault(
+            year,
+            {
+                "n": 0,
+                "wins": 0,
+                "mfe": [],
+                "mae": [],
+                "excess": [],
+                "regimes": Counter(),
+            },
+        )
+        group["n"] += 1
+        group["wins"] += int(outcome)
+        regime = str(
+            ((row.get("market_context") or {}).get("regime_label"))
+            or "UNKNOWN"
+        )
+        group["regimes"][regime] += 1
+        for key, target in (
+            ("swing_mfe_5d_pct", "mfe"),
+            ("swing_mae_5d_pct", "mae"),
+            ("excess_return_vs_spy_5d_pct", "excess"),
+        ):
+            value = _num((row.get("outcomes") or {}).get(key))
+            if value is not None:
+                group[target].append(value)
+
+    out = {}
+    for year, group in sorted(groups.items()):
+        out[str(year)] = {
+            "n": group["n"],
+            "target_before_stop_rate_pct": round(
+                group["wins"] / group["n"] * 100.0,
+                1,
+            ) if group["n"] else None,
+            "avg_mfe_5d_pct": (
+                round(statistics.mean(group["mfe"]), 3)
+                if group["mfe"] else None
+            ),
+            "avg_mae_5d_pct": (
+                round(statistics.mean(group["mae"]), 3)
+                if group["mae"] else None
+            ),
+            "avg_excess_vs_spy_5d_pct": (
+                round(statistics.mean(group["excess"]), 3)
+                if group["excess"] else None
+            ),
+            "regime_counts": dict(sorted(group["regimes"].items())),
+        }
+    return out
+
+
 def _candidate_rows(daily_index, replay_dates, universe_size, candidates_per_day):
     staged = []
     candidate_symbols = set()
@@ -754,7 +820,7 @@ def _candidate_rows(daily_index, replay_dates, universe_size, candidates_per_day
 
 
 def main():
-    replay_days = max(60, min(DEFAULT_REPLAY_DAYS, 500))
+    replay_days = max(60, min(DEFAULT_REPLAY_DAYS, 1500))
     stride = max(1, min(DEFAULT_STRIDE, 20))
     universe_size = max(100, min(DEFAULT_UNIVERSE_SIZE, 600))
     candidates_per_day = max(5, min(DEFAULT_CANDIDATES, 50))
@@ -971,7 +1037,21 @@ def main():
             "selection_note": (
                 "Current listed-stock survivorship remains a known limitation. "
                 "Replay-day universe ranking uses only information available on "
-                "or before each historical date."
+                "or before each historical date. The multi-year replay uses a "
+                "weekly trading-day stride to reduce adjacent-day correlation "
+                "while preserving multiple market environments."
+            ),
+            "calendar_years_covered": sorted(
+                {
+                    int(day.year)
+                    for day in replay_dates
+                }
+            ),
+            "calendar_year_count": len(
+                {
+                    int(day.year)
+                    for day in replay_dates
+                }
             ),
             "known_limitations": [
                 "current listed-stock survivorship bias",
@@ -1084,6 +1164,9 @@ def main():
             "swing_path_by_market_regime": _regime_outcome_summary(
                 observations
             ),
+            "swing_path_by_calendar_year": _year_outcome_summary(
+                observations
+            ),
             "long_term_20d_directional_lift": _directional_lift(
                 observations, "long_term_score", "return_20d_pct"
             ),
@@ -1132,6 +1215,13 @@ def main():
         "TIMEFRAME_REPLAY_MARKET_REGIMES="
         + json.dumps(
             payload["summary"].get("swing_path_by_market_regime") or {},
+            sort_keys=True,
+        )
+    )
+    print(
+        "TIMEFRAME_REPLAY_CALENDAR_YEARS="
+        + json.dumps(
+            payload["summary"].get("swing_path_by_calendar_year") or {},
             sort_keys=True,
         )
     )
