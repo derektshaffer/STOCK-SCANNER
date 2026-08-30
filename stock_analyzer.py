@@ -435,15 +435,86 @@ def run_exhaustion_context(bs, current_price=None, vwap=None, atr_pct=None, impu
     }
 
 
+def market_session_phase(now_et):
+    if now_et.weekday() >= 5:
+        return "closed"
+    minute = now_et.hour * 60 + now_et.minute
+    if 4 * 60 <= minute < 9 * 60 + 30:
+        return "premarket"
+    if 9 * 60 + 30 <= minute < 16 * 60:
+        return "regular"
+    if 16 * 60 <= minute < 20 * 60:
+        return "afterhours"
+    return "closed"
+
+
+def _session_bounds(phase):
+    return {
+        "premarket": (4 * 60, 9 * 60 + 30),
+        "regular": (9 * 60 + 30, 16 * 60),
+        "afterhours": (16 * 60, 20 * 60),
+    }.get(str(phase or "").lower())
+
+
+def _filter_session_bars(raw, now):
+    """Keep bars from the current active session, or latest regular session when closed."""
+    now_et = now.astimezone(ET)
+    phase = market_session_phase(now_et)
+    parsed = []
+    for bar in raw or []:
+        dt = _bar_time_et(bar)
+        if dt is None or dt > now_et:
+            continue
+        parsed.append((dt, bar))
+
+    bounds = _session_bounds(phase)
+    if bounds:
+        start_min, end_min = bounds
+        today = now_et.date()
+        return [
+            bar for dt, bar in parsed
+            if dt.date() == today
+            and start_min <= dt.hour * 60 + dt.minute < end_min
+        ]
+
+    # Closed/weekend preview: use the most recent completed regular session so
+    # momentum/VWAP do not mix unrelated pre/post-market windows.
+    regular = [
+        (dt, bar) for dt, bar in parsed
+        if dt.weekday() < 5
+        and 9 * 60 + 30 <= dt.hour * 60 + dt.minute < 16 * 60
+    ]
+    if not regular:
+        return []
+    latest_day = max(dt.date() for dt, _bar in regular)
+    return [bar for dt, bar in regular if dt.date() == latest_day]
+
+
+def _session_fetch_start(now):
+    now_et = now.astimezone(ET)
+    bounds = _session_bounds(market_session_phase(now_et))
+    if bounds:
+        start_min, _end_min = bounds
+        start_et = now_et.replace(
+            hour=start_min // 60,
+            minute=start_min % 60,
+            second=0,
+            microsecond=0,
+        )
+        return start_et.astimezone(timezone.utc)
+    return now - timedelta(days=5)
+
+
 def latest_session_bars(symbol, now):
-    bs=bars(symbol,"1Min",now-timedelta(hours=10),now,1000,feed=LIVE_FEED)
-    today=now.astimezone(ET).date()
-    out=[]
-    for b in bs:
-        dt=_bar_time_et(b)
-        if dt is None:continue
-        if dt.date()==today and _regular_session_bar(b): out.append(b)
-    return out
+    bs=bars(
+        symbol,
+        "1Min",
+        _session_fetch_start(now),
+        now,
+        10000,
+        feed=LIVE_FEED,
+    )
+    return _filter_session_bars(bs, now)
 
 
 def _tradier_timestamp(value):
@@ -485,21 +556,21 @@ def _tradier_trade_timestamp(quote):
 
 
 def _tradier_regular_session_bars(symbol, now):
+    """Compatibility name: return the active Tradier session, not always RTH.
+
+    Regular-hours behavior is unchanged. In pre-market/after-hours this returns
+    only that current extended session so 5m/15m momentum and VWAP cannot reuse
+    stale regular-session bars.
+    """
     raw=get_tradier_timesales_bars(
         symbol,
         TRADIER_TOKEN,
-        now-timedelta(hours=10),
+        _session_fetch_start(now),
         now,
         interval="1min",
         session_filter="all",
     )
-    today=now.astimezone(ET).date()
-    return [
-        b for b in raw
-        if (_bar_time_et(b) is not None)
-        and _bar_time_et(b).date()==today
-        and _regular_session_bar(b)
-    ]
+    return _filter_session_bars(raw, now)
 
 
 def support_resistance_touch_bars(symbol, now, live_session_bars=None):
@@ -1507,8 +1578,11 @@ def analyze(symbol):
             if not tradier_quote:
                 raise RuntimeError("Tradier returned no quote")
             tradier_intraday=_tradier_regular_session_bars(symbol,now)
-            if is_regular(now_et) and not tradier_intraday:
-                raise RuntimeError("Tradier returned no regular-session Time & Sales bars")
+            session_phase=market_session_phase(now_et)
+            if session_phase in {"premarket", "regular", "afterhours"} and not tradier_intraday:
+                raise RuntimeError(
+                    f"Tradier returned no {session_phase} Time & Sales bars"
+                )
 
             tprice=(
                 fnum(tradier_quote.get("last"))
@@ -1570,17 +1644,32 @@ def analyze(symbol):
         return None
 
     avgvol,volsrc=avg_daily_volume(symbol,now)
+    session_phase=market_session_phase(now_et)
     session_volume=sum((fnum(x.get("v")) or 0) for x in intraday)
     if live_provider=="tradier":
         today_volume=session_volume
-        volume_source="TRADIER CONSOLIDATED"
+        volume_source=(
+            "TRADIER CONSOLIDATED"
+            if session_phase=="regular"
+            else f"TRADIER {session_phase.upper()}"
+        )
     else:
-        today_volume=fnum(day.get("v")) or session_volume
-        volume_source=volsrc
+        # Alpaca dailyBar volume is not a clean extended-session denominator.
+        # During pre/post-market use only the bars from that active session.
+        today_volume=(
+            (fnum(day.get("v")) or session_volume)
+            if session_phase=="regular"
+            else session_volume
+        )
+        volume_source=volsrc if session_phase=="regular" else f"{LIVE_FEED.upper()} {session_phase.upper()}"
 
+    # The Analyzer's existing relative-volume baseline is a regular-session
+    # daily-volume curve. Do not mislabel extended-session volume / full-day
+    # average as "volume pace"; the Scanner has a dedicated extended-hours
+    # time-of-day profile for that metric.
     pace=None
-    if avgvol:
-        expected=avgvol*(session_fraction(now_et) if is_regular(now_et) else 1)
+    if avgvol and session_phase=="regular":
+        expected=avgvol*session_fraction(now_et)
         pace=today_volume/expected if expected else None
 
     trade_age=_market_age_seconds(trade_ts,now)
@@ -1626,6 +1715,7 @@ def analyze(symbol):
         "feature_version":ANALYZER_FEATURE_VERSION,
         "symbol":symbol,
         "as_of":now_et.isoformat(),
+        "market_session":session_phase,
         "market_provider":live_provider,
         "live_provider":live_provider,
         "live_feed":live_feed_label,
