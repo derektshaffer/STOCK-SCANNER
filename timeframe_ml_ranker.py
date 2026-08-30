@@ -25,10 +25,10 @@ from timeframe_targets import (
 
 DATA_PATH = Path("timeframe_replay/timeframe_historical_replay.json")
 DEFAULT_REPORT_PATH = Path("timeframe_replay/timeframe_ml_validation.json")
-MODEL_VERSION = "swing-timeframe-ml-v2-path-target-shadow"
+MODEL_VERSION = "swing-timeframe-ml-v3-market-regime-shadow"
 TARGET_FIELD = "swing_target_before_stop_5d"
 
-FEATURES = [
+BASE_FEATURES = [
     "day_pct",
     "gap_pct",
     "relative_volume",
@@ -60,6 +60,27 @@ FEATURES = [
     "historical_sample_count",
     "broad_market_avg_pct",
 ]
+
+REGIME_FEATURES = [
+    "market_regime_score",
+    "spy_return_5d_pct",
+    "spy_return_20d_pct",
+    "spy_return_60d_pct",
+    "qqq_return_20d_pct",
+    "iwm_return_20d_pct",
+    "qqq_minus_spy_20d_pct",
+    "iwm_minus_spy_20d_pct",
+    "spy_above_ma20",
+    "spy_above_ma50",
+    "spy_above_ma200",
+    "benchmark_above_ma20_frac",
+    "benchmark_positive_20d_frac",
+    "spy_realized_vol_20d_pct",
+    "spy_drawdown_20d_pct",
+    "sector_move_pct",
+]
+
+FEATURES = BASE_FEATURES + REGIME_FEATURES
 
 
 def _num(value):
@@ -117,6 +138,34 @@ def _feature_dict(row):
         "historical_next_day_up_pct": _num(historical.get("next_day_up_pct")),
         "historical_sample_count": _num(historical.get("sample_count")),
         "broad_market_avg_pct": _num(market.get("broad_market_avg_pct")),
+        "market_regime_score": _num(market.get("regime_score")),
+        "spy_return_5d_pct": _num(market.get("spy_return_5d_pct")),
+        "spy_return_20d_pct": _num(market.get("spy_return_20d_pct")),
+        "spy_return_60d_pct": _num(market.get("spy_return_60d_pct")),
+        "qqq_return_20d_pct": _num(market.get("qqq_return_20d_pct")),
+        "iwm_return_20d_pct": _num(market.get("iwm_return_20d_pct")),
+        "qqq_minus_spy_20d_pct": _num(
+            market.get("qqq_minus_spy_20d_pct")
+        ),
+        "iwm_minus_spy_20d_pct": _num(
+            market.get("iwm_minus_spy_20d_pct")
+        ),
+        "spy_above_ma20": _num(market.get("spy_above_ma20")),
+        "spy_above_ma50": _num(market.get("spy_above_ma50")),
+        "spy_above_ma200": _num(market.get("spy_above_ma200")),
+        "benchmark_above_ma20_frac": _num(
+            market.get("benchmark_above_ma20_frac")
+        ),
+        "benchmark_positive_20d_frac": _num(
+            market.get("benchmark_positive_20d_frac")
+        ),
+        "spy_realized_vol_20d_pct": _num(
+            market.get("spy_realized_vol_20d_pct")
+        ),
+        "spy_drawdown_20d_pct": _num(
+            market.get("spy_drawdown_20d_pct")
+        ),
+        "sector_move_pct": _num(market.get("sector_move_pct")),
     }
 
 
@@ -190,14 +239,15 @@ def _brier(y, probabilities):
     return sum((float(p) - float(t)) ** 2 for p, t in zip(probabilities, y)) / len(y)
 
 
-def _matrix(rows, np):
+def _matrix(rows, np, feature_names=None):
+    feature_names = feature_names or FEATURES
     X = np.array(
         [
             [
                 np.nan
                 if row["features"].get(name) is None
                 else float(row["features"].get(name))
-                for name in FEATURES
+                for name in feature_names
             ]
             for row in rows
         ],
@@ -224,12 +274,13 @@ def _params():
     }
 
 
-def _fit_booster(train, np, xgb):
-    X_train, y_train = _matrix(train, np)
+def _fit_booster(train, np, xgb, feature_names=None):
+    feature_names = feature_names or FEATURES
+    X_train, y_train = _matrix(train, np, feature_names)
     dtrain = xgb.DMatrix(
         X_train,
         label=y_train,
-        feature_names=FEATURES,
+        feature_names=feature_names,
         missing=np.nan,
     )
     booster = xgb.train(
@@ -240,12 +291,13 @@ def _fit_booster(train, np, xgb):
     return booster
 
 
-def _predict_booster(booster, rows, np, xgb):
-    X, y = _matrix(rows, np)
+def _predict_booster(booster, rows, np, xgb, feature_names=None):
+    feature_names = feature_names or FEATURES
+    X, y = _matrix(rows, np, feature_names)
     dmatrix = xgb.DMatrix(
         X,
         label=y,
-        feature_names=FEATURES,
+        feature_names=feature_names,
         missing=np.nan,
     )
     probabilities = booster.predict(dmatrix).tolist()
@@ -331,18 +383,39 @@ def validate(rows):
     fold_reports = []
     all_y = []
     all_prob = []
+    all_baseline_prob = []
     all_score = []
     all_test_rows = []
 
     for index, (train, test, train_dates, test_dates) in enumerate(folds, start=1):
-        booster = _fit_booster(train, np, xgb)
-        y_test, probabilities = _predict_booster(booster, test, np, xgb)
+        booster = _fit_booster(train, np, xgb, FEATURES)
+        baseline_booster = _fit_booster(
+            train,
+            np,
+            xgb,
+            BASE_FEATURES,
+        )
+        y_test, probabilities = _predict_booster(
+            booster,
+            test,
+            np,
+            xgb,
+            FEATURES,
+        )
+        _baseline_y, baseline_probabilities = _predict_booster(
+            baseline_booster,
+            test,
+            np,
+            xgb,
+            BASE_FEATURES,
+        )
         labels = y_test.tolist()
         swing_scores = [
             50.0 if row.get("swing_score") is None else row["swing_score"]
             for row in test
         ]
         model_auc = _auc(labels, probabilities)
+        baseline_model_auc = _auc(labels, baseline_probabilities)
         score_auc = _auc(labels, swing_scores)
         base_rate = sum(labels) / len(labels) if labels else None
         bands = _probability_band_stats(test, probabilities)
@@ -360,6 +433,16 @@ def validate(rows):
                     round(base_rate * 100.0, 1) if base_rate is not None else None
                 ),
                 "model_auc": round(model_auc, 4) if model_auc is not None else None,
+                "baseline_model_auc": (
+                    round(baseline_model_auc, 4)
+                    if baseline_model_auc is not None
+                    else None
+                ),
+                "regime_minus_baseline_auc": (
+                    round(model_auc - baseline_model_auc, 4)
+                    if model_auc is not None and baseline_model_auc is not None
+                    else None
+                ),
                 "hand_score_auc": (
                     round(score_auc, 4) if score_auc is not None else None
                 ),
@@ -369,10 +452,12 @@ def validate(rows):
         )
         all_y.extend(labels)
         all_prob.extend(probabilities)
+        all_baseline_prob.extend(baseline_probabilities)
         all_score.extend(swing_scores)
         all_test_rows.extend(test)
 
     overall_model_auc = _auc(all_y, all_prob)
+    overall_baseline_model_auc = _auc(all_y, all_baseline_prob)
     overall_score_auc = _auc(all_y, all_score)
     overall_brier = _brier(all_y, all_prob)
     bands = _probability_band_stats(all_test_rows, all_prob)
@@ -392,6 +477,13 @@ def validate(rows):
         if row.get("model_auc") is not None
         and row.get("hand_score_auc") is not None
         and row["model_auc"] > row["hand_score_auc"]
+    )
+    regime_improved_folds = sum(
+        1
+        for row in fold_reports
+        if row.get("model_auc") is not None
+        and row.get("baseline_model_auc") is not None
+        and row["model_auc"] > row["baseline_model_auc"]
     )
     top = bands.get("top_decile") or {}
     top_lift = None
@@ -461,6 +553,8 @@ def validate(rows):
         "unique_dates": len({row["date"] for row in rows}),
         "unique_symbols": len({row["symbol"] for row in rows}),
         "features": FEATURES,
+        "base_features": BASE_FEATURES,
+        "regime_features": REGIME_FEATURES,
         "overall": {
             "test_samples": len(all_y),
             "base_target_before_stop_rate_pct": (
@@ -471,6 +565,23 @@ def validate(rows):
                 if overall_model_auc is not None
                 else None
             ),
+            "baseline_model_auc": (
+                round(overall_baseline_model_auc, 4)
+                if overall_baseline_model_auc is not None
+                else None
+            ),
+            "regime_minus_baseline_auc": (
+                round(
+                    overall_model_auc - overall_baseline_model_auc,
+                    4,
+                )
+                if (
+                    overall_model_auc is not None
+                    and overall_baseline_model_auc is not None
+                )
+                else None
+            ),
+            "regime_features_improved_folds": regime_improved_folds,
             "hand_score_auc": (
                 round(overall_score_auc, 4)
                 if overall_score_auc is not None
@@ -505,8 +616,10 @@ def validate(rows):
             "This is a shadow validation model only. It predicts a trade-like "
             "+5% before -4% five-session path, not a simple five-day close. "
             "Same-day target/stop touches are excluded because daily OHLC cannot "
-            "establish order. It cannot change live Analyzer scores until "
-            "historical validation and later live out-of-sample confirmation pass."
+            "establish order. The same folds also train an otherwise identical "
+            "baseline model without regime features, so regime value is measured "
+            "directly. It cannot change live Analyzer scores until historical "
+            "validation and later live out-of-sample confirmation pass."
         ),
     }
 
