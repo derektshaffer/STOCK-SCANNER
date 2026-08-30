@@ -2514,6 +2514,15 @@ def test_swing_research_ui_disclaims_historical_probability():
     assert "intraday exploratory evidence" in source
 
 
+def test_legacy_analyzer_entrypoint_cannot_drift():
+    from pathlib import Path
+
+    source = Path("analyzer_app_fixed.py").read_text(encoding="utf-8")
+    assert "analyzer_app.py" in source
+    assert "ALPACA_API_KEY" not in source
+    assert "Single Stock Analyzer" not in source
+
+
 if __name__ == "__main__":
     tests = [
         test_analyzer_daily_history_prefers_tradier,
@@ -2595,6 +2604,7 @@ if __name__ == "__main__":
         test_swing_research_calibration_excludes_wrong_context,
         test_scanner_visibly_marks_stale_snapshot,
         test_swing_research_ui_disclaims_historical_probability,
+        test_legacy_analyzer_entrypoint_cannot_drift,
         test_monday_readiness_blocks_stale_scan_handoffs,
         test_analyzer_live_test_status_exposes_tracking_health,
     ]
