@@ -787,7 +787,7 @@ def _install_scanner_interactions():
             'CATALYST': 'A news event or company development that can materially change demand for the stock, such as earnings, FDA news, a contract, financing, or merger activity.'
           };
 
-          const normalize = (value) => String(value || '').replace(/\s+/g, ' ').trim().toUpperCase();
+          const normalize = (value) => String(value || '').replace(/\\s+/g, ' ').trim().toUpperCase();
           const tickerEls = () => Array.from(d.querySelectorAll('.scanner-expandable-ticker'));
 
           function symbolForTicker(el) {
@@ -976,7 +976,7 @@ def _install_working_button_transition():
             const button = event.target.closest && event.target.closest('button');
             if (!button) return;
             const text = String(button.textContent || '').trim();
-            const scannerAnalyze = /^Analyze\s+[A-Z0-9.\-]+/i.test(text);
+            const scannerAnalyze = /^Analyze\\s+[A-Z0-9.\\-]+/i.test(text);
             const manualAnalyze = /^Analyze$/i.test(text);
             if (!scannerAnalyze && !manualAnalyze) return;
             setWorking(button, scannerAnalyze);
