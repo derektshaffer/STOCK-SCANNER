@@ -366,6 +366,32 @@ def test_offhours_score_is_labeled_trend_candidate_score():
     assert "A high Trend Candidate Score means" in scanner_source
 
 
+
+def test_uncapped_trend_candidate_score_is_preserved_in_outcome_cohort():
+    import offhours_outcome_tracker as tracker
+
+    seed = tracker._candidate_seed({
+        "symbol": "TEST",
+        "price": 10.0,
+        "daily_discovery_score": 100.0,
+        "trend_candidate_raw_score": 103.4,
+        "trend_candidate_score_version": "trend-candidate-score-v1",
+    })
+    assert seed["daily_discovery_score"] == 100.0, seed
+    assert seed["trend_candidate_raw_score"] == 103.4, seed
+    assert seed["trend_candidate_score_version"] == "trend-candidate-score-v1", seed
+
+
+def test_combined_candidate_list_uses_shared_trade_horizon_filter():
+    from pathlib import Path
+
+    app_source = Path("app.py").read_text(encoding="utf-8")
+    assert 'st.session_state["scanner_trade_horizon"] = "ALL"' in app_source
+    assert "def _trade_horizon_matches(row, selected):" in app_source
+    assert 'trade_horizon = st.session_state.get("scanner_trade_horizon", "ALL")' in app_source
+    assert "_trade_horizon_matches(row, trade_horizon)" in app_source
+
+
 def test_historical_trade_quality_path_is_conservative():
     import historical_scanner_replay as replay
 
@@ -3068,7 +3094,10 @@ def test_scanner_ui_exposes_timeframe_filter_without_reranking():
     from pathlib import Path
 
     source = Path("scanner_app.py").read_text(encoding="utf-8")
-    assert '"Timeframe focus"' in source
+    assert '"Trade horizon"' in source
+    assert '"Short term (intraday)"' in source
+    assert '"Medium term (swing)"' in source
+    assert '"Long term"' in source
     assert '"LONGER-TERM"' in source
     assert "Ranking itself is unchanged" in source
     assert "BEST FIT" in source
@@ -3374,6 +3403,8 @@ def test_offhours_daily_context_builds_swing_longer_term_candidate_without_live_
     ) >= 60, row
     assert row["timeframe_longer_term_score"] >= 60, row
     assert 70 <= row["daily_discovery_score"] < 100, row
+    assert row["trend_candidate_raw_score"] >= row["daily_discovery_score"], row
+    assert row["trend_candidate_score_version"] == "trend-candidate-score-v1", row
     assert row["daily_review_action"] in {
         "REVIEW SWING",
         "REVIEW LONGER-TERM",
@@ -3422,7 +3453,7 @@ def test_scanner_ui_surfaces_completed_daily_discovery_when_market_closed():
     assert "Off-Hours Swing / Longer-Term Discovery" in scanner_source
     assert "offhours_timeframe_latest.json" in scanner_source
     assert 'current_phase == "closed"' in scanner_source
-    assert "Off-hours timeframe focus" in scanner_source
+    assert 'st.session_state.get("scanner_trade_horizon", "ALL")' in scanner_source
     assert "completed-daily Swing / Longer-Term discovery" in app_source
     assert "source_mode" in app_source
     assert "DAILY REVIEW" in app_source
@@ -3486,6 +3517,8 @@ if __name__ == "__main__":
         test_scanner_and_analyzer_use_midpoint_spread_formula,
         test_offhours_outcomes_include_two_day_horizon,
         test_offhours_score_is_labeled_trend_candidate_score,
+        test_uncapped_trend_candidate_score_is_preserved_in_outcome_cohort,
+        test_combined_candidate_list_uses_shared_trade_horizon_filter,
         test_historical_trade_quality_path_is_conservative,
         test_scanner_trade_quality_path_is_causal_and_conservative,
         test_stream_seed_rejects_non_tradier_metrics,

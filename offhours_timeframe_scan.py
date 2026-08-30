@@ -31,6 +31,7 @@ except Exception:
 
 ET = ZoneInfo("America/New_York")
 VERSION = "offhours-timeframe-scan-v1"
+TREND_CANDIDATE_SCORE_VERSION = "trend-candidate-score-v1"
 OUTPUT_PATH = Path("scan_logs/offhours_timeframe_latest.json")
 HISTORY_DIR = Path("scan_logs/offhours_timeframe")
 UNIVERSE_SIZE = int(
@@ -369,6 +370,8 @@ def _daily_context(symbol, quote_seed, bars, spy_return_20d=None):
     if (row.get("daily_from_recent_high_pct") or 0) <= -30:
         score -= 4
 
+    row["trend_candidate_raw_score"] = round(score, 1)
+    row["trend_candidate_score_version"] = TREND_CANDIDATE_SCORE_VERSION
     score = max(0.0, min(100.0, score))
     row["daily_discovery_score"] = round(score, 1)
 

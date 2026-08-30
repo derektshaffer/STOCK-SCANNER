@@ -20,6 +20,15 @@ OFFHOURS_SCAN_FILE = Path("scan_logs/offhours_timeframe_latest.json")
 AUTO_SCAN_SECONDS = 120
 AUTO_STATUS_REFRESH_SECONDS = 15
 
+TRADE_HORIZON_OPTIONS = ["ALL", "INTRADAY", "SWING", "LONGER-TERM", "MIXED"]
+TRADE_HORIZON_LABELS = {
+    "ALL": "All opportunities",
+    "INTRADAY": "Short term (intraday)",
+    "SWING": "Medium term (swing)",
+    "LONGER-TERM": "Long term",
+    "MIXED": "Mixed / flexible",
+}
+
 st.set_page_config(
     page_title="Momentum Scanner",
     page_icon="📈",
@@ -389,21 +398,20 @@ def load_offhours_timeframe_scan():
 
 
 def _daily_fit_matches(row, selected):
+    selected = str(selected or "ALL").upper().strip()
     if selected == "ALL":
         return True
-    if selected == "SWING":
-        return (
-            (row.get("timeframe_swing_score") or 0) >= 60
-            and (row.get("timeframe_swing_score") or 0)
-            >= (row.get("timeframe_longer_term_score") or 0) - 5
-        )
-    if selected == "LONGER-TERM":
-        return (
-            (row.get("timeframe_longer_term_score") or 0) >= 60
-            and (row.get("timeframe_longer_term_score") or 0)
-            >= (row.get("timeframe_swing_score") or 0) - 5
-        )
-    return True
+    if selected == "INTRADAY":
+        return False
+    best_fit = str(row.get("timeframe_best_fit") or "").upper().strip()
+    horizons = {
+        str(value).upper().strip()
+        for value in (row.get("timeframe_fit_horizons") or [])
+        if str(value).strip()
+    }
+    if selected == "MIXED":
+        return best_fit == "MIXED"
+    return best_fit == selected or selected in horizons
 
 
 def render_offhours_timeframe_panel(payload):
@@ -444,19 +452,21 @@ def render_offhours_timeframe_panel(payload):
         "durability, and entry risk in Analyzer."
     )
 
-    focus = st.selectbox(
-        "Off-hours timeframe focus",
-        ["ALL", "SWING", "LONGER-TERM"],
-        key="offhours_timeframe_focus",
-        help=(
-            "This filters the completed-daily discovery list only. It does not "
-            "change live Momentum Scanner ACTION or intraday ML."
-        ),
-    )
+    focus = st.session_state.get("scanner_trade_horizon", "ALL")
     filtered = [row for row in rows if _daily_fit_matches(row, focus)]
 
+    if focus == "INTRADAY":
+        st.info(
+            "Short term (intraday) setups require live market data. "
+            "This completed-daily panel is for medium-term (swing) and "
+            "long-term research."
+        )
+        return
     if not filtered:
-        st.info(f"No {focus} daily setups met the current off-hours screen.")
+        st.info(
+            f"No {TRADE_HORIZON_LABELS.get(focus, focus)} daily setups "
+            "met the current off-hours screen."
+        )
         return
 
     table_rows = []
@@ -855,7 +865,7 @@ with controls_context:
     if flash_success:
         st.success(str(flash_success))
 
-    scan_col, auto_col, spacer_col, market_col = st.columns(
+    scan_col, auto_col, horizon_col, market_col = st.columns(
         [1.15, 1.45, 2.45, 1.55],
         vertical_alignment="center",
     )
@@ -895,6 +905,19 @@ with controls_context:
                 f"app session is active. Browser backgrounding can delay refreshes. "
                 f"Current live feed: "
                 f"{feed_name}; live scanner coverage: {coverage} on weekdays."
+            ),
+        )
+    with horizon_col:
+        st.selectbox(
+            "Trade horizon",
+            TRADE_HORIZON_OPTIONS,
+            key="scanner_trade_horizon",
+            format_func=lambda value: TRADE_HORIZON_LABELS.get(value, value),
+            help=(
+                "Filters what the scanner shows you. Short term = minutes to same "
+                "day; Medium term = roughly 2–10 trading days; Long term = roughly "
+                "2–8 weeks. This does not change scores, ranking logic, Scanner ACTION, "
+                "or ML."
             ),
         )
     with market_col:
@@ -1230,15 +1253,7 @@ summary = payload_summary
 records = payload.get("candidates") or []
 grades = summary.get("grade_counts") or {}
 
-timeframe_filter = st.selectbox(
-    "Timeframe focus",
-    ["ALL", "INTRADAY", "SWING", "LONGER-TERM", "MIXED"],
-    index=0,
-    help=(
-        "Filters the displayed momentum candidates by scanner-level Best Fit. "
-        "It does not change ranking or Scanner ACTION."
-    ),
-)
+timeframe_filter = st.session_state.get("scanner_trade_horizon", "ALL")
 
 def _matches_timeframe(row, selected):
     if selected == "ALL":
@@ -1257,7 +1272,8 @@ full_table_records = filtered_records[:30]
 if timeframe_filter != "ALL":
     st.caption(
         f"Showing {len(filtered_records)} of {len(records)} ranked momentum candidates "
-        f"with {timeframe_filter} timeframe evidence. Ranking itself is unchanged."
+        f"for {TRADE_HORIZON_LABELS.get(timeframe_filter, timeframe_filter)}. "
+        "Ranking itself is unchanged."
     )
 
 vals = [

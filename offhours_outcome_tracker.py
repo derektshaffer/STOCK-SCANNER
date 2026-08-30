@@ -166,6 +166,12 @@ def _candidate_seed(row):
         "symbol": str(row.get("symbol") or "").upper().strip(),
         "signal_price": _num(row.get("price")),
         "daily_discovery_score": _num(row.get("daily_discovery_score")),
+        "trend_candidate_raw_score": _num(
+            row.get("trend_candidate_raw_score")
+            if row.get("trend_candidate_raw_score") is not None
+            else row.get("daily_discovery_score")
+        ),
+        "trend_candidate_score_version": row.get("trend_candidate_score_version"),
         "daily_setup_grade": row.get("daily_setup_grade"),
         "timeframe_best_fit": row.get("timeframe_best_fit"),
         "timeframe_primary_fit": row.get("timeframe_primary_fit"),

@@ -219,6 +219,8 @@ if "_scanner_async_state" not in st.session_state:
     st.session_state["_scanner_async_state"] = None
 if "last_auto_scan_started_at" not in st.session_state:
     st.session_state["last_auto_scan_started_at"] = 0.0
+if "scanner_trade_horizon" not in st.session_state:
+    st.session_state["scanner_trade_horizon"] = "ALL"
 st.session_state["_combined_scanner_monitor_active"] = True
 
 def _workspace_market_status():
@@ -813,6 +815,21 @@ def _scan_age_text(seconds):
     return f"{minutes / 60.0:.1f}h old"
 
 
+def _trade_horizon_matches(row, selected):
+    selected = str(selected or "ALL").upper().strip()
+    if selected == "ALL":
+        return True
+    best_fit = str((row or {}).get("timeframe_best_fit") or "").upper().strip()
+    horizons = {
+        str(value).upper().strip()
+        for value in ((row or {}).get("timeframe_fit_horizons") or [])
+        if str(value).strip()
+    }
+    if selected == "MIXED":
+        return best_fit == "MIXED"
+    return best_fit == selected or selected in horizons
+
+
 def _offhours_timeframe_candidates():
     path = Path("scan_logs/offhours_timeframe_latest.json")
     if not path.exists():
@@ -851,6 +868,7 @@ def _offhours_timeframe_candidates():
                     else "MIXED"
                 ),
                 "timeframe_fit_reason": row.get("daily_review_reason"),
+                "timeframe_fit_horizons": row.get("timeframe_fit_horizons") or [],
                 "timeframe_intraday_score": row.get("timeframe_intraday_score"),
                 "timeframe_swing_score": swing,
                 "timeframe_longer_term_score": longer,
@@ -895,6 +913,7 @@ def _latest_scan_candidates():
                 "scanner_action_reason": row.get("scanner_action_reason"),
                 "timeframe_best_fit": row.get("timeframe_best_fit"),
                 "timeframe_fit_reason": row.get("timeframe_fit_reason"),
+                "timeframe_fit_horizons": row.get("timeframe_fit_horizons") or [],
                 "timeframe_intraday_score": row.get("timeframe_intraday_score"),
                 "timeframe_swing_score": row.get("timeframe_swing_score"),
                 "timeframe_longer_term_score": row.get("timeframe_longer_term_score"),
@@ -1031,6 +1050,11 @@ if view == "Momentum Scanner":
         else []
     )
     candidates = offhours_candidates or _latest_scan_candidates()
+    trade_horizon = st.session_state.get("scanner_trade_horizon", "ALL")
+    candidates = [
+        row for row in candidates
+        if _trade_horizon_matches(row, trade_horizon)
+    ]
     latest_scan_age = _latest_scan_age_seconds()
     # Auto-scan targets every two minutes. During a live session, allow a
     # two-minute grace window and prevent one-click analysis of stale rows.
@@ -1048,6 +1072,13 @@ if view == "Momentum Scanner":
             + _scan_age_text(latest_scan_age)
             + "). A fresh scan is due; Analyze buttons are temporarily disabled "
             "so an old setup cannot be mistaken for a current one."
+        )
+
+    if offhours_mode and trade_horizon == "INTRADAY":
+        st.caption(
+            "Short term (intraday) candidates require live market data. "
+            "The completed-daily off-hours screen only contains medium-term "
+            "(swing) and long-term candidates."
         )
 
     if candidates:

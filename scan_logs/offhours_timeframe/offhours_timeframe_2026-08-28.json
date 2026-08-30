@@ -29,7 +29,7 @@
       "symbol": "PD",
       "price": 13.83,
       "day_pct": 9.5,
-      "average_volume": 980585.0,
+      "average_volume": 980585,
       "average_dollar_volume": 13561490.55,
       "daily_history_sessions": 82,
       "daily_context_source": "tradier_consolidated_daily",
@@ -44,22 +44,22 @@
       "daily_ma_alignment": "BULLISH",
       "daily_recent_high": 14.1899,
       "daily_from_recent_high_pct": -2.54,
-      "daily_volume": 3676326.0,
-      "daily_avg_volume_20": 1197805.0,
+      "daily_volume": 3676326,
+      "daily_avg_volume_20": 1197805,
       "daily_volume_ratio": 3.07,
       "daily_breakout_20d": true,
-      "news_bonus": 0.0,
-      "stair_step_count": 3.0,
+      "news_bonus": 0,
+      "stair_step_count": 3,
       "stair_last_step_pct": 9.5,
       "stair_step_acceleration_ratio": 1.479,
-      "stair_plateau_days": 0.0,
-      "stair_plateau_range_pct": 0.0,
-      "stair_plateau_retention_pct": 100.0,
+      "stair_plateau_days": 0,
+      "stair_plateau_range_pct": 0,
+      "stair_plateau_retention_pct": 100,
       "stair_plateau_volume_ratio": null,
-      "stair_higher_plateau_count": 2.0,
-      "stair_structure_score": 100.0,
-      "stair_reaccelerating": 1.0,
-      "stair_breakdown": 0.0,
+      "stair_higher_plateau_count": 2,
+      "stair_structure_score": 100,
+      "stair_reaccelerating": 1,
+      "stair_breakdown": 0,
       "timeframe_fit": {
         "version": "scanner-timeframe-fit-v1",
         "best_fit": "MIXED",
@@ -70,9 +70,9 @@
           "SWING"
         ],
         "scores": {
-          "INTRADAY": 50.0,
-          "SWING": 98.0,
-          "LONGER-TERM": 100.0
+          "INTRADAY": 50,
+          "SWING": 98,
+          "LONGER-TERM": 100
         },
         "coverage": {
           "INTRADAY": 0,
@@ -80,7 +80,7 @@
           "LONGER-TERM": 8
         },
         "confidence": "MODERATE",
-        "margin_points": 2.0,
+        "margin_points": 2,
         "reasons": {
           "INTRADAY": [],
           "SWING": [
@@ -124,27 +124,29 @@
         "LONGER-TERM",
         "SWING"
       ],
-      "timeframe_intraday_score": 50.0,
-      "timeframe_swing_score": 98.0,
-      "timeframe_longer_term_score": 100.0,
+      "timeframe_intraday_score": 50,
+      "timeframe_swing_score": 98,
+      "timeframe_longer_term_score": 100,
       "timeframe_fit_confidence": "MODERATE",
-      "timeframe_fit_reason": "20-session trend is firmly positive \u00b7 roughly two-month trend is strong \u00b7 price is above its 20-session average \u00b7 swing evidence is also close",
+      "timeframe_fit_reason": "20-session trend is firmly positive · roughly two-month trend is strong · price is above its 20-session average · swing evidence is also close",
       "relative_strength_vs_spy_20d_pct": 27.73,
       "daily_setup_archetypes": [
         "20D BREAKOUT",
         "TREND CONTINUATION"
       ],
-      "daily_discovery_score": 100.0,
+      "daily_discovery_score": 100,
       "daily_setup_grade": "A",
       "daily_review_action": "REVIEW SWING / LONGER-TERM",
-      "daily_review_reason": "20-session trend is firmly positive \u00b7 roughly two-month trend is strong \u00b7 price is above its 20-session average \u00b7 swing evidence is also close",
-      "production_rank_impact": false
+      "daily_review_reason": "20-session trend is firmly positive · roughly two-month trend is strong · price is above its 20-session average · swing evidence is also close",
+      "production_rank_impact": false,
+      "trend_candidate_raw_score": 101.6,
+      "trend_candidate_score_version": "trend-candidate-score-v1"
     },
     {
       "symbol": "SIEB",
       "price": 2.19,
       "day_pct": 11.17,
-      "average_volume": 1192815.0,
+      "average_volume": 1192815,
       "average_dollar_volume": 2612264.85,
       "daily_history_sessions": 82,
       "daily_context_source": "tradier_consolidated_daily",
@@ -159,22 +161,22 @@
       "daily_ma_alignment": "BULLISH",
       "daily_recent_high": 2.29,
       "daily_from_recent_high_pct": -4.37,
-      "daily_volume": 1270690.0,
-      "daily_avg_volume_20": 73737.0,
+      "daily_volume": 1270690,
+      "daily_avg_volume_20": 73737,
       "daily_volume_ratio": 17.23,
       "daily_breakout_20d": true,
-      "news_bonus": 0.0,
-      "stair_step_count": 3.0,
+      "news_bonus": 0,
+      "stair_step_count": 3,
       "stair_last_step_pct": 11.17,
       "stair_step_acceleration_ratio": 2.166,
-      "stair_plateau_days": 0.0,
-      "stair_plateau_range_pct": 0.0,
-      "stair_plateau_retention_pct": 100.0,
+      "stair_plateau_days": 0,
+      "stair_plateau_range_pct": 0,
+      "stair_plateau_retention_pct": 100,
       "stair_plateau_volume_ratio": null,
-      "stair_higher_plateau_count": 2.0,
-      "stair_structure_score": 100.0,
-      "stair_reaccelerating": 1.0,
-      "stair_breakdown": 0.0,
+      "stair_higher_plateau_count": 2,
+      "stair_structure_score": 100,
+      "stair_reaccelerating": 1,
+      "stair_breakdown": 0,
       "timeframe_fit": {
         "version": "scanner-timeframe-fit-v1",
         "best_fit": "LONGER-TERM",
@@ -184,9 +186,9 @@
           "LONGER-TERM"
         ],
         "scores": {
-          "INTRADAY": 50.0,
-          "SWING": 93.0,
-          "LONGER-TERM": 100.0
+          "INTRADAY": 50,
+          "SWING": 93,
+          "LONGER-TERM": 100
         },
         "coverage": {
           "INTRADAY": 0,
@@ -194,7 +196,7 @@
           "LONGER-TERM": 8
         },
         "confidence": "MODERATE",
-        "margin_points": 7.0,
+        "margin_points": 7,
         "reasons": {
           "INTRADAY": [],
           "SWING": [
@@ -236,27 +238,29 @@
       "timeframe_fit_horizons": [
         "LONGER-TERM"
       ],
-      "timeframe_intraday_score": 50.0,
-      "timeframe_swing_score": 93.0,
-      "timeframe_longer_term_score": 100.0,
+      "timeframe_intraday_score": 50,
+      "timeframe_swing_score": 93,
+      "timeframe_longer_term_score": 100,
       "timeframe_fit_confidence": "MODERATE",
-      "timeframe_fit_reason": "20-session trend is firmly positive \u00b7 roughly two-month trend is strong \u00b7 price is above its 20-session average",
+      "timeframe_fit_reason": "20-session trend is firmly positive · roughly two-month trend is strong · price is above its 20-session average",
       "relative_strength_vs_spy_20d_pct": 31.37,
       "daily_setup_archetypes": [
         "20D BREAKOUT",
         "TREND CONTINUATION"
       ],
-      "daily_discovery_score": 100.0,
+      "daily_discovery_score": 100,
       "daily_setup_grade": "A",
       "daily_review_action": "REVIEW LONGER-TERM",
-      "daily_review_reason": "20-session trend is firmly positive \u00b7 roughly two-month trend is strong \u00b7 price is above its 20-session average",
-      "production_rank_impact": false
+      "daily_review_reason": "20-session trend is firmly positive · roughly two-month trend is strong · price is above its 20-session average",
+      "production_rank_impact": false,
+      "trend_candidate_raw_score": 100.6,
+      "trend_candidate_score_version": "trend-candidate-score-v1"
     },
     {
       "symbol": "SWVL",
       "price": 3.12,
       "day_pct": 41.18,
-      "average_volume": 1276657.0,
+      "average_volume": 1276657,
       "average_dollar_volume": 3983169.8400000003,
       "daily_history_sessions": 82,
       "daily_context_source": "tradier_consolidated_daily",
@@ -271,22 +275,22 @@
       "daily_ma_alignment": "BULLISH",
       "daily_recent_high": 3.15,
       "daily_from_recent_high_pct": -0.95,
-      "daily_volume": 4842127.0,
-      "daily_avg_volume_20": 3918492.0,
+      "daily_volume": 4842127,
+      "daily_avg_volume_20": 3918492,
       "daily_volume_ratio": 1.24,
       "daily_breakout_20d": true,
-      "news_bonus": 0.0,
-      "stair_step_count": 3.0,
+      "news_bonus": 0,
+      "stair_step_count": 3,
       "stair_last_step_pct": 41.18,
       "stair_step_acceleration_ratio": 9.1,
-      "stair_plateau_days": 0.0,
-      "stair_plateau_range_pct": 0.0,
-      "stair_plateau_retention_pct": 100.0,
+      "stair_plateau_days": 0,
+      "stair_plateau_range_pct": 0,
+      "stair_plateau_retention_pct": 100,
       "stair_plateau_volume_ratio": null,
-      "stair_higher_plateau_count": 1.0,
-      "stair_structure_score": 100.0,
-      "stair_reaccelerating": 1.0,
-      "stair_breakdown": 0.0,
+      "stair_higher_plateau_count": 1,
+      "stair_structure_score": 100,
+      "stair_reaccelerating": 1,
+      "stair_breakdown": 0,
       "timeframe_fit": {
         "version": "scanner-timeframe-fit-v1",
         "best_fit": "LONGER-TERM",
@@ -296,9 +300,9 @@
           "LONGER-TERM"
         ],
         "scores": {
-          "INTRADAY": 50.0,
-          "SWING": 91.0,
-          "LONGER-TERM": 100.0
+          "INTRADAY": 50,
+          "SWING": 91,
+          "LONGER-TERM": 100
         },
         "coverage": {
           "INTRADAY": 0,
@@ -306,7 +310,7 @@
           "LONGER-TERM": 8
         },
         "confidence": "HIGH",
-        "margin_points": 9.0,
+        "margin_points": 9,
         "reasons": {
           "INTRADAY": [],
           "SWING": [
@@ -346,11 +350,11 @@
       "timeframe_fit_horizons": [
         "LONGER-TERM"
       ],
-      "timeframe_intraday_score": 50.0,
-      "timeframe_swing_score": 91.0,
-      "timeframe_longer_term_score": 100.0,
+      "timeframe_intraday_score": 50,
+      "timeframe_swing_score": 91,
+      "timeframe_longer_term_score": 100,
       "timeframe_fit_confidence": "HIGH",
-      "timeframe_fit_reason": "20-session trend is firmly positive \u00b7 roughly two-month trend is strong \u00b7 price is above its 20-session average",
+      "timeframe_fit_reason": "20-session trend is firmly positive · roughly two-month trend is strong · price is above its 20-session average",
       "relative_strength_vs_spy_20d_pct": 123.1,
       "daily_setup_archetypes": [
         "20D BREAKOUT",
@@ -359,14 +363,16 @@
       "daily_discovery_score": 96.2,
       "daily_setup_grade": "A",
       "daily_review_action": "REVIEW LONGER-TERM",
-      "daily_review_reason": "20-session trend is firmly positive \u00b7 roughly two-month trend is strong \u00b7 price is above its 20-session average",
-      "production_rank_impact": false
+      "daily_review_reason": "20-session trend is firmly positive · roughly two-month trend is strong · price is above its 20-session average",
+      "production_rank_impact": false,
+      "trend_candidate_raw_score": 96.2,
+      "trend_candidate_score_version": "trend-candidate-score-v1"
     },
     {
       "symbol": "GAP",
       "price": 23.48,
       "day_pct": 12.94,
-      "average_volume": 7503008.0,
+      "average_volume": 7503008,
       "average_dollar_volume": 176170627.84,
       "daily_history_sessions": 82,
       "daily_context_source": "tradier_consolidated_daily",
@@ -381,22 +387,22 @@
       "daily_ma_alignment": "MIXED",
       "daily_recent_high": 25.8,
       "daily_from_recent_high_pct": -8.99,
-      "daily_volume": 26386370.0,
-      "daily_avg_volume_20": 6595090.0,
-      "daily_volume_ratio": 4.0,
+      "daily_volume": 26386370,
+      "daily_avg_volume_20": 6595090,
+      "daily_volume_ratio": 4,
       "daily_breakout_20d": true,
-      "news_bonus": 0.0,
-      "stair_step_count": 3.0,
+      "news_bonus": 0,
+      "stair_step_count": 3,
       "stair_last_step_pct": 12.94,
       "stair_step_acceleration_ratio": 2.607,
-      "stair_plateau_days": 0.0,
-      "stair_plateau_range_pct": 0.0,
-      "stair_plateau_retention_pct": 100.0,
+      "stair_plateau_days": 0,
+      "stair_plateau_range_pct": 0,
+      "stair_plateau_retention_pct": 100,
       "stair_plateau_volume_ratio": null,
-      "stair_higher_plateau_count": 2.0,
-      "stair_structure_score": 100.0,
-      "stair_reaccelerating": 1.0,
-      "stair_breakdown": 0.0,
+      "stair_higher_plateau_count": 2,
+      "stair_structure_score": 100,
+      "stair_reaccelerating": 1,
+      "stair_breakdown": 0,
       "timeframe_fit": {
         "version": "scanner-timeframe-fit-v1",
         "best_fit": "MIXED",
@@ -407,9 +413,9 @@
           "SWING"
         ],
         "scores": {
-          "INTRADAY": 50.0,
-          "SWING": 98.0,
-          "LONGER-TERM": 99.0
+          "INTRADAY": 50,
+          "SWING": 98,
+          "LONGER-TERM": 99
         },
         "coverage": {
           "INTRADAY": 0,
@@ -417,7 +423,7 @@
           "LONGER-TERM": 8
         },
         "confidence": "MODERATE",
-        "margin_points": 1.0,
+        "margin_points": 1,
         "reasons": {
           "INTRADAY": [],
           "SWING": [
@@ -460,26 +466,28 @@
         "LONGER-TERM",
         "SWING"
       ],
-      "timeframe_intraday_score": 50.0,
-      "timeframe_swing_score": 98.0,
-      "timeframe_longer_term_score": 99.0,
+      "timeframe_intraday_score": 50,
+      "timeframe_swing_score": 98,
+      "timeframe_longer_term_score": 99,
       "timeframe_fit_confidence": "MODERATE",
-      "timeframe_fit_reason": "20-session trend is firmly positive \u00b7 roughly two-month trend is positive \u00b7 price is above its 20-session average \u00b7 swing evidence is also close",
+      "timeframe_fit_reason": "20-session trend is firmly positive · roughly two-month trend is positive · price is above its 20-session average · swing evidence is also close",
       "relative_strength_vs_spy_20d_pct": 13.88,
       "daily_setup_archetypes": [
         "20D BREAKOUT"
       ],
-      "daily_discovery_score": 96.0,
+      "daily_discovery_score": 96,
       "daily_setup_grade": "A",
       "daily_review_action": "REVIEW SWING / LONGER-TERM",
-      "daily_review_reason": "20-session trend is firmly positive \u00b7 roughly two-month trend is positive \u00b7 price is above its 20-session average \u00b7 swing evidence is also close",
-      "production_rank_impact": false
+      "daily_review_reason": "20-session trend is firmly positive · roughly two-month trend is positive · price is above its 20-session average · swing evidence is also close",
+      "production_rank_impact": false,
+      "trend_candidate_raw_score": 96,
+      "trend_candidate_score_version": "trend-candidate-score-v1"
     },
     {
       "symbol": "RCKT",
       "price": 3.86,
       "day_pct": 6.63,
-      "average_volume": 434084.0,
+      "average_volume": 434084,
       "average_dollar_volume": 1675564.24,
       "daily_history_sessions": 82,
       "daily_context_source": "tradier_consolidated_daily",
@@ -494,22 +502,22 @@
       "daily_ma_alignment": "MIXED",
       "daily_recent_high": 4.33,
       "daily_from_recent_high_pct": -10.85,
-      "daily_volume": 3454770.0,
-      "daily_avg_volume_20": 1491038.0,
+      "daily_volume": 3454770,
+      "daily_avg_volume_20": 1491038,
       "daily_volume_ratio": 2.32,
       "daily_breakout_20d": true,
-      "news_bonus": 0.0,
-      "stair_step_count": 3.0,
+      "news_bonus": 0,
+      "stair_step_count": 3,
       "stair_last_step_pct": 6.63,
       "stair_step_acceleration_ratio": 0.936,
-      "stair_plateau_days": 0.0,
-      "stair_plateau_range_pct": 0.0,
-      "stair_plateau_retention_pct": 100.0,
+      "stair_plateau_days": 0,
+      "stair_plateau_range_pct": 0,
+      "stair_plateau_retention_pct": 100,
       "stair_plateau_volume_ratio": null,
-      "stair_higher_plateau_count": 2.0,
-      "stair_structure_score": 100.0,
-      "stair_reaccelerating": 1.0,
-      "stair_breakdown": 0.0,
+      "stair_higher_plateau_count": 2,
+      "stair_structure_score": 100,
+      "stair_reaccelerating": 1,
+      "stair_breakdown": 0,
       "timeframe_fit": {
         "version": "scanner-timeframe-fit-v1",
         "best_fit": "SWING",
@@ -519,9 +527,9 @@
           "SWING"
         ],
         "scores": {
-          "INTRADAY": 50.0,
-          "SWING": 98.0,
-          "LONGER-TERM": 91.0
+          "INTRADAY": 50,
+          "SWING": 98,
+          "LONGER-TERM": 91
         },
         "coverage": {
           "INTRADAY": 0,
@@ -529,7 +537,7 @@
           "LONGER-TERM": 8
         },
         "confidence": "MODERATE",
-        "margin_points": 7.0,
+        "margin_points": 7,
         "reasons": {
           "INTRADAY": [],
           "SWING": [
@@ -569,11 +577,11 @@
       "timeframe_fit_horizons": [
         "SWING"
       ],
-      "timeframe_intraday_score": 50.0,
-      "timeframe_swing_score": 98.0,
-      "timeframe_longer_term_score": 91.0,
+      "timeframe_intraday_score": 50,
+      "timeframe_swing_score": 98,
+      "timeframe_longer_term_score": 91,
       "timeframe_fit_confidence": "MODERATE",
-      "timeframe_fit_reason": "current move is strong without being extreme \u00b7 strong five-session trend \u00b7 20-session trend is strong",
+      "timeframe_fit_reason": "current move is strong without being extreme · strong five-session trend · 20-session trend is strong",
       "relative_strength_vs_spy_20d_pct": 21.13,
       "daily_setup_archetypes": [
         "20D BREAKOUT"
@@ -581,14 +589,16 @@
       "daily_discovery_score": 95.9,
       "daily_setup_grade": "A",
       "daily_review_action": "REVIEW SWING",
-      "daily_review_reason": "current move is strong without being extreme \u00b7 strong five-session trend \u00b7 20-session trend is strong",
-      "production_rank_impact": false
+      "daily_review_reason": "current move is strong without being extreme · strong five-session trend · 20-session trend is strong",
+      "production_rank_impact": false,
+      "trend_candidate_raw_score": 95.9,
+      "trend_candidate_score_version": "trend-candidate-score-v1"
     },
     {
       "symbol": "CBAT",
       "price": 0.9301,
       "day_pct": 7.71,
-      "average_volume": 6412050.0,
+      "average_volume": 6412050,
       "average_dollar_volume": 5963847.705,
       "daily_history_sessions": 82,
       "daily_context_source": "tradier_consolidated_daily",
@@ -603,22 +613,22 @@
       "daily_ma_alignment": "BULLISH",
       "daily_recent_high": 0.97,
       "daily_from_recent_high_pct": -4.11,
-      "daily_volume": 765848.0,
-      "daily_avg_volume_20": 498436.0,
+      "daily_volume": 765848,
+      "daily_avg_volume_20": 498436,
       "daily_volume_ratio": 1.54,
       "daily_breakout_20d": false,
-      "news_bonus": 0.0,
-      "stair_step_count": 7.0,
+      "news_bonus": 0,
+      "stair_step_count": 7,
       "stair_last_step_pct": 7.71,
       "stair_step_acceleration_ratio": 0.783,
-      "stair_plateau_days": 0.0,
-      "stair_plateau_range_pct": 0.0,
-      "stair_plateau_retention_pct": 100.0,
+      "stair_plateau_days": 0,
+      "stair_plateau_range_pct": 0,
+      "stair_plateau_retention_pct": 100,
       "stair_plateau_volume_ratio": null,
-      "stair_higher_plateau_count": 6.0,
-      "stair_structure_score": 100.0,
-      "stair_reaccelerating": 1.0,
-      "stair_breakdown": 0.0,
+      "stair_higher_plateau_count": 6,
+      "stair_structure_score": 100,
+      "stair_reaccelerating": 1,
+      "stair_breakdown": 0,
       "timeframe_fit": {
         "version": "scanner-timeframe-fit-v1",
         "best_fit": "MIXED",
@@ -629,9 +639,9 @@
           "SWING"
         ],
         "scores": {
-          "INTRADAY": 50.0,
-          "SWING": 98.0,
-          "LONGER-TERM": 100.0
+          "INTRADAY": 50,
+          "SWING": 98,
+          "LONGER-TERM": 100
         },
         "coverage": {
           "INTRADAY": 0,
@@ -639,7 +649,7 @@
           "LONGER-TERM": 8
         },
         "confidence": "MODERATE",
-        "margin_points": 2.0,
+        "margin_points": 2,
         "reasons": {
           "INTRADAY": [],
           "SWING": [
@@ -683,11 +693,11 @@
         "LONGER-TERM",
         "SWING"
       ],
-      "timeframe_intraday_score": 50.0,
-      "timeframe_swing_score": 98.0,
-      "timeframe_longer_term_score": 100.0,
+      "timeframe_intraday_score": 50,
+      "timeframe_swing_score": 98,
+      "timeframe_longer_term_score": 100,
       "timeframe_fit_confidence": "MODERATE",
-      "timeframe_fit_reason": "20-session trend is firmly positive \u00b7 roughly two-month trend is strong \u00b7 price is above its 20-session average \u00b7 swing evidence is also close",
+      "timeframe_fit_reason": "20-session trend is firmly positive · roughly two-month trend is strong · price is above its 20-session average · swing evidence is also close",
       "relative_strength_vs_spy_20d_pct": 83.33,
       "daily_setup_archetypes": [
         "TREND CONTINUATION"
@@ -695,18 +705,20 @@
       "daily_discovery_score": 95.6,
       "daily_setup_grade": "A",
       "daily_review_action": "REVIEW SWING / LONGER-TERM",
-      "daily_review_reason": "20-session trend is firmly positive \u00b7 roughly two-month trend is strong \u00b7 price is above its 20-session average \u00b7 swing evidence is also close",
-      "production_rank_impact": false
+      "daily_review_reason": "20-session trend is firmly positive · roughly two-month trend is strong · price is above its 20-session average · swing evidence is also close",
+      "production_rank_impact": false,
+      "trend_candidate_raw_score": 95.6,
+      "trend_candidate_score_version": "trend-candidate-score-v1"
     },
     {
       "symbol": "JELD",
       "price": 2.53,
       "day_pct": 16.06,
-      "average_volume": 1752577.0,
+      "average_volume": 1752577,
       "average_dollar_volume": 4434019.81,
       "daily_history_sessions": 82,
       "daily_context_source": "tradier_consolidated_daily",
-      "daily_return_5d_pct": 10.0,
+      "daily_return_5d_pct": 10,
       "daily_return_20d_pct": 78.17,
       "daily_return_40d_pct": 75.69,
       "daily_ma_10": 2.215,
@@ -717,22 +729,22 @@
       "daily_ma_alignment": "BULLISH",
       "daily_recent_high": 2.56,
       "daily_from_recent_high_pct": -1.17,
-      "daily_volume": 2612337.0,
-      "daily_avg_volume_20": 1863459.0,
+      "daily_volume": 2612337,
+      "daily_avg_volume_20": 1863459,
       "daily_volume_ratio": 1.4,
       "daily_breakout_20d": false,
-      "news_bonus": 0.0,
-      "stair_step_count": 6.0,
+      "news_bonus": 0,
+      "stair_step_count": 6,
       "stair_last_step_pct": 16.06,
       "stair_step_acceleration_ratio": 1.944,
-      "stair_plateau_days": 0.0,
-      "stair_plateau_range_pct": 0.0,
-      "stair_plateau_retention_pct": 100.0,
+      "stair_plateau_days": 0,
+      "stair_plateau_range_pct": 0,
+      "stair_plateau_retention_pct": 100,
       "stair_plateau_volume_ratio": null,
-      "stair_higher_plateau_count": 5.0,
-      "stair_structure_score": 100.0,
-      "stair_reaccelerating": 1.0,
-      "stair_breakdown": 0.0,
+      "stair_higher_plateau_count": 5,
+      "stair_structure_score": 100,
+      "stair_reaccelerating": 1,
+      "stair_breakdown": 0,
       "timeframe_fit": {
         "version": "scanner-timeframe-fit-v1",
         "best_fit": "MIXED",
@@ -743,9 +755,9 @@
           "SWING"
         ],
         "scores": {
-          "INTRADAY": 50.0,
-          "SWING": 98.0,
-          "LONGER-TERM": 100.0
+          "INTRADAY": 50,
+          "SWING": 98,
+          "LONGER-TERM": 100
         },
         "coverage": {
           "INTRADAY": 0,
@@ -753,7 +765,7 @@
           "LONGER-TERM": 8
         },
         "confidence": "MODERATE",
-        "margin_points": 2.0,
+        "margin_points": 2,
         "reasons": {
           "INTRADAY": [],
           "SWING": [
@@ -797,11 +809,11 @@
         "LONGER-TERM",
         "SWING"
       ],
-      "timeframe_intraday_score": 50.0,
-      "timeframe_swing_score": 98.0,
-      "timeframe_longer_term_score": 100.0,
+      "timeframe_intraday_score": 50,
+      "timeframe_swing_score": 98,
+      "timeframe_longer_term_score": 100,
       "timeframe_fit_confidence": "MODERATE",
-      "timeframe_fit_reason": "20-session trend is firmly positive \u00b7 roughly two-month trend is strong \u00b7 price is above its 20-session average \u00b7 swing evidence is also close",
+      "timeframe_fit_reason": "20-session trend is firmly positive · roughly two-month trend is strong · price is above its 20-session average · swing evidence is also close",
       "relative_strength_vs_spy_20d_pct": 75.18,
       "daily_setup_archetypes": [
         "TREND CONTINUATION"
@@ -809,14 +821,16 @@
       "daily_discovery_score": 95.6,
       "daily_setup_grade": "A",
       "daily_review_action": "REVIEW SWING / LONGER-TERM",
-      "daily_review_reason": "20-session trend is firmly positive \u00b7 roughly two-month trend is strong \u00b7 price is above its 20-session average \u00b7 swing evidence is also close",
-      "production_rank_impact": false
+      "daily_review_reason": "20-session trend is firmly positive · roughly two-month trend is strong · price is above its 20-session average · swing evidence is also close",
+      "production_rank_impact": false,
+      "trend_candidate_raw_score": 95.6,
+      "trend_candidate_score_version": "trend-candidate-score-v1"
     },
     {
       "symbol": "PRZO",
       "price": 0.8403,
       "day_pct": 7.95,
-      "average_volume": 3606018.0,
+      "average_volume": 3606018,
       "average_dollar_volume": 3030136.9254,
       "daily_history_sessions": 82,
       "daily_context_source": "tradier_consolidated_daily",
@@ -831,22 +845,22 @@
       "daily_ma_alignment": "BULLISH",
       "daily_recent_high": 0.9299,
       "daily_from_recent_high_pct": -9.64,
-      "daily_volume": 3951493.0,
-      "daily_avg_volume_20": 5374285.0,
+      "daily_volume": 3951493,
+      "daily_avg_volume_20": 5374285,
       "daily_volume_ratio": 0.74,
       "daily_breakout_20d": false,
-      "news_bonus": 0.0,
-      "stair_step_count": 6.0,
+      "news_bonus": 0,
+      "stair_step_count": 6,
       "stair_last_step_pct": 7.95,
       "stair_step_acceleration_ratio": 0.256,
-      "stair_plateau_days": 0.0,
-      "stair_plateau_range_pct": 0.0,
-      "stair_plateau_retention_pct": 100.0,
+      "stair_plateau_days": 0,
+      "stair_plateau_range_pct": 0,
+      "stair_plateau_retention_pct": 100,
       "stair_plateau_volume_ratio": null,
-      "stair_higher_plateau_count": 5.0,
-      "stair_structure_score": 100.0,
-      "stair_reaccelerating": 1.0,
-      "stair_breakdown": 0.0,
+      "stair_higher_plateau_count": 5,
+      "stair_structure_score": 100,
+      "stair_reaccelerating": 1,
+      "stair_breakdown": 0,
       "timeframe_fit": {
         "version": "scanner-timeframe-fit-v1",
         "best_fit": "MIXED",
@@ -857,9 +871,9 @@
           "SWING"
         ],
         "scores": {
-          "INTRADAY": 50.0,
-          "SWING": 98.0,
-          "LONGER-TERM": 100.0
+          "INTRADAY": 50,
+          "SWING": 98,
+          "LONGER-TERM": 100
         },
         "coverage": {
           "INTRADAY": 0,
@@ -867,7 +881,7 @@
           "LONGER-TERM": 8
         },
         "confidence": "MODERATE",
-        "margin_points": 2.0,
+        "margin_points": 2,
         "reasons": {
           "INTRADAY": [],
           "SWING": [
@@ -911,11 +925,11 @@
         "LONGER-TERM",
         "SWING"
       ],
-      "timeframe_intraday_score": 50.0,
-      "timeframe_swing_score": 98.0,
-      "timeframe_longer_term_score": 100.0,
+      "timeframe_intraday_score": 50,
+      "timeframe_swing_score": 98,
+      "timeframe_longer_term_score": 100,
       "timeframe_fit_confidence": "MODERATE",
-      "timeframe_fit_reason": "20-session trend is firmly positive \u00b7 roughly two-month trend is strong \u00b7 price is above its 20-session average \u00b7 swing evidence is also close",
+      "timeframe_fit_reason": "20-session trend is firmly positive · roughly two-month trend is strong · price is above its 20-session average · swing evidence is also close",
       "relative_strength_vs_spy_20d_pct": 78.54,
       "daily_setup_archetypes": [
         "TREND CONTINUATION"
@@ -923,14 +937,16 @@
       "daily_discovery_score": 93.6,
       "daily_setup_grade": "A",
       "daily_review_action": "REVIEW SWING / LONGER-TERM",
-      "daily_review_reason": "20-session trend is firmly positive \u00b7 roughly two-month trend is strong \u00b7 price is above its 20-session average \u00b7 swing evidence is also close",
-      "production_rank_impact": false
+      "daily_review_reason": "20-session trend is firmly positive · roughly two-month trend is strong · price is above its 20-session average · swing evidence is also close",
+      "production_rank_impact": false,
+      "trend_candidate_raw_score": 93.6,
+      "trend_candidate_score_version": "trend-candidate-score-v1"
     },
     {
       "symbol": "SLB",
       "price": 57.33,
       "day_pct": 4.22,
-      "average_volume": 11002927.0,
+      "average_volume": 11002927,
       "average_dollar_volume": 630797804.91,
       "daily_history_sessions": 82,
       "daily_context_source": "tradier_consolidated_daily",
@@ -945,22 +961,22 @@
       "daily_ma_alignment": "BULLISH",
       "daily_recent_high": 57.42,
       "daily_from_recent_high_pct": -0.16,
-      "daily_volume": 18125729.0,
-      "daily_avg_volume_20": 9690915.0,
+      "daily_volume": 18125729,
+      "daily_avg_volume_20": 9690915,
       "daily_volume_ratio": 1.87,
       "daily_breakout_20d": true,
-      "news_bonus": 0.0,
-      "stair_step_count": 1.0,
+      "news_bonus": 0,
+      "stair_step_count": 1,
       "stair_last_step_pct": 5.28,
       "stair_step_acceleration_ratio": null,
-      "stair_plateau_days": 14.0,
+      "stair_plateau_days": 14,
       "stair_plateau_range_pct": 11.28,
       "stair_plateau_retention_pct": 116.5,
       "stair_plateau_volume_ratio": 0.813,
-      "stair_higher_plateau_count": 0.0,
-      "stair_structure_score": 56.0,
-      "stair_reaccelerating": 0.0,
-      "stair_breakdown": 0.0,
+      "stair_higher_plateau_count": 0,
+      "stair_structure_score": 56,
+      "stair_reaccelerating": 0,
+      "stair_breakdown": 0,
       "timeframe_fit": {
         "version": "scanner-timeframe-fit-v1",
         "best_fit": "LONGER-TERM",
@@ -970,9 +986,9 @@
           "LONGER-TERM"
         ],
         "scores": {
-          "INTRADAY": 50.0,
-          "SWING": 73.0,
-          "LONGER-TERM": 100.0
+          "INTRADAY": 50,
+          "SWING": 73,
+          "LONGER-TERM": 100
         },
         "coverage": {
           "INTRADAY": 0,
@@ -980,7 +996,7 @@
           "LONGER-TERM": 8
         },
         "confidence": "HIGH",
-        "margin_points": 27.0,
+        "margin_points": 27,
         "reasons": {
           "INTRADAY": [],
           "SWING": [
@@ -1018,11 +1034,11 @@
       "timeframe_fit_horizons": [
         "LONGER-TERM"
       ],
-      "timeframe_intraday_score": 50.0,
-      "timeframe_swing_score": 73.0,
-      "timeframe_longer_term_score": 100.0,
+      "timeframe_intraday_score": 50,
+      "timeframe_swing_score": 73,
+      "timeframe_longer_term_score": 100,
       "timeframe_fit_confidence": "HIGH",
-      "timeframe_fit_reason": "20-session trend is firmly positive \u00b7 roughly two-month trend is strong \u00b7 price is above its 20-session average",
+      "timeframe_fit_reason": "20-session trend is firmly positive · roughly two-month trend is strong · price is above its 20-session average",
       "relative_strength_vs_spy_20d_pct": 12.62,
       "daily_setup_archetypes": [
         "20D BREAKOUT",
@@ -1031,14 +1047,16 @@
       "daily_discovery_score": 92.6,
       "daily_setup_grade": "A",
       "daily_review_action": "REVIEW LONGER-TERM",
-      "daily_review_reason": "20-session trend is firmly positive \u00b7 roughly two-month trend is strong \u00b7 price is above its 20-session average",
-      "production_rank_impact": false
+      "daily_review_reason": "20-session trend is firmly positive · roughly two-month trend is strong · price is above its 20-session average",
+      "production_rank_impact": false,
+      "trend_candidate_raw_score": 92.6,
+      "trend_candidate_score_version": "trend-candidate-score-v1"
     },
     {
       "symbol": "ACCL",
       "price": 2.925,
       "day_pct": 5.6,
-      "average_volume": 458133.0,
+      "average_volume": 458133,
       "average_dollar_volume": 1340039.025,
       "daily_history_sessions": 82,
       "daily_context_source": "tradier_consolidated_daily",
@@ -1053,22 +1071,22 @@
       "daily_ma_alignment": "BULLISH",
       "daily_recent_high": 3.2,
       "daily_from_recent_high_pct": -8.59,
-      "daily_volume": 6469.0,
-      "daily_avg_volume_20": 45114.0,
+      "daily_volume": 6469,
+      "daily_avg_volume_20": 45114,
       "daily_volume_ratio": 0.14,
       "daily_breakout_20d": false,
-      "news_bonus": 0.0,
-      "stair_step_count": 3.0,
+      "news_bonus": 0,
+      "stair_step_count": 3,
       "stair_last_step_pct": 5.6,
       "stair_step_acceleration_ratio": 1.184,
-      "stair_plateau_days": 0.0,
-      "stair_plateau_range_pct": 0.0,
-      "stair_plateau_retention_pct": 100.0,
+      "stair_plateau_days": 0,
+      "stair_plateau_range_pct": 0,
+      "stair_plateau_retention_pct": 100,
       "stair_plateau_volume_ratio": null,
-      "stair_higher_plateau_count": 0.0,
-      "stair_structure_score": 95.0,
-      "stair_reaccelerating": 1.0,
-      "stair_breakdown": 0.0,
+      "stair_higher_plateau_count": 0,
+      "stair_structure_score": 95,
+      "stair_reaccelerating": 1,
+      "stair_breakdown": 0,
       "timeframe_fit": {
         "version": "scanner-timeframe-fit-v1",
         "best_fit": "LONGER-TERM",
@@ -1078,9 +1096,9 @@
           "LONGER-TERM"
         ],
         "scores": {
-          "INTRADAY": 50.0,
-          "SWING": 93.0,
-          "LONGER-TERM": 100.0
+          "INTRADAY": 50,
+          "SWING": 93,
+          "LONGER-TERM": 100
         },
         "coverage": {
           "INTRADAY": 0,
@@ -1088,7 +1106,7 @@
           "LONGER-TERM": 8
         },
         "confidence": "MODERATE",
-        "margin_points": 7.0,
+        "margin_points": 7,
         "reasons": {
           "INTRADAY": [],
           "SWING": [
@@ -1130,11 +1148,11 @@
       "timeframe_fit_horizons": [
         "LONGER-TERM"
       ],
-      "timeframe_intraday_score": 50.0,
-      "timeframe_swing_score": 93.0,
-      "timeframe_longer_term_score": 100.0,
+      "timeframe_intraday_score": 50,
+      "timeframe_swing_score": 93,
+      "timeframe_longer_term_score": 100,
       "timeframe_fit_confidence": "MODERATE",
-      "timeframe_fit_reason": "20-session trend is firmly positive \u00b7 roughly two-month trend is strong \u00b7 price is above its 20-session average",
+      "timeframe_fit_reason": "20-session trend is firmly positive · roughly two-month trend is strong · price is above its 20-session average",
       "relative_strength_vs_spy_20d_pct": 28.18,
       "daily_setup_archetypes": [
         "TREND CONTINUATION",
@@ -1143,14 +1161,16 @@
       "daily_discovery_score": 92.6,
       "daily_setup_grade": "A",
       "daily_review_action": "REVIEW LONGER-TERM",
-      "daily_review_reason": "20-session trend is firmly positive \u00b7 roughly two-month trend is strong \u00b7 price is above its 20-session average",
-      "production_rank_impact": false
+      "daily_review_reason": "20-session trend is firmly positive · roughly two-month trend is strong · price is above its 20-session average",
+      "production_rank_impact": false,
+      "trend_candidate_raw_score": 92.6,
+      "trend_candidate_score_version": "trend-candidate-score-v1"
     },
     {
       "symbol": "EXK",
       "price": 10.76,
       "day_pct": -4.78,
-      "average_volume": 2336939.0,
+      "average_volume": 2336939,
       "average_dollar_volume": 25145463.64,
       "daily_history_sessions": 82,
       "daily_context_source": "tradier_consolidated_daily",
@@ -1165,22 +1185,22 @@
       "daily_ma_alignment": "BULLISH",
       "daily_recent_high": 11.5177,
       "daily_from_recent_high_pct": -6.58,
-      "daily_volume": 13181504.0,
-      "daily_avg_volume_20": 8741355.0,
+      "daily_volume": 13181504,
+      "daily_avg_volume_20": 8741355,
       "daily_volume_ratio": 1.51,
       "daily_breakout_20d": false,
-      "news_bonus": 0.0,
-      "stair_step_count": 5.0,
+      "news_bonus": 0,
+      "stair_step_count": 5,
       "stair_last_step_pct": 13.77,
       "stair_step_acceleration_ratio": 1.876,
-      "stair_plateau_days": 7.0,
+      "stair_plateau_days": 7,
       "stair_plateau_range_pct": 10.74,
       "stair_plateau_retention_pct": 92.5,
       "stair_plateau_volume_ratio": 1.128,
-      "stair_higher_plateau_count": 4.0,
-      "stair_structure_score": 97.0,
-      "stair_reaccelerating": 0.0,
-      "stair_breakdown": 0.0,
+      "stair_higher_plateau_count": 4,
+      "stair_structure_score": 97,
+      "stair_reaccelerating": 0,
+      "stair_breakdown": 0,
       "timeframe_fit": {
         "version": "scanner-timeframe-fit-v1",
         "best_fit": "LONGER-TERM",
@@ -1190,9 +1210,9 @@
           "LONGER-TERM"
         ],
         "scores": {
-          "INTRADAY": 50.0,
-          "SWING": 81.0,
-          "LONGER-TERM": 100.0
+          "INTRADAY": 50,
+          "SWING": 81,
+          "LONGER-TERM": 100
         },
         "coverage": {
           "INTRADAY": 0,
@@ -1200,7 +1220,7 @@
           "LONGER-TERM": 8
         },
         "confidence": "HIGH",
-        "margin_points": 19.0,
+        "margin_points": 19,
         "reasons": {
           "INTRADAY": [],
           "SWING": [
@@ -1239,11 +1259,11 @@
       "timeframe_fit_horizons": [
         "LONGER-TERM"
       ],
-      "timeframe_intraday_score": 50.0,
-      "timeframe_swing_score": 81.0,
-      "timeframe_longer_term_score": 100.0,
+      "timeframe_intraday_score": 50,
+      "timeframe_swing_score": 81,
+      "timeframe_longer_term_score": 100,
       "timeframe_fit_confidence": "HIGH",
-      "timeframe_fit_reason": "20-session trend is firmly positive \u00b7 roughly two-month trend is strong \u00b7 price is above its 20-session average",
+      "timeframe_fit_reason": "20-session trend is firmly positive · roughly two-month trend is strong · price is above its 20-session average",
       "relative_strength_vs_spy_20d_pct": 40.1,
       "daily_setup_archetypes": [
         "TREND CONTINUATION"
@@ -1251,14 +1271,16 @@
       "daily_discovery_score": 92.2,
       "daily_setup_grade": "A",
       "daily_review_action": "REVIEW LONGER-TERM",
-      "daily_review_reason": "20-session trend is firmly positive \u00b7 roughly two-month trend is strong \u00b7 price is above its 20-session average",
-      "production_rank_impact": false
+      "daily_review_reason": "20-session trend is firmly positive · roughly two-month trend is strong · price is above its 20-session average",
+      "production_rank_impact": false,
+      "trend_candidate_raw_score": 92.2,
+      "trend_candidate_score_version": "trend-candidate-score-v1"
     },
     {
       "symbol": "LHSW",
       "price": 4.16,
       "day_pct": 5.85,
-      "average_volume": 2192561.0,
+      "average_volume": 2192561,
       "average_dollar_volume": 9121053.76,
       "daily_history_sessions": 82,
       "daily_context_source": "tradier_consolidated_daily",
@@ -1273,22 +1295,22 @@
       "daily_ma_alignment": "BULLISH",
       "daily_recent_high": 7.74,
       "daily_from_recent_high_pct": -46.25,
-      "daily_volume": 209551.0,
-      "daily_avg_volume_20": 141313.0,
+      "daily_volume": 209551,
+      "daily_avg_volume_20": 141313,
       "daily_volume_ratio": 1.48,
       "daily_breakout_20d": false,
-      "news_bonus": 0.0,
-      "stair_step_count": 7.0,
+      "news_bonus": 0,
+      "stair_step_count": 7,
       "stair_last_step_pct": 5.85,
       "stair_step_acceleration_ratio": 0.763,
-      "stair_plateau_days": 0.0,
-      "stair_plateau_range_pct": 0.0,
-      "stair_plateau_retention_pct": 100.0,
+      "stair_plateau_days": 0,
+      "stair_plateau_range_pct": 0,
+      "stair_plateau_retention_pct": 100,
       "stair_plateau_volume_ratio": null,
-      "stair_higher_plateau_count": 4.0,
-      "stair_structure_score": 100.0,
-      "stair_reaccelerating": 1.0,
-      "stair_breakdown": 0.0,
+      "stair_higher_plateau_count": 4,
+      "stair_structure_score": 100,
+      "stair_reaccelerating": 1,
+      "stair_breakdown": 0,
       "timeframe_fit": {
         "version": "scanner-timeframe-fit-v1",
         "best_fit": "MIXED",
@@ -1299,9 +1321,9 @@
           "SWING"
         ],
         "scores": {
-          "INTRADAY": 50.0,
-          "SWING": 98.0,
-          "LONGER-TERM": 100.0
+          "INTRADAY": 50,
+          "SWING": 98,
+          "LONGER-TERM": 100
         },
         "coverage": {
           "INTRADAY": 0,
@@ -1309,7 +1331,7 @@
           "LONGER-TERM": 8
         },
         "confidence": "MODERATE",
-        "margin_points": 2.0,
+        "margin_points": 2,
         "reasons": {
           "INTRADAY": [],
           "SWING": [
@@ -1353,11 +1375,11 @@
         "LONGER-TERM",
         "SWING"
       ],
-      "timeframe_intraday_score": 50.0,
-      "timeframe_swing_score": 98.0,
-      "timeframe_longer_term_score": 100.0,
+      "timeframe_intraday_score": 50,
+      "timeframe_swing_score": 98,
+      "timeframe_longer_term_score": 100,
       "timeframe_fit_confidence": "MODERATE",
-      "timeframe_fit_reason": "20-session trend is firmly positive \u00b7 roughly two-month trend is strong \u00b7 price is above its 20-session average \u00b7 swing evidence is also close",
+      "timeframe_fit_reason": "20-session trend is firmly positive · roughly two-month trend is strong · price is above its 20-session average · swing evidence is also close",
       "relative_strength_vs_spy_20d_pct": 62.09,
       "daily_setup_archetypes": [
         "TREND CONTINUATION"
@@ -1365,20 +1387,22 @@
       "daily_discovery_score": 91.6,
       "daily_setup_grade": "A",
       "daily_review_action": "REVIEW SWING / LONGER-TERM",
-      "daily_review_reason": "20-session trend is firmly positive \u00b7 roughly two-month trend is strong \u00b7 price is above its 20-session average \u00b7 swing evidence is also close",
-      "production_rank_impact": false
+      "daily_review_reason": "20-session trend is firmly positive · roughly two-month trend is strong · price is above its 20-session average · swing evidence is also close",
+      "production_rank_impact": false,
+      "trend_candidate_raw_score": 91.6,
+      "trend_candidate_score_version": "trend-candidate-score-v1"
     },
     {
       "symbol": "PATH",
       "price": 18.15,
       "day_pct": -0.98,
-      "average_volume": 67515961.0,
+      "average_volume": 67515961,
       "average_dollar_volume": 1225414692.1499999,
       "daily_history_sessions": 82,
       "daily_context_source": "tradier_consolidated_daily",
       "daily_return_5d_pct": 10.74,
       "daily_return_20d_pct": 42.24,
-      "daily_return_40d_pct": 55.0,
+      "daily_return_40d_pct": 55,
       "daily_ma_10": 16.613,
       "daily_ma_20": 15.7705,
       "daily_ma_40": 13.7795,
@@ -1386,23 +1410,23 @@
       "daily_above_ma40": true,
       "daily_ma_alignment": "BULLISH",
       "daily_recent_high": 18.52,
-      "daily_from_recent_high_pct": -2.0,
-      "daily_volume": 53128611.0,
-      "daily_avg_volume_20": 66630535.0,
+      "daily_from_recent_high_pct": -2,
+      "daily_volume": 53128611,
+      "daily_avg_volume_20": 66630535,
       "daily_volume_ratio": 0.8,
       "daily_breakout_20d": false,
-      "news_bonus": 0.0,
-      "stair_step_count": 4.0,
+      "news_bonus": 0,
+      "stair_step_count": 4,
       "stair_last_step_pct": 9.37,
       "stair_step_acceleration_ratio": 1.007,
-      "stair_plateau_days": 1.0,
+      "stair_plateau_days": 1,
       "stair_plateau_range_pct": 2.83,
       "stair_plateau_retention_pct": 88.5,
       "stair_plateau_volume_ratio": 0.737,
-      "stair_higher_plateau_count": 3.0,
-      "stair_structure_score": 100.0,
-      "stair_reaccelerating": 0.0,
-      "stair_breakdown": 0.0,
+      "stair_higher_plateau_count": 3,
+      "stair_structure_score": 100,
+      "stair_reaccelerating": 0,
+      "stair_breakdown": 0,
       "timeframe_fit": {
         "version": "scanner-timeframe-fit-v1",
         "best_fit": "LONGER-TERM",
@@ -1412,9 +1436,9 @@
           "LONGER-TERM"
         ],
         "scores": {
-          "INTRADAY": 50.0,
-          "SWING": 86.0,
-          "LONGER-TERM": 100.0
+          "INTRADAY": 50,
+          "SWING": 86,
+          "LONGER-TERM": 100
         },
         "coverage": {
           "INTRADAY": 0,
@@ -1422,7 +1446,7 @@
           "LONGER-TERM": 8
         },
         "confidence": "HIGH",
-        "margin_points": 14.0,
+        "margin_points": 14,
         "reasons": {
           "INTRADAY": [],
           "SWING": [
@@ -1461,11 +1485,11 @@
       "timeframe_fit_horizons": [
         "LONGER-TERM"
       ],
-      "timeframe_intraday_score": 50.0,
-      "timeframe_swing_score": 86.0,
-      "timeframe_longer_term_score": 100.0,
+      "timeframe_intraday_score": 50,
+      "timeframe_swing_score": 86,
+      "timeframe_longer_term_score": 100,
       "timeframe_fit_confidence": "HIGH",
-      "timeframe_fit_reason": "20-session trend is firmly positive \u00b7 roughly two-month trend is strong \u00b7 price is above its 20-session average",
+      "timeframe_fit_reason": "20-session trend is firmly positive · roughly two-month trend is strong · price is above its 20-session average",
       "relative_strength_vs_spy_20d_pct": 39.25,
       "daily_setup_archetypes": [
         "TREND CONTINUATION"
@@ -1473,14 +1497,16 @@
       "daily_discovery_score": 91.2,
       "daily_setup_grade": "A",
       "daily_review_action": "REVIEW LONGER-TERM",
-      "daily_review_reason": "20-session trend is firmly positive \u00b7 roughly two-month trend is strong \u00b7 price is above its 20-session average",
-      "production_rank_impact": false
+      "daily_review_reason": "20-session trend is firmly positive · roughly two-month trend is strong · price is above its 20-session average",
+      "production_rank_impact": false,
+      "trend_candidate_raw_score": 91.2,
+      "trend_candidate_score_version": "trend-candidate-score-v1"
     },
     {
       "symbol": "GIS",
       "price": 41.55,
       "day_pct": 2.74,
-      "average_volume": 10018022.0,
+      "average_volume": 10018022,
       "average_dollar_volume": 416248814.09999996,
       "daily_history_sessions": 82,
       "daily_context_source": "tradier_consolidated_daily",
@@ -1495,22 +1521,22 @@
       "daily_ma_alignment": "BULLISH",
       "daily_recent_high": 41.67,
       "daily_from_recent_high_pct": -0.29,
-      "daily_volume": 8926546.0,
-      "daily_avg_volume_20": 8056109.0,
+      "daily_volume": 8926546,
+      "daily_avg_volume_20": 8056109,
       "daily_volume_ratio": 1.11,
       "daily_breakout_20d": true,
-      "news_bonus": 0.0,
-      "stair_step_count": 1.0,
+      "news_bonus": 0,
+      "stair_step_count": 1,
       "stair_last_step_pct": 5.02,
       "stair_step_acceleration_ratio": null,
-      "stair_plateau_days": 7.0,
+      "stair_plateau_days": 7,
       "stair_plateau_range_pct": 6.17,
       "stair_plateau_retention_pct": 104.7,
       "stair_plateau_volume_ratio": 1.061,
-      "stair_higher_plateau_count": 0.0,
-      "stair_structure_score": 70.0,
-      "stair_reaccelerating": 0.0,
-      "stair_breakdown": 0.0,
+      "stair_higher_plateau_count": 0,
+      "stair_structure_score": 70,
+      "stair_reaccelerating": 0,
+      "stair_breakdown": 0,
       "timeframe_fit": {
         "version": "scanner-timeframe-fit-v1",
         "best_fit": "LONGER-TERM",
@@ -1520,9 +1546,9 @@
           "LONGER-TERM"
         ],
         "scores": {
-          "INTRADAY": 50.0,
-          "SWING": 76.0,
-          "LONGER-TERM": 100.0
+          "INTRADAY": 50,
+          "SWING": 76,
+          "LONGER-TERM": 100
         },
         "coverage": {
           "INTRADAY": 0,
@@ -1530,7 +1556,7 @@
           "LONGER-TERM": 8
         },
         "confidence": "HIGH",
-        "margin_points": 24.0,
+        "margin_points": 24,
         "reasons": {
           "INTRADAY": [],
           "SWING": [
@@ -1568,11 +1594,11 @@
       "timeframe_fit_horizons": [
         "LONGER-TERM"
       ],
-      "timeframe_intraday_score": 50.0,
-      "timeframe_swing_score": 76.0,
-      "timeframe_longer_term_score": 100.0,
+      "timeframe_intraday_score": 50,
+      "timeframe_swing_score": 76,
+      "timeframe_longer_term_score": 100,
       "timeframe_fit_confidence": "HIGH",
-      "timeframe_fit_reason": "20-session trend is firmly positive \u00b7 roughly two-month trend is positive \u00b7 price is above its 20-session average",
+      "timeframe_fit_reason": "20-session trend is firmly positive · roughly two-month trend is positive · price is above its 20-session average",
       "relative_strength_vs_spy_20d_pct": 13.23,
       "daily_setup_archetypes": [
         "20D BREAKOUT",
@@ -1581,14 +1607,16 @@
       "daily_discovery_score": 91.2,
       "daily_setup_grade": "A",
       "daily_review_action": "REVIEW LONGER-TERM",
-      "daily_review_reason": "20-session trend is firmly positive \u00b7 roughly two-month trend is positive \u00b7 price is above its 20-session average",
-      "production_rank_impact": false
+      "daily_review_reason": "20-session trend is firmly positive · roughly two-month trend is positive · price is above its 20-session average",
+      "production_rank_impact": false,
+      "trend_candidate_raw_score": 91.2,
+      "trend_candidate_score_version": "trend-candidate-score-v1"
     },
     {
       "symbol": "RMTI",
       "price": 8.17,
       "day_pct": 5.42,
-      "average_volume": 2148249.0,
+      "average_volume": 2148249,
       "average_dollar_volume": 17551194.33,
       "daily_history_sessions": 82,
       "daily_context_source": "tradier_consolidated_daily",
@@ -1603,22 +1631,22 @@
       "daily_ma_alignment": "BULLISH",
       "daily_recent_high": 8.4,
       "daily_from_recent_high_pct": -2.74,
-      "daily_volume": 36438.0,
-      "daily_avg_volume_20": 28506.0,
+      "daily_volume": 36438,
+      "daily_avg_volume_20": 28506,
       "daily_volume_ratio": 1.28,
       "daily_breakout_20d": false,
-      "news_bonus": 0.0,
-      "stair_step_count": 4.0,
+      "news_bonus": 0,
+      "stair_step_count": 4,
       "stair_last_step_pct": 5.42,
       "stair_step_acceleration_ratio": 0.9,
-      "stair_plateau_days": 0.0,
-      "stair_plateau_range_pct": 0.0,
-      "stair_plateau_retention_pct": 100.0,
+      "stair_plateau_days": 0,
+      "stair_plateau_range_pct": 0,
+      "stair_plateau_retention_pct": 100,
       "stair_plateau_volume_ratio": null,
-      "stair_higher_plateau_count": 3.0,
-      "stair_structure_score": 100.0,
-      "stair_reaccelerating": 1.0,
-      "stair_breakdown": 0.0,
+      "stair_higher_plateau_count": 3,
+      "stair_structure_score": 100,
+      "stair_reaccelerating": 1,
+      "stair_breakdown": 0,
       "timeframe_fit": {
         "version": "scanner-timeframe-fit-v1",
         "best_fit": "LONGER-TERM",
@@ -1628,9 +1656,9 @@
           "LONGER-TERM"
         ],
         "scores": {
-          "INTRADAY": 50.0,
-          "SWING": 93.0,
-          "LONGER-TERM": 100.0
+          "INTRADAY": 50,
+          "SWING": 93,
+          "LONGER-TERM": 100
         },
         "coverage": {
           "INTRADAY": 0,
@@ -1638,7 +1666,7 @@
           "LONGER-TERM": 8
         },
         "confidence": "MODERATE",
-        "margin_points": 7.0,
+        "margin_points": 7,
         "reasons": {
           "INTRADAY": [],
           "SWING": [
@@ -1680,11 +1708,11 @@
       "timeframe_fit_horizons": [
         "LONGER-TERM"
       ],
-      "timeframe_intraday_score": 50.0,
-      "timeframe_swing_score": 93.0,
-      "timeframe_longer_term_score": 100.0,
+      "timeframe_intraday_score": 50,
+      "timeframe_swing_score": 93,
+      "timeframe_longer_term_score": 100,
       "timeframe_fit_confidence": "MODERATE",
-      "timeframe_fit_reason": "20-session trend is constructive \u00b7 roughly two-month trend is strong \u00b7 price is above its 20-session average",
+      "timeframe_fit_reason": "20-session trend is constructive · roughly two-month trend is strong · price is above its 20-session average",
       "relative_strength_vs_spy_20d_pct": 10.64,
       "daily_setup_archetypes": [
         "TREND CONTINUATION"
@@ -1692,14 +1720,16 @@
       "daily_discovery_score": 90.6,
       "daily_setup_grade": "A",
       "daily_review_action": "REVIEW LONGER-TERM",
-      "daily_review_reason": "20-session trend is constructive \u00b7 roughly two-month trend is strong \u00b7 price is above its 20-session average",
-      "production_rank_impact": false
+      "daily_review_reason": "20-session trend is constructive · roughly two-month trend is strong · price is above its 20-session average",
+      "production_rank_impact": false,
+      "trend_candidate_raw_score": 90.6,
+      "trend_candidate_score_version": "trend-candidate-score-v1"
     },
     {
       "symbol": "FIG",
       "price": 28.82,
       "day_pct": -5.88,
-      "average_volume": 20815669.0,
+      "average_volume": 20815669,
       "average_dollar_volume": 599907580.58,
       "daily_history_sessions": 82,
       "daily_context_source": "tradier_consolidated_daily",
@@ -1714,22 +1744,22 @@
       "daily_ma_alignment": "BULLISH",
       "daily_recent_high": 31.22,
       "daily_from_recent_high_pct": -7.69,
-      "daily_volume": 19101093.0,
-      "daily_avg_volume_20": 21563473.0,
+      "daily_volume": 19101093,
+      "daily_avg_volume_20": 21563473,
       "daily_volume_ratio": 0.89,
       "daily_breakout_20d": false,
-      "news_bonus": 0.0,
-      "stair_step_count": 4.0,
+      "news_bonus": 0,
+      "stair_step_count": 4,
       "stair_last_step_pct": 13.28,
       "stair_step_acceleration_ratio": 1.213,
-      "stair_plateau_days": 1.0,
+      "stair_plateau_days": 1,
       "stair_plateau_range_pct": 7.49,
       "stair_plateau_retention_pct": 49.9,
       "stair_plateau_volume_ratio": 0.692,
-      "stair_higher_plateau_count": 2.0,
-      "stair_structure_score": 95.0,
-      "stair_reaccelerating": 0.0,
-      "stair_breakdown": 0.0,
+      "stair_higher_plateau_count": 2,
+      "stair_structure_score": 95,
+      "stair_reaccelerating": 0,
+      "stair_breakdown": 0,
       "timeframe_fit": {
         "version": "scanner-timeframe-fit-v1",
         "best_fit": "LONGER-TERM",
@@ -1739,9 +1769,9 @@
           "LONGER-TERM"
         ],
         "scores": {
-          "INTRADAY": 50.0,
-          "SWING": 81.0,
-          "LONGER-TERM": 100.0
+          "INTRADAY": 50,
+          "SWING": 81,
+          "LONGER-TERM": 100
         },
         "coverage": {
           "INTRADAY": 0,
@@ -1749,7 +1779,7 @@
           "LONGER-TERM": 8
         },
         "confidence": "HIGH",
-        "margin_points": 19.0,
+        "margin_points": 19,
         "reasons": {
           "INTRADAY": [],
           "SWING": [
@@ -1788,11 +1818,11 @@
       "timeframe_fit_horizons": [
         "LONGER-TERM"
       ],
-      "timeframe_intraday_score": 50.0,
-      "timeframe_swing_score": 81.0,
-      "timeframe_longer_term_score": 100.0,
+      "timeframe_intraday_score": 50,
+      "timeframe_swing_score": 81,
+      "timeframe_longer_term_score": 100,
       "timeframe_fit_confidence": "HIGH",
-      "timeframe_fit_reason": "20-session trend is firmly positive \u00b7 roughly two-month trend is strong \u00b7 price is above its 20-session average",
+      "timeframe_fit_reason": "20-session trend is firmly positive · roughly two-month trend is strong · price is above its 20-session average",
       "relative_strength_vs_spy_20d_pct": 15.51,
       "daily_setup_archetypes": [
         "TREND CONTINUATION"
@@ -1800,14 +1830,16 @@
       "daily_discovery_score": 90.2,
       "daily_setup_grade": "A",
       "daily_review_action": "REVIEW LONGER-TERM",
-      "daily_review_reason": "20-session trend is firmly positive \u00b7 roughly two-month trend is strong \u00b7 price is above its 20-session average",
-      "production_rank_impact": false
+      "daily_review_reason": "20-session trend is firmly positive · roughly two-month trend is strong · price is above its 20-session average",
+      "production_rank_impact": false,
+      "trend_candidate_raw_score": 90.2,
+      "trend_candidate_score_version": "trend-candidate-score-v1"
     },
     {
       "symbol": "B",
       "price": 45.65,
       "day_pct": -3.53,
-      "average_volume": 11026382.0,
+      "average_volume": 11026382,
       "average_dollar_volume": 503354338.3,
       "daily_history_sessions": 82,
       "daily_context_source": "tradier_consolidated_daily",
@@ -1822,22 +1854,22 @@
       "daily_ma_alignment": "BULLISH",
       "daily_recent_high": 49.14,
       "daily_from_recent_high_pct": -7.1,
-      "daily_volume": 15109150.0,
-      "daily_avg_volume_20": 12035465.0,
+      "daily_volume": 15109150,
+      "daily_avg_volume_20": 12035465,
       "daily_volume_ratio": 1.26,
       "daily_breakout_20d": false,
-      "news_bonus": 0.0,
-      "stair_step_count": 3.0,
+      "news_bonus": 0,
+      "stair_step_count": 3,
       "stair_last_step_pct": 7.22,
       "stair_step_acceleration_ratio": 1.294,
-      "stair_plateau_days": 7.0,
+      "stair_plateau_days": 7,
       "stair_plateau_range_pct": 9.57,
-      "stair_plateau_retention_pct": 172.0,
+      "stair_plateau_retention_pct": 172,
       "stair_plateau_volume_ratio": 0.68,
-      "stair_higher_plateau_count": 1.0,
-      "stair_structure_score": 96.0,
-      "stair_reaccelerating": 0.0,
-      "stair_breakdown": 0.0,
+      "stair_higher_plateau_count": 1,
+      "stair_structure_score": 96,
+      "stair_reaccelerating": 0,
+      "stair_breakdown": 0,
       "timeframe_fit": {
         "version": "scanner-timeframe-fit-v1",
         "best_fit": "LONGER-TERM",
@@ -1847,9 +1879,9 @@
           "LONGER-TERM"
         ],
         "scores": {
-          "INTRADAY": 50.0,
-          "SWING": 76.0,
-          "LONGER-TERM": 100.0
+          "INTRADAY": 50,
+          "SWING": 76,
+          "LONGER-TERM": 100
         },
         "coverage": {
           "INTRADAY": 0,
@@ -1857,7 +1889,7 @@
           "LONGER-TERM": 8
         },
         "confidence": "HIGH",
-        "margin_points": 24.0,
+        "margin_points": 24,
         "reasons": {
           "INTRADAY": [],
           "SWING": [
@@ -1895,11 +1927,11 @@
       "timeframe_fit_horizons": [
         "LONGER-TERM"
       ],
-      "timeframe_intraday_score": 50.0,
-      "timeframe_swing_score": 76.0,
-      "timeframe_longer_term_score": 100.0,
+      "timeframe_intraday_score": 50,
+      "timeframe_swing_score": 76,
+      "timeframe_longer_term_score": 100,
       "timeframe_fit_confidence": "HIGH",
-      "timeframe_fit_reason": "20-session trend is firmly positive \u00b7 roughly two-month trend is positive \u00b7 price is above its 20-session average",
+      "timeframe_fit_reason": "20-session trend is firmly positive · roughly two-month trend is positive · price is above its 20-session average",
       "relative_strength_vs_spy_20d_pct": 21.3,
       "daily_setup_archetypes": [
         "TREND CONTINUATION"
@@ -1907,14 +1939,16 @@
       "daily_discovery_score": 89.2,
       "daily_setup_grade": "A",
       "daily_review_action": "REVIEW LONGER-TERM",
-      "daily_review_reason": "20-session trend is firmly positive \u00b7 roughly two-month trend is positive \u00b7 price is above its 20-session average",
-      "production_rank_impact": false
+      "daily_review_reason": "20-session trend is firmly positive · roughly two-month trend is positive · price is above its 20-session average",
+      "production_rank_impact": false,
+      "trend_candidate_raw_score": 89.2,
+      "trend_candidate_score_version": "trend-candidate-score-v1"
     },
     {
       "symbol": "IVVD",
       "price": 0.9645,
       "day_pct": 7.15,
-      "average_volume": 4642347.0,
+      "average_volume": 4642347,
       "average_dollar_volume": 4477543.6815,
       "daily_history_sessions": 82,
       "daily_context_source": "tradier_consolidated_daily",
@@ -1929,22 +1963,22 @@
       "daily_ma_alignment": "BULLISH",
       "daily_recent_high": 1.05,
       "daily_from_recent_high_pct": -8.14,
-      "daily_volume": 3633713.0,
-      "daily_avg_volume_20": 3662402.0,
+      "daily_volume": 3633713,
+      "daily_avg_volume_20": 3662402,
       "daily_volume_ratio": 0.99,
       "daily_breakout_20d": false,
-      "news_bonus": 0.0,
-      "stair_step_count": 9.0,
+      "news_bonus": 0,
+      "stair_step_count": 9,
       "stair_last_step_pct": 7.15,
       "stair_step_acceleration_ratio": 1.489,
-      "stair_plateau_days": 0.0,
-      "stair_plateau_range_pct": 0.0,
-      "stair_plateau_retention_pct": 100.0,
+      "stair_plateau_days": 0,
+      "stair_plateau_range_pct": 0,
+      "stair_plateau_retention_pct": 100,
       "stair_plateau_volume_ratio": null,
-      "stair_higher_plateau_count": 1.0,
-      "stair_structure_score": 100.0,
-      "stair_reaccelerating": 1.0,
-      "stair_breakdown": 0.0,
+      "stair_higher_plateau_count": 1,
+      "stair_structure_score": 100,
+      "stair_reaccelerating": 1,
+      "stair_breakdown": 0,
       "timeframe_fit": {
         "version": "scanner-timeframe-fit-v1",
         "best_fit": "LONGER-TERM",
@@ -1954,9 +1988,9 @@
           "LONGER-TERM"
         ],
         "scores": {
-          "INTRADAY": 50.0,
-          "SWING": 88.0,
-          "LONGER-TERM": 100.0
+          "INTRADAY": 50,
+          "SWING": 88,
+          "LONGER-TERM": 100
         },
         "coverage": {
           "INTRADAY": 0,
@@ -1964,7 +1998,7 @@
           "LONGER-TERM": 8
         },
         "confidence": "HIGH",
-        "margin_points": 12.0,
+        "margin_points": 12,
         "reasons": {
           "INTRADAY": [],
           "SWING": [
@@ -2005,11 +2039,11 @@
       "timeframe_fit_horizons": [
         "LONGER-TERM"
       ],
-      "timeframe_intraday_score": 50.0,
-      "timeframe_swing_score": 88.0,
-      "timeframe_longer_term_score": 100.0,
+      "timeframe_intraday_score": 50,
+      "timeframe_swing_score": 88,
+      "timeframe_longer_term_score": 100,
       "timeframe_fit_confidence": "HIGH",
-      "timeframe_fit_reason": "20-session trend is firmly positive \u00b7 roughly two-month trend is positive \u00b7 price is above its 20-session average",
+      "timeframe_fit_reason": "20-session trend is firmly positive · roughly two-month trend is positive · price is above its 20-session average",
       "relative_strength_vs_spy_20d_pct": 77.29,
       "daily_setup_archetypes": [
         "MOMENTUM TREND"
@@ -2017,14 +2051,16 @@
       "daily_discovery_score": 88.6,
       "daily_setup_grade": "A",
       "daily_review_action": "REVIEW LONGER-TERM",
-      "daily_review_reason": "20-session trend is firmly positive \u00b7 roughly two-month trend is positive \u00b7 price is above its 20-session average",
-      "production_rank_impact": false
+      "daily_review_reason": "20-session trend is firmly positive · roughly two-month trend is positive · price is above its 20-session average",
+      "production_rank_impact": false,
+      "trend_candidate_raw_score": 88.6,
+      "trend_candidate_score_version": "trend-candidate-score-v1"
     },
     {
       "symbol": "GTM",
       "price": 4.2,
       "day_pct": 2.94,
-      "average_volume": 10029662.0,
+      "average_volume": 10029662,
       "average_dollar_volume": 42124580.4,
       "daily_history_sessions": 82,
       "daily_context_source": "tradier_consolidated_daily",
@@ -2039,22 +2075,22 @@
       "daily_ma_alignment": "MIXED",
       "daily_recent_high": 4.365,
       "daily_from_recent_high_pct": -3.78,
-      "daily_volume": 5624021.0,
-      "daily_avg_volume_20": 7041466.0,
+      "daily_volume": 5624021,
+      "daily_avg_volume_20": 7041466,
       "daily_volume_ratio": 0.8,
       "daily_breakout_20d": false,
-      "news_bonus": 0.0,
-      "stair_step_count": 3.0,
+      "news_bonus": 0,
+      "stair_step_count": 3,
       "stair_last_step_pct": 7.37,
       "stair_step_acceleration_ratio": 0.632,
-      "stair_plateau_days": 1.0,
+      "stair_plateau_days": 1,
       "stair_plateau_range_pct": 5.02,
       "stair_plateau_retention_pct": 142.9,
       "stair_plateau_volume_ratio": 0.929,
-      "stair_higher_plateau_count": 1.0,
-      "stair_structure_score": 89.0,
-      "stair_reaccelerating": 0.0,
-      "stair_breakdown": 0.0,
+      "stair_higher_plateau_count": 1,
+      "stair_structure_score": 89,
+      "stair_reaccelerating": 0,
+      "stair_breakdown": 0,
       "timeframe_fit": {
         "version": "scanner-timeframe-fit-v1",
         "best_fit": "LONGER-TERM",
@@ -2064,9 +2100,9 @@
           "LONGER-TERM"
         ],
         "scores": {
-          "INTRADAY": 50.0,
-          "SWING": 81.0,
-          "LONGER-TERM": 100.0
+          "INTRADAY": 50,
+          "SWING": 81,
+          "LONGER-TERM": 100
         },
         "coverage": {
           "INTRADAY": 0,
@@ -2074,7 +2110,7 @@
           "LONGER-TERM": 8
         },
         "confidence": "HIGH",
-        "margin_points": 19.0,
+        "margin_points": 19,
         "reasons": {
           "INTRADAY": [],
           "SWING": [
@@ -2112,11 +2148,11 @@
       "timeframe_fit_horizons": [
         "LONGER-TERM"
       ],
-      "timeframe_intraday_score": 50.0,
-      "timeframe_swing_score": 81.0,
-      "timeframe_longer_term_score": 100.0,
+      "timeframe_intraday_score": 50,
+      "timeframe_swing_score": 81,
+      "timeframe_longer_term_score": 100,
       "timeframe_fit_confidence": "HIGH",
-      "timeframe_fit_reason": "20-session trend is firmly positive \u00b7 roughly two-month trend is strong \u00b7 price is above its 20-session average",
+      "timeframe_fit_reason": "20-session trend is firmly positive · roughly two-month trend is strong · price is above its 20-session average",
       "relative_strength_vs_spy_20d_pct": 24.28,
       "daily_setup_archetypes": [
         "MOMENTUM TREND"
@@ -2124,14 +2160,16 @@
       "daily_discovery_score": 87.2,
       "daily_setup_grade": "B",
       "daily_review_action": "REVIEW LONGER-TERM",
-      "daily_review_reason": "20-session trend is firmly positive \u00b7 roughly two-month trend is strong \u00b7 price is above its 20-session average",
-      "production_rank_impact": false
+      "daily_review_reason": "20-session trend is firmly positive · roughly two-month trend is strong · price is above its 20-session average",
+      "production_rank_impact": false,
+      "trend_candidate_raw_score": 87.2,
+      "trend_candidate_score_version": "trend-candidate-score-v1"
     },
     {
       "symbol": "HTZ",
       "price": 2.14,
       "day_pct": 4.9,
-      "average_volume": 35090302.0,
+      "average_volume": 35090302,
       "average_dollar_volume": 75093246.28,
       "daily_history_sessions": 82,
       "daily_context_source": "tradier_consolidated_daily",
@@ -2146,22 +2184,22 @@
       "daily_ma_alignment": "BULLISH",
       "daily_recent_high": 2.945,
       "daily_from_recent_high_pct": -27.33,
-      "daily_volume": 19701307.0,
-      "daily_avg_volume_20": 55100531.0,
+      "daily_volume": 19701307,
+      "daily_avg_volume_20": 55100531,
       "daily_volume_ratio": 0.36,
       "daily_breakout_20d": false,
-      "news_bonus": 0.0,
-      "stair_step_count": 6.0,
+      "news_bonus": 0,
+      "stair_step_count": 6,
       "stair_last_step_pct": 4.9,
       "stair_step_acceleration_ratio": 0.64,
-      "stair_plateau_days": 0.0,
-      "stair_plateau_range_pct": 0.0,
-      "stair_plateau_retention_pct": 100.0,
+      "stair_plateau_days": 0,
+      "stair_plateau_range_pct": 0,
+      "stair_plateau_retention_pct": 100,
       "stair_plateau_volume_ratio": null,
-      "stair_higher_plateau_count": 0.0,
-      "stair_structure_score": 86.0,
-      "stair_reaccelerating": 1.0,
-      "stair_breakdown": 0.0,
+      "stair_higher_plateau_count": 0,
+      "stair_structure_score": 86,
+      "stair_reaccelerating": 1,
+      "stair_breakdown": 0,
       "timeframe_fit": {
         "version": "scanner-timeframe-fit-v1",
         "best_fit": "LONGER-TERM",
@@ -2171,9 +2209,9 @@
           "LONGER-TERM"
         ],
         "scores": {
-          "INTRADAY": 50.0,
-          "SWING": 88.0,
-          "LONGER-TERM": 94.0
+          "INTRADAY": 50,
+          "SWING": 88,
+          "LONGER-TERM": 94
         },
         "coverage": {
           "INTRADAY": 0,
@@ -2181,7 +2219,7 @@
           "LONGER-TERM": 8
         },
         "confidence": "MODERATE",
-        "margin_points": 6.0,
+        "margin_points": 6,
         "reasons": {
           "INTRADAY": [],
           "SWING": [
@@ -2220,11 +2258,11 @@
       "timeframe_fit_horizons": [
         "LONGER-TERM"
       ],
-      "timeframe_intraday_score": 50.0,
-      "timeframe_swing_score": 88.0,
-      "timeframe_longer_term_score": 94.0,
+      "timeframe_intraday_score": 50,
+      "timeframe_swing_score": 88,
+      "timeframe_longer_term_score": 94,
       "timeframe_fit_confidence": "MODERATE",
-      "timeframe_fit_reason": "20-session trend is firmly positive \u00b7 price is above its 20-session average \u00b7 price is above its 40-session average",
+      "timeframe_fit_reason": "20-session trend is firmly positive · price is above its 20-session average · price is above its 40-session average",
       "relative_strength_vs_spy_20d_pct": 32.03,
       "daily_setup_archetypes": [
         "CONSTRUCTIVE PULLBACK"
@@ -2232,14 +2270,16 @@
       "daily_discovery_score": 84.7,
       "daily_setup_grade": "B",
       "daily_review_action": "REVIEW LONGER-TERM",
-      "daily_review_reason": "20-session trend is firmly positive \u00b7 price is above its 20-session average \u00b7 price is above its 40-session average",
-      "production_rank_impact": false
+      "daily_review_reason": "20-session trend is firmly positive · price is above its 20-session average · price is above its 40-session average",
+      "production_rank_impact": false,
+      "trend_candidate_raw_score": 84.7,
+      "trend_candidate_score_version": "trend-candidate-score-v1"
     },
     {
       "symbol": "HAL",
       "price": 36.18,
       "day_pct": 1.94,
-      "average_volume": 12067218.0,
+      "average_volume": 12067218,
       "average_dollar_volume": 436591947.24,
       "daily_history_sessions": 82,
       "daily_context_source": "tradier_consolidated_daily",
@@ -2254,22 +2294,22 @@
       "daily_ma_alignment": "BULLISH",
       "daily_recent_high": 36.485,
       "daily_from_recent_high_pct": -0.84,
-      "daily_volume": 9450993.0,
-      "daily_avg_volume_20": 10519340.0,
+      "daily_volume": 9450993,
+      "daily_avg_volume_20": 10519340,
       "daily_volume_ratio": 0.9,
       "daily_breakout_20d": true,
-      "news_bonus": 0.0,
-      "stair_step_count": 2.0,
+      "news_bonus": 0,
+      "stair_step_count": 2,
       "stair_last_step_pct": 4.81,
       "stair_step_acceleration_ratio": 0.877,
-      "stair_plateau_days": 10.0,
+      "stair_plateau_days": 10,
       "stair_plateau_range_pct": 10.46,
       "stair_plateau_retention_pct": 128.8,
       "stair_plateau_volume_ratio": 1.004,
-      "stair_higher_plateau_count": 1.0,
-      "stair_structure_score": 63.0,
-      "stair_reaccelerating": 0.0,
-      "stair_breakdown": 0.0,
+      "stair_higher_plateau_count": 1,
+      "stair_structure_score": 63,
+      "stair_reaccelerating": 0,
+      "stair_breakdown": 0,
       "timeframe_fit": {
         "version": "scanner-timeframe-fit-v1",
         "best_fit": "LONGER-TERM",
@@ -2279,9 +2319,9 @@
           "LONGER-TERM"
         ],
         "scores": {
-          "INTRADAY": 50.0,
-          "SWING": 76.0,
-          "LONGER-TERM": 94.0
+          "INTRADAY": 50,
+          "SWING": 76,
+          "LONGER-TERM": 94
         },
         "coverage": {
           "INTRADAY": 0,
@@ -2289,7 +2329,7 @@
           "LONGER-TERM": 8
         },
         "confidence": "HIGH",
-        "margin_points": 18.0,
+        "margin_points": 18,
         "reasons": {
           "INTRADAY": [],
           "SWING": [
@@ -2327,11 +2367,11 @@
       "timeframe_fit_horizons": [
         "LONGER-TERM"
       ],
-      "timeframe_intraday_score": 50.0,
-      "timeframe_swing_score": 76.0,
-      "timeframe_longer_term_score": 94.0,
+      "timeframe_intraday_score": 50,
+      "timeframe_swing_score": 76,
+      "timeframe_longer_term_score": 94,
       "timeframe_fit_confidence": "HIGH",
-      "timeframe_fit_reason": "20-session trend is constructive \u00b7 roughly two-month trend is positive \u00b7 price is above its 20-session average",
+      "timeframe_fit_reason": "20-session trend is constructive · roughly two-month trend is positive · price is above its 20-session average",
       "relative_strength_vs_spy_20d_pct": 9.2,
       "daily_setup_archetypes": [
         "20D BREAKOUT"
@@ -2339,15 +2379,17 @@
       "daily_discovery_score": 84.3,
       "daily_setup_grade": "B",
       "daily_review_action": "REVIEW LONGER-TERM",
-      "daily_review_reason": "20-session trend is constructive \u00b7 roughly two-month trend is positive \u00b7 price is above its 20-session average",
-      "production_rank_impact": false
+      "daily_review_reason": "20-session trend is constructive · roughly two-month trend is positive · price is above its 20-session average",
+      "production_rank_impact": false,
+      "trend_candidate_raw_score": 84.3,
+      "trend_candidate_score_version": "trend-candidate-score-v1"
     },
     {
       "symbol": "UEC",
       "price": 12.4,
       "day_pct": -8.96,
-      "average_volume": 843725.0,
-      "average_dollar_volume": 10462190.0,
+      "average_volume": 843725,
+      "average_dollar_volume": 10462190,
       "daily_history_sessions": 82,
       "daily_context_source": "tradier_consolidated_daily",
       "daily_return_5d_pct": -2.82,
@@ -2361,22 +2403,22 @@
       "daily_ma_alignment": "BULLISH",
       "daily_recent_high": 13.8,
       "daily_from_recent_high_pct": -10.14,
-      "daily_volume": 10151348.0,
-      "daily_avg_volume_20": 8122084.0,
+      "daily_volume": 10151348,
+      "daily_avg_volume_20": 8122084,
       "daily_volume_ratio": 1.25,
       "daily_breakout_20d": false,
-      "news_bonus": 0.0,
-      "stair_step_count": 5.0,
+      "news_bonus": 0,
+      "stair_step_count": 5,
       "stair_last_step_pct": 6.08,
       "stair_step_acceleration_ratio": 0.421,
-      "stair_plateau_days": 3.0,
+      "stair_plateau_days": 3,
       "stair_plateau_range_pct": 11.29,
       "stair_plateau_retention_pct": 81.6,
       "stair_plateau_volume_ratio": 0.794,
-      "stair_higher_plateau_count": 2.0,
-      "stair_structure_score": 46.0,
-      "stair_reaccelerating": 0.0,
-      "stair_breakdown": 1.0,
+      "stair_higher_plateau_count": 2,
+      "stair_structure_score": 46,
+      "stair_reaccelerating": 0,
+      "stair_breakdown": 1,
       "timeframe_fit": {
         "version": "scanner-timeframe-fit-v1",
         "best_fit": "LONGER-TERM",
@@ -2386,9 +2428,9 @@
           "LONGER-TERM"
         ],
         "scores": {
-          "INTRADAY": 50.0,
-          "SWING": 54.0,
-          "LONGER-TERM": 99.0
+          "INTRADAY": 50,
+          "SWING": 54,
+          "LONGER-TERM": 99
         },
         "coverage": {
           "INTRADAY": 0,
@@ -2396,7 +2438,7 @@
           "LONGER-TERM": 8
         },
         "confidence": "HIGH",
-        "margin_points": 45.0,
+        "margin_points": 45,
         "reasons": {
           "INTRADAY": [],
           "SWING": [
@@ -2433,11 +2475,11 @@
       "timeframe_fit_horizons": [
         "LONGER-TERM"
       ],
-      "timeframe_intraday_score": 50.0,
-      "timeframe_swing_score": 54.0,
-      "timeframe_longer_term_score": 99.0,
+      "timeframe_intraday_score": 50,
+      "timeframe_swing_score": 54,
+      "timeframe_longer_term_score": 99,
       "timeframe_fit_confidence": "HIGH",
-      "timeframe_fit_reason": "20-session trend is firmly positive \u00b7 roughly two-month trend is positive \u00b7 price is above its 20-session average",
+      "timeframe_fit_reason": "20-session trend is firmly positive · roughly two-month trend is positive · price is above its 20-session average",
       "relative_strength_vs_spy_20d_pct": 26.18,
       "daily_setup_archetypes": [
         "TREND CONTINUATION"
@@ -2445,14 +2487,16 @@
       "daily_discovery_score": 84.2,
       "daily_setup_grade": "B",
       "daily_review_action": "REVIEW LONGER-TERM",
-      "daily_review_reason": "20-session trend is firmly positive \u00b7 roughly two-month trend is positive \u00b7 price is above its 20-session average",
-      "production_rank_impact": false
+      "daily_review_reason": "20-session trend is firmly positive · roughly two-month trend is positive · price is above its 20-session average",
+      "production_rank_impact": false,
+      "trend_candidate_raw_score": 84.2,
+      "trend_candidate_score_version": "trend-candidate-score-v1"
     },
     {
       "symbol": "RZLV",
       "price": 2.97,
       "day_pct": 1.02,
-      "average_volume": 14465510.0,
+      "average_volume": 14465510,
       "average_dollar_volume": 42962564.7,
       "daily_history_sessions": 82,
       "daily_context_source": "tradier_consolidated_daily",
@@ -2467,22 +2511,22 @@
       "daily_ma_alignment": "MIXED",
       "daily_recent_high": 3.35,
       "daily_from_recent_high_pct": -11.34,
-      "daily_volume": 21157067.0,
-      "daily_avg_volume_20": 14898371.0,
+      "daily_volume": 21157067,
+      "daily_avg_volume_20": 14898371,
       "daily_volume_ratio": 1.42,
       "daily_breakout_20d": false,
-      "news_bonus": 0.0,
-      "stair_step_count": 1.0,
+      "news_bonus": 0,
+      "stair_step_count": 1,
       "stair_last_step_pct": 21.81,
       "stair_step_acceleration_ratio": null,
-      "stair_plateau_days": 3.0,
+      "stair_plateau_days": 3,
       "stair_plateau_range_pct": 7.77,
       "stair_plateau_retention_pct": 96.2,
       "stair_plateau_volume_ratio": 0.221,
-      "stair_higher_plateau_count": 0.0,
-      "stair_structure_score": 68.0,
-      "stair_reaccelerating": 0.0,
-      "stair_breakdown": 0.0,
+      "stair_higher_plateau_count": 0,
+      "stair_structure_score": 68,
+      "stair_reaccelerating": 0,
+      "stair_breakdown": 0,
       "timeframe_fit": {
         "version": "scanner-timeframe-fit-v1",
         "best_fit": "LONGER-TERM",
@@ -2492,9 +2536,9 @@
           "LONGER-TERM"
         ],
         "scores": {
-          "INTRADAY": 50.0,
-          "SWING": 81.0,
-          "LONGER-TERM": 88.0
+          "INTRADAY": 50,
+          "SWING": 81,
+          "LONGER-TERM": 88
         },
         "coverage": {
           "INTRADAY": 0,
@@ -2502,7 +2546,7 @@
           "LONGER-TERM": 8
         },
         "confidence": "MODERATE",
-        "margin_points": 7.0,
+        "margin_points": 7,
         "reasons": {
           "INTRADAY": [],
           "SWING": [
@@ -2538,11 +2582,11 @@
       "timeframe_fit_horizons": [
         "LONGER-TERM"
       ],
-      "timeframe_intraday_score": 50.0,
-      "timeframe_swing_score": 81.0,
-      "timeframe_longer_term_score": 88.0,
+      "timeframe_intraday_score": 50,
+      "timeframe_swing_score": 81,
+      "timeframe_longer_term_score": 88,
       "timeframe_fit_confidence": "MODERATE",
-      "timeframe_fit_reason": "20-session trend is firmly positive \u00b7 price is above its 20-session average \u00b7 price is above its 40-session average",
+      "timeframe_fit_reason": "20-session trend is firmly positive · price is above its 20-session average · price is above its 40-session average",
       "relative_strength_vs_spy_20d_pct": 19.23,
       "daily_setup_archetypes": [
         "MOMENTUM TREND"
@@ -2550,14 +2594,16 @@
       "daily_discovery_score": 81.4,
       "daily_setup_grade": "B",
       "daily_review_action": "REVIEW LONGER-TERM",
-      "daily_review_reason": "20-session trend is firmly positive \u00b7 price is above its 20-session average \u00b7 price is above its 40-session average",
-      "production_rank_impact": false
+      "daily_review_reason": "20-session trend is firmly positive · price is above its 20-session average · price is above its 40-session average",
+      "production_rank_impact": false,
+      "trend_candidate_raw_score": 81.4,
+      "trend_candidate_score_version": "trend-candidate-score-v1"
     },
     {
       "symbol": "AR",
       "price": 38.45,
       "day_pct": -0.18,
-      "average_volume": 10703935.0,
+      "average_volume": 10703935,
       "average_dollar_volume": 411566300.75000006,
       "daily_history_sessions": 82,
       "daily_context_source": "tradier_consolidated_daily",
@@ -2572,22 +2618,22 @@
       "daily_ma_alignment": "BULLISH",
       "daily_recent_high": 39.08,
       "daily_from_recent_high_pct": -1.61,
-      "daily_volume": 2255331.0,
-      "daily_avg_volume_20": 3862128.0,
+      "daily_volume": 2255331,
+      "daily_avg_volume_20": 3862128,
       "daily_volume_ratio": 0.58,
       "daily_breakout_20d": false,
-      "news_bonus": 0.0,
-      "stair_step_count": 1.0,
+      "news_bonus": 0,
+      "stair_step_count": 1,
       "stair_last_step_pct": 6.8,
       "stair_step_acceleration_ratio": null,
-      "stair_plateau_days": 14.0,
+      "stair_plateau_days": 14,
       "stair_plateau_range_pct": 8.51,
       "stair_plateau_retention_pct": 128.6,
       "stair_plateau_volume_ratio": 0.55,
-      "stair_higher_plateau_count": 0.0,
-      "stair_structure_score": 68.0,
-      "stair_reaccelerating": 0.0,
-      "stair_breakdown": 0.0,
+      "stair_higher_plateau_count": 0,
+      "stair_structure_score": 68,
+      "stair_reaccelerating": 0,
+      "stair_breakdown": 0,
       "timeframe_fit": {
         "version": "scanner-timeframe-fit-v1",
         "best_fit": "LONGER-TERM",
@@ -2597,9 +2643,9 @@
           "LONGER-TERM"
         ],
         "scores": {
-          "INTRADAY": 50.0,
-          "SWING": 70.0,
-          "LONGER-TERM": 100.0
+          "INTRADAY": 50,
+          "SWING": 70,
+          "LONGER-TERM": 100
         },
         "coverage": {
           "INTRADAY": 0,
@@ -2607,7 +2653,7 @@
           "LONGER-TERM": 8
         },
         "confidence": "HIGH",
-        "margin_points": 30.0,
+        "margin_points": 30,
         "reasons": {
           "INTRADAY": [],
           "SWING": [
@@ -2645,26 +2691,28 @@
       "timeframe_fit_horizons": [
         "LONGER-TERM"
       ],
-      "timeframe_intraday_score": 50.0,
-      "timeframe_swing_score": 70.0,
-      "timeframe_longer_term_score": 100.0,
+      "timeframe_intraday_score": 50,
+      "timeframe_swing_score": 70,
+      "timeframe_longer_term_score": 100,
       "timeframe_fit_confidence": "HIGH",
-      "timeframe_fit_reason": "20-session trend is constructive \u00b7 roughly two-month trend is positive \u00b7 price is above its 20-session average",
+      "timeframe_fit_reason": "20-session trend is constructive · roughly two-month trend is positive · price is above its 20-session average",
       "relative_strength_vs_spy_20d_pct": 3.4,
       "daily_setup_archetypes": [
         "CONSTRUCTIVE PULLBACK"
       ],
-      "daily_discovery_score": 81.0,
+      "daily_discovery_score": 81,
       "daily_setup_grade": "B",
       "daily_review_action": "REVIEW LONGER-TERM",
-      "daily_review_reason": "20-session trend is constructive \u00b7 roughly two-month trend is positive \u00b7 price is above its 20-session average",
-      "production_rank_impact": false
+      "daily_review_reason": "20-session trend is constructive · roughly two-month trend is positive · price is above its 20-session average",
+      "production_rank_impact": false,
+      "trend_candidate_raw_score": 81,
+      "trend_candidate_score_version": "trend-candidate-score-v1"
     },
     {
       "symbol": "T",
       "price": 26.01,
       "day_pct": 2.28,
-      "average_volume": 30078123.0,
+      "average_volume": 30078123,
       "average_dollar_volume": 782331979.23,
       "daily_history_sessions": 82,
       "daily_context_source": "tradier_consolidated_daily",
@@ -2679,22 +2727,22 @@
       "daily_ma_alignment": "BULLISH",
       "daily_recent_high": 26.03,
       "daily_from_recent_high_pct": -0.08,
-      "daily_volume": 22685364.0,
-      "daily_avg_volume_20": 37717451.0,
+      "daily_volume": 22685364,
+      "daily_avg_volume_20": 37717451,
       "daily_volume_ratio": 0.6,
       "daily_breakout_20d": false,
-      "news_bonus": 0.0,
-      "stair_step_count": 0.0,
+      "news_bonus": 0,
+      "stair_step_count": 0,
       "stair_last_step_pct": null,
       "stair_step_acceleration_ratio": null,
-      "stair_plateau_days": 0.0,
+      "stair_plateau_days": 0,
       "stair_plateau_range_pct": null,
       "stair_plateau_retention_pct": null,
       "stair_plateau_volume_ratio": null,
-      "stair_higher_plateau_count": 0.0,
-      "stair_structure_score": 25.0,
-      "stair_reaccelerating": 0.0,
-      "stair_breakdown": 0.0,
+      "stair_higher_plateau_count": 0,
+      "stair_structure_score": 25,
+      "stair_reaccelerating": 0,
+      "stair_breakdown": 0,
       "timeframe_fit": {
         "version": "scanner-timeframe-fit-v1",
         "best_fit": "LONGER-TERM",
@@ -2704,9 +2752,9 @@
           "LONGER-TERM"
         ],
         "scores": {
-          "INTRADAY": 50.0,
-          "SWING": 53.0,
-          "LONGER-TERM": 95.0
+          "INTRADAY": 50,
+          "SWING": 53,
+          "LONGER-TERM": 95
         },
         "coverage": {
           "INTRADAY": 0,
@@ -2714,7 +2762,7 @@
           "LONGER-TERM": 8
         },
         "confidence": "HIGH",
-        "margin_points": 42.0,
+        "margin_points": 42,
         "reasons": {
           "INTRADAY": [],
           "SWING": [
@@ -2752,11 +2800,11 @@
       "timeframe_fit_horizons": [
         "LONGER-TERM"
       ],
-      "timeframe_intraday_score": 50.0,
-      "timeframe_swing_score": 53.0,
-      "timeframe_longer_term_score": 95.0,
+      "timeframe_intraday_score": 50,
+      "timeframe_swing_score": 53,
+      "timeframe_longer_term_score": 95,
       "timeframe_fit_confidence": "HIGH",
-      "timeframe_fit_reason": "20-session trend is constructive \u00b7 roughly two-month trend is strong \u00b7 price is above its 20-session average",
+      "timeframe_fit_reason": "20-session trend is constructive · roughly two-month trend is strong · price is above its 20-session average",
       "relative_strength_vs_spy_20d_pct": 8.88,
       "daily_setup_archetypes": [
         "TREND CONTINUATION"
@@ -2764,14 +2812,16 @@
       "daily_discovery_score": 79.3,
       "daily_setup_grade": "B",
       "daily_review_action": "REVIEW LONGER-TERM",
-      "daily_review_reason": "20-session trend is constructive \u00b7 roughly two-month trend is strong \u00b7 price is above its 20-session average",
-      "production_rank_impact": false
+      "daily_review_reason": "20-session trend is constructive · roughly two-month trend is strong · price is above its 20-session average",
+      "production_rank_impact": false,
+      "trend_candidate_raw_score": 79.4,
+      "trend_candidate_score_version": "trend-candidate-score-v1"
     },
     {
       "symbol": "WCT",
       "price": 1.09,
       "day_pct": 45.53,
-      "average_volume": 3656906.0,
+      "average_volume": 3656906,
       "average_dollar_volume": 3986027.5400000005,
       "daily_history_sessions": 82,
       "daily_context_source": "tradier_consolidated_daily",
@@ -2786,22 +2836,22 @@
       "daily_ma_alignment": "MIXED",
       "daily_recent_high": 1.84,
       "daily_from_recent_high_pct": -40.76,
-      "daily_volume": 20681201.0,
-      "daily_avg_volume_20": 1773269.0,
+      "daily_volume": 20681201,
+      "daily_avg_volume_20": 1773269,
       "daily_volume_ratio": 11.66,
       "daily_breakout_20d": false,
-      "news_bonus": 0.0,
-      "stair_step_count": 3.0,
+      "news_bonus": 0,
+      "stair_step_count": 3,
       "stair_last_step_pct": 45.53,
       "stair_step_acceleration_ratio": 2.397,
-      "stair_plateau_days": 0.0,
-      "stair_plateau_range_pct": 0.0,
-      "stair_plateau_retention_pct": 100.0,
+      "stair_plateau_days": 0,
+      "stair_plateau_range_pct": 0,
+      "stair_plateau_retention_pct": 100,
       "stair_plateau_volume_ratio": null,
-      "stair_higher_plateau_count": 2.0,
-      "stair_structure_score": 100.0,
-      "stair_reaccelerating": 1.0,
-      "stair_breakdown": 0.0,
+      "stair_higher_plateau_count": 2,
+      "stair_structure_score": 100,
+      "stair_reaccelerating": 1,
+      "stair_breakdown": 0,
       "timeframe_fit": {
         "version": "scanner-timeframe-fit-v1",
         "best_fit": "SWING",
@@ -2811,9 +2861,9 @@
           "SWING"
         ],
         "scores": {
-          "INTRADAY": 50.0,
-          "SWING": 91.0,
-          "LONGER-TERM": 67.0
+          "INTRADAY": 50,
+          "SWING": 91,
+          "LONGER-TERM": 67
         },
         "coverage": {
           "INTRADAY": 0,
@@ -2821,7 +2871,7 @@
           "LONGER-TERM": 8
         },
         "confidence": "HIGH",
-        "margin_points": 24.0,
+        "margin_points": 24,
         "reasons": {
           "INTRADAY": [],
           "SWING": [
@@ -2860,11 +2910,11 @@
       "timeframe_fit_horizons": [
         "SWING"
       ],
-      "timeframe_intraday_score": 50.0,
-      "timeframe_swing_score": 91.0,
-      "timeframe_longer_term_score": 67.0,
+      "timeframe_intraday_score": 50,
+      "timeframe_swing_score": 91,
+      "timeframe_longer_term_score": 67,
       "timeframe_fit_confidence": "HIGH",
-      "timeframe_fit_reason": "strong five-session trend \u00b7 20-session trend is strong \u00b7 strong multi-session stair-step structure",
+      "timeframe_fit_reason": "strong five-session trend · 20-session trend is strong · strong multi-session stair-step structure",
       "relative_strength_vs_spy_20d_pct": 32.89,
       "daily_setup_archetypes": [
         "MOMENTUM TREND"
@@ -2872,14 +2922,16 @@
       "daily_discovery_score": 78.5,
       "daily_setup_grade": "B",
       "daily_review_action": "REVIEW SWING",
-      "daily_review_reason": "strong five-session trend \u00b7 20-session trend is strong \u00b7 strong multi-session stair-step structure",
-      "production_rank_impact": false
+      "daily_review_reason": "strong five-session trend · 20-session trend is strong · strong multi-session stair-step structure",
+      "production_rank_impact": false,
+      "trend_candidate_raw_score": 78.6,
+      "trend_candidate_score_version": "trend-candidate-score-v1"
     },
     {
       "symbol": "WEN",
       "price": 8.27,
       "day_pct": 5.82,
-      "average_volume": 2406938.0,
+      "average_volume": 2406938,
       "average_dollar_volume": 19905377.259999998,
       "daily_history_sessions": 82,
       "daily_context_source": "tradier_consolidated_daily",
@@ -2894,22 +2946,22 @@
       "daily_ma_alignment": "BULLISH",
       "daily_recent_high": 9.45,
       "daily_from_recent_high_pct": -12.49,
-      "daily_volume": 8253771.0,
-      "daily_avg_volume_20": 10651146.0,
+      "daily_volume": 8253771,
+      "daily_avg_volume_20": 10651146,
       "daily_volume_ratio": 0.77,
       "daily_breakout_20d": false,
-      "news_bonus": 0.0,
-      "stair_step_count": 3.0,
+      "news_bonus": 0,
+      "stair_step_count": 3,
       "stair_last_step_pct": 5.82,
       "stair_step_acceleration_ratio": 1.003,
-      "stair_plateau_days": 0.0,
-      "stair_plateau_range_pct": 0.0,
-      "stair_plateau_retention_pct": 100.0,
+      "stair_plateau_days": 0,
+      "stair_plateau_range_pct": 0,
+      "stair_plateau_retention_pct": 100,
       "stair_plateau_volume_ratio": null,
-      "stair_higher_plateau_count": 0.0,
-      "stair_structure_score": 90.0,
-      "stair_reaccelerating": 1.0,
-      "stair_breakdown": 0.0,
+      "stair_higher_plateau_count": 0,
+      "stair_structure_score": 90,
+      "stair_reaccelerating": 1,
+      "stair_breakdown": 0,
       "timeframe_fit": {
         "version": "scanner-timeframe-fit-v1",
         "best_fit": "SWING",
@@ -2919,9 +2971,9 @@
           "SWING"
         ],
         "scores": {
-          "INTRADAY": 50.0,
-          "SWING": 88.0,
-          "LONGER-TERM": 75.0
+          "INTRADAY": 50,
+          "SWING": 88,
+          "LONGER-TERM": 75
         },
         "coverage": {
           "INTRADAY": 0,
@@ -2929,7 +2981,7 @@
           "LONGER-TERM": 8
         },
         "confidence": "HIGH",
-        "margin_points": 13.0,
+        "margin_points": 13,
         "reasons": {
           "INTRADAY": [],
           "SWING": [
@@ -2968,11 +3020,11 @@
       "timeframe_fit_horizons": [
         "SWING"
       ],
-      "timeframe_intraday_score": 50.0,
-      "timeframe_swing_score": 88.0,
-      "timeframe_longer_term_score": 75.0,
+      "timeframe_intraday_score": 50,
+      "timeframe_swing_score": 88,
+      "timeframe_longer_term_score": 75,
       "timeframe_fit_confidence": "HIGH",
-      "timeframe_fit_reason": "current move is strong without being extreme \u00b7 20-session trend is strong \u00b7 strong multi-session stair-step structure",
+      "timeframe_fit_reason": "current move is strong without being extreme · 20-session trend is strong · strong multi-session stair-step structure",
       "relative_strength_vs_spy_20d_pct": 9.37,
       "daily_setup_archetypes": [
         "CONSTRUCTIVE PULLBACK"
@@ -2980,19 +3032,21 @@
       "daily_discovery_score": 78.2,
       "daily_setup_grade": "B",
       "daily_review_action": "REVIEW SWING",
-      "daily_review_reason": "current move is strong without being extreme \u00b7 20-session trend is strong \u00b7 strong multi-session stair-step structure",
-      "production_rank_impact": false
+      "daily_review_reason": "current move is strong without being extreme · 20-session trend is strong · strong multi-session stair-step structure",
+      "production_rank_impact": false,
+      "trend_candidate_raw_score": 78.2,
+      "trend_candidate_score_version": "trend-candidate-score-v1"
     },
     {
       "symbol": "CTRM",
       "price": 2.34,
       "day_pct": -2.5,
-      "average_volume": 158243370.0,
+      "average_volume": 158243370,
       "average_dollar_volume": 370289485.79999995,
       "daily_history_sessions": 82,
       "daily_context_source": "tradier_consolidated_daily",
       "daily_return_5d_pct": -5.26,
-      "daily_return_20d_pct": 20.0,
+      "daily_return_20d_pct": 20,
       "daily_return_40d_pct": 3.54,
       "daily_ma_10": 2.387,
       "daily_ma_20": 2.255,
@@ -3002,22 +3056,22 @@
       "daily_ma_alignment": "BULLISH",
       "daily_recent_high": 2.51,
       "daily_from_recent_high_pct": -6.77,
-      "daily_volume": 53875.0,
-      "daily_avg_volume_20": 46093.0,
+      "daily_volume": 53875,
+      "daily_avg_volume_20": 46093,
       "daily_volume_ratio": 1.17,
       "daily_breakout_20d": false,
-      "news_bonus": 0.0,
-      "stair_step_count": 2.0,
+      "news_bonus": 0,
+      "stair_step_count": 2,
       "stair_last_step_pct": 8.81,
       "stair_step_acceleration_ratio": 1.083,
-      "stair_plateau_days": 5.0,
+      "stair_plateau_days": 5,
       "stair_plateau_range_pct": 9.13,
-      "stair_plateau_retention_pct": 90.0,
+      "stair_plateau_retention_pct": 90,
       "stair_plateau_volume_ratio": 0.401,
-      "stair_higher_plateau_count": 1.0,
-      "stair_structure_score": 41.0,
-      "stair_reaccelerating": 0.0,
-      "stair_breakdown": 1.0,
+      "stair_higher_plateau_count": 1,
+      "stair_structure_score": 41,
+      "stair_reaccelerating": 0,
+      "stair_breakdown": 1,
       "timeframe_fit": {
         "version": "scanner-timeframe-fit-v1",
         "best_fit": "LONGER-TERM",
@@ -3027,9 +3081,9 @@
           "LONGER-TERM"
         ],
         "scores": {
-          "INTRADAY": 50.0,
-          "SWING": 54.0,
-          "LONGER-TERM": 91.0
+          "INTRADAY": 50,
+          "SWING": 54,
+          "LONGER-TERM": 91
         },
         "coverage": {
           "INTRADAY": 0,
@@ -3037,7 +3091,7 @@
           "LONGER-TERM": 8
         },
         "confidence": "HIGH",
-        "margin_points": 37.0,
+        "margin_points": 37,
         "reasons": {
           "INTRADAY": [],
           "SWING": [
@@ -3073,26 +3127,28 @@
       "timeframe_fit_horizons": [
         "LONGER-TERM"
       ],
-      "timeframe_intraday_score": 50.0,
-      "timeframe_swing_score": 54.0,
-      "timeframe_longer_term_score": 91.0,
+      "timeframe_intraday_score": 50,
+      "timeframe_swing_score": 54,
+      "timeframe_longer_term_score": 91,
       "timeframe_fit_confidence": "HIGH",
-      "timeframe_fit_reason": "20-session trend is firmly positive \u00b7 price is above its 20-session average \u00b7 price is above its 40-session average",
+      "timeframe_fit_reason": "20-session trend is firmly positive · price is above its 20-session average · price is above its 40-session average",
       "relative_strength_vs_spy_20d_pct": 17.01,
       "daily_setup_archetypes": [
         "CONSTRUCTIVE PULLBACK"
       ],
-      "daily_discovery_score": 78.0,
+      "daily_discovery_score": 78,
       "daily_setup_grade": "C",
       "daily_review_action": "REVIEW LONGER-TERM",
-      "daily_review_reason": "20-session trend is firmly positive \u00b7 price is above its 20-session average \u00b7 price is above its 40-session average",
-      "production_rank_impact": false
+      "daily_review_reason": "20-session trend is firmly positive · price is above its 20-session average · price is above its 40-session average",
+      "production_rank_impact": false,
+      "trend_candidate_raw_score": 78,
+      "trend_candidate_score_version": "trend-candidate-score-v1"
     },
     {
       "symbol": "CMCSA",
       "price": 27.06,
       "day_pct": 2.46,
-      "average_volume": 21121234.0,
+      "average_volume": 21121234,
       "average_dollar_volume": 571540592.04,
       "daily_history_sessions": 82,
       "daily_context_source": "tradier_consolidated_daily",
@@ -3107,22 +3163,22 @@
       "daily_ma_alignment": "BULLISH",
       "daily_recent_high": 27.35,
       "daily_from_recent_high_pct": -1.06,
-      "daily_volume": 20587292.0,
-      "daily_avg_volume_20": 22936688.0,
+      "daily_volume": 20587292,
+      "daily_avg_volume_20": 22936688,
       "daily_volume_ratio": 0.9,
       "daily_breakout_20d": false,
-      "news_bonus": 0.0,
-      "stair_step_count": 0.0,
+      "news_bonus": 0,
+      "stair_step_count": 0,
       "stair_last_step_pct": null,
       "stair_step_acceleration_ratio": null,
-      "stair_plateau_days": 0.0,
+      "stair_plateau_days": 0,
       "stair_plateau_range_pct": null,
       "stair_plateau_retention_pct": null,
       "stair_plateau_volume_ratio": null,
-      "stair_higher_plateau_count": 0.0,
-      "stair_structure_score": 25.0,
-      "stair_reaccelerating": 0.0,
-      "stair_breakdown": 0.0,
+      "stair_higher_plateau_count": 0,
+      "stair_structure_score": 25,
+      "stair_reaccelerating": 0,
+      "stair_breakdown": 0,
       "timeframe_fit": {
         "version": "scanner-timeframe-fit-v1",
         "best_fit": "LONGER-TERM",
@@ -3132,9 +3188,9 @@
           "LONGER-TERM"
         ],
         "scores": {
-          "INTRADAY": 50.0,
-          "SWING": 59.0,
-          "LONGER-TERM": 89.0
+          "INTRADAY": 50,
+          "SWING": 59,
+          "LONGER-TERM": 89
         },
         "coverage": {
           "INTRADAY": 0,
@@ -3142,7 +3198,7 @@
           "LONGER-TERM": 8
         },
         "confidence": "HIGH",
-        "margin_points": 30.0,
+        "margin_points": 30,
         "reasons": {
           "INTRADAY": [],
           "SWING": [
@@ -3180,11 +3236,11 @@
       "timeframe_fit_horizons": [
         "LONGER-TERM"
       ],
-      "timeframe_intraday_score": 50.0,
-      "timeframe_swing_score": 59.0,
-      "timeframe_longer_term_score": 89.0,
+      "timeframe_intraday_score": 50,
+      "timeframe_swing_score": 59,
+      "timeframe_longer_term_score": 89,
       "timeframe_fit_confidence": "HIGH",
-      "timeframe_fit_reason": "20-session trend is constructive \u00b7 roughly two-month trend is positive \u00b7 price is above its 20-session average",
+      "timeframe_fit_reason": "20-session trend is constructive · roughly two-month trend is positive · price is above its 20-session average",
       "relative_strength_vs_spy_20d_pct": 9.95,
       "daily_setup_archetypes": [
         "TREND CONTINUATION"
@@ -3192,14 +3248,16 @@
       "daily_discovery_score": 76.7,
       "daily_setup_grade": "C",
       "daily_review_action": "REVIEW LONGER-TERM",
-      "daily_review_reason": "20-session trend is constructive \u00b7 roughly two-month trend is positive \u00b7 price is above its 20-session average",
-      "production_rank_impact": false
+      "daily_review_reason": "20-session trend is constructive · roughly two-month trend is positive · price is above its 20-session average",
+      "production_rank_impact": false,
+      "trend_candidate_raw_score": 76.7,
+      "trend_candidate_score_version": "trend-candidate-score-v1"
     },
     {
       "symbol": "PFE",
       "price": 27.96,
       "day_pct": -0.21,
-      "average_volume": 22489706.0,
+      "average_volume": 22489706,
       "average_dollar_volume": 628812179.76,
       "daily_history_sessions": 82,
       "daily_context_source": "tradier_consolidated_daily",
@@ -3214,22 +3272,22 @@
       "daily_ma_alignment": "BULLISH",
       "daily_recent_high": 28.58,
       "daily_from_recent_high_pct": -2.17,
-      "daily_volume": 27183853.0,
-      "daily_avg_volume_20": 38989097.0,
+      "daily_volume": 27183853,
+      "daily_avg_volume_20": 38989097,
       "daily_volume_ratio": 0.7,
       "daily_breakout_20d": false,
-      "news_bonus": 0.0,
-      "stair_step_count": 0.0,
+      "news_bonus": 0,
+      "stair_step_count": 0,
       "stair_last_step_pct": null,
       "stair_step_acceleration_ratio": null,
-      "stair_plateau_days": 0.0,
+      "stair_plateau_days": 0,
       "stair_plateau_range_pct": null,
       "stair_plateau_retention_pct": null,
       "stair_plateau_volume_ratio": null,
-      "stair_higher_plateau_count": 0.0,
-      "stair_structure_score": 25.0,
-      "stair_reaccelerating": 0.0,
-      "stair_breakdown": 0.0,
+      "stair_higher_plateau_count": 0,
+      "stair_structure_score": 25,
+      "stair_reaccelerating": 0,
+      "stair_breakdown": 0,
       "timeframe_fit": {
         "version": "scanner-timeframe-fit-v1",
         "best_fit": "LONGER-TERM",
@@ -3239,9 +3297,9 @@
           "LONGER-TERM"
         ],
         "scores": {
-          "INTRADAY": 50.0,
-          "SWING": 48.0,
-          "LONGER-TERM": 89.0
+          "INTRADAY": 50,
+          "SWING": 48,
+          "LONGER-TERM": 89
         },
         "coverage": {
           "INTRADAY": 0,
@@ -3249,7 +3307,7 @@
           "LONGER-TERM": 8
         },
         "confidence": "HIGH",
-        "margin_points": 39.0,
+        "margin_points": 39,
         "reasons": {
           "INTRADAY": [],
           "SWING": [
@@ -3286,11 +3344,11 @@
       "timeframe_fit_horizons": [
         "LONGER-TERM"
       ],
-      "timeframe_intraday_score": 50.0,
-      "timeframe_swing_score": 48.0,
-      "timeframe_longer_term_score": 89.0,
+      "timeframe_intraday_score": 50,
+      "timeframe_swing_score": 48,
+      "timeframe_longer_term_score": 89,
       "timeframe_fit_confidence": "HIGH",
-      "timeframe_fit_reason": "20-session trend is constructive \u00b7 roughly two-month trend is positive \u00b7 price is above its 20-session average",
+      "timeframe_fit_reason": "20-session trend is constructive · roughly two-month trend is positive · price is above its 20-session average",
       "relative_strength_vs_spy_20d_pct": 8.81,
       "daily_setup_archetypes": [
         "TREND CONTINUATION",
@@ -3299,8 +3357,10 @@
       "daily_discovery_score": 76.5,
       "daily_setup_grade": "C",
       "daily_review_action": "REVIEW LONGER-TERM",
-      "daily_review_reason": "20-session trend is constructive \u00b7 roughly two-month trend is positive \u00b7 price is above its 20-session average",
-      "production_rank_impact": false
+      "daily_review_reason": "20-session trend is constructive · roughly two-month trend is positive · price is above its 20-session average",
+      "production_rank_impact": false,
+      "trend_candidate_raw_score": 76.5,
+      "trend_candidate_score_version": "trend-candidate-score-v1"
     }
   ],
   "errors": [],
