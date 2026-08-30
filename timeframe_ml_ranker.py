@@ -3,9 +3,11 @@
 This module does NOT alter live Analyzer scores. It trains and evaluates a
 shadow-only model against the leakage-aware historical timeframe replay.
 
-Target: probability the stock closes higher 5 trading days after the replay
-observation. Validation is chronological and grouped by replay date so rows
-from the same market day never appear in both train and test.
+Target: probability the stock reaches +5% before -4% during the next five
+trading sessions. If both levels are touched on the same daily bar, that row is
+excluded because daily OHLC cannot establish intraday ordering. Validation is
+chronological and grouped by replay date so rows from the same market day never
+appear in both train and test.
 """
 
 from __future__ import annotations
@@ -17,7 +19,8 @@ from pathlib import Path
 
 DATA_PATH = Path("timeframe_replay/timeframe_historical_replay.json")
 DEFAULT_REPORT_PATH = Path("timeframe_replay/timeframe_ml_validation.json")
-MODEL_VERSION = "swing-timeframe-ml-v1-shadow"
+MODEL_VERSION = "swing-timeframe-ml-v2-path-target-shadow"
+TARGET_FIELD = "swing_target_before_stop_5d"
 
 FEATURES = [
     "day_pct",
@@ -114,11 +117,19 @@ def _feature_dict(row):
 def load_rows(path=DATA_PATH):
     payload = json.loads(Path(path).read_text(encoding="utf-8"))
     rows = []
+    skipped_ambiguous = 0
     for row in payload.get("observations") or []:
         if row.get("timeframe_score_version") != "timeframe-fit-v1":
             continue
-        outcome = _num((row.get("outcomes") or {}).get("return_5d_pct"))
-        if outcome is None:
+        outcomes = row.get("outcomes") or {}
+        if outcomes.get("swing_ambiguous_same_day_5d"):
+            skipped_ambiguous += 1
+            continue
+        label = outcomes.get(TARGET_FIELD)
+        if label is None:
+            continue
+        label_num = _num(label)
+        if label_num not in (0.0, 1.0):
             continue
         date_text = str(row.get("as_of") or "")[:10]
         if not date_text:
@@ -127,12 +138,19 @@ def load_rows(path=DATA_PATH):
             {
                 "date": date_text,
                 "symbol": str(row.get("symbol") or "").upper().strip(),
-                "return_5d_pct": outcome,
-                "label": int(outcome > 0),
+                "return_5d_pct": _num(outcomes.get("return_5d_pct")),
+                "mfe_5d_pct": _num(outcomes.get("swing_mfe_5d_pct")),
+                "mae_5d_pct": _num(outcomes.get("swing_mae_5d_pct")),
+                "excess_return_vs_spy_5d_pct": _num(
+                    outcomes.get("excess_return_vs_spy_5d_pct")
+                ),
+                "first_event": outcomes.get("swing_first_event_5d"),
+                "label": int(label_num),
                 "swing_score": _num(row.get("swing_score")),
                 "features": _feature_dict(row),
             }
         )
+    payload["_ml_skipped_ambiguous_same_day"] = skipped_ambiguous
     return rows, payload
 
 
@@ -259,15 +277,31 @@ def _probability_band_stats(rows, probabilities):
     top = pairs[:top_n]
     bottom = pairs[-top_n:]
 
+    def _avg(group, field):
+        values = [
+            _num(row.get(field))
+            for _p, row in group
+        ]
+        values = [value for value in values if value is not None]
+        return round(sum(values) / len(values), 3) if values else None
+
     def summarize(group):
-        values = [row["return_5d_pct"] for _p, row in group]
         labels = [row["label"] for _p, row in group]
         probs = [float(p) for p, _row in group]
         return {
             "n": len(group),
             "avg_probability_pct": round(sum(probs) / len(probs) * 100.0, 2),
-            "higher_rate_pct": round(sum(labels) / len(labels) * 100.0, 1),
-            "avg_return_pct": round(sum(values) / len(values), 3),
+            "target_before_stop_rate_pct": round(
+                sum(labels) / len(labels) * 100.0,
+                1,
+            ),
+            "avg_return_5d_pct": _avg(group, "return_5d_pct"),
+            "avg_mfe_5d_pct": _avg(group, "mfe_5d_pct"),
+            "avg_mae_5d_pct": _avg(group, "mae_5d_pct"),
+            "avg_excess_vs_spy_5d_pct": _avg(
+                group,
+                "excess_return_vs_spy_5d_pct",
+            ),
         }
 
     return {
@@ -316,7 +350,7 @@ def validate(rows):
                 "train_end": train_dates[-1],
                 "test_start": test_dates[0],
                 "test_end": test_dates[-1],
-                "base_higher_rate_pct": (
+                "base_target_before_stop_rate_pct": (
                     round(base_rate * 100.0, 1) if base_rate is not None else None
                 ),
                 "model_auc": round(model_auc, 4) if model_auc is not None else None,
@@ -355,8 +389,14 @@ def validate(rows):
     )
     top = bands.get("top_decile") or {}
     top_lift = None
-    if base_rate is not None and top.get("higher_rate_pct") is not None:
-        top_lift = round(top["higher_rate_pct"] - base_rate * 100.0, 1)
+    if (
+        base_rate is not None
+        and top.get("target_before_stop_rate_pct") is not None
+    ):
+        top_lift = round(
+            top["target_before_stop_rate_pct"] - base_rate * 100.0,
+            1,
+        )
 
     historical_validated = bool(
         len(rows) >= 800
@@ -407,14 +447,14 @@ def validate(rows):
         "status": status,
         "historical_validated": historical_validated,
         "production_enabled": False,
-        "target": "close_higher_after_5_trading_days",
+        "target": "reach_+5pct_before_-4pct_within_5_trading_sessions",
         "samples": len(rows),
         "unique_dates": len({row["date"] for row in rows}),
         "unique_symbols": len({row["symbol"] for row in rows}),
         "features": FEATURES,
         "overall": {
             "test_samples": len(all_y),
-            "base_higher_rate_pct": (
+            "base_target_before_stop_rate_pct": (
                 round(base_rate * 100.0, 1) if base_rate is not None else None
             ),
             "model_auc": (
@@ -438,7 +478,7 @@ def validate(rows):
             "brier": round(overall_brier, 4) if overall_brier is not None else None,
             "folds_beating_hand_score": better_folds,
             "fold_count": len(fold_reports),
-            "top_decile_higher_rate_lift_pp": top_lift,
+            "top_decile_target_rate_lift_pp": top_lift,
             "probability_bands": bands,
         },
         "folds": fold_reports,
@@ -450,12 +490,14 @@ def validate(rows):
             "min_overall_auc": 0.55,
             "min_auc_advantage_vs_hand_score": 0.02,
             "min_folds_beating_hand_score": max(3, len(fold_reports) - 1),
-            "min_top_decile_lift_pp": 5.0,
+            "min_top_decile_target_rate_lift_pp": 5.0,
         },
         "note": (
-            "This is a shadow validation model only. It cannot change live "
-            "Analyzer scores until historical validation passes and later live "
-            "out-of-sample confirmation also passes."
+            "This is a shadow validation model only. It predicts a trade-like "
+            "+5% before -4% five-session path, not a simple five-day close. "
+            "Same-day target/stop touches are excluded because daily OHLC cannot "
+            "establish order. It cannot change live Analyzer scores until "
+            "historical validation and later live out-of-sample confirmation pass."
         ),
     }
 
@@ -470,6 +512,12 @@ def main():
     report = validate(rows)
     report["source_replay_version"] = payload.get("replay_version")
     report["source_generated_at_utc"] = payload.get("generated_at_utc")
+    report["skipped_ambiguous_same_day"] = int(
+        payload.get("_ml_skipped_ambiguous_same_day") or 0
+    )
+    report["path_target_spec"] = (
+        (payload.get("summary") or {}).get("swing_path_target") or {}
+    )
 
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
