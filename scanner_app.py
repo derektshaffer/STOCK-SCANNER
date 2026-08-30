@@ -980,9 +980,10 @@ def auto_scan_controller():
             else "8:00 AM–5:00 PM ET"
         )
         st.markdown(
-            '<div class="auto-box auto-wait"><b>🟡 AUTO SCAN ARMED</b><br>'
-            f'<span class="sub">Paused because the {feed_name} live feed is outside its '
-            f'supported scanner window. Current coverage: {coverage} on weekdays.</span></div>',
+            '<div class="auto-box auto-wait"><b>🟡 LIVE MOMENTUM SCAN PAUSED</b><br>'
+            f'<span class="sub">The {feed_name} live feed is outside its supported '
+            f'window ({coverage} weekdays). Completed-daily Swing / Longer-Term '
+            'discovery remains available above.</span></div>',
             unsafe_allow_html=True,
         )
         return
