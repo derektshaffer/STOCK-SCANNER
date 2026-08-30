@@ -653,13 +653,13 @@ if view == "Momentum Scanner":
 
     candidates = _latest_scan_candidates()
     latest_scan_age = _latest_scan_age_seconds()
-    # Auto-scan targets every five minutes. During a live session, add a
-    # three-minute grace window and prevent one-click analysis of stale rows.
+    # Auto-scan targets every two minutes. During a live session, allow a
+    # two-minute grace window and prevent one-click analysis of stale rows.
     latest_scan_stale = bool(
         workspace_live
         and (
             latest_scan_age is None
-            or latest_scan_age > 8 * 60
+            or latest_scan_age > 4 * 60
         )
     )
     if latest_scan_stale and candidates:
