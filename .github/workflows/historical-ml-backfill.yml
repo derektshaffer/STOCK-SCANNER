@@ -144,8 +144,11 @@ jobs:
           print("TIMEFRAME_SEC_ENABLED=" + str(bool(((tf.get("replay") or {}).get("sec_point_in_time") or {}).get("enabled"))).lower())
           print("TIMEFRAME_SWING_LIFT=" + json.dumps(tf_summary.get("swing_5d_directional_lift") or {}, sort_keys=True))
           print("TIMEFRAME_LONG_LIFT=" + json.dumps(tf_summary.get("long_term_20d_directional_lift") or {}, sort_keys=True))
+          swing_path = tf_summary.get("swing_path_target") or {}
+          print("TIMEFRAME_SWING_PATH=" + json.dumps(swing_path, sort_keys=True))
           assert int(tf_summary.get("observations") or 0) >= 100
           assert int(tf_summary.get("swing_5d_resolved") or 0) >= 100
+          assert int(swing_path.get("labeled") or 0) >= 100
           PY
 
       - name: Validate shadow Swing timeframe ML
@@ -169,7 +172,9 @@ jobs:
           print("SWING_HAND_SCORE_AUC=" + str(overall.get("hand_score_auc")))
           print("SWING_ML_MINUS_HAND_AUC=" + str(overall.get("model_minus_hand_auc")))
           print("SWING_ML_MEAN_FOLD_AUC=" + str(overall.get("mean_fold_auc")))
-          print("SWING_ML_TOP_DECILE_LIFT_PP=" + str(overall.get("top_decile_higher_rate_lift_pp")))
+          print("SWING_ML_BASE_TARGET_RATE_PCT=" + str(overall.get("base_target_before_stop_rate_pct")))
+          print("SWING_ML_TOP_DECILE_TARGET_LIFT_PP=" + str(overall.get("top_decile_target_rate_lift_pp")))
+          print("SWING_ML_SKIPPED_AMBIGUOUS=" + str(report.get("skipped_ambiguous_same_day")))
           print("SWING_ML_FOLDS_BEATING_HAND=" + str(overall.get("folds_beating_hand_score")))
           PY
 
