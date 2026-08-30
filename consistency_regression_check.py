@@ -3014,17 +3014,20 @@ def test_momentum_alert_only_fires_when_symbol_newly_enters_ready_state():
     assert current == {"AAA"}, current
 
 
-def test_combined_app_keeps_scanner_running_in_analyzer_without_double_loop():
+def test_combined_app_keeps_one_async_scanner_loop_across_views():
     from pathlib import Path
 
     app_source = Path("app.py").read_text(encoding="utf-8")
     scanner_source = Path("scanner_app.py").read_text(encoding="utf-8")
+    runtime_source = Path("scanner_runtime.py").read_text(encoding="utf-8")
     assert "def _workspace_scanner_monitor():" in app_source
-    assert 'view == "Stock Analyzer"' in app_source
-    assert "elapsed >= 120" in app_source
-    assert "_scanner_process_running" in app_source
-    assert "from scanner_runtime import run_scanner_process" in app_source
-    assert "from scanner_runtime import run_scanner_process" in scanner_source
+    assert "start_scanner_process(" in app_source
+    assert "poll_scanner_process(" in app_source
+    assert 'st.session_state["_combined_scanner_monitor_active"] = True' in app_source
+    assert "combined_monitor_active" in scanner_source
+    assert "This child\n        # view only renders status" in scanner_source
+    assert "os.O_CREAT | os.O_EXCL | os.O_WRONLY" in runtime_source
+    assert "subprocess.Popen(" in runtime_source
 
 
 def test_momentum_alert_ui_has_in_app_and_optional_browser_notifications():
@@ -3035,7 +3038,161 @@ def test_momentum_alert_ui_has_in_app_and_optional_browser_notifications():
     assert "Review it in Analyzer before deciding whether to trade." in source
     assert "Enable browser alerts" in source
     assert "Notification.requestPermission" in source
+    assert "permission === 'denied'" in source
+    assert "browser notifications unavailable" in source
     assert "not an automatic buy signal" in source
+
+
+def test_scanner_runtime_async_start_is_nonblocking_and_lock_safe():
+    import sys
+    import tempfile
+    import time
+    from pathlib import Path
+    import scanner_runtime as sr
+
+    old_lock = sr.LOCK_FILE
+    temp_dir = tempfile.TemporaryDirectory()
+    state = None
+    try:
+        sr.LOCK_FILE = Path(temp_dir.name) / "scanner.lock"
+        started_at = time.perf_counter()
+        state = sr.start_scanner_process(
+            alpaca_key="test",
+            alpaca_secret="test",
+            command=[
+                sys.executable,
+                "-c",
+                "import time; time.sleep(0.25); print('done')",
+            ],
+            require_scan_file=False,
+            timeout_seconds=2,
+        )
+        start_latency = time.perf_counter() - started_at
+        assert state["started"] is True, state
+        assert start_latency < 0.20, start_latency
+        assert sr.scanner_process_busy() is True
+
+        duplicate = sr.start_scanner_process(
+            alpaca_key="test",
+            alpaca_secret="test",
+            command=[sys.executable, "-c", "print('duplicate')"],
+            require_scan_file=False,
+            timeout_seconds=2,
+        )
+        assert duplicate["started"] is False, duplicate
+        assert duplicate["busy"] is True, duplicate
+
+        result = None
+        deadline = time.time() + 3
+        while time.time() < deadline:
+            result = sr.poll_scanner_process(state)
+            if result.get("done"):
+                break
+            time.sleep(0.03)
+        assert result and result["done"] is True, result
+        assert result["ok"] is True, result
+        assert "done" in result["stdout"], result
+        assert sr.scanner_process_busy() is False
+        state = None
+    finally:
+        if state and state.get("process") and state["process"].poll() is None:
+            state["process"].kill()
+            state["process"].wait(timeout=2)
+            sr._release_scan_lock(state.get("lock_token"))
+            sr._cleanup_logs(state)
+        sr.LOCK_FILE = old_lock
+        temp_dir.cleanup()
+
+
+def test_scanner_runtime_timeout_releases_shared_lock():
+    import sys
+    import tempfile
+    import time
+    from pathlib import Path
+    import scanner_runtime as sr
+
+    old_lock = sr.LOCK_FILE
+    temp_dir = tempfile.TemporaryDirectory()
+    state = None
+    try:
+        sr.LOCK_FILE = Path(temp_dir.name) / "scanner.lock"
+        state = sr.start_scanner_process(
+            alpaca_key="test",
+            alpaca_secret="test",
+            command=[
+                sys.executable,
+                "-c",
+                "import time; time.sleep(2)",
+            ],
+            require_scan_file=False,
+            timeout_seconds=0.05,
+        )
+        assert state["started"] is True, state
+        time.sleep(0.08)
+        result = sr.poll_scanner_process(state)
+        assert result["done"] is True, result
+        assert result["ok"] is False, result
+        assert "timeout" in result["message"].lower(), result
+        assert sr.scanner_process_busy() is False
+        state = None
+    finally:
+        if state and state.get("process") and state["process"].poll() is None:
+            state["process"].kill()
+            state["process"].wait(timeout=2)
+            sr._release_scan_lock(state.get("lock_token"))
+            sr._cleanup_logs(state)
+        sr.LOCK_FILE = old_lock
+        temp_dir.cleanup()
+
+
+def test_two_minute_runtime_health_flags_tight_and_overrun_scans():
+    import scanner_runtime as sr
+
+    healthy = sr.cadence_health(45, 120)
+    tight = sr.cadence_health(100, 120)
+    overrun = sr.cadence_health(125, 120)
+    assert healthy["status"] == "healthy", healthy
+    assert tight["status"] == "tight", tight
+    assert tight["headroom_seconds"] == 20.0, tight
+    assert overrun["status"] == "overrun", overrun
+    assert overrun["headroom_seconds"] == -5.0, overrun
+
+
+def test_momentum_alert_can_realert_only_after_leaving_ready_state():
+    import momentum_alerts as ma
+
+    ready = {
+        "candidates": [
+            {
+                "symbol": "AAA",
+                "setup_grade": "A",
+                "scanner_action": "ANALYZE NOW",
+                "passed_base_filters": True,
+                "alert_ready": True,
+            }
+        ]
+    }
+    not_ready = {
+        "candidates": [
+            {
+                "symbol": "AAA",
+                "setup_grade": "A",
+                "scanner_action": "WAIT PULLBACK",
+                "passed_base_filters": True,
+                "alert_ready": True,
+            }
+        ]
+    }
+
+    first, keys = ma.newly_actionable(ready, [])
+    assert [row["symbol"] for row in first] == ["AAA"], first
+    repeated, keys = ma.newly_actionable(ready, keys)
+    assert repeated == [], repeated
+    left, keys = ma.newly_actionable(not_ready, keys)
+    assert left == [], left
+    assert keys == set(), keys
+    reentered, keys = ma.newly_actionable(ready, keys)
+    assert [row["symbol"] for row in reentered] == ["AAA"], reentered
 
 
 if __name__ == "__main__":
@@ -3146,8 +3303,12 @@ if __name__ == "__main__":
         test_live_scanner_uses_two_minute_cadence,
         test_actionable_momentum_alert_requires_existing_strong_scanner_state,
         test_momentum_alert_only_fires_when_symbol_newly_enters_ready_state,
-        test_combined_app_keeps_scanner_running_in_analyzer_without_double_loop,
+        test_combined_app_keeps_one_async_scanner_loop_across_views,
         test_momentum_alert_ui_has_in_app_and_optional_browser_notifications,
+        test_scanner_runtime_async_start_is_nonblocking_and_lock_safe,
+        test_scanner_runtime_timeout_releases_shared_lock,
+        test_two_minute_runtime_health_flags_tight_and_overrun_scans,
+        test_momentum_alert_can_realert_only_after_leaving_ready_state,
         test_analyzer_live_test_status_exposes_tracking_health,
     ]
     for test in tests:
