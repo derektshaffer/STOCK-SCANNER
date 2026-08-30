@@ -534,6 +534,18 @@ def card(c):
         f'<span class="badge {action_color}">ACTION {html.escape(action)}</span>'
     )
 
+    fit = str(c.get("timeframe_best_fit") or "UNKNOWN")
+    fit_badge_cls = {
+        "INTRADAY": "blue",
+        "SWING": "green",
+        "LONGER-TERM": "amber",
+        "MIXED": "blue",
+    }.get(fit, "amber")
+    fit_badge = (
+        f'<span class="badge {fit_badge_cls}">BEST FIT {html.escape(fit)}</span>'
+    )
+    fit_reason = str(c.get("timeframe_fit_reason") or "")
+
     ml_text, ml_cls = ml_display(c)
 
     spread = (
@@ -577,9 +589,10 @@ def card(c):
   </div>
   <div>
     <span class="badge {badge_cls}">GRADE {html.escape(grade)} · {html.escape(label)}</span>
-    {action_badge}{pass_badge}{alert_badge}{vwap_badge}
+    {fit_badge}{action_badge}{pass_badge}{alert_badge}{vwap_badge}
   </div>
   <div class="note"><div class="nk">ACTION</div><div class="nv">{html.escape(action_reason[:260])}</div></div>
+  <div class="note"><div class="nk">TIMEFRAME FIT</div><div class="nv">{html.escape(fit_reason[:260] or "Timeframe evidence is still limited.")}</div></div>
   <div class="grid">
     {metric("5 MIN",f(c.get("momentum_5m"),2,"%"),"pos" if (c.get("momentum_5m") or 0)>0 else "muted")}
     {metric("15 MIN",f(c.get("momentum_15m"),2,"%"),"pos" if (c.get("momentum_15m") or 0)>0 else "muted")}
@@ -609,6 +622,11 @@ def to_df(records):
                 "Status": c.get("setup_label"),
                 "Action": c.get("scanner_action"),
                 "Action Reason": c.get("scanner_action_reason"),
+                "Best Fit": c.get("timeframe_best_fit") or "UNKNOWN",
+                "Fit Confidence": c.get("timeframe_fit_confidence") or "—",
+                "Intraday Fit": c.get("timeframe_intraday_score"),
+                "Swing Fit": c.get("timeframe_swing_score"),
+                "Longer Fit": c.get("timeframe_longer_term_score"),
                 "Score": c.get("score"),
                 "Opportunity": c.get("opportunity_score"),
                 "ML 60m %": c.get("ml_continuation_prob_pct"),
@@ -680,15 +698,27 @@ def styled(df):
             return "color:#ffd166;font-weight:900"
         return "color:#ff8181;font-weight:900"
 
+    def fit_style(v):
+        return {
+            "INTRADAY": "color:#7dd3fc;font-weight:900",
+            "SWING": "color:#65e98d;font-weight:900",
+            "LONGER-TERM": "color:#ffd166;font-weight:900",
+            "MIXED": "color:#c4b5fd;font-weight:900",
+        }.get(str(v), "color:#9fb0c9;font-weight:800")
+
     return (
-        df.style.map(score_style, subset=["Score", "Opportunity"])
+        df.style.map(score_style, subset=["Score", "Opportunity", "Intraday Fit", "Swing Fit", "Longer Fit"])
         .map(ml_style, subset=["ML 60m %"])
         .map(grade_style, subset=["Grade"])
+        .map(fit_style, subset=["Best Fit"])
         .map(vwap_style, subset=["VWAP Status"])
         .format(
             {
                 "Score": "{:.1f}",
                 "Opportunity": lambda x: "—" if pd.isna(x) else f"{x:.1f}",
+                "Intraday Fit": lambda x: "—" if pd.isna(x) else f"{x:.0f}",
+                "Swing Fit": lambda x: "—" if pd.isna(x) else f"{x:.0f}",
+                "Longer Fit": lambda x: "—" if pd.isna(x) else f"{x:.0f}",
                 "ML 60m %": lambda x: "—" if pd.isna(x) else f"{x:.1f}%",
                 "Price": "${:.2f}",
                 "Day %": lambda x: "—" if pd.isna(x) else f"{x:.2f}%",
@@ -1020,7 +1050,7 @@ stale_pill_html = (
 st.markdown(
     f'<div class="header"><div class="title">Momentum Scanner</div>'
     '<div class="sub">Readable ranking of momentum, liquidity, VWAP position, '
-    'catalysts, historical context, and validated ML continuation.</div>'
+    'catalysts, historical context, timeframe fit, and validated ML continuation.</div>'
     f'<span class="pill {pill_cls}">{pill_text}</span>'
     f'<span class="pill {live_data_pill_cls}">{html.escape(live_data_pill)}</span>'
     f'<span class="pill {ml_pill_cls}">{html.escape(ml_pill_text)}</span>'
@@ -1032,9 +1062,37 @@ st.markdown(
 
 summary = payload_summary
 records = payload.get("candidates") or []
-display_records = records[:15]
-full_table_records = records[:30]
 grades = summary.get("grade_counts") or {}
+
+timeframe_filter = st.selectbox(
+    "Timeframe focus",
+    ["ALL", "INTRADAY", "SWING", "LONGER-TERM", "MIXED"],
+    index=0,
+    help=(
+        "Filters the displayed momentum candidates by scanner-level Best Fit. "
+        "It does not change ranking or Scanner ACTION."
+    ),
+)
+
+def _matches_timeframe(row, selected):
+    if selected == "ALL":
+        return True
+    if str(row.get("timeframe_best_fit") or "") == selected:
+        return True
+    return selected in (row.get("timeframe_fit_horizons") or [])
+
+filtered_records = [
+    row for row in records
+    if _matches_timeframe(row, timeframe_filter)
+]
+display_records = filtered_records[:15]
+full_table_records = filtered_records[:30]
+
+if timeframe_filter != "ALL":
+    st.caption(
+        f"Showing {len(filtered_records)} of {len(records)} ranked momentum candidates "
+        f"with {timeframe_filter} timeframe evidence. Ranking itself is unchanged."
+    )
 
 vals = [
     ("ANALYZED", summary.get("candidates_analyzed", len(records)), "Common-stock mover candidates"),
@@ -1080,6 +1138,12 @@ st.markdown(
 <div class="legend-box">
   <div class="legend-title">Quick metric guide</div>
   <div class="legend-grid">
+    <div class="legend-item">
+      <div class="legend-term">Best Fit — Intraday / Swing / Longer-Term</div>
+      <div class="legend-def">
+        This is a separate horizon classification, not a buy signal. <b>Intraday</b> emphasizes same-day momentum, VWAP, volume and execution. <b>Swing</b> emphasizes roughly 2–10 trading days of continuation and multi-session structure. <b>Longer-Term</b> is a technical screen for roughly 2–8 weeks and should be confirmed in Analyzer with fundamentals, dilution/filings and catalyst durability. <b>Mixed</b> means two horizons scored similarly. This label does not change the scanner's momentum ranking or ACTION.
+      </div>
+    </div>
     <div class="legend-item">
       <div class="legend-term">VWAP — Volume-Weighted Average Price</div>
       <div class="legend-def">
