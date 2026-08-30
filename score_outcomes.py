@@ -1073,6 +1073,18 @@ def write_reports(target_date, discovery, rows, status, error=None):
     return json_path, csv_path, md_path
 
 
+def outcome_report_status(rows, summary):
+    if not rows:
+        return "no_scoreable_observations"
+    resolved_horizons = sum(
+        int((summary.get("overall") or {}).get(f"{m}m", {}).get("n") or 0)
+        for m in HORIZONS_MINUTES
+    ) if summary else 0
+    if resolved_horizons == 0:
+        return "complete_no_resolvable_horizons"
+    return "complete"
+
+
 def main():
     now_et = datetime.now(ET)
     target_date = resolve_target_date(now_et)
@@ -1140,21 +1152,13 @@ def main():
 
     rows = build_observations(scans, target_date, bars_index)
     summary = summarize(rows) if rows else None
-    resolved_horizons = sum(
-        int((summary.get("overall") or {}).get(f"{m}m", {}).get("n") or 0)
-        for m in HORIZONS_MINUTES
-    ) if summary else 0
-    if not rows:
-        status = "no_scoreable_observations"
-    elif resolved_horizons == 0:
-        status = "complete_no_resolvable_horizons"
+    status = outcome_report_status(rows, summary)
+    if status == "complete_no_resolvable_horizons":
         discovery["outcome_note"] = (
             "Regular-session scans were found, but every saved observation was "
             "too close to the 4:00 PM ET close to resolve the configured "
             "+15/+30/+60 minute horizons."
         )
-    else:
-        status = "complete"
     write_reports(target_date, discovery, rows, status)
 
     if rows:
