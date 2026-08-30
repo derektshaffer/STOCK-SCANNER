@@ -716,6 +716,10 @@ controls_mount = st.session_state.get("_scanner_controls_mount")
 controls_context = controls_mount.container() if controls_mount is not None else st.container(key="scanner_controls_top")
 
 with controls_context:
+    flash_success = st.session_state.pop("_scanner_flash_success", None)
+    if flash_success:
+        st.success(str(flash_success))
+
     scan_col, auto_col, spacer_col, market_col = st.columns(
         [1.15, 1.45, 2.45, 1.55],
         vertical_alignment="center",
@@ -777,7 +781,11 @@ if clicked:
     if ok:
         st.session_state["last_auto_scan_at"] = time.time()
         st.session_state["last_auto_message"] = "Manual scan completed."
-        st.success(msg)
+        st.session_state["_scanner_flash_success"] = msg
+        # The combined app renders its compact one-click candidate list before
+        # scanner_app.py runs. Refresh once so that list immediately reads the
+        # newly written latest_scan.json instead of staying one scan behind.
+        st.rerun()
     else:
         st.error(msg)
 
