@@ -351,18 +351,24 @@ def market_is_open():
 def run_scanner():
     key = secret("ALPACA_API_KEY")
     sec = secret("ALPACA_SECRET_KEY")
-    if not key or not sec:
+    tradier_token = get_tradier_token()
+    has_alpaca = bool(key and sec)
+    if not has_alpaca and not tradier_token:
         return (
             False,
-            "Alpaca credentials are not configured for this app yet. "
-            "Add ALPACA_API_KEY and ALPACA_SECRET_KEY in Streamlit Secrets.",
+            "No market-data provider is configured. Add either "
+            "TRADIER_ACCESS_TOKEN (preferred) or both ALPACA_API_KEY and "
+            "ALPACA_SECRET_KEY in Streamlit Secrets.",
         )
 
     env = os.environ.copy()
-    env["ALPACA_API_KEY"] = key
-    env["ALPACA_SECRET_KEY"] = sec
+    if has_alpaca:
+        env["ALPACA_API_KEY"] = key
+        env["ALPACA_SECRET_KEY"] = sec
+    else:
+        env.pop("ALPACA_API_KEY", None)
+        env.pop("ALPACA_SECRET_KEY", None)
     env["ALPACA_LIVE_FEED"] = configured_live_feed()
-    tradier_token = get_tradier_token()
     if tradier_token:
         env["TRADIER_ACCESS_TOKEN"] = tradier_token
 
