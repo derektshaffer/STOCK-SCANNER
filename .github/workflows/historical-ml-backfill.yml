@@ -35,6 +35,7 @@ on:
     paths:
       - "historical_scanner_replay.py"
       - "historical_timeframe_replay.py"
+      - "timeframe_ml_ranker.py"
       - ".github/workflows/historical-ml-backfill.yml"
 
 permissions:
@@ -43,7 +44,7 @@ permissions:
 
 jobs:
   backfill:
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, 'Run historical ML backfill') || contains(github.event.head_commit.message, 'Run historical timeframe backfill')
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, 'Run historical ML backfill') || contains(github.event.head_commit.message, 'Run historical timeframe backfill') || contains(github.event.head_commit.message, 'Run timeframe ML validation')
     runs-on: ubuntu-latest
     timeout-minutes: 90
 
@@ -59,7 +60,7 @@ jobs:
           python-version: "3.12"
 
       - name: Run leakage-aware historical replay
-        if: github.event_name != 'push' || !contains(github.event.head_commit.message, 'Run historical timeframe backfill')
+        if: github.event_name != 'push' || (!contains(github.event.head_commit.message, 'Run historical timeframe backfill') && !contains(github.event.head_commit.message, 'Run timeframe ML validation'))
         env:
           # Alpaca values are only kept so stock_scanner's pure rule module
           # can import; the replay market data itself is Tradier-first.
@@ -77,6 +78,7 @@ jobs:
         run: python historical_scanner_replay.py
 
       - name: Run leakage-aware timeframe replay
+        if: github.event_name != 'push' || !contains(github.event.head_commit.message, 'Run timeframe ML validation')
         env:
           ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
           ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
@@ -146,6 +148,31 @@ jobs:
           assert int(tf_summary.get("swing_5d_resolved") or 0) >= 100
           PY
 
+      - name: Validate shadow Swing timeframe ML
+        run: |
+          python timeframe_ml_ranker.py --output timeframe_replay/timeframe_ml_validation.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(
+              Path("timeframe_replay/timeframe_ml_validation.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          overall = report.get("overall") or {}
+          print("SWING_ML_STATUS=" + str(report.get("status")))
+          print("SWING_ML_HISTORICAL_VALIDATED=" + str(bool(report.get("historical_validated"))).lower())
+          print("SWING_ML_SAMPLES=" + str(report.get("samples")))
+          print("SWING_ML_DATES=" + str(report.get("unique_dates")))
+          print("SWING_ML_AUC=" + str(overall.get("model_auc")))
+          print("SWING_HAND_SCORE_AUC=" + str(overall.get("hand_score_auc")))
+          print("SWING_ML_MINUS_HAND_AUC=" + str(overall.get("model_minus_hand_auc")))
+          print("SWING_ML_MEAN_FOLD_AUC=" + str(overall.get("mean_fold_auc")))
+          print("SWING_ML_TOP_DECILE_LIFT_PP=" + str(overall.get("top_decile_higher_rate_lift_pp")))
+          print("SWING_ML_FOLDS_BEATING_HAND=" + str(overall.get("folds_beating_hand_score")))
+          PY
+
       - name: Commit durable replay dataset
         shell: bash
         run: |
@@ -153,6 +180,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add outcome_reports/outcomes_historical_replay.json
           git add timeframe_replay/timeframe_historical_replay.json
+          git add timeframe_replay/timeframe_ml_validation.json
           if git diff --cached --quiet; then
             echo "Historical replay dataset is unchanged."
           else
@@ -169,5 +197,6 @@ jobs:
           path: |
             outcome_reports/outcomes_historical_replay.json
             timeframe_replay/timeframe_historical_replay.json
+            timeframe_replay/timeframe_ml_validation.json
           if-no-files-found: warn
           retention-days: 90
