@@ -60,6 +60,8 @@ OUTCOME_MARKET_PROVIDER = (
 )
 
 HORIZONS_MINUTES = (15, 30, 60)
+OUTCOME_MAX_BAR_DELAY_SECONDS = 180
+ACTIONABLE_EVENT_COOLDOWN_MINUTES = 60
 SIP_FEED = "sip"
 
 if not REPOSITORY or "/" not in REPOSITORY:
@@ -465,7 +467,17 @@ def index_bars(bars_by_symbol):
     return indexed
 
 
-def price_at_or_after(indexed_symbol, target_time, session_close):
+def price_at_or_after(
+    indexed_symbol,
+    target_time,
+    session_close,
+    max_tolerance_seconds=OUTCOME_MAX_BAR_DELAY_SECONDS,
+):
+    """Return the first bar at/after a horizon only when it is close to target time.
+
+    A halt or illiquid gap must not turn a much-later print into a mislabeled
+    +15m/+30m/+60m observation.
+    """
     if not indexed_symbol or target_time > session_close:
         return None, None
 
@@ -477,6 +489,10 @@ def price_at_or_after(indexed_symbol, target_time, session_close):
 
     ts = times[pos]
     if ts.date() != target_time.date() or ts > session_close:
+        return None, None
+
+    delay_seconds = (ts - target_time).total_seconds()
+    if delay_seconds < 0 or delay_seconds > float(max_tolerance_seconds):
         return None, None
 
     return prices[pos], ts
@@ -716,8 +732,25 @@ def build_observations(scans, target_date, bars_index):
                 exit_price, exit_time = price_at_or_after(
                     symbol_index, target_time, session_close
                 )
+                if target_time > session_close:
+                    horizon_status = "target_after_close"
+                elif not symbol_index:
+                    horizon_status = "no_market_data"
+                elif exit_time is None:
+                    horizon_status = "no_bar_within_tolerance"
+                else:
+                    horizon_status = "ok"
+                delay_seconds = (
+                    max(0.0, (exit_time - target_time).total_seconds())
+                    if exit_time is not None
+                    else None
+                )
                 row[f"price_{minutes}m"] = round(exit_price, 4) if exit_price is not None else None
                 row[f"time_{minutes}m_et"] = exit_time.isoformat() if exit_time else None
+                row[f"delay_{minutes}m_seconds"] = (
+                    round(delay_seconds, 1) if delay_seconds is not None else None
+                )
+                row[f"status_{minutes}m"] = horizon_status
                 row[f"return_{minutes}m_pct"] = pct_return(exit_price, entry_price)
 
             rows.append(row)
@@ -841,9 +874,50 @@ def top_per_scan(rows, key, n=5):
     return selected
 
 
+def is_actionable_event_row(row):
+    row = row or {}
+    grade = str(row.get("setup_grade") or "").upper().strip()
+    action = str(row.get("scanner_action") or "").upper().strip()
+    return bool(
+        row.get("passed_base_filters")
+        and row.get("alert_ready")
+        and grade in {"A", "B"}
+        and action == "ANALYZE NOW"
+    )
+
+
+def deduplicate_actionable_events(rows, cooldown_minutes=ACTIONABLE_EVENT_COOLDOWN_MINUTES):
+    """Collapse repeated actionable scans into more independent signal events.
+
+    Raw observations remain untouched. This secondary view starts a new event
+    only after the same ticker's cooldown has elapsed.
+    """
+    ordered = sorted(
+        [row for row in rows if is_actionable_event_row(row)],
+        key=lambda row: str(row.get("scan_time_et") or ""),
+    )
+    selected = []
+    last_event_by_symbol = {}
+    cooldown_seconds = max(0.0, float(cooldown_minutes) * 60.0)
+
+    for row in ordered:
+        symbol = str(row.get("symbol") or "").upper().strip()
+        scan_time = parse_iso(row.get("scan_time_et"))
+        if not symbol or scan_time is None:
+            continue
+        previous = last_event_by_symbol.get(symbol)
+        if previous is not None and (scan_time - previous).total_seconds() < cooldown_seconds:
+            continue
+        selected.append(row)
+        last_event_by_symbol[symbol] = scan_time
+
+    return selected
+
+
 def summarize(rows):
     scanner_top5 = top_per_scan(rows, "score", 5)
     opportunity_top5 = top_per_scan(rows, "opportunity_score", 5)
+    actionable_events = deduplicate_actionable_events(rows)
 
     summary = {
         "observation_count": len(rows),
@@ -853,6 +927,16 @@ def summarize(rows):
             f"{m}m": horizon_stats(rows, m) for m in HORIZONS_MINUTES
         },
         "trade_quality": trade_quality_stats(rows),
+        "deduplicated_actionable_events": {
+            "cooldown_minutes": ACTIONABLE_EVENT_COOLDOWN_MINUTES,
+            "event_count": len(actionable_events),
+            "unique_symbols": len({r["symbol"] for r in actionable_events}),
+            "overall": {
+                f"{m}m": horizon_stats(actionable_events, m)
+                for m in HORIZONS_MINUTES
+            },
+            "trade_quality": trade_quality_stats(actionable_events),
+        },
         "by_grade": {},
         "by_alert_tier": {},
         "by_scanner_action": {},
@@ -965,6 +1049,28 @@ def render_markdown(target_date, discovery, summary, status, error=None):
             f"| {grade} | {group['n']} | {win(15)} | {win(30)} | {win(60)} | {fmt_pct(group['30m']['median_return_pct'])} |"
         )
 
+    event_summary = summary.get("deduplicated_actionable_events") or {}
+    lines += [
+        "",
+        "## Deduplicated actionable events",
+        "",
+        (
+            f"- Events: **{event_summary.get('event_count', 0)}** "
+            f"using a **{event_summary.get('cooldown_minutes', ACTIONABLE_EVENT_COOLDOWN_MINUTES)}-minute** "
+            "same-ticker cooldown. Raw scan observations are still retained separately."
+        ),
+        "",
+        "| Horizon | N | Win rate | Median return | Average return |",
+        "|---|---:|---:|---:|---:|",
+    ]
+    for m in HORIZONS_MINUTES:
+        s = (event_summary.get("overall") or {}).get(f"{m}m") or {}
+        win = "-" if s.get("win_rate_pct") is None else f"{s['win_rate_pct']:.1f}%"
+        lines.append(
+            f"| +{m}m | {s.get('n', 0)} | {win} | "
+            f"{fmt_pct(s.get('median_return_pct'))} | {fmt_pct(s.get('average_return_pct'))} |"
+        )
+
     comparison = summary.get("ranking_comparison") or {}
     scanner_cmp = comparison.get("scanner_score_top5") or {}
     ml_cmp = comparison.get("opportunity_score_top5") or {}
@@ -993,7 +1099,7 @@ def render_markdown(target_date, discovery, summary, status, error=None):
         "",
         "_The Opportunity score is identical to the original scanner score until the ML validation gate passes, so this comparison only becomes meaningful after validated ML is active._",
         "",
-        "_Each row is a scanner observation at a specific scan time. Repeated appearances of the same ticker are intentionally retained for now; later versions can also evaluate deduplicated alert events._",
+        "_Each raw row remains a scanner observation at a specific scan time. The deduplicated event section is the preferred view for estimating independent actionable-signal performance._",
     ]
     return "\n".join(lines) + "\n"
 
@@ -1043,9 +1149,9 @@ def write_reports(target_date, discovery, rows, status, error=None):
         "distance_from_high_pct", "distance_from_vwap_pct", "above_vwap",
         "tradability_warnings", "setup_flags", "news_status", "news_category",
         "news_score", "historical_status", "historical_quality",
-        "price_15m", "time_15m_et", "return_15m_pct",
-        "price_30m", "time_30m_et", "return_30m_pct",
-        "price_60m", "time_60m_et", "return_60m_pct",
+        "price_15m", "time_15m_et", "delay_15m_seconds", "status_15m", "return_15m_pct",
+        "price_30m", "time_30m_et", "delay_30m_seconds", "status_30m", "return_30m_pct",
+        "price_60m", "time_60m_et", "delay_60m_seconds", "status_60m", "return_60m_pct",
         "trade_quality_target_pct", "trade_quality_stop_pct",
         "trade_quality_horizon_minutes", "trade_quality_barrier",
         "trade_quality_decisive", "target_before_stop",

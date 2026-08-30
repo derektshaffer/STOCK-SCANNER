@@ -98,6 +98,8 @@ TOP_MOVERS = 50
 WATCHLIST_SIZE = 15
 ENRICH_TOP = WATCHLIST_SIZE
 EXTENDED_ENRICH_TOP = WATCHLIST_SIZE + 5
+REGULAR_ENRICH_POOL_MAX = 40
+EXTENDED_ENRICH_POOL_MAX = 30
 MAX_ENRICH_WORKERS = 6
 MAX_HISTORY_WORKERS = 5
 NEWS_TOP = 15
@@ -128,6 +130,9 @@ NEWS_LIMIT = 50
 
 HISTORY_LOOKBACK_DAYS = 180
 HISTORY_MAX_SAMPLES = 10
+HISTORICAL_BAR_MINUTES = 15
+HISTORICAL_SETUP_MAX_AGE_MINUTES = 15
+HISTORICAL_FORWARD_MAX_DELAY_SECONDS = 180
 
 # Time-of-day volume profile. The scanner runs every 5 minutes, so 5-minute
 # bars give a good balance of accuracy and API/data size. We compare each
@@ -715,6 +720,25 @@ def ranking_key(c):
         c.get("score", 0),
         c.get("day_pct") or -999,
     )
+
+
+def select_enrichment_targets(rows, phase):
+    """Enrich a broad plausible pool before final live ranking.
+
+    Price/liquidity critical failures cannot be repaired by momentum/news
+    enrichment, so they are excluded. Other candidates get a fair chance up
+    to a cadence-conscious pool cap instead of being cut at display size.
+    """
+    limit = (
+        EXTENDED_ENRICH_POOL_MAX
+        if phase in {"premarket", "afterhours"}
+        else REGULAR_ENRICH_POOL_MAX
+    )
+    plausible = [
+        c for c in rows
+        if c.get("critical_fail_count", critical_fail_count(c)) == 0
+    ]
+    return plausible[:limit]
 
 
 def setup_risk_flags(c):
@@ -2213,28 +2237,58 @@ def regular_session_bars_by_day(bars):
     return dict(sorted(grouped.items()))
 
 
-def closest_bar_index(day_bars, target_minutes):
+def completed_bar_index(
+    day_bars,
+    target_minutes,
+    bar_minutes=HISTORICAL_BAR_MINUTES,
+    max_age_minutes=HISTORICAL_SETUP_MAX_AGE_MINUTES,
+):
+    """Return the latest fully completed historical bar known by target time."""
     best_idx = None
-    best_delta = None
+    best_age = None
     for i, (dt_et, _) in enumerate(day_bars):
-        bar_minutes = dt_et.hour * 60 + dt_et.minute
-        delta = abs(bar_minutes - target_minutes)
-        if best_delta is None or delta < best_delta:
+        bar_close_minutes = dt_et.hour * 60 + dt_et.minute + int(bar_minutes)
+        if bar_close_minutes > target_minutes:
+            continue
+        age = target_minutes - bar_close_minutes
+        if age <= max_age_minutes and (best_age is None or age < best_age):
             best_idx = i
-            best_delta = delta
+            best_age = age
     return best_idx
 
 
-def safe_forward_return(day_bars, setup_idx, bars_forward):
-    target_idx = setup_idx + bars_forward
-    if target_idx >= len(day_bars):
+def timestamp_forward_return(
+    day_bars,
+    setup_idx,
+    minutes_forward,
+    max_tolerance_seconds=HISTORICAL_FORWARD_MAX_DELAY_SECONDS,
+    bar_minutes=HISTORICAL_BAR_MINUTES,
+):
+    """Measure a future return by clock time, never by missing-bar list offset."""
+    if setup_idx is None or setup_idx >= len(day_bars):
         return None
 
-    setup_close = float(day_bars[setup_idx][1].get("c") or 0)
-    future_close = float(day_bars[target_idx][1].get("c") or 0)
-    if setup_close <= 0 or future_close <= 0:
+    setup_dt, setup_bar = day_bars[setup_idx]
+    setup_close = float(setup_bar.get("c") or 0)
+    if setup_close <= 0:
         return None
-    return pct_change(future_close, setup_close)
+
+    setup_effective_time = setup_dt + timedelta(minutes=bar_minutes)
+    target_time = setup_effective_time + timedelta(minutes=minutes_forward)
+
+    for future_dt, future_bar in day_bars[setup_idx + 1 :]:
+        future_effective_time = future_dt + timedelta(minutes=bar_minutes)
+        if future_effective_time < target_time:
+            continue
+        delay_seconds = (future_effective_time - target_time).total_seconds()
+        if delay_seconds > float(max_tolerance_seconds):
+            return None
+        future_close = float(future_bar.get("c") or 0)
+        if future_close <= 0:
+            return None
+        return pct_change(future_close, setup_close)
+
+    return None
 
 
 def summarize_returns(samples, key):
@@ -2313,7 +2367,7 @@ def historical_continuation(symbol, current_day_pct, now_utc, now_et):
         if prev_close <= 0:
             continue
 
-        setup_idx = closest_bar_index(day_bars, target_minutes)
+        setup_idx = completed_bar_index(day_bars, target_minutes)
         if setup_idx is None:
             continue
 
@@ -2330,9 +2384,9 @@ def historical_continuation(symbol, current_day_pct, now_utc, now_et):
                 "date": str(day),
                 "setup_day_pct": round(setup_day_pct, 2),
                 "similarity_diff_pct": round(abs(setup_day_pct - current_day_pct), 2),
-                "return_15m_pct": safe_forward_return(day_bars, setup_idx, 1),
-                "return_30m_pct": safe_forward_return(day_bars, setup_idx, 2),
-                "return_60m_pct": safe_forward_return(day_bars, setup_idx, 4),
+                "return_15m_pct": timestamp_forward_return(day_bars, setup_idx, 15),
+                "return_30m_pct": timestamp_forward_return(day_bars, setup_idx, 30),
+                "return_60m_pct": timestamp_forward_return(day_bars, setup_idx, 60),
             }
         )
 
@@ -2355,7 +2409,7 @@ def historical_continuation(symbol, current_day_pct, now_utc, now_et):
 
     return {
         "status": "ok",
-        "method": "same ticker, same time-of-day, nearest historical day-gain setups",
+        "method": "same ticker, latest completed 15m bar by time-of-day, timestamp-matched forward returns",
         "data_feed": history_feed,
         "sample_count": len(samples),
         "quality": quality,
@@ -2714,9 +2768,12 @@ def write_scan_logs(
                     "historical_samples": hist.get("sample_count"),
                 })
 
-        # A predictable filename is convenient when inspecting a downloaded artifact.
+        # Publish the predictable latest snapshot atomically so Streamlit never
+        # reads a half-written JSON document during scan completion.
         latest_path = out_dir / "latest_scan.json"
-        latest_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        tmp_path = out_dir / f".latest_scan_{scan_id}.tmp"
+        tmp_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        os.replace(tmp_path, latest_path)
 
         print("\nSCAN LOGGING")
         print(f"Saved JSON snapshot: {json_path}")
@@ -3031,12 +3088,7 @@ def main():
     rows.sort(key=ranking_key, reverse=True)
 
     if is_active_market_session(now_et):
-        enrich_top = (
-            EXTENDED_ENRICH_TOP
-            if phase in {"premarket", "afterhours"}
-            else ENRICH_TOP
-        )
-        enrich_targets = rows[:enrich_top]
+        enrich_targets = select_enrichment_targets(rows, phase)
         worker_count = max(
             1,
             min(MAX_ENRICH_WORKERS, len(enrich_targets)),

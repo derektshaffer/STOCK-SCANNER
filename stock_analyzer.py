@@ -1622,9 +1622,10 @@ def analyze(symbol):
     if not price: raise RuntimeError("No current price returned")
     day_pct=pct(price,prev_close) if prev_close else None
 
-    spread_pct=pct(ask,bid) if bid and ask else None
-    if spread_pct is not None:
-        spread_pct=spread_pct/(1+spread_pct/100) # approx spread / ask, percentage
+    spread_pct=None
+    if bid and ask and ask >= bid:
+        midpoint=(ask+bid)/2.0
+        spread_pct=((ask-bid)/midpoint)*100 if midpoint else None
 
     vwap=session_vwap_from_bars(intraday)
     high=max(

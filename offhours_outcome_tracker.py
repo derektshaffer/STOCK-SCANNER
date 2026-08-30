@@ -1,7 +1,7 @@
 """Forward outcome tracking for off-hours Swing / Longer-Term discovery.
 
 This is research-only tracking. It freezes each completed-daily discovery cohort
-and resolves 1/3/5/10/20/40 trading-session outcomes without changing live
+and resolves 1/2/3/5/10/20/40 trading-session outcomes without changing live
 Momentum Scanner rank, Scanner ACTION, or ML.
 """
 
@@ -26,7 +26,7 @@ TRADIER_TOKEN = (
     os.environ.get("TRADIER_ACCESS_TOKEN", "").strip()
     or os.environ.get("TRADIER_TOKEN", "").strip()
 )
-HORIZONS = (1, 3, 5, 10, 20, 40)
+HORIZONS = (1, 2, 3, 5, 10, 20, 40)
 TRACKER_VERSION = "offhours-timeframe-outcome-v1"
 
 
@@ -354,7 +354,7 @@ def _markdown_report(cohorts):
     lines += [
         "",
         "Primary comparison horizons: Swing = 5 trading sessions; Longer-Term = 20 trading sessions.",
-        "Additional 1/3/10/40-session outcomes plus MFE, MAE, SPY return, and excess return are stored in each cohort JSON.",
+        "Additional 1/2/3/10/40-session outcomes plus MFE, MAE, SPY return, and excess return are stored in each cohort JSON.",
         "",
     ]
     return "\n".join(lines)

@@ -251,6 +251,109 @@ def test_scanner_outcome_metadata():
     assert row["volume_pace_display"] == 2.4, row
 
 
+def test_scanner_outcome_horizon_rejects_late_gap_bars():
+    import score_outcomes as so
+
+    target = datetime(2026, 8, 27, 10, 15, tzinfo=ET)
+    close = datetime(2026, 8, 27, 16, 0, tzinfo=ET)
+    accepted = so.index_bars({
+        "TEST": [{"t": "2026-08-27T14:17:30Z", "c": 10.2}]
+    })["TEST"]
+    price, ts = so.price_at_or_after(accepted, target, close)
+    assert price == 10.2 and ts is not None
+
+    too_late = so.index_bars({
+        "TEST": [{"t": "2026-08-27T14:18:01Z", "c": 11.0}]
+    })["TEST"]
+    price, ts = so.price_at_or_after(too_late, target, close)
+    assert price is None and ts is None
+
+
+def test_scanner_outcomes_expose_deduplicated_actionable_events():
+    import score_outcomes as so
+
+    rows = []
+    for hour, minute in ((10, 0), (10, 10), (11, 5)):
+        rows.append({
+            "symbol": "AAA",
+            "scan_time_et": datetime(2026, 8, 27, hour, minute, tzinfo=ET).isoformat(),
+            "setup_grade": "A",
+            "scanner_action": "ANALYZE NOW",
+            "passed_base_filters": True,
+            "alert_ready": True,
+            "return_15m_pct": 1.0,
+            "return_30m_pct": 1.0,
+            "return_60m_pct": 1.0,
+        })
+    events = so.deduplicate_actionable_events(rows, cooldown_minutes=60)
+    assert len(events) == 2, events
+    summary = so.summarize(rows)
+    assert summary["observation_count"] == 3, summary
+    assert summary["deduplicated_actionable_events"]["event_count"] == 2, summary
+
+
+def test_scanner_historical_returns_are_causal_and_timestamp_matched():
+    os.environ.setdefault("ALPACA_API_KEY", "test-key")
+    os.environ.setdefault("ALPACA_SECRET_KEY", "test-secret")
+    import stock_scanner as ss
+
+    day = datetime(2026, 8, 27, 0, 0, tzinfo=ET)
+    bars = [
+        (day.replace(hour=9, minute=45), {"c": 10.0}),
+        (day.replace(hour=10, minute=0), {"c": 10.5}),
+        (day.replace(hour=10, minute=15), {"c": 10.7}),
+    ]
+    idx = ss.completed_bar_index(bars, 10 * 60 + 7)
+    assert idx == 0, idx
+    ret = ss.timestamp_forward_return(bars, idx, 15)
+    assert ret is not None and ret > 0, ret
+
+    gap_bars = [
+        (day.replace(hour=9, minute=45), {"c": 10.0}),
+        (day.replace(hour=11, minute=0), {"c": 12.0}),
+    ]
+    assert ss.timestamp_forward_return(gap_bars, 0, 15) is None
+
+
+def test_scanner_enrichment_pool_is_not_display_watchlist_truncated():
+    os.environ.setdefault("ALPACA_API_KEY", "test-key")
+    os.environ.setdefault("ALPACA_SECRET_KEY", "test-secret")
+    import stock_scanner as ss
+
+    rows = [
+        {"symbol": f"T{i:02d}", "critical_fail_count": 0, "failed_count": 0}
+        for i in range(50)
+    ]
+    selected = ss.select_enrichment_targets(rows, "regular")
+    assert len(selected) == ss.REGULAR_ENRICH_POOL_MAX == 40, len(selected)
+    assert selected[-1]["symbol"] == "T39", selected[-1]
+
+
+def test_scanner_latest_snapshot_write_is_atomic():
+    from pathlib import Path
+
+    source = Path("stock_scanner.py").read_text(encoding="utf-8")
+    assert 'tmp_path = out_dir / f".latest_scan_{scan_id}.tmp"' in source
+    assert "os.replace(tmp_path, latest_path)" in source
+    assert 'latest_path.write_text(json.dumps(payload' not in source
+
+
+def test_scanner_and_analyzer_use_midpoint_spread_formula():
+    from pathlib import Path
+
+    scanner_source = Path("stock_scanner.py").read_text(encoding="utf-8")
+    analyzer_source = Path("stock_analyzer.py").read_text(encoding="utf-8")
+    assert "midpoint = (bid + ask) / 2.0" in scanner_source
+    assert "midpoint=(ask+bid)/2.0" in analyzer_source
+    assert "spread_pct=spread_pct/(1+spread_pct/100)" not in analyzer_source
+
+
+def test_offhours_outcomes_include_two_day_horizon():
+    import offhours_outcome_tracker as tracker
+
+    assert tracker.HORIZONS == (1, 2, 3, 5, 10, 20, 40), tracker.HORIZONS
+
+
 def test_historical_trade_quality_path_is_conservative():
     import historical_scanner_replay as replay
 
@@ -3363,6 +3466,13 @@ if __name__ == "__main__":
         test_scanner_ml_version_gate,
         test_analyzer_calibration_version_gate,
         test_scanner_outcome_metadata,
+        test_scanner_outcome_horizon_rejects_late_gap_bars,
+        test_scanner_outcomes_expose_deduplicated_actionable_events,
+        test_scanner_historical_returns_are_causal_and_timestamp_matched,
+        test_scanner_enrichment_pool_is_not_display_watchlist_truncated,
+        test_scanner_latest_snapshot_write_is_atomic,
+        test_scanner_and_analyzer_use_midpoint_spread_formula,
+        test_offhours_outcomes_include_two_day_horizon,
         test_historical_trade_quality_path_is_conservative,
         test_scanner_trade_quality_path_is_causal_and_conservative,
         test_stream_seed_rejects_non_tradier_metrics,
