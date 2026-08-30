@@ -327,6 +327,7 @@ def test_scanner_enrichment_pool_is_not_display_watchlist_truncated():
     selected = ss.select_enrichment_targets(rows, "regular")
     assert len(selected) == ss.REGULAR_ENRICH_POOL_MAX == 40, len(selected)
     assert selected[-1]["symbol"] == "T39", selected[-1]
+    assert ss.NEWS_TOP == ss.REGULAR_ENRICH_POOL_MAX
 
 
 def test_scanner_latest_snapshot_write_is_atomic():
