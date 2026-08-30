@@ -1460,36 +1460,46 @@ def analyze(symbol):
     if not symbol or len(symbol)>10: raise ValueError("Enter a valid ticker symbol")
     now=datetime.now(timezone.utc); now_et=now.astimezone(ET)
 
-    # Alpaca remains the history/news/fallback source. When Tradier is
-    # configured, all CURRENT decision inputs come from one consolidated
-    # Tradier quote + Time & Sales bundle so the tape and trade plan agree.
-    # Tradier is the preferred live provider. Alpaca is useful fallback/news
-    # context, but an Alpaca outage must not prevent a healthy Tradier analysis.
+    # Tradier is the preferred live provider. Do not block on an Alpaca
+    # snapshot during the healthy Tradier path; fetch Alpaca only when it is
+    # actually needed as the fallback provider.
     alpaca_snapshot_error=None
-    try:
-        snap=snapshot(symbol,LIVE_FEED)
-    except Exception as exc:
-        alpaca_snapshot_error=str(exc)[:180]
-        if not USE_TRADIER:
-            raise
-        snap={}
-    trade=snap.get("latestTrade") or {}
-    quote=snap.get("latestQuote") or {}
-    day=snap.get("dailyBar") or {}
-    prev=snap.get("prevDailyBar") or {}
+    snap={}
+    trade={}
+    quote={}
+    day={}
+    prev={}
 
     live_provider="alpaca"
     live_feed_label=LIVE_FEED.upper()
     live_provider_error=None
-    trade_ts=trade.get("t")
-    quote_ts=quote.get("t")
-    price=fnum(trade.get("p")) or fnum(day.get("c"))
-    prev_close=fnum(prev.get("c"))
-    bid=fnum(quote.get("bp"))
-    ask=fnum(quote.get("ap"))
+    trade_ts=None
+    quote_ts=None
+    price=None
+    prev_close=None
+    bid=None
+    ask=None
     intraday=None
     provider_day_high=None
     provider_day_low=None
+
+    def _load_alpaca_snapshot():
+        nonlocal snap, trade, quote, day, prev
+        nonlocal trade_ts, quote_ts, price, prev_close, bid, ask
+        snap=snapshot(symbol,LIVE_FEED)
+        trade=snap.get("latestTrade") or {}
+        quote=snap.get("latestQuote") or {}
+        day=snap.get("dailyBar") or {}
+        prev=snap.get("prevDailyBar") or {}
+        trade_ts=trade.get("t")
+        quote_ts=quote.get("t")
+        price=fnum(trade.get("p")) or fnum(day.get("c"))
+        prev_close=fnum(prev.get("c"))
+        bid=fnum(quote.get("bp"))
+        ask=fnum(quote.get("ap"))
+
+    if not USE_TRADIER:
+        _load_alpaca_snapshot()
 
     if USE_TRADIER:
         try:
@@ -1509,7 +1519,7 @@ def analyze(symbol):
                 raise RuntimeError("Tradier returned no current price")
 
             price=tprice
-            prev_close=fnum(tradier_quote.get("prevclose")) or prev_close
+            prev_close=fnum(tradier_quote.get("prevclose"))
             bid=fnum(tradier_quote.get("bid"))
             ask=fnum(tradier_quote.get("ask"))
             provider_day_high=fnum(tradier_quote.get("high"))
@@ -1520,9 +1530,17 @@ def analyze(symbol):
             live_provider="tradier"
             live_feed_label="TRADIER CONSOLIDATED"
         except Exception as exc:
-            # Explicit fallback keeps the Analyzer usable during a provider
+            # Explicit fallback keeps the Analyzer usable during a Tradier
             # outage while making the source change visible in the metrics.
             live_provider_error=str(exc)[:180]
+            try:
+                _load_alpaca_snapshot()
+            except Exception as alpaca_exc:
+                alpaca_snapshot_error=str(alpaca_exc)[:180]
+                raise RuntimeError(
+                    "Both live market-data providers failed. "
+                    f"Tradier: {live_provider_error}; Alpaca: {alpaca_snapshot_error}"
+                ) from alpaca_exc
 
     if intraday is None:
         intraday=latest_session_bars(symbol,now)
