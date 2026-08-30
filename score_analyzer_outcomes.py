@@ -61,6 +61,30 @@ def _parse_dt(value):
         return None
 
 
+def _market_session_label(value):
+    dt = value if isinstance(value, datetime) else _parse_dt(value)
+    if dt is None:
+        return "UNKNOWN"
+    et = dt.astimezone(ET)
+    if et.weekday() >= 5:
+        return "CLOSED"
+    minute = et.hour * 60 + et.minute
+    if 4 * 60 <= minute < 9 * 60 + 30:
+        return "PREMARKET"
+    if 9 * 60 + 30 <= minute < 16 * 60:
+        return "REGULAR"
+    if 16 * 60 <= minute < 20 * 60:
+        return "AFTER_HOURS"
+    return "CLOSED"
+
+
+def _regular_session_row(row):
+    explicit = str(row.get("market_session") or "").upper().strip()
+    if explicit:
+        return explicit == "REGULAR"
+    return _market_session_label(row.get("timestamp")) == "REGULAR"
+
+
 def _num(value):
     try:
         return float(value)
@@ -892,7 +916,9 @@ def _write_calibration():
         if row.get("decision_score_version") == DECISION_SCORE_VERSION
     ]
     legacy_decision_rows_excluded = len(feature_rows) - len(rows)
-    calibration_rows = _independent_calibration_rows(rows)
+    regular_rows = [row for row in rows if _regular_session_row(row)]
+    non_regular_rows_excluded = len(rows) - len(regular_rows)
+    calibration_rows = _independent_calibration_rows(regular_rows)
     resolved = [
         row for row in calibration_rows
         if _num((row.get("outcomes") or {}).get("return_60m_pct")) is not None
@@ -925,16 +951,19 @@ def _write_calibration():
     ]
 
     payload = {
-        "schema_version": 6,
+        "schema_version": 7,
         "feature_version": ANALYZER_FEATURE_VERSION,
         "decision_score_version": DECISION_SCORE_VERSION,
         "timeframe_score_version": TIMEFRAME_SCORE_VERSION,
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
         "prediction_rows": len(rows),
+        "regular_session_prediction_rows": len(regular_rows),
+        "non_regular_prediction_rows_excluded": non_regular_rows_excluded,
         "legacy_prediction_rows_excluded": legacy_rows_excluded,
         "legacy_decision_rows_excluded": legacy_decision_rows_excluded,
         "calibration_rows": len(calibration_rows),
-        "calibration_sampling": "one observation per ticker per hour",
+        "calibration_session": "REGULAR",
+        "calibration_sampling": "one regular-session observation per ticker per hour",
         "resolved_60m": len(resolved),
         "calibration_ready": len(resolved) >= 30,
         "calibration_progress": _calibration_stage(len(resolved)),
