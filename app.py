@@ -12,7 +12,11 @@ import streamlit.components.v1 as components
 
 from glass_theme import inject_glass_theme
 from momentum_alerts import alert_message, newly_actionable
-from scanner_runtime import run_scanner_process
+from scanner_runtime import (
+    cadence_health,
+    poll_scanner_process,
+    start_scanner_process,
+)
 
 
 st.set_page_config(
@@ -211,6 +215,11 @@ if "last_auto_scan_at" not in st.session_state:
     st.session_state["last_auto_scan_at"] = 0.0
 if "_scanner_process_running" not in st.session_state:
     st.session_state["_scanner_process_running"] = False
+if "_scanner_async_state" not in st.session_state:
+    st.session_state["_scanner_async_state"] = None
+if "last_auto_scan_started_at" not in st.session_state:
+    st.session_state["last_auto_scan_started_at"] = 0.0
+st.session_state["_combined_scanner_monitor_active"] = True
 
 def _workspace_market_status():
     now_et = datetime.now(ZoneInfo("America/New_York"))
@@ -482,45 +491,77 @@ def _workspace_scanner_monitor():
     now_et = datetime.now(ZoneInfo("America/New_York"))
     enabled = bool(st.session_state.get("auto_scan_enabled", True))
     feed_available = _shell_scanner_feed_available(now_et)
-    elapsed = time.time() - float(
-        st.session_state.get("last_auto_scan_at") or 0.0
-    )
+    now_ts = time.time()
 
-    if (
-        view == "Stock Analyzer"
-        and enabled
-        and feed_available
-        and elapsed >= 120
-        and not st.session_state.get("_scanner_process_running")
-    ):
-        st.session_state["_scanner_process_running"] = True
-        try:
-            result = run_scanner_process(
-                alpaca_key=_shell_secret("ALPACA_API_KEY"),
-                alpaca_secret=_shell_secret("ALPACA_SECRET_KEY"),
-                alpaca_live_feed=_shell_live_feed(),
-                tradier_token=_shell_tradier_token(),
-                discovery_universe_size="1200",
-                timeout_seconds=180,
+    state = st.session_state.get("_scanner_async_state")
+    scan_running = bool(state)
+
+    if state:
+        poll = poll_scanner_process(state)
+        if poll.get("done"):
+            st.session_state["_scanner_async_state"] = None
+            st.session_state["_scanner_process_running"] = False
+            st.session_state["last_auto_scan_at"] = now_ts
+            st.session_state["last_auto_message"] = str(
+                poll.get("message") or ""
             )
-            st.session_state["last_auto_scan_at"] = time.time()
             st.session_state["scanner_out"] = str(
-                result.get("stdout") or ""
+                poll.get("stdout") or ""
             )[-12000:]
             st.session_state["scanner_err"] = str(
-                result.get("stderr") or ""
+                poll.get("stderr") or ""
             )[-6000:]
-            if result.get("runtime_seconds") is not None:
-                st.session_state["scanner_last_runtime_seconds"] = result.get(
+            if poll.get("runtime_seconds") is not None:
+                st.session_state["scanner_last_runtime_seconds"] = poll.get(
                     "runtime_seconds"
                 )
-            if not result.get("ok"):
+            if not poll.get("ok"):
                 st.warning(
                     "Background momentum scan failed: "
-                    + str(result.get("message") or "unknown error")[:260]
+                    + str(poll.get("message") or "unknown error")[:260]
                 )
-        finally:
-            st.session_state["_scanner_process_running"] = False
+            scan_running = False
+        else:
+            scan_running = True
+
+    last_started = float(
+        st.session_state.get("last_auto_scan_started_at")
+        or st.session_state.get("last_auto_scan_at")
+        or 0.0
+    )
+    last_completed = float(st.session_state.get("last_auto_scan_at") or 0.0)
+    next_due_at = max(
+        last_started + 120.0,
+        (last_completed + 15.0) if last_completed else 0.0,
+    )
+    due = now_ts >= next_due_at
+
+    if enabled and feed_available and due and not scan_running:
+        started = start_scanner_process(
+            alpaca_key=_shell_secret("ALPACA_API_KEY"),
+            alpaca_secret=_shell_secret("ALPACA_SECRET_KEY"),
+            alpaca_live_feed=_shell_live_feed(),
+            tradier_token=_shell_tradier_token(),
+            discovery_universe_size="1200",
+            timeout_seconds=180,
+        )
+        if started.get("started"):
+            st.session_state["_scanner_async_state"] = started
+            st.session_state["_scanner_process_running"] = True
+            st.session_state["last_auto_scan_started_at"] = now_ts
+            scan_running = True
+        elif started.get("busy"):
+            # Another browser session or manual scan owns the shared lock.
+            # Retry on the next 15-second monitor tick instead of moving the
+            # two-minute clock forward and silently skipping a scan.
+            scan_running = True
+        else:
+            # Configuration/startup failures should not fire every 15 seconds.
+            st.session_state["last_auto_scan_started_at"] = now_ts
+            st.warning(
+                "Could not start background momentum scan: "
+                + str(started.get("message") or "unknown error")[:260]
+            )
 
     payload = _read_latest_scan_payload()
     new_alerts = _process_momentum_alerts(payload)
@@ -544,31 +585,54 @@ def _workspace_scanner_monitor():
                 + ". **Review it in Analyzer before deciding whether to trade.**"
             )
 
-    if view == "Stock Analyzer":
-        runtime = st.session_state.get("scanner_last_runtime_seconds")
-        if enabled and feed_available:
-            remaining = max(
-                0,
-                120 - (
-                    time.time()
-                    - float(st.session_state.get("last_auto_scan_at") or 0.0)
-                ),
+    runtime = st.session_state.get("scanner_last_runtime_seconds")
+    if runtime is not None:
+        health = cadence_health(runtime, 120.0)
+        if health.get("status") == "overrun":
+            st.warning(
+                "⚠️ **2-minute cadence overrun:** "
+                + str(health.get("message") or "")
+                + " The next scan waits until the current one is fully finished."
             )
-            status = (
-                f"2-minute background scanner ON · next scan ~{int(remaining)}s"
+        elif health.get("status") == "tight":
+            st.caption("⚠️ " + str(health.get("message") or ""))
+
+    if enabled and feed_available:
+        state = st.session_state.get("_scanner_async_state")
+        if state:
+            running_for = max(
+                0,
+                int(now_ts - float(state.get("started_at") or now_ts)),
+            )
+            st.caption(
+                f"2-minute scanner RUNNING · {running_for}s elapsed"
+                + (
+                    f" · previous runtime {float(runtime):.1f}s"
+                    if runtime is not None
+                    else ""
+                )
+            )
+        else:
+            last_started = float(
+                st.session_state.get("last_auto_scan_started_at")
+                or st.session_state.get("last_auto_scan_at")
+                or 0.0
+            )
+            remaining = max(0, int((last_started + 120.0) - now_ts))
+            st.caption(
+                f"2-minute scanner ON · next scan ~{remaining}s"
                 + (
                     f" · last runtime {float(runtime):.1f}s"
                     if runtime is not None
                     else ""
                 )
             )
-            st.caption(status)
-        elif not enabled:
-            st.caption("Background scanner paused because Auto Scan is OFF.")
-        elif not feed_available:
-            st.caption(
-                "Background scanner armed; live scanner feed is currently closed."
-            )
+    elif not enabled:
+        st.caption("Background scanner paused because Auto Scan is OFF.")
+    elif not feed_available:
+        st.caption(
+            "Background scanner armed; live scanner feed is currently closed."
+        )
 
     _browser_alert_control(first_alert)
 
