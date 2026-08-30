@@ -2612,6 +2612,62 @@ def test_manual_scanner_reruns_combined_candidates_after_success():
     assert "st.rerun()" in source
 
 
+def test_v2_skips_alpaca_sip_probe_when_tradier_primary():
+    import analyzer_v2_integration as v2
+
+    class SA:
+        USE_TRADIER = True
+        LIVE_FEED = "iex"
+
+        @staticmethod
+        def snapshot(*args, **kwargs):
+            raise AssertionError("Alpaca SIP probe should be skipped")
+
+    result = v2.prefer_best_live_feed(SA(), "SPY")
+    assert result["provider"] == "tradier", result
+    assert result["alpaca_probe_skipped"] is True, result
+    assert result["active_feed"] == "TRADIER CONSOLIDATED", result
+
+
+def test_v2_market_context_prefers_tradier_quotes():
+    import analyzer_v2_integration as v2
+
+    class SA:
+        USE_TRADIER = True
+        TRADIER_TOKEN = "token"
+        LIVE_FEED = "iex"
+
+        @staticmethod
+        def get_tradier_quotes(symbols, token):
+            assert token == "token"
+            return {
+                "SPY": {"last": 110.0, "prevclose": 100.0},
+                "QQQ": {"last": 105.0, "prevclose": 100.0},
+                "IWM": {"last": 95.0, "prevclose": 100.0},
+            }
+
+        @staticmethod
+        def snapshot(*args, **kwargs):
+            raise AssertionError("Alpaca market context should not be used")
+
+    v2._MARKET_CACHE.clear()
+    result = v2._market_context(SA())
+    assert result["provider"] == "tradier", result
+    assert result["moves"]["SPY"] == 10.0, result
+    assert result["moves"]["QQQ"] == 5.0, result
+    assert result["moves"]["IWM"] == -5.0, result
+
+
+def test_analyzer_health_warns_on_durable_sync_error():
+    from pathlib import Path
+
+    source = Path("analyzer_v2_ui.py").read_text(encoding="utf-8")
+    assert "durable_error" in source
+    assert "durable GitHub sync reported an error" in source
+    assert "MATCH ACTIVE" in source
+    assert "PAUSED OFF-HOURS" in source
+
+
 if __name__ == "__main__":
     tests = [
         test_analyzer_daily_history_prefers_tradier,
@@ -2699,6 +2755,9 @@ if __name__ == "__main__":
         test_analyzer_outcome_regular_session_classifier,
         test_late_scanner_run_is_not_reported_as_normal_complete,
         test_manual_scanner_reruns_combined_candidates_after_success,
+        test_v2_skips_alpaca_sip_probe_when_tradier_primary,
+        test_v2_market_context_prefers_tradier_quotes,
+        test_analyzer_health_warns_on_durable_sync_error,
         test_monday_readiness_blocks_stale_scan_handoffs,
         test_analyzer_live_test_status_exposes_tracking_health,
     ]
