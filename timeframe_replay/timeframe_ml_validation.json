@@ -1,0 +1,252 @@
+{
+  "model_version": "swing-timeframe-ml-v1-shadow",
+  "status": "experimental_not_validated",
+  "historical_validated": false,
+  "production_enabled": false,
+  "target": "close_higher_after_5_trading_days",
+  "samples": 1173,
+  "unique_dates": 48,
+  "unique_symbols": 256,
+  "features": [
+    "day_pct",
+    "gap_pct",
+    "relative_volume",
+    "log10_dollar_volume",
+    "trend_score",
+    "stair_score",
+    "history_score",
+    "market_score",
+    "trend_return_5d_pct",
+    "trend_return_20d_pct",
+    "trend_return_60d_pct",
+    "trend_return_120d_pct",
+    "trend_return_250d_pct",
+    "from_52w_high_pct",
+    "above_52w_low_pct",
+    "stair_step_count",
+    "stair_last_step_pct",
+    "stair_step_acceleration_ratio",
+    "stair_plateau_days",
+    "stair_plateau_range_pct",
+    "stair_plateau_retention_pct",
+    "stair_plateau_volume_ratio",
+    "stair_higher_plateau_count",
+    "stair_structure_score",
+    "stair_reaccelerating",
+    "stair_breakdown",
+    "historical_bias_score",
+    "historical_next_day_up_pct",
+    "historical_sample_count",
+    "broad_market_avg_pct"
+  ],
+  "overall": {
+    "test_samples": 592,
+    "base_higher_rate_pct": 48.1,
+    "model_auc": 0.4949,
+    "hand_score_auc": 0.4695,
+    "model_minus_hand_auc": 0.0255,
+    "mean_fold_auc": 0.508,
+    "brier": 0.2844,
+    "folds_beating_hand_score": 3,
+    "fold_count": 4,
+    "top_decile_higher_rate_lift_pp": -5.7,
+    "probability_bands": {
+      "top_decile": {
+        "n": 59,
+        "avg_probability_pct": 81.73,
+        "higher_rate_pct": 42.4,
+        "avg_return_pct": -1.87
+      },
+      "bottom_decile": {
+        "n": 59,
+        "avg_probability_pct": 22.19,
+        "higher_rate_pct": 55.9,
+        "avg_return_pct": -0.797
+      }
+    }
+  },
+  "folds": [
+    {
+      "fold": 1,
+      "train_samples": 581,
+      "test_samples": 142,
+      "train_start": "2025-09-09",
+      "train_end": "2026-02-24",
+      "test_start": "2026-03-03",
+      "test_end": "2026-04-08",
+      "base_higher_rate_pct": 54.2,
+      "model_auc": 0.4797,
+      "hand_score_auc": 0.5462,
+      "brier": 0.2936,
+      "probability_bands": {
+        "top_decile": {
+          "n": 14,
+          "avg_probability_pct": 79.26,
+          "higher_rate_pct": 35.7,
+          "avg_return_pct": -2.458
+        },
+        "bottom_decile": {
+          "n": 14,
+          "avg_probability_pct": 19.33,
+          "higher_rate_pct": 64.3,
+          "avg_return_pct": 0.255
+        }
+      }
+    },
+    {
+      "fold": 2,
+      "train_samples": 723,
+      "test_samples": 150,
+      "train_start": "2025-09-09",
+      "train_end": "2026-04-08",
+      "test_start": "2026-04-15",
+      "test_end": "2026-05-20",
+      "base_higher_rate_pct": 44.7,
+      "model_auc": 0.5359,
+      "hand_score_auc": 0.4607,
+      "brier": 0.2694,
+      "probability_bands": {
+        "top_decile": {
+          "n": 15,
+          "avg_probability_pct": 79.91,
+          "higher_rate_pct": 40.0,
+          "avg_return_pct": 0.399
+        },
+        "bottom_decile": {
+          "n": 15,
+          "avg_probability_pct": 24.65,
+          "higher_rate_pct": 26.7,
+          "avg_return_pct": -5.899
+        }
+      }
+    },
+    {
+      "fold": 3,
+      "train_samples": 873,
+      "test_samples": 150,
+      "train_start": "2025-09-09",
+      "train_end": "2026-05-20",
+      "test_start": "2026-05-28",
+      "test_end": "2026-07-06",
+      "base_higher_rate_pct": 36.7,
+      "model_auc": 0.51,
+      "hand_score_auc": 0.4775,
+      "brier": 0.3005,
+      "probability_bands": {
+        "top_decile": {
+          "n": 15,
+          "avg_probability_pct": 87.99,
+          "higher_rate_pct": 46.7,
+          "avg_return_pct": -0.324
+        },
+        "bottom_decile": {
+          "n": 15,
+          "avg_probability_pct": 21.6,
+          "higher_rate_pct": 46.7,
+          "avg_return_pct": -3.273
+        }
+      }
+    },
+    {
+      "fold": 4,
+      "train_samples": 1023,
+      "test_samples": 150,
+      "train_start": "2025-09-09",
+      "train_end": "2026-07-06",
+      "test_start": "2026-07-13",
+      "test_end": "2026-08-17",
+      "base_higher_rate_pct": 57.3,
+      "model_auc": 0.5062,
+      "hand_score_auc": 0.488,
+      "brier": 0.2744,
+      "probability_bands": {
+        "top_decile": {
+          "n": 15,
+          "avg_probability_pct": 70.38,
+          "higher_rate_pct": 46.7,
+          "avg_return_pct": -2.41
+        },
+        "bottom_decile": {
+          "n": 15,
+          "avg_probability_pct": 24.37,
+          "higher_rate_pct": 53.3,
+          "avg_return_pct": 1.454
+        }
+      }
+    }
+  ],
+  "feature_importance": [
+    {
+      "feature": "market_score",
+      "importance": 0.051814
+    },
+    {
+      "feature": "stair_structure_score",
+      "importance": 0.049772
+    },
+    {
+      "feature": "broad_market_avg_pct",
+      "importance": 0.046223
+    },
+    {
+      "feature": "trend_return_20d_pct",
+      "importance": 0.043275
+    },
+    {
+      "feature": "stair_score",
+      "importance": 0.041218
+    },
+    {
+      "feature": "day_pct",
+      "importance": 0.0393
+    },
+    {
+      "feature": "stair_step_acceleration_ratio",
+      "importance": 0.038788
+    },
+    {
+      "feature": "stair_last_step_pct",
+      "importance": 0.038641
+    },
+    {
+      "feature": "historical_next_day_up_pct",
+      "importance": 0.038416
+    },
+    {
+      "feature": "relative_volume",
+      "importance": 0.037573
+    },
+    {
+      "feature": "historical_bias_score",
+      "importance": 0.037143
+    },
+    {
+      "feature": "stair_plateau_days",
+      "importance": 0.036827
+    },
+    {
+      "feature": "above_52w_low_pct",
+      "importance": 0.035816
+    },
+    {
+      "feature": "stair_plateau_retention_pct",
+      "importance": 0.0353
+    },
+    {
+      "feature": "trend_return_250d_pct",
+      "importance": 0.034926
+    }
+  ],
+  "validation_gate": {
+    "min_samples": 800,
+    "min_unique_dates": 35,
+    "min_mean_fold_auc": 0.55,
+    "min_overall_auc": 0.55,
+    "min_auc_advantage_vs_hand_score": 0.02,
+    "min_folds_beating_hand_score": 3,
+    "min_top_decile_lift_pp": 5.0
+  },
+  "note": "This is a shadow validation model only. It cannot change live Analyzer scores until historical validation passes and later live out-of-sample confirmation also passes.",
+  "source_replay_version": "historical-timeframe-replay-v1",
+  "source_generated_at_utc": "2026-08-30T00:04:05.987284+00:00"
+}
