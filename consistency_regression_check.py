@@ -2824,6 +2824,128 @@ def test_analyzer_health_warns_on_durable_sync_error():
     assert '"PAUSED OFF-HOURS"' in source
 
 
+def test_scanner_timeframe_fit_separates_intraday_swing_and_longer_term():
+    import scanner_timeframe_fit as stf
+
+    intraday = stf.classify_timeframe_fit(
+        {
+            "momentum_5m": 1.8,
+            "momentum_15m": 3.2,
+            "volume_pace_display": 2.5,
+            "vwap": 10.0,
+            "above_vwap": True,
+            "distance_from_high_pct": 1.0,
+            "spread_pct": 0.8,
+            "day_pct": 7.0,
+        }
+    )
+    assert intraday["primary_fit"] == "INTRADAY", intraday
+    assert intraday["scores"]["INTRADAY"] > intraday["scores"]["SWING"], intraday
+
+    swing = stf.classify_timeframe_fit(
+        {
+            "momentum_5m": -0.2,
+            "momentum_15m": 0.1,
+            "volume_pace_display": 1.1,
+            "vwap": 10.0,
+            "above_vwap": True,
+            "distance_from_high_pct": 5.0,
+            "spread_pct": 1.0,
+            "day_pct": 9.0,
+            "daily_return_5d_pct": 12.0,
+            "daily_return_20d_pct": 14.0,
+            "stair_structure_score": 76.0,
+            "stair_step_count": 3,
+            "stair_reaccelerating": True,
+            "daily_return_40d_pct": 2.0,
+            "daily_above_ma20": True,
+            "daily_above_ma40": False,
+            "daily_ma_alignment": "MIXED",
+            "daily_from_recent_high_pct": -10.0,
+        }
+    )
+    assert swing["primary_fit"] == "SWING", swing
+    assert swing["scores"]["SWING"] > swing["scores"]["LONGER-TERM"], swing
+
+    longer = stf.classify_timeframe_fit(
+        {
+            "momentum_5m": -0.5,
+            "momentum_15m": -0.3,
+            "volume_pace_display": 0.8,
+            "vwap": 10.0,
+            "above_vwap": False,
+            "distance_from_high_pct": 7.0,
+            "spread_pct": 1.0,
+            "day_pct": 5.0,
+            "daily_return_5d_pct": 1.0,
+            "daily_return_20d_pct": 18.0,
+            "daily_return_40d_pct": 35.0,
+            "daily_above_ma20": True,
+            "daily_above_ma40": True,
+            "daily_ma_alignment": "BULLISH",
+            "daily_from_recent_high_pct": -5.0,
+            "stair_structure_score": 58.0,
+            "stair_step_count": 1,
+        }
+    )
+    assert longer["primary_fit"] == "LONGER-TERM", longer
+    assert longer["scores"]["LONGER-TERM"] >= 80.0, longer
+
+
+def test_scanner_longer_term_fit_is_capped_when_history_is_sparse():
+    import scanner_timeframe_fit as stf
+
+    result = stf.classify_timeframe_fit(
+        {
+            "day_pct": 8.0,
+            "daily_return_20d_pct": 20.0,
+        }
+    )
+    assert result["scores"]["LONGER-TERM"] <= 57.0, result
+    assert any(
+        "history coverage is limited" in reason
+        for reason in result["reasons"]["LONGER-TERM"]
+    ), result
+
+
+def test_scanner_timeframe_fit_never_changes_production_rank_fields():
+    import copy
+    import scanner_timeframe_fit as stf
+
+    row = {
+        "symbol": "TEST",
+        "score": 81.0,
+        "opportunity_score": 84.0,
+        "scanner_action": "ANALYZE NOW",
+        "momentum_5m": 1.2,
+        "momentum_15m": 2.0,
+        "volume_pace_display": 2.0,
+        "vwap": 10.0,
+        "above_vwap": True,
+        "distance_from_high_pct": 2.0,
+        "spread_pct": 1.0,
+        "day_pct": 8.0,
+    }
+    before = copy.deepcopy(row)
+    stf.attach_timeframe_fit(row)
+    assert row["score"] == before["score"], row
+    assert row["opportunity_score"] == before["opportunity_score"], row
+    assert row["scanner_action"] == before["scanner_action"], row
+    assert row["timeframe_fit"]["production_rank_impact"] is False, row
+
+
+def test_scanner_ui_exposes_timeframe_filter_without_reranking():
+    from pathlib import Path
+
+    source = Path("scanner_app.py").read_text(encoding="utf-8")
+    assert '"Timeframe focus"' in source
+    assert '"LONGER-TERM"' in source
+    assert "Ranking itself is unchanged" in source
+    assert "BEST FIT" in source
+    combined = Path("app.py").read_text(encoding="utf-8")
+    assert "Grade · Best Fit" in combined
+
+
 if __name__ == "__main__":
     tests = [
         test_analyzer_daily_history_prefers_tradier,
@@ -2837,6 +2959,10 @@ if __name__ == "__main__":
         test_outcome_tracker_runs_after_extended_hours,
         test_scanner_table_volume_pace_formatter_matches_column,
         test_combined_scanner_uses_display_volume_pace_source,
+        test_scanner_timeframe_fit_separates_intraday_swing_and_longer_term,
+        test_scanner_longer_term_fit_is_capped_when_history_is_sparse,
+        test_scanner_timeframe_fit_never_changes_production_rank_fields,
+        test_scanner_ui_exposes_timeframe_filter_without_reranking,
         test_prediction_tracker_skips_closed_market_records,
         test_late_scanner_report_has_explicit_no_horizon_status,
         test_manual_scanner_refreshes_combined_candidates_after_success,
