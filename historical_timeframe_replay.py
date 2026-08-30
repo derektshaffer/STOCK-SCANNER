@@ -43,8 +43,11 @@ from scanner_behavior import multi_session_behavior_features
 
 
 ET = ZoneInfo("America/New_York")
-REPLAY_VERSION = "historical-timeframe-replay-v1"
+REPLAY_VERSION = "historical-timeframe-replay-v2-path-target"
 TIMEFRAME_SCORE_VERSION = "timeframe-fit-v1"
+SWING_TARGET_PCT = 5.0
+SWING_STOP_PCT = 4.0
+SWING_HORIZON_SESSIONS = 5
 DEFAULT_REPLAY_DAYS = int(os.environ.get("TIMEFRAME_REPLAY_TRADING_DAYS", "240") or 240)
 DEFAULT_STRIDE = int(os.environ.get("TIMEFRAME_REPLAY_STRIDE_DAYS", "5") or 5)
 DEFAULT_UNIVERSE_SIZE = int(os.environ.get("TIMEFRAME_REPLAY_UNIVERSE_SIZE", "250") or 250)
@@ -271,6 +274,104 @@ def _future_returns(rows, idx, entry_price):
                 3,
             )
     return outcomes
+
+
+def _swing_path_outcomes(
+    rows,
+    idx,
+    entry_price,
+    *,
+    target_pct=SWING_TARGET_PCT,
+    stop_pct=SWING_STOP_PCT,
+    horizon_sessions=SWING_HORIZON_SESSIONS,
+):
+    """Measure a trade-like swing path using only future daily OHLC bars.
+
+    A target and stop touched on the same daily bar is intentionally marked
+    ambiguous because daily data cannot establish intraday ordering. Ambiguous
+    rows are excluded from ML labels rather than guessed.
+    """
+    entry = _num(entry_price)
+    if entry is None or entry <= 0:
+        return {}
+
+    target_price = entry * (1.0 + float(target_pct) / 100.0)
+    stop_price = entry * (1.0 - float(stop_pct) / 100.0)
+    future = rows[idx + 1 : idx + 1 + int(horizon_sessions)]
+    if len(future) < int(horizon_sessions):
+        return {}
+
+    max_high = None
+    min_low = None
+    first_event = None
+    first_hit_session = None
+    ambiguous_same_day = False
+
+    for session_number, (_day, bar) in enumerate(future, start=1):
+        high = _num(bar.get("h"))
+        low = _num(bar.get("l"))
+        if high is not None:
+            max_high = high if max_high is None else max(max_high, high)
+        if low is not None:
+            min_low = low if min_low is None else min(min_low, low)
+
+        if first_event is not None:
+            continue
+
+        hit_target = high is not None and high >= target_price
+        hit_stop = low is not None and low <= stop_price
+        if hit_target and hit_stop:
+            first_event = "AMBIGUOUS_SAME_DAY"
+            first_hit_session = session_number
+            ambiguous_same_day = True
+        elif hit_target:
+            first_event = "TARGET"
+            first_hit_session = session_number
+        elif hit_stop:
+            first_event = "STOP"
+            first_hit_session = session_number
+
+    if first_event is None:
+        first_event = "NEITHER"
+
+    label = None
+    if first_event == "TARGET":
+        label = 1
+    elif first_event in {"STOP", "NEITHER"}:
+        label = 0
+
+    mfe = (
+        (max_high / entry - 1.0) * 100.0
+        if max_high is not None
+        else None
+    )
+    mae = (
+        (min_low / entry - 1.0) * 100.0
+        if min_low is not None
+        else None
+    )
+
+    return {
+        "swing_target_pct": float(target_pct),
+        "swing_stop_pct": float(stop_pct),
+        "swing_horizon_sessions": int(horizon_sessions),
+        "swing_target_before_stop_5d": label,
+        "swing_first_event_5d": first_event,
+        "swing_first_hit_session": first_hit_session,
+        "swing_ambiguous_same_day_5d": ambiguous_same_day,
+        "swing_mfe_5d_pct": round(mfe, 3) if mfe is not None else None,
+        "swing_mae_5d_pct": round(mae, 3) if mae is not None else None,
+    }
+
+
+def _future_close_return(daily_index, symbol, replay_day, sessions):
+    rows = daily_index.get(symbol) or []
+    idx = _date_index(rows).get(replay_day)
+    if idx is None or idx + sessions >= len(rows):
+        return None
+    entry = _num(rows[idx][1].get("c"))
+    future = _num(rows[idx + sessions][1].get("c"))
+    return _pct(future, entry)
 
 
 def _daily_move_for(daily_index, symbol, replay_day):
@@ -686,6 +787,21 @@ def main():
             coverage,
         )
         outcomes = _future_returns(history, idx, price)
+        outcomes.update(_swing_path_outcomes(history, idx, price))
+        spy_return_5d = _future_close_return(
+            daily_index,
+            "SPY",
+            replay_day,
+            SWING_HORIZON_SESSIONS,
+        )
+        if spy_return_5d is not None:
+            outcomes["spy_return_5d_pct"] = round(spy_return_5d, 3)
+            stock_return_5d = _num(outcomes.get("return_5d_pct"))
+            if stock_return_5d is not None:
+                outcomes["excess_return_vs_spy_5d_pct"] = round(
+                    stock_return_5d - spy_return_5d,
+                    3,
+                )
 
         if max(swing_score, long_term_score) < 55 or abs(swing_score - long_term_score) < 4:
             best_fit = "MIXED SWING/LONG"
@@ -757,7 +873,7 @@ def main():
     scanner_summary = scanner_replay.get("summary") or {}
 
     payload = {
-        "schema_version": 1,
+        "schema_version": 2,
         "replay_version": REPLAY_VERSION,
         "timeframe_score_version": TIMEFRAME_SCORE_VERSION,
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
@@ -784,6 +900,7 @@ def main():
                 "historical analog score omits its intraday VWAP-reclaim subcomponent",
                 "SEC dilution replay uses filing-form recency and does not re-download old filing text keywords",
                 "daily replay validates Swing/Longer-term at EOD; intraday validation stays in the 5-minute scanner replay",
+                "when a +5% target and -4% stop are both touched on the same daily bar, ordering is unknowable and that row is excluded from the path-target ML label",
             ],
         },
         "summary": {
@@ -796,6 +913,79 @@ def main():
                 (row.get("outcomes") or {}).get("return_5d_pct") is not None
                 for row in observations
             ),
+            "swing_path_target": {
+                "target_pct": SWING_TARGET_PCT,
+                "stop_pct": SWING_STOP_PCT,
+                "horizon_sessions": SWING_HORIZON_SESSIONS,
+                "labeled": sum(
+                    (row.get("outcomes") or {}).get(
+                        "swing_target_before_stop_5d"
+                    ) is not None
+                    for row in observations
+                ),
+                "target_first": sum(
+                    (row.get("outcomes") or {}).get(
+                        "swing_target_before_stop_5d"
+                    ) == 1
+                    for row in observations
+                ),
+                "ambiguous_same_day": sum(
+                    bool(
+                        (row.get("outcomes") or {}).get(
+                            "swing_ambiguous_same_day_5d"
+                        )
+                    )
+                    for row in observations
+                ),
+                "avg_mfe_pct": round(
+                    statistics.mean(
+                        [
+                            value
+                            for row in observations
+                            for value in [
+                                _num(
+                                    (row.get("outcomes") or {}).get(
+                                        "swing_mfe_5d_pct"
+                                    )
+                                )
+                            ]
+                            if value is not None
+                        ]
+                    ),
+                    3,
+                )
+                if any(
+                    _num(
+                        (row.get("outcomes") or {}).get("swing_mfe_5d_pct")
+                    ) is not None
+                    for row in observations
+                )
+                else None,
+                "avg_mae_pct": round(
+                    statistics.mean(
+                        [
+                            value
+                            for row in observations
+                            for value in [
+                                _num(
+                                    (row.get("outcomes") or {}).get(
+                                        "swing_mae_5d_pct"
+                                    )
+                                )
+                            ]
+                            if value is not None
+                        ]
+                    ),
+                    3,
+                )
+                if any(
+                    _num(
+                        (row.get("outcomes") or {}).get("swing_mae_5d_pct")
+                    ) is not None
+                    for row in observations
+                )
+                else None,
+            },
             "long_term_20d_resolved": sum(
                 (row.get("outcomes") or {}).get("return_20d_pct") is not None
                 for row in observations
@@ -833,6 +1023,10 @@ def main():
     print(f"Wrote historical timeframe replay: {OUTPUT_PATH}")
     print("TIMEFRAME_REPLAY_SUMMARY=" + json.dumps(payload["summary"], sort_keys=True))
     print("TIMEFRAME_REPLAY_SWING_5D=" + json.dumps(swing_5, sort_keys=True))
+    print(
+        "TIMEFRAME_REPLAY_SWING_PATH="
+        + json.dumps(payload["summary"]["swing_path_target"], sort_keys=True)
+    )
     print("TIMEFRAME_REPLAY_LONG_20D=" + json.dumps(long_20, sort_keys=True))
 
 
