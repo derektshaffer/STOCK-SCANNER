@@ -2320,8 +2320,57 @@ def test_live_swing_research_calibration_dedupes_ticker_day():
     assert item["target_before_stop_rate_pct"] == 50.0, item
 
 
+def test_analyzer_daily_history_prefers_tradier():
+    start = datetime(2026, 8, 1, tzinfo=timezone.utc)
+    end = datetime(2026, 8, 28, tzinfo=timezone.utc)
+    expected = [
+        {
+            "t": "2026-08-27T20:00:00Z",
+            "o": 10.0,
+            "h": 10.5,
+            "l": 9.8,
+            "c": 10.3,
+            "v": 100000,
+        }
+    ]
+
+    sa.USE_TRADIER_HISTORY = True
+    sa.get_tradier_history_bars = (
+        lambda symbol, token, s, e, interval="daily": expected
+    )
+    rows, source = sa.try_sip_delayed_bars(
+        "TEST",
+        "1Day",
+        start,
+        end,
+        320,
+    )
+    assert rows == expected, rows
+    assert source == "Tradier consolidated daily", source
+
+
+def test_monday_readiness_blocks_stale_scan_handoffs():
+    from pathlib import Path
+
+    source = Path("app.py").read_text(encoding="utf-8")
+    assert "latest_scan_stale" in source
+    assert "latest_scan_age > 8 * 60" in source
+    assert "disabled=latest_scan_stale" in source
+    assert "old setup cannot be mistaken for a current one" in source
+
+
+def test_analyzer_live_test_status_exposes_tracking_health():
+    from pathlib import Path
+
+    source = Path("analyzer_v2_ui.py").read_text(encoding="utf-8")
+    assert "Live test status" in source
+    assert "Durable tracking **ON**" in source
+    assert "Swing forward tracking **" in source
+
+
 if __name__ == "__main__":
     tests = [
+        test_analyzer_daily_history_prefers_tradier,
         test_analyzer_prefers_tradier,
         test_analyzer_falls_back_cleanly,
         test_scanner_ml_version_gate,
@@ -2394,6 +2443,8 @@ if __name__ == "__main__":
         test_live_swing_research_flags_match_frozen_rules,
         test_live_swing_research_flags_never_change_scores,
         test_live_swing_research_calibration_dedupes_ticker_day,
+        test_monday_readiness_blocks_stale_scan_handoffs,
+        test_analyzer_live_test_status_exposes_tracking_health,
     ]
     for test in tests:
         test()
