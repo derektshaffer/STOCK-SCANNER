@@ -1093,7 +1093,8 @@ if view == "Momentum Scanner":
             symbol = row["symbol"]
             grade = row.get("grade") or "—"
             fit = str(row.get("timeframe_best_fit") or "—")
-            grade_fit = f"{grade} · {fit}" if fit != "—" else grade
+            fit_display = "MULTIPLE TIMEFRAMES" if fit == "MIXED" else fit
+            grade_fit = f"{grade} · {fit_display}" if fit_display != "—" else grade
             score_text = _fmt_num(row.get("score"), "{:.0f}")
             score_label = (
                 "Trend Candidate Score"

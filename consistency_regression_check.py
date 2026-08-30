@@ -392,6 +392,18 @@ def test_combined_candidate_list_uses_shared_trade_horizon_filter():
     assert "_trade_horizon_matches(row, trade_horizon)" in app_source
 
 
+
+def test_mixed_timeframe_is_labeled_multiple_timeframes():
+    from pathlib import Path
+
+    scanner_source = Path("scanner_app.py").read_text(encoding="utf-8")
+    app_source = Path("app.py").read_text(encoding="utf-8")
+    assert '"MIXED": "Multiple Timeframes"' in scanner_source
+    assert '"MULTIPLE TIMEFRAMES" if fit == "MIXED" else fit' in scanner_source
+    assert '"MULTIPLE TIMEFRAMES" if fit == "MIXED" else fit' in app_source
+    assert "<b>Multiple Timeframes</b> means two horizons scored similarly." in scanner_source
+
+
 def test_historical_trade_quality_path_is_conservative():
     import historical_scanner_replay as replay
 
@@ -3519,6 +3531,7 @@ if __name__ == "__main__":
         test_offhours_score_is_labeled_trend_candidate_score,
         test_uncapped_trend_candidate_score_is_preserved_in_outcome_cohort,
         test_combined_candidate_list_uses_shared_trade_horizon_filter,
+        test_mixed_timeframe_is_labeled_multiple_timeframes,
         test_historical_trade_quality_path_is_conservative,
         test_scanner_trade_quality_path_is_causal_and_conservative,
         test_stream_seed_rejects_non_tradier_metrics,

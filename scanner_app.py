@@ -26,7 +26,7 @@ TRADE_HORIZON_LABELS = {
     "INTRADAY": "Short term (intraday)",
     "SWING": "Medium term (swing)",
     "LONGER-TERM": "Long term",
-    "MIXED": "Mixed / flexible",
+    "MIXED": "Multiple Timeframes",
 }
 
 st.set_page_config(
@@ -649,8 +649,9 @@ def card(c):
         "LONGER-TERM": "amber",
         "MIXED": "blue",
     }.get(fit, "amber")
+    fit_display = "MULTIPLE TIMEFRAMES" if fit == "MIXED" else fit
     fit_badge = (
-        f'<span class="badge {fit_badge_cls}">BEST FIT {html.escape(fit)}</span>'
+        f'<span class="badge {fit_badge_cls}">BEST FIT {html.escape(fit_display)}</span>'
     )
     fit_reason = str(c.get("timeframe_fit_reason") or "")
 
@@ -730,7 +731,11 @@ def to_df(records):
                 "Status": c.get("setup_label"),
                 "Action": c.get("scanner_action"),
                 "Action Reason": c.get("scanner_action_reason"),
-                "Best Fit": c.get("timeframe_best_fit") or "UNKNOWN",
+                "Best Fit": (
+                    "MULTIPLE TIMEFRAMES"
+                    if str(c.get("timeframe_best_fit") or "").upper() == "MIXED"
+                    else c.get("timeframe_best_fit") or "UNKNOWN"
+                ),
                 "Fit Confidence": c.get("timeframe_fit_confidence") or "—",
                 "Intraday Fit": c.get("timeframe_intraday_score"),
                 "Swing Fit": c.get("timeframe_swing_score"),
@@ -1323,7 +1328,7 @@ st.markdown(
     <div class="legend-item">
       <div class="legend-term">Best Fit — Intraday / Swing / Longer-Term</div>
       <div class="legend-def">
-        This is a separate horizon classification, not a buy signal. <b>Intraday</b> emphasizes same-day momentum, VWAP, volume and execution. <b>Swing</b> emphasizes roughly 2–10 trading days of continuation and multi-session structure. <b>Longer-Term</b> is a technical screen for roughly 2–8 weeks and should be confirmed in Analyzer with fundamentals, dilution/filings and catalyst durability. <b>Mixed</b> means two horizons scored similarly. This label does not change the scanner's momentum ranking or ACTION.
+        This is a separate horizon classification, not a buy signal. <b>Intraday</b> emphasizes same-day momentum, VWAP, volume and execution. <b>Swing</b> emphasizes roughly 2–10 trading days of continuation and multi-session structure. <b>Longer-Term</b> is a technical screen for roughly 2–8 weeks and should be confirmed in Analyzer with fundamentals, dilution/filings and catalyst durability. <b>Multiple Timeframes</b> means two horizons scored similarly. This label does not change the scanner's momentum ranking or ACTION.
       </div>
     </div>
     <div class="legend-item">
