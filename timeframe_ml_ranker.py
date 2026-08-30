@@ -308,21 +308,43 @@ def _chronological_folds(rows):
     dates = sorted({row["date"] for row in rows})
     if len(dates) < 24:
         return []
-    test_block = max(4, len(dates) // 8)
-    fold_count = 4
+
+    # Use more walk-forward eras once the replay spans multiple years. This
+    # keeps validation sensitive to regime changes rather than letting one
+    # recent block dominate the result.
+    if len(dates) >= 120:
+        fold_count = 6
+        test_block = max(10, len(dates) // 12)
+        min_train_samples = 500
+        min_test_samples = 150
+    elif len(dates) >= 60:
+        fold_count = 5
+        test_block = max(6, len(dates) // 10)
+        min_train_samples = 350
+        min_test_samples = 100
+    else:
+        fold_count = 4
+        test_block = max(4, len(dates) // 8)
+        min_train_samples = 250
+        min_test_samples = 75
+
     initial_train = len(dates) - fold_count * test_block
-    if initial_train < 16:
-        fold_count = 3
+    while fold_count > 3 and initial_train < max(16, test_block * 2):
+        fold_count -= 1
         initial_train = len(dates) - fold_count * test_block
+
     folds = []
     for fold_index in range(fold_count):
         test_start = initial_train + fold_index * test_block
-        test_end = test_start + test_block
+        test_end = min(len(dates), test_start + test_block)
         train_dates = set(dates[:test_start])
         test_dates = set(dates[test_start:test_end])
         train = [row for row in rows if row["date"] in train_dates]
         test = [row for row in rows if row["date"] in test_dates]
-        if len(train) >= 250 and len(test) >= 75:
+        if (
+            len(train) >= min_train_samples
+            and len(test) >= min_test_samples
+        ):
             folds.append((train, test, sorted(train_dates), sorted(test_dates)))
     return folds
 
@@ -496,9 +518,13 @@ def validate(rows):
             1,
         )
 
+    unique_dates = {row["date"] for row in rows}
+    unique_years = {date_text[:4] for date_text in unique_dates if date_text}
+
     historical_validated = bool(
-        len(rows) >= 800
-        and len({row["date"] for row in rows}) >= 35
+        len(rows) >= 2500
+        and len(unique_dates) >= 120
+        and len(unique_years) >= 4
         and mean_fold_auc is not None
         and mean_fold_auc >= 0.55
         and overall_model_auc is not None
@@ -550,7 +576,9 @@ def validate(rows):
             f"within_{SWING_HORIZON_SESSIONS}_trading_sessions"
         ),
         "samples": len(rows),
-        "unique_dates": len({row["date"] for row in rows}),
+        "unique_dates": len(unique_dates),
+        "unique_years": len(unique_years),
+        "calendar_years": sorted(unique_years),
         "unique_symbols": len({row["symbol"] for row in rows}),
         "features": FEATURES,
         "base_features": BASE_FEATURES,
@@ -604,8 +632,9 @@ def validate(rows):
         "folds": fold_reports,
         "feature_importance": feature_importance[:15],
         "validation_gate": {
-            "min_samples": 800,
-            "min_unique_dates": 35,
+            "min_samples": 2500,
+            "min_unique_dates": 120,
+            "min_calendar_years": 4,
             "min_mean_fold_auc": 0.55,
             "min_overall_auc": 0.55,
             "min_auc_advantage_vs_hand_score": 0.02,
@@ -618,7 +647,9 @@ def validate(rows):
             "Same-day target/stop touches are excluded because daily OHLC cannot "
             "establish order. The same folds also train an otherwise identical "
             "baseline model without regime features, so regime value is measured "
-            "directly. It cannot change live Analyzer scores until historical "
+            "directly. Multi-year validation also requires at least four calendar "
+            "years and 120 independent replay dates. It cannot change live Analyzer "
+            "scores until historical "
             "validation and later live out-of-sample confirmation pass."
         ),
     }
