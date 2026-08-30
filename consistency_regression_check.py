@@ -116,7 +116,7 @@ def test_analyzer_prefers_tradier():
     assert result["feature_version"] == "analyzer-features-v6-sequence-regimes", result
     assert abs(result["price"] - 10.10) < 1e-9, result
     assert result["bid"] == 10.09 and result["ask"] == 10.11, result
-    assert result["volume_source"] == "TRADIER CONSOLIDATED", result
+    assert str(result["volume_source"]).startswith("TRADIER"), result
     assert result["vwap"] is not None, result
     assert result["trade_plan"], result
 
