@@ -11,6 +11,8 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 from glass_theme import inject_glass_theme
+from momentum_alerts import alert_message, newly_actionable
+from scanner_runtime import run_scanner_process
 
 
 st.set_page_config(
@@ -203,6 +205,12 @@ st.markdown(
 VIEWS = ("Momentum Scanner", "Stock Analyzer")
 if st.session_state.get("app_view") not in VIEWS:
     st.session_state["app_view"] = "Momentum Scanner"
+if "auto_scan_enabled" not in st.session_state:
+    st.session_state["auto_scan_enabled"] = True
+if "last_auto_scan_at" not in st.session_state:
+    st.session_state["last_auto_scan_at"] = 0.0
+if "_scanner_process_running" not in st.session_state:
+    st.session_state["_scanner_process_running"] = False
 
 def _workspace_market_status():
     now_et = datetime.now(ZoneInfo("America/New_York"))
@@ -216,6 +224,154 @@ def _workspace_market_status():
     if weekday and 16 * 60 <= minutes < 20 * 60:
         return now_et, True, "AFTER-HOURS"
     return now_et, False, "MARKET CLOSED"
+
+
+def _shell_secret(name):
+    try:
+        return str(st.secrets[name]).strip()
+    except Exception:
+        return os.environ.get(name, "").strip()
+
+
+def _shell_tradier_token():
+    return _shell_secret("TRADIER_ACCESS_TOKEN") or _shell_secret("TRADIER_TOKEN")
+
+
+def _shell_live_feed():
+    feed = (_shell_secret("ALPACA_LIVE_FEED") or "iex").lower().strip()
+    return feed if feed in {"iex", "sip"} else "iex"
+
+
+def _shell_scanner_feed_available(now_et):
+    if now_et.weekday() >= 5:
+        return False
+    minute = now_et.hour * 60 + now_et.minute
+    if _shell_tradier_token() or _shell_live_feed() == "sip":
+        return 4 * 60 <= minute < 20 * 60
+    return 8 * 60 <= minute < 17 * 60
+
+
+def _read_latest_scan_payload():
+    path = Path("scan_logs/latest_scan.json")
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+
+
+def _process_momentum_alerts(payload):
+    if not payload:
+        return []
+    scan_key = str(payload.get("scan_time_et") or "").strip()
+    if not scan_key:
+        return []
+    previous_scan = st.session_state.get("_momentum_alert_processed_scan")
+    previous_keys = st.session_state.get("_momentum_alert_current_keys") or []
+
+    new_rows, current_keys = newly_actionable(payload, previous_keys)
+    st.session_state["_momentum_alert_current_keys"] = sorted(current_keys)
+    st.session_state["_momentum_alert_processed_scan"] = scan_key
+
+    if previous_scan is None:
+        return []
+    if scan_key == previous_scan:
+        return []
+
+    if new_rows:
+        history = list(st.session_state.get("_momentum_alert_history") or [])
+        now_ts = time.time()
+        for row in new_rows:
+            history.append(
+                {
+                    "symbol": str(row.get("symbol") or "").upper(),
+                    "message": alert_message(row),
+                    "detected_at": now_ts,
+                    "scan_time_et": scan_key,
+                }
+            )
+        st.session_state["_momentum_alert_history"] = history[-12:]
+    return new_rows
+
+
+def _browser_alert_control(alert_row=None):
+    alert_payload = None
+    if alert_row:
+        alert_payload = {
+            "symbol": str(alert_row.get("symbol") or "").upper(),
+            "body": alert_message(alert_row)
+            + " · Review in Analyzer; this is not an automatic buy signal.",
+        }
+    payload_json = json.dumps(alert_payload)
+    components.html(
+        f"""
+        <style>
+          html,body{{margin:0;padding:0;background:transparent;color:#91a7c2;
+            font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;}}
+          .wrap{{display:flex;align-items:center;gap:8px;height:28px;}}
+          button{{border:1px solid rgba(120,150,190,.35);background:#111b2e;
+            color:#dcecff;border-radius:8px;padding:4px 9px;font-weight:800;
+            cursor:pointer;font-size:11px;}}
+          #state{{font-size:11px;font-weight:700;}}
+        </style>
+        <div class="wrap">
+          <button id="notify">🔔 Browser alerts</button>
+          <span id="state"></span>
+        </div>
+        <script>
+        (() => {{
+          const p = window.parent;
+          const btn = document.getElementById('notify');
+          const state = document.getElementById('state');
+          const hasNotifications = !!p.Notification;
+
+          function sync() {{
+            if (!hasNotifications) {{
+              btn.disabled = true;
+              state.textContent = 'browser notifications unavailable';
+              return;
+            }}
+            const permission = p.Notification.permission;
+            if (permission === 'granted') {{
+              btn.textContent = '🔔 Browser alerts ON';
+              state.textContent = '';
+            }} else if (permission === 'denied') {{
+              btn.textContent = '🔕 Browser alerts blocked';
+              state.textContent = 'enable them in browser site settings';
+            }} else {{
+              btn.textContent = '🔔 Enable browser alerts';
+              state.textContent = '';
+            }}
+          }}
+
+          btn.onclick = async () => {{
+            if (!hasNotifications) return;
+            try {{ await p.Notification.requestPermission(); }} catch (_) {{}}
+            sync();
+          }};
+
+          sync();
+          const alertPayload = {payload_json};
+          if (alertPayload) {{
+            const oldTitle = p.document.title;
+            p.document.title = '🚨 ' + alertPayload.symbol + ' Momentum Alert';
+            p.setTimeout(() => {{ p.document.title = oldTitle; }}, 30000);
+            if (hasNotifications && p.Notification.permission === 'granted') {{
+              try {{
+                new p.Notification(
+                  'Momentum Alert · ' + alertPayload.symbol,
+                  {{body: alertPayload.body}}
+                );
+              }} catch (_) {{}}
+            }}
+          }}
+        }})();
+        </script>
+        """,
+        height=30,
+        scrolling=False,
+    )
 
 
 previous_rendered_view = st.session_state.get("_rendered_app_view")
@@ -320,6 +476,105 @@ if view != previous_rendered_view:
     if view == "Momentum Scanner" and previous_rendered_view == "Stock Analyzer":
         st.session_state["_scanner_return_grace_until"] = time.time() + 2.5
     st.session_state["_rendered_app_view"] = view
+
+@st.fragment(run_every=15)
+def _workspace_scanner_monitor():
+    now_et = datetime.now(ZoneInfo("America/New_York"))
+    enabled = bool(st.session_state.get("auto_scan_enabled", True))
+    feed_available = _shell_scanner_feed_available(now_et)
+    elapsed = time.time() - float(
+        st.session_state.get("last_auto_scan_at") or 0.0
+    )
+
+    if (
+        view == "Stock Analyzer"
+        and enabled
+        and feed_available
+        and elapsed >= 120
+        and not st.session_state.get("_scanner_process_running")
+    ):
+        st.session_state["_scanner_process_running"] = True
+        try:
+            result = run_scanner_process(
+                alpaca_key=_shell_secret("ALPACA_API_KEY"),
+                alpaca_secret=_shell_secret("ALPACA_SECRET_KEY"),
+                alpaca_live_feed=_shell_live_feed(),
+                tradier_token=_shell_tradier_token(),
+                discovery_universe_size="1200",
+                timeout_seconds=180,
+            )
+            st.session_state["last_auto_scan_at"] = time.time()
+            st.session_state["scanner_out"] = str(
+                result.get("stdout") or ""
+            )[-12000:]
+            st.session_state["scanner_err"] = str(
+                result.get("stderr") or ""
+            )[-6000:]
+            if result.get("runtime_seconds") is not None:
+                st.session_state["scanner_last_runtime_seconds"] = result.get(
+                    "runtime_seconds"
+                )
+            if not result.get("ok"):
+                st.warning(
+                    "Background momentum scan failed: "
+                    + str(result.get("message") or "unknown error")[:260]
+                )
+        finally:
+            st.session_state["_scanner_process_running"] = False
+
+    payload = _read_latest_scan_payload()
+    new_alerts = _process_momentum_alerts(payload)
+    first_alert = new_alerts[0] if new_alerts else None
+
+    for row in new_alerts[:3]:
+        st.toast(
+            "ACTIONABLE MOMENTUM ALERT · "
+            + alert_message(row)
+            + " · Review in Analyzer.",
+            icon="📈",
+        )
+
+    history = list(st.session_state.get("_momentum_alert_history") or [])
+    if history:
+        latest = history[-1]
+        if time.time() - float(latest.get("detected_at") or 0) <= 600:
+            st.warning(
+                "🚨 **Actionable Momentum Alert:** "
+                + str(latest.get("message") or "")
+                + ". **Review it in Analyzer before deciding whether to trade.**"
+            )
+
+    if view == "Stock Analyzer":
+        runtime = st.session_state.get("scanner_last_runtime_seconds")
+        if enabled and feed_available:
+            remaining = max(
+                0,
+                120 - (
+                    time.time()
+                    - float(st.session_state.get("last_auto_scan_at") or 0.0)
+                ),
+            )
+            status = (
+                f"2-minute background scanner ON · next scan ~{int(remaining)}s"
+                + (
+                    f" · last runtime {float(runtime):.1f}s"
+                    if runtime is not None
+                    else ""
+                )
+            )
+            st.caption(status)
+        elif not enabled:
+            st.caption("Background scanner paused because Auto Scan is OFF.")
+        elif not feed_available:
+            st.caption(
+                "Background scanner armed; live scanner feed is currently closed."
+            )
+
+    _browser_alert_control(first_alert)
+
+
+_workspace_scanner_monitor()
+
 
 # Real render slots for the Momentum Scanner controls. scanner_app.py fills
 # these later, but their position is fixed here directly under the workspace
