@@ -355,6 +355,17 @@ def test_offhours_outcomes_include_two_day_horizon():
     assert tracker.HORIZONS == (1, 2, 3, 5, 10, 20, 40), tracker.HORIZONS
 
 
+
+def test_offhours_score_is_labeled_trend_candidate_score():
+    from pathlib import Path
+
+    app_source = Path("app.py").read_text(encoding="utf-8")
+    scanner_source = Path("scanner_app.py").read_text(encoding="utf-8")
+    assert '"Trend Candidate Score"' in app_source
+    assert '"Trend Candidate Score": row.get("daily_discovery_score")' in scanner_source
+    assert "A high Trend Candidate Score means" in scanner_source
+
+
 def test_historical_trade_quality_path_is_conservative():
     import historical_scanner_replay as replay
 
@@ -3474,6 +3485,7 @@ if __name__ == "__main__":
         test_scanner_latest_snapshot_write_is_atomic,
         test_scanner_and_analyzer_use_midpoint_spread_formula,
         test_offhours_outcomes_include_two_day_horizon,
+        test_offhours_score_is_labeled_trend_candidate_score,
         test_historical_trade_quality_path_is_conservative,
         test_scanner_trade_quality_path_is_causal_and_conservative,
         test_stream_seed_rejects_non_tradier_metrics,

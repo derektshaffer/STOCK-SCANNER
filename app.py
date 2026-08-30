@@ -1064,6 +1064,11 @@ if view == "Momentum Scanner":
             fit = str(row.get("timeframe_best_fit") or "—")
             grade_fit = f"{grade} · {fit}" if fit != "—" else grade
             score_text = _fmt_num(row.get("score"), "{:.0f}")
+            score_label = (
+                "Trend Candidate Score"
+                if row.get("source_mode") == "offhours_daily_timeframe"
+                else "Score"
+            )
             action_text, action_cls, action_label = _action_display(row)
             day_text = _fmt_num(row.get("day_pct"), "{:+.1f}%")
             volume_text, volume_value = _volume_pace_display(row)
@@ -1084,7 +1089,7 @@ if view == "Momentum Scanner":
                     f'    <div class="combined-stat-value {grade_cls}">{html.escape(grade_fit)}</div>'
                     f'  </div>'
                     f'  <div class="combined-stat">'
-                    f'    <div class="combined-stat-label">Score</div>'
+                    f'    <div class="combined-stat-label">{score_label}</div>'
                     f'    <div class="combined-stat-value">{score_text}</div>'
                     f'  </div>'
                     f'  <div class="combined-stat" title="{html.escape(str(row.get("scanner_action_reason") or ""))}">'
@@ -1168,7 +1173,8 @@ TECHNICAL_TOOLTIPS = {
     "15 MIN": "Price momentum over roughly the last fifteen minutes, giving a broader view than the five-minute reading.",
     "MOMENTUM": "The speed and persistence of price movement. Stronger momentum means price is moving more decisively in one direction.",
     "SETUP SCORE": "A combined technical-quality score using factors such as momentum, VWAP, volume, liquidity and price location. It is not a probability of profit.",
-    "SCORE": "A combined technical-quality score used to rank the scanner's setups. Higher is stronger, but it is not a guaranteed probability of success.",
+    "SCORE": "A combined technical-quality score used to rank the scanner's live setups. Higher is stronger, but it is not a guaranteed probability of success.",
+    "TREND CANDIDATE SCORE": "An off-hours ranking score for how strongly a stock matches the scanner's multi-day trend criteria. It is a discovery/ranking score, not entry readiness or a probability of profit.",
     "ACTION": "A scanner-level review cue. ANALYZE NOW means the setup deserves immediate deeper review in Analyzer; it is not a trade instruction.",
     "ANALYZE NOW": "The scanner's strongest review cue. It means the setup deserves immediate Analyzer review, not that you should automatically enter a trade.",
     "WAIT PULLBACK": "Momentum may remain attractive, but the current price looks too stretched to chase. Wait for a better pullback area and confirm it in Analyzer.",

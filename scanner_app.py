@@ -466,7 +466,7 @@ def render_offhours_timeframe_panel(payload):
                 "Ticker": row.get("symbol"),
                 "Grade": row.get("daily_setup_grade"),
                 "Review": row.get("daily_review_action"),
-                "Daily Score": row.get("daily_discovery_score"),
+                "Trend Candidate Score": row.get("daily_discovery_score"),
                 "Swing Fit": row.get("timeframe_swing_score"),
                 "Longer Fit": row.get("timeframe_longer_term_score"),
                 "5D %": row.get("daily_return_5d_pct"),
@@ -486,7 +486,7 @@ def render_offhours_timeframe_panel(payload):
         hide_index=True,
         width="stretch",
         column_config={
-            "Daily Score": st.column_config.NumberColumn(format="%.1f"),
+            "Trend Candidate Score": st.column_config.NumberColumn(format="%.1f"),
             "Swing Fit": st.column_config.NumberColumn(format="%.0f"),
             "Longer Fit": st.column_config.NumberColumn(format="%.0f"),
             "5D %": st.column_config.NumberColumn(format="%.1f%%"),
@@ -510,8 +510,8 @@ def render_offhours_timeframe_panel(payload):
             structure.
 
             **It is deliberately separate from live Scanner ACTION and intraday
-            ML.** A high daily score means "worth reviewing for a multi-day or
-            multi-week setup," not "buy now."
+            ML.** A high Trend Candidate Score means "worth reviewing for a
+            multi-day or multi-week setup," not "buy now."
             """
         )
 
