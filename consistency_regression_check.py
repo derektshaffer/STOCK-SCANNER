@@ -1970,6 +1970,77 @@ def test_swing_path_target_treats_no_target_as_non_success():
     assert result["swing_mfe_5d_pct"] == 4.5, result
 
 
+def test_market_regime_context_ignores_future_benchmark_bars():
+    import historical_timeframe_replay as htr
+    from datetime import date, timedelta
+
+    start = date(2025, 1, 1)
+    replay_index = 219
+    replay_day = start + timedelta(days=replay_index)
+
+    def series(multiplier):
+        rows = []
+        for i in range(230):
+            day = start + timedelta(days=i)
+            close = 100.0 + multiplier * i * 0.08
+            rows.append(
+                (
+                    day,
+                    {
+                        "o": close - 0.2,
+                        "h": close + 0.5,
+                        "l": close - 0.5,
+                        "c": close,
+                        "v": 1_000_000,
+                    },
+                )
+            )
+        return rows
+
+    baseline = {
+        "SPY": series(1.0),
+        "QQQ": series(1.2),
+        "IWM": series(0.8),
+    }
+    changed_future = {
+        symbol: [(day, dict(bar)) for day, bar in rows]
+        for symbol, rows in baseline.items()
+    }
+    for rows in changed_future.values():
+        for i in range(replay_index + 1, len(rows)):
+            day, bar = rows[i]
+            bar["c"] *= 5.0
+            bar["h"] *= 5.0
+            bar["l"] *= 5.0
+            rows[i] = (day, bar)
+
+    before = htr._market_context(baseline, replay_day)
+    after = htr._market_context(changed_future, replay_day)
+    assert before == after, (before, after)
+    assert before.get("regime_label") in {
+        "RISK_ON",
+        "RISK_OFF",
+        "VOLATILE",
+        "MIXED",
+    }, before
+    assert before.get("spy_return_20d_pct") is not None, before
+    assert before.get("spy_realized_vol_20d_pct") is not None, before
+
+
+def test_swing_ml_regime_features_are_separate_from_baseline():
+    import timeframe_ml_ranker as tml
+
+    assert set(tml.BASE_FEATURES).isdisjoint(set(tml.REGIME_FEATURES))
+    assert tml.FEATURES == tml.BASE_FEATURES + tml.REGIME_FEATURES
+    for required in (
+        "spy_return_20d_pct",
+        "spy_realized_vol_20d_pct",
+        "iwm_minus_spy_20d_pct",
+        "benchmark_positive_20d_frac",
+    ):
+        assert required in tml.REGIME_FEATURES, required
+
+
 if __name__ == "__main__":
     tests = [
         test_analyzer_prefers_tradier,
@@ -2034,6 +2105,8 @@ if __name__ == "__main__":
         test_swing_path_target_orders_daily_events_conservatively,
         test_swing_path_target_excludes_same_day_order_ambiguity,
         test_swing_path_target_treats_no_target_as_non_success,
+        test_market_regime_context_ignores_future_benchmark_bars,
+        test_swing_ml_regime_features_are_separate_from_baseline,
     ]
     for test in tests:
         test()
