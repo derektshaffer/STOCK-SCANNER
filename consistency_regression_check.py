@@ -2533,6 +2533,14 @@ def test_scanner_ui_accepts_tradier_without_alpaca_credentials():
     assert "No market-data provider is configured" in source
 
 
+def test_live_scanner_matches_scheduled_tradier_discovery():
+    from pathlib import Path
+
+    source = Path("scanner_app.py").read_text(encoding="utf-8")
+    assert 'env["SCANNER_TRADIER_DISCOVERY"] = "1"' in source
+    assert 'env["SCANNER_DISCOVERY_UNIVERSE_SIZE"] = "1200"' in source
+
+
 if __name__ == "__main__":
     tests = [
         test_analyzer_daily_history_prefers_tradier,
@@ -2614,6 +2622,7 @@ if __name__ == "__main__":
         test_swing_research_calibration_excludes_wrong_context,
         test_scanner_visibly_marks_stale_snapshot,
         test_scanner_ui_accepts_tradier_without_alpaca_credentials,
+        test_live_scanner_matches_scheduled_tradier_discovery,
         test_swing_research_ui_disclaims_historical_probability,
         test_legacy_analyzer_entrypoint_cannot_drift,
         test_monday_readiness_blocks_stale_scan_handoffs,

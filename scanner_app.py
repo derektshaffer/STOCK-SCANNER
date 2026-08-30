@@ -371,6 +371,10 @@ def run_scanner():
     env["ALPACA_LIVE_FEED"] = configured_live_feed()
     if tradier_token:
         env["TRADIER_ACCESS_TOKEN"] = tradier_token
+        # Keep the live Streamlit Scanner on the same broad candidate-discovery
+        # process as the scheduled GitHub collector used for forward validation.
+        env["SCANNER_TRADIER_DISCOVERY"] = "1"
+        env["SCANNER_DISCOVERY_UNIVERSE_SIZE"] = "1200"
 
     started = time.perf_counter()
     try:
