@@ -1638,7 +1638,9 @@ def test_prediction_tracker_records_timeframe_scores():
         }
         result = pt.record_prediction(
             metrics,
-            now=datetime(2026, 8, 29, 15, 0, tzinfo=timezone.utc),
+            # Friday 11:00 AM ET: regular-session fixture. The prior fixture
+            # used Saturday, which is now correctly rejected by the tracker.
+            now=datetime(2026, 8, 28, 15, 0, tzinfo=timezone.utc),
         )
         assert result.get("recorded"), result
         row = captured[-1]
