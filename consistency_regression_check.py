@@ -2734,6 +2734,94 @@ def test_combined_scanner_uses_display_volume_pace_source():
     assert 'row.get("volume_pace_display_source")' in source
 
 
+def test_prediction_tracker_skips_closed_market_records():
+    import prediction_tracker as pt
+
+    # Sunday noon ET: should not create a prediction row or touch storage.
+    result = pt.record_prediction(
+        {"symbol": "TEST", "market_session": "closed"},
+        now=datetime(2026, 8, 30, 16, 0, tzinfo=timezone.utc),
+    )
+    assert result["recorded"] is False, result
+    assert result["reason"] == "market_closed_not_recorded", result
+    assert result["market_session"] == "closed", result
+
+
+def test_late_scanner_report_has_explicit_no_horizon_status():
+    from pathlib import Path
+
+    source = Path("score_outcomes.py").read_text(encoding="utf-8")
+    assert "def outcome_report_status(rows, summary):" in source
+    assert '"complete_no_resolvable_horizons"' in source
+    assert "too close to the 4:00 PM ET close" in source
+    assert "This is not a market-data failure." in source
+
+
+def test_manual_scanner_refreshes_combined_candidates_after_success():
+    from pathlib import Path
+
+    source = Path("scanner_app.py").read_text(encoding="utf-8")
+    assert 'st.session_state["_scanner_flash_success"] = msg' in source
+    assert "newly written latest_scan.json" in source
+    assert "st.rerun()" in source
+
+
+def test_v2_skips_alpaca_sip_probe_when_tradier_primary():
+    import analyzer_v2_integration as v2
+
+    class FakeAnalyzer:
+        USE_TRADIER = True
+        LIVE_FEED = "iex"
+
+        @staticmethod
+        def snapshot(*args, **kwargs):
+            raise AssertionError("Alpaca SIP probe should not run with Tradier primary")
+
+    result = v2.prefer_best_live_feed(FakeAnalyzer(), "SPY")
+    assert result["provider"] == "tradier", result
+    assert result["alpaca_probe_skipped"] is True, result
+    assert result["active_feed"] == "TRADIER CONSOLIDATED", result
+
+
+def test_v2_market_context_prefers_tradier_quotes():
+    import analyzer_v2_integration as v2
+
+    class FakeAnalyzer:
+        USE_TRADIER = True
+        TRADIER_TOKEN = "test-token"
+        LIVE_FEED = "iex"
+
+        @staticmethod
+        def get_tradier_quotes(symbols, token):
+            assert token == "test-token"
+            return {
+                "SPY": {"last": 102.0, "prevclose": 100.0},
+                "QQQ": {"last": 101.0, "prevclose": 100.0},
+                "IWM": {"last": 99.0, "prevclose": 100.0},
+            }
+
+        @staticmethod
+        def snapshot(*args, **kwargs):
+            raise AssertionError("Alpaca market context should not run")
+
+    v2._MARKET_CACHE.clear()
+    result = v2._market_context(FakeAnalyzer())
+    assert result["provider"] == "tradier", result
+    assert result["moves"] == {"SPY": 2.0, "QQQ": 1.0, "IWM": -1.0}, result
+    assert result["broad_market_avg_pct"] == 0.67, result
+
+
+def test_analyzer_health_warns_on_durable_sync_error():
+    from pathlib import Path
+
+    source = Path("analyzer_v2_ui.py").read_text(encoding="utf-8")
+    assert "durable_error" in source
+    assert "durable GitHub sync reported an error" in source
+    assert '"MATCH ACTIVE"' in source
+    assert '"ARMED"' in source
+    assert '"PAUSED OFF-HOURS"' in source
+
+
 if __name__ == "__main__":
     tests = [
         test_analyzer_daily_history_prefers_tradier,
@@ -2747,6 +2835,12 @@ if __name__ == "__main__":
         test_outcome_tracker_runs_after_extended_hours,
         test_scanner_table_volume_pace_formatter_matches_column,
         test_combined_scanner_uses_display_volume_pace_source,
+        test_prediction_tracker_skips_closed_market_records,
+        test_late_scanner_report_has_explicit_no_horizon_status,
+        test_manual_scanner_refreshes_combined_candidates_after_success,
+        test_v2_skips_alpaca_sip_probe_when_tradier_primary,
+        test_v2_market_context_prefers_tradier_quotes,
+        test_analyzer_health_warns_on_durable_sync_error,
         test_analyzer_tradier_does_not_block_on_alpaca_snapshot,
         test_analyzer_reports_actual_historical_provider,
         test_analyzer_prefers_tradier,
