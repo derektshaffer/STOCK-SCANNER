@@ -9,6 +9,7 @@ from functools import lru_cache
 from prediction_tracker import record_prediction, resolve_symbol_predictions
 from live_market_stream import ensure_live_stream, get_live_overlay
 from float_data import get_public_float
+from swing_research_flags import evaluate_swing_research_flags
 
 
 SEC_BASE = "https://data.sec.gov"
@@ -1793,6 +1794,8 @@ def install_v2_analysis(sa):
             potential,
             readiness,
         )
+        swing_research = evaluate_swing_research_flags(metrics, timeframe)
+        timeframe["swing_research_flags"] = swing_research
 
         # Give the full-spectrum engine the current upside score before the
         # public decision_v2 object is assembled.
