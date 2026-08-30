@@ -9,6 +9,11 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+from timeframe_targets import (
+    SWING_HORIZON_SESSIONS,
+    resolve_swing_path_from_bars,
+)
+
 
 LOG_PATH = Path(os.environ.get("ANALYZER_PREDICTION_LOG", "analysis_logs/analyzer_predictions.json"))
 BUCKET_MINUTES = 5
@@ -508,7 +513,7 @@ def _daily_bar_date(bar):
 
 
 def _resolve_trading_day_returns(row, daily_bars):
-    """Resolve 1/3/5/20/60 trading-day closes after the signal date."""
+    """Resolve close returns plus the shared five-session Swing path target."""
     created = _parse_dt(row.get("timestamp"))
     price = _num(row.get("price"))
     if created is None or price is None or price <= 0:
@@ -519,7 +524,7 @@ def _resolve_trading_day_returns(row, daily_bars):
         bar_day = _daily_bar_date(bar)
         close = _num(bar.get("c"))
         if bar_day is not None and bar_day > signal_day and close is not None and close > 0:
-            future.append((bar_day, close))
+            future.append((bar_day, bar))
     future.sort(key=lambda item: item[0])
     outcomes = row.setdefault("outcomes", {})
     changed = False
@@ -527,10 +532,26 @@ def _resolve_trading_day_returns(row, daily_bars):
         key = f"return_{sessions}d_pct"
         if key in outcomes or len(future) < sessions:
             continue
-        close = future[sessions - 1][1]
+        close = _num(future[sessions - 1][1].get("c"))
+        if close is None:
+            continue
         outcomes[key] = round((close / price - 1.0) * 100.0, 3)
         outcomes[f"resolved_{sessions}d"] = True
         changed = True
+
+    if (
+        row.get("timeframe_score_version") == TIMEFRAME_SCORE_VERSION
+        and "swing_first_event_5d" not in outcomes
+        and len(future) >= SWING_HORIZON_SESSIONS
+    ):
+        path = resolve_swing_path_from_bars(
+            price,
+            [bar for _day, bar in future[:SWING_HORIZON_SESSIONS]],
+        )
+        for key, value in path.items():
+            outcomes[key] = value
+        if path:
+            changed = True
     return changed
 
 
@@ -657,9 +678,14 @@ def resolve_symbol_predictions(sa, symbol, now=None, current_metrics=None):
     timeframe_pending = [
         row for row in pending
         if row.get("timeframe_score_version") == TIMEFRAME_SCORE_VERSION
-        and any(
-            (row.get("outcomes") or {}).get(f"return_{sessions}d_pct") is None
-            for sessions in (1, 3, 5, 20, 60)
+        and (
+            any(
+                (row.get("outcomes") or {}).get(
+                    f"return_{sessions}d_pct"
+                ) is None
+                for sessions in (1, 3, 5, 20, 60)
+            )
+            or "swing_first_event_5d" not in (row.get("outcomes") or {})
         )
     ]
     if timeframe_pending:
