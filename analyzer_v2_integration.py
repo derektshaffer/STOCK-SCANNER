@@ -486,13 +486,7 @@ def prefer_best_live_feed(sa, symbol="SPY"):
             "alpaca_probe_skipped": True,
         }
 
-    """Prefer consolidated SIP automatically when the Alpaca account allows it.
-
-    The old app often remained on IEX simply because ALPACA_LIVE_FEED was set
-    that way months earlier. A successful SIP snapshot is definitive enough to
-    switch the analyzer to SIP for the current process. If SIP is unavailable,
-    keep IEX and expose the reason in the Analyzer UI.
-    """
+    # Alpaca-only fallback path: probe SIP entitlement and use IEX if needed.
     now_ts = time.time()
     cached = _SIP_PROBE.get("available")
     if cached is not None and now_ts - float(_SIP_PROBE.get("checked_at") or 0) < 600:
