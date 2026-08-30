@@ -40,14 +40,17 @@ from historical_scanner_replay import (
     select_daily_universe,
 )
 from scanner_behavior import multi_session_behavior_features
+from timeframe_targets import (
+    SWING_HORIZON_SESSIONS,
+    SWING_STOP_PCT,
+    SWING_TARGET_PCT,
+    resolve_swing_path_from_bars,
+)
 
 
 ET = ZoneInfo("America/New_York")
 REPLAY_VERSION = "historical-timeframe-replay-v2-path-target"
 TIMEFRAME_SCORE_VERSION = "timeframe-fit-v1"
-SWING_TARGET_PCT = 5.0
-SWING_STOP_PCT = 4.0
-SWING_HORIZON_SESSIONS = 5
 DEFAULT_REPLAY_DAYS = int(os.environ.get("TIMEFRAME_REPLAY_TRADING_DAYS", "240") or 240)
 DEFAULT_STRIDE = int(os.environ.get("TIMEFRAME_REPLAY_STRIDE_DAYS", "5") or 5)
 DEFAULT_UNIVERSE_SIZE = int(os.environ.get("TIMEFRAME_REPLAY_UNIVERSE_SIZE", "250") or 250)
@@ -285,84 +288,17 @@ def _swing_path_outcomes(
     stop_pct=SWING_STOP_PCT,
     horizon_sessions=SWING_HORIZON_SESSIONS,
 ):
-    """Measure a trade-like swing path using only future daily OHLC bars.
-
-    A target and stop touched on the same daily bar is intentionally marked
-    ambiguous because daily data cannot establish intraday ordering. Ambiguous
-    rows are excluded from ML labels rather than guessed.
-    """
-    entry = _num(entry_price)
-    if entry is None or entry <= 0:
-        return {}
-
-    target_price = entry * (1.0 + float(target_pct) / 100.0)
-    stop_price = entry * (1.0 - float(stop_pct) / 100.0)
-    future = rows[idx + 1 : idx + 1 + int(horizon_sessions)]
-    if len(future) < int(horizon_sessions):
-        return {}
-
-    max_high = None
-    min_low = None
-    first_event = None
-    first_hit_session = None
-    ambiguous_same_day = False
-
-    for session_number, (_day, bar) in enumerate(future, start=1):
-        high = _num(bar.get("h"))
-        low = _num(bar.get("l"))
-        if high is not None:
-            max_high = high if max_high is None else max(max_high, high)
-        if low is not None:
-            min_low = low if min_low is None else min(min_low, low)
-
-        if first_event is not None:
-            continue
-
-        hit_target = high is not None and high >= target_price
-        hit_stop = low is not None and low <= stop_price
-        if hit_target and hit_stop:
-            first_event = "AMBIGUOUS_SAME_DAY"
-            first_hit_session = session_number
-            ambiguous_same_day = True
-        elif hit_target:
-            first_event = "TARGET"
-            first_hit_session = session_number
-        elif hit_stop:
-            first_event = "STOP"
-            first_hit_session = session_number
-
-    if first_event is None:
-        first_event = "NEITHER"
-
-    label = None
-    if first_event == "TARGET":
-        label = 1
-    elif first_event in {"STOP", "NEITHER"}:
-        label = 0
-
-    mfe = (
-        (max_high / entry - 1.0) * 100.0
-        if max_high is not None
-        else None
+    future_bars = [
+        bar
+        for _day, bar in rows[idx + 1 : idx + 1 + int(horizon_sessions)]
+    ]
+    return resolve_swing_path_from_bars(
+        entry_price,
+        future_bars,
+        target_pct=target_pct,
+        stop_pct=stop_pct,
+        horizon_sessions=horizon_sessions,
     )
-    mae = (
-        (min_low / entry - 1.0) * 100.0
-        if min_low is not None
-        else None
-    )
-
-    return {
-        "swing_target_pct": float(target_pct),
-        "swing_stop_pct": float(stop_pct),
-        "swing_horizon_sessions": int(horizon_sessions),
-        "swing_target_before_stop_5d": label,
-        "swing_first_event_5d": first_event,
-        "swing_first_hit_session": first_hit_session,
-        "swing_ambiguous_same_day_5d": ambiguous_same_day,
-        "swing_mfe_5d_pct": round(mfe, 3) if mfe is not None else None,
-        "swing_mae_5d_pct": round(mae, 3) if mae is not None else None,
-    }
-
 
 def _future_close_return(daily_index, symbol, replay_day, sessions):
     rows = daily_index.get(symbol) or []
