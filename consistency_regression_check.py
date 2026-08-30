@@ -1872,7 +1872,7 @@ def test_swing_timeframe_ml_folds_never_mix_same_replay_date():
     rows = []
     for day in range(1, 49):
         date_text = f"2026-01-{day:02d}" if day <= 31 else f"2026-02-{day-31:02d}"
-        for symbol_index in range(10):
+        for symbol_index in range(20):
             rows.append(
                 {
                     "date": date_text,
