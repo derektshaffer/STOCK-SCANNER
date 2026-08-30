@@ -37,6 +37,7 @@ on:
       - "historical_timeframe_replay.py"
       - "timeframe_ml_ranker.py"
       - "timeframe_targets.py"
+      - "market_regime.py"
       - ".github/workflows/historical-ml-backfill.yml"
 
 permissions:
@@ -148,6 +149,7 @@ jobs:
           swing_path = tf_summary.get("swing_path_target") or {}
           print("TIMEFRAME_SWING_PATH=" + json.dumps(swing_path, sort_keys=True))
           print("TIMEFRAME_SWING_PATH_LIFT=" + json.dumps(tf_summary.get("swing_path_target_lift") or {}, sort_keys=True))
+          print("TIMEFRAME_MARKET_REGIMES=" + json.dumps(tf_summary.get("swing_path_by_market_regime") or {}, sort_keys=True))
           assert int(tf_summary.get("observations") or 0) >= 100
           assert int(tf_summary.get("swing_5d_resolved") or 0) >= 100
           assert int(swing_path.get("labeled") or 0) >= 100
@@ -171,6 +173,9 @@ jobs:
           print("SWING_ML_SAMPLES=" + str(report.get("samples")))
           print("SWING_ML_DATES=" + str(report.get("unique_dates")))
           print("SWING_ML_AUC=" + str(overall.get("model_auc")))
+          print("SWING_BASELINE_MODEL_AUC=" + str(overall.get("baseline_model_auc")))
+          print("SWING_REGIME_MINUS_BASELINE_AUC=" + str(overall.get("regime_minus_baseline_auc")))
+          print("SWING_REGIME_IMPROVED_FOLDS=" + str(overall.get("regime_features_improved_folds")))
           print("SWING_HAND_SCORE_AUC=" + str(overall.get("hand_score_auc")))
           print("SWING_ML_MINUS_HAND_AUC=" + str(overall.get("model_minus_hand_auc")))
           print("SWING_ML_MEAN_FOLD_AUC=" + str(overall.get("mean_fold_auc")))

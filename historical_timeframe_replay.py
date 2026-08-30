@@ -40,6 +40,7 @@ from historical_scanner_replay import (
     select_daily_universe,
 )
 from scanner_behavior import multi_session_behavior_features
+from market_regime import market_regime_features
 from timeframe_targets import (
     SWING_HORIZON_SESSIONS,
     SWING_STOP_PCT,
@@ -49,7 +50,7 @@ from timeframe_targets import (
 
 
 ET = ZoneInfo("America/New_York")
-REPLAY_VERSION = "historical-timeframe-replay-v2-path-target"
+REPLAY_VERSION = "historical-timeframe-replay-v3-market-regime"
 TIMEFRAME_SCORE_VERSION = "timeframe-fit-v1"
 DEFAULT_REPLAY_DAYS = int(os.environ.get("TIMEFRAME_REPLAY_TRADING_DAYS", "240") or 240)
 DEFAULT_STRIDE = int(os.environ.get("TIMEFRAME_REPLAY_STRIDE_DAYS", "5") or 5)
@@ -320,6 +321,14 @@ def _daily_move_for(daily_index, symbol, replay_day):
     return _pct(current, previous)
 
 
+def _bars_through(daily_index, symbol, replay_day):
+    rows = daily_index.get(symbol) or []
+    idx = _date_index(rows).get(replay_day)
+    if idx is None:
+        return []
+    return [bar for _day, bar in rows[: idx + 1]]
+
+
 def _market_context(daily_index, replay_day, sector_etf=None):
     moves = [
         _daily_move_for(daily_index, symbol, replay_day)
@@ -337,12 +346,21 @@ def _market_context(daily_index, replay_day, sector_etf=None):
         score += _clamp(broad * 5.0, -10, 10)
     if sector is not None:
         score += _clamp(sector * 5.0, -10, 10)
-    return {
+
+    regime = market_regime_features(
+        {
+            symbol: _bars_through(daily_index, symbol, replay_day)
+            for symbol in ("SPY", "QQQ", "IWM")
+        }
+    )
+    context = {
         "score": round(_clamp(score), 1),
         "broad_market_avg_pct": round(broad, 3) if broad is not None else None,
         "sector_move_pct": round(sector, 3) if sector is not None else None,
         "sector_etf": sector_etf,
     }
+    context.update(regime)
+    return context
 
 
 def _sec_request(url):
@@ -604,6 +622,63 @@ def _binary_lift(rows, score_field, outcome_field):
         "low_score_below_55": low_stats,
         "target_rate_lift_pp": lift,
     }
+
+
+
+
+def _regime_outcome_summary(rows):
+    groups = {}
+    for row in rows:
+        market = row.get("market_context") or {}
+        label = str(market.get("regime_label") or "UNKNOWN")
+        outcome = (row.get("outcomes") or {}).get(
+            "swing_target_before_stop_5d"
+        )
+        if outcome not in (0, 1):
+            continue
+        group = groups.setdefault(
+            label,
+            {
+                "n": 0,
+                "wins": 0,
+                "mfe": [],
+                "mae": [],
+                "excess": [],
+            },
+        )
+        group["n"] += 1
+        group["wins"] += int(outcome)
+        for key, target in (
+            ("swing_mfe_5d_pct", "mfe"),
+            ("swing_mae_5d_pct", "mae"),
+            ("excess_return_vs_spy_5d_pct", "excess"),
+        ):
+            value = _num((row.get("outcomes") or {}).get(key))
+            if value is not None:
+                group[target].append(value)
+
+    out = {}
+    for label, group in sorted(groups.items()):
+        out[label] = {
+            "n": group["n"],
+            "target_before_stop_rate_pct": round(
+                group["wins"] / group["n"] * 100.0,
+                1,
+            ) if group["n"] else None,
+            "avg_mfe_5d_pct": (
+                round(statistics.mean(group["mfe"]), 3)
+                if group["mfe"] else None
+            ),
+            "avg_mae_5d_pct": (
+                round(statistics.mean(group["mae"]), 3)
+                if group["mae"] else None
+            ),
+            "avg_excess_vs_spy_5d_pct": (
+                round(statistics.mean(group["excess"]), 3)
+                if group["excess"] else None
+            ),
+        }
+    return out
 
 
 def _candidate_rows(daily_index, replay_dates, universe_size, candidates_per_day):
@@ -877,7 +952,7 @@ def main():
     scanner_summary = scanner_replay.get("summary") or {}
 
     payload = {
-        "schema_version": 2,
+        "schema_version": 3,
         "replay_version": REPLAY_VERSION,
         "timeframe_score_version": TIMEFRAME_SCORE_VERSION,
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
@@ -1006,6 +1081,9 @@ def main():
                 "swing_score",
                 "swing_target_before_stop_5d",
             ),
+            "swing_path_by_market_regime": _regime_outcome_summary(
+                observations
+            ),
             "long_term_20d_directional_lift": _directional_lift(
                 observations, "long_term_score", "return_20d_pct"
             ),
@@ -1049,6 +1127,13 @@ def main():
     print(
         "TIMEFRAME_REPLAY_SWING_PATH_CALIBRATION="
         + json.dumps(swing_path_calibration, sort_keys=True)
+    )
+    print(
+        "TIMEFRAME_REPLAY_MARKET_REGIMES="
+        + json.dumps(
+            payload["summary"].get("swing_path_by_market_regime") or {},
+            sort_keys=True,
+        )
     )
     print("TIMEFRAME_REPLAY_LONG_20D=" + json.dumps(long_20, sort_keys=True))
 
