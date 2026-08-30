@@ -1235,9 +1235,13 @@ def tracker_summary(rows=None, symbol=None, current_metrics=None):
 
     durable = _load_durable_calibration()
     if (
-        durable.get("feature_version") != ANALYZER_FEATURE_VERSION
+        int(durable.get("schema_version") or 0) < 7
+        or durable.get("feature_version") != ANALYZER_FEATURE_VERSION
         or durable.get("decision_score_version") != DECISION_SCORE_VERSION
     ):
+        # Schema 7 changed calibration sampling to regular-session ET
+        # ticker-hours and one ticker/day for multi-day horizons. Older
+        # calibration files can over-count off-hours or same-day observations.
         durable = {}
     durable_timeframe = (
         durable
