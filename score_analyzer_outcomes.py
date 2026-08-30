@@ -7,6 +7,11 @@ from datetime import datetime, time as dtime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+from timeframe_targets import (
+    SWING_HORIZON_SESSIONS,
+    resolve_swing_path_from_bars,
+)
+
 
 ET = ZoneInfo("America/New_York")
 DATA_BASE = "https://data.alpaca.markets"
@@ -315,7 +320,7 @@ def _resolve_trading_day_returns(row, daily_bars):
         bar_day = _daily_bar_date(bar)
         close = _num(bar.get("c"))
         if bar_day is not None and bar_day > signal_day and close is not None and close > 0:
-            future.append((bar_day, close))
+            future.append((bar_day, bar))
     future.sort(key=lambda item: item[0])
 
     outcomes = row.setdefault("outcomes", {})
@@ -324,10 +329,26 @@ def _resolve_trading_day_returns(row, daily_bars):
         key = f"return_{sessions}d_pct"
         if outcomes.get(key) is not None or len(future) < sessions:
             continue
-        close = future[sessions - 1][1]
+        close = _num(future[sessions - 1][1].get("c"))
+        if close is None:
+            continue
         outcomes[key] = round((close / price - 1.0) * 100.0, 3)
         outcomes[f"resolved_{sessions}d"] = True
         changed = True
+
+    if (
+        row.get("timeframe_score_version") == TIMEFRAME_SCORE_VERSION
+        and "swing_first_event_5d" not in outcomes
+        and len(future) >= SWING_HORIZON_SESSIONS
+    ):
+        path = resolve_swing_path_from_bars(
+            price,
+            [bar for _day, bar in future[:SWING_HORIZON_SESSIONS]],
+        )
+        for key, value in path.items():
+            outcomes[key] = value
+        if path:
+            changed = True
     return changed
 
 
@@ -351,7 +372,12 @@ def _resolve_multiday_history():
             if row.get("timeframe_score_version") != TIMEFRAME_SCORE_VERSION:
                 continue
             outcomes = row.get("outcomes") or {}
-            if all(outcomes.get(f"return_{sessions}d_pct") is not None for sessions in (1, 3, 5, 20, 60)):
+            closes_done = all(
+                outcomes.get(f"return_{sessions}d_pct") is not None
+                for sessions in (1, 3, 5, 20, 60)
+            )
+            path_done = "swing_first_event_5d" in outcomes
+            if closes_done and path_done:
                 continue
             created = _parse_dt(row.get("timestamp"))
             symbol = str(row.get("symbol") or "").upper().strip()
