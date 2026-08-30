@@ -2545,7 +2545,7 @@ def test_analyzer_session_filter_uses_current_extended_session():
     # 2026-08-31 is a Monday in EDT.
     pre_now = datetime(2026, 8, 31, 12, 30, tzinfo=timezone.utc)  # 8:30 AM ET
     pre_raw = [
-        {"t": "2026-08-31T11:55:00Z", "c": 9.9},  # 7:55 ET, before premarket
+        {"t": "2026-08-31T07:55:00Z", "c": 9.9},  # 3:55 ET, before premarket
         {"t": "2026-08-31T12:05:00Z", "c": 10.0}, # 8:05 ET, premarket
         {"t": "2026-08-31T12:20:00Z", "c": 10.1}, # 8:20 ET, premarket
         {"t": "2026-08-28T19:55:00Z", "c": 9.8},  # prior regular session
