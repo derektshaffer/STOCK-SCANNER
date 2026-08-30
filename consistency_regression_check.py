@@ -2374,12 +2374,14 @@ def test_analyzer_live_test_status_exposes_tracking_health():
     assert "Swing forward tracking **" in source
 
 
-def test_analyzer_tradier_survives_alpaca_snapshot_failure():
+def test_analyzer_tradier_does_not_block_on_alpaca_snapshot():
     _install_common_analyzer_stubs()
     bars = _regular_bars()
     now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
+    calls = {"snapshot": 0}
 
     def _fail_snapshot(*args, **kwargs):
+        calls["snapshot"] += 1
         raise RuntimeError("simulated Alpaca snapshot outage")
 
     sa.snapshot = _fail_snapshot
@@ -2402,7 +2404,8 @@ def test_analyzer_tradier_survives_alpaca_snapshot_failure():
     result = sa.analyze("TEST")
     assert result["market_provider"] == "tradier", result
     assert result["price"] == 10.10, result
-    assert result.get("alpaca_fallback_error"), result
+    assert calls["snapshot"] == 0, calls
+    assert result.get("alpaca_fallback_error") is None, result
 
 
 def test_analyzer_reports_actual_historical_provider():
@@ -2514,7 +2517,7 @@ def test_swing_research_ui_disclaims_historical_probability():
 if __name__ == "__main__":
     tests = [
         test_analyzer_daily_history_prefers_tradier,
-        test_analyzer_tradier_survives_alpaca_snapshot_failure,
+        test_analyzer_tradier_does_not_block_on_alpaca_snapshot,
         test_analyzer_reports_actual_historical_provider,
         test_analyzer_prefers_tradier,
         test_analyzer_falls_back_cleanly,
