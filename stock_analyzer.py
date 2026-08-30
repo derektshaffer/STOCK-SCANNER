@@ -8,9 +8,11 @@ from stair_step import detect_stair_step
 from zoneinfo import ZoneInfo
 
 try:
+    from tradier_live import get_history_bars as get_tradier_history_bars
     from tradier_live import get_quotes as get_tradier_quotes
     from tradier_live import get_timesales_bars as get_tradier_timesales_bars
 except Exception:
+    get_tradier_history_bars = None
     get_tradier_quotes = None
     get_tradier_timesales_bars = None
 
@@ -27,6 +29,10 @@ USE_TRADIER = bool(
     TRADIER_TOKEN
     and get_tradier_quotes is not None
     and get_tradier_timesales_bars is not None
+)
+USE_TRADIER_HISTORY = bool(
+    TRADIER_TOKEN
+    and get_tradier_history_bars is not None
 )
 LIVE_MARKET_PROVIDER = "tradier" if USE_TRADIER else "alpaca"
 LIVE_MARKET_LABEL = "TRADIER CONSOLIDATED" if USE_TRADIER else LIVE_FEED.upper()
@@ -118,6 +124,22 @@ def session_fraction(now_et):
     return min(1,max(1/390,(m-570)/390))
 
 def try_sip_delayed_bars(symbol, timeframe, start, end, limit=1000):
+    # Multi-day Analyzer context is more reliable through the same consolidated
+    # Tradier source used by the live app. Keep delayed Alpaca SIP as fallback.
+    if timeframe == "1Day" and USE_TRADIER_HISTORY:
+        try:
+            rows = get_tradier_history_bars(
+                symbol,
+                TRADIER_TOKEN,
+                start,
+                end,
+                interval="daily",
+            )
+            if rows:
+                return rows[-limit:], "Tradier consolidated daily"
+        except Exception:
+            pass
+
     # Free/basic Alpaca accounts can query consolidated SIP once data is delayed enough.
     safe_end=min(end, datetime.now(timezone.utc)-timedelta(minutes=16))
     if safe_end<=start:return [], "unavailable"
