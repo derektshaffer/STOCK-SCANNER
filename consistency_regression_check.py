@@ -3258,6 +3258,7 @@ def test_offhours_daily_context_builds_swing_longer_term_candidate_without_live_
         row["timeframe_longer_term_score"],
     ) >= 60, row
     assert row["timeframe_longer_term_score"] >= 60, row
+    assert 70 <= row["daily_discovery_score"] < 100, row
     assert row["daily_review_action"] in {
         "REVIEW SWING",
         "REVIEW LONGER-TERM",
@@ -3324,6 +3325,8 @@ def test_offhours_workflow_runs_after_close_and_commits_separate_snapshot():
     assert "scan_logs/offhours_timeframe_latest.json" in source
     assert "contents: write" in source
     assert "Run offhours scan smoke" in source
+    assert "git pull --rebase origin main" in source
+    assert "git push origin HEAD:main" in source
 
 
 if __name__ == "__main__":

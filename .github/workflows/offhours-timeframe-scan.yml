@@ -67,7 +67,11 @@ jobs:
             exit 0
           fi
           git commit -m "Update off-hours Swing Longer-Term scan"
-          git push
+          # A long daily scan can overlap another small code/test commit. Rebase
+          # the generated snapshot onto the current main before pushing so a
+          # harmless concurrent commit does not make the whole scan fail.
+          git pull --rebase origin main
+          git push origin HEAD:main
 
       - name: Preserve off-hours scan artifact
         if: always()

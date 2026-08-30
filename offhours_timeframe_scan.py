@@ -328,32 +328,53 @@ def _daily_context(symbol, quote_seed, bars, spy_return_20d=None):
         archetypes.append("REVERSAL / IGNITION")
     row["daily_setup_archetypes"] = archetypes or ["MOMENTUM TREND"]
 
-    score = max(swing, longer)
+    # Keep the daily discovery rank separate from the raw timeframe-fit
+    # scores. Those fit scores intentionally saturate when many favorable
+    # conditions align, which is useful for classification but not for ranking
+    # 30 strong off-hours candidates against one another.
+    primary_fit = max(swing, longer)
+    secondary_fit = min(swing, longer)
+    score = primary_fit * 0.65 + secondary_fit * 0.20
+
     if relative_20d is not None:
-        if relative_20d >= 12:
-            score += 7
-        elif relative_20d >= 5:
+        if relative_20d >= 15:
+            score += 6
+        elif relative_20d >= 8:
             score += 4
+        elif relative_20d >= 3:
+            score += 2
         elif relative_20d <= -10:
             score -= 5
+        elif relative_20d <= -5:
+            score -= 3
+
     if volume_ratio is not None:
         if volume_ratio >= 2.0:
-            score += 5
+            score += 4
         elif volume_ratio >= 1.3:
-            score += 3
+            score += 2
+        elif volume_ratio < 0.6:
+            score -= 2
+
     if row.get("daily_breakout_20d"):
-        score += 5
-    if "TREND CONTINUATION" in archetypes:
         score += 4
-    if "CONSTRUCTIVE PULLBACK" in archetypes:
+    if "TREND CONTINUATION" in archetypes:
         score += 3
+    if "CONSTRUCTIVE PULLBACK" in archetypes:
+        score += 2
+    if "REVERSAL / IGNITION" in archetypes:
+        score += 2
+    if alignment == "BEARISH":
+        score -= 6
+    if (row.get("daily_from_recent_high_pct") or 0) <= -30:
+        score -= 4
 
     score = max(0.0, min(100.0, score))
     row["daily_discovery_score"] = round(score, 1)
 
-    if score >= 78:
+    if score >= 88:
         row["daily_setup_grade"] = "A"
-    elif score >= 68:
+    elif score >= 78:
         row["daily_setup_grade"] = "B"
     else:
         row["daily_setup_grade"] = "C"
