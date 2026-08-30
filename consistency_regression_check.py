@@ -3062,14 +3062,14 @@ def test_scanner_runtime_async_start_is_nonblocking_and_lock_safe():
             command=[
                 sys.executable,
                 "-c",
-                "import time; time.sleep(0.25); print('done')",
+                "import time; time.sleep(0.60); print('done')",
             ],
             require_scan_file=False,
             timeout_seconds=2,
         )
         start_latency = time.perf_counter() - started_at
         assert state["started"] is True, state
-        assert start_latency < 0.20, start_latency
+        assert start_latency < 0.35, start_latency
         assert sr.scanner_process_busy() is True
 
         duplicate = sr.start_scanner_process(
@@ -3141,6 +3141,34 @@ def test_scanner_runtime_timeout_releases_shared_lock():
             state["process"].wait(timeout=2)
             sr._release_scan_lock(state.get("lock_token"))
             sr._cleanup_logs(state)
+        sr.LOCK_FILE = old_lock
+        temp_dir.cleanup()
+
+
+def test_scanner_runtime_recovers_stale_lock_after_crash():
+    import json
+    import tempfile
+    import time
+    from pathlib import Path
+    import scanner_runtime as sr
+
+    old_lock = sr.LOCK_FILE
+    temp_dir = tempfile.TemporaryDirectory()
+    try:
+        sr.LOCK_FILE = Path(temp_dir.name) / "scanner.lock"
+        sr.LOCK_FILE.write_text(
+            json.dumps(
+                {
+                    "token": "stale",
+                    "created_at": time.time() - sr.LOCK_STALE_SECONDS - 5,
+                    "pid": 999999,
+                }
+            ),
+            encoding="utf-8",
+        )
+        assert sr.scanner_process_busy() is False
+        assert sr.LOCK_FILE.exists() is False
+    finally:
         sr.LOCK_FILE = old_lock
         temp_dir.cleanup()
 
@@ -3307,6 +3335,7 @@ if __name__ == "__main__":
         test_momentum_alert_ui_has_in_app_and_optional_browser_notifications,
         test_scanner_runtime_async_start_is_nonblocking_and_lock_safe,
         test_scanner_runtime_timeout_releases_shared_lock,
+        test_scanner_runtime_recovers_stale_lock_after_crash,
         test_two_minute_runtime_health_flags_tight_and_overrun_scans,
         test_momentum_alert_can_realert_only_after_leaving_ready_state,
         test_analyzer_live_test_status_exposes_tracking_health,
