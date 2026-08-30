@@ -1,0 +1,81 @@
+name: Off-Hours Swing Longer-Term Scan
+
+on:
+  schedule:
+    # Completed daily candles are available after the regular session.
+    # 22:15 UTC is 5:15/6:15 PM Eastern depending on DST.
+    - cron: '15 22 * * 1-5'
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "offhours_timeframe_scan.py"
+      - ".github/workflows/offhours-timeframe-scan.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: offhours-timeframe-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  scan:
+    if: >
+      github.event_name != 'push' ||
+      contains(github.event.head_commit.message, 'Run offhours scan smoke')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Market date for discovery cache
+        id: market_date
+        shell: bash
+        run: echo "date=$(TZ=America/New_York date +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore Tradier discovery universe
+        uses: actions/cache@v4
+        with:
+          path: scan_cache
+          key: tradier-discovery-${{ runner.os }}-${{ steps.market_date.outputs.date }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Run off-hours timeframe discovery
+        env:
+          TRADIER_ACCESS_TOKEN: ${{ secrets.TRADIER_ACCESS_TOKEN }}
+          TRADIER_TOKEN: ${{ secrets.TRADIER_TOKEN }}
+          OFFHOURS_TIMEFRAME_UNIVERSE_SIZE: "1200"
+          OFFHOURS_TIMEFRAME_HISTORY_POOL: "120"
+          OFFHOURS_TIMEFRAME_RESULT_LIMIT: "30"
+          OFFHOURS_TIMEFRAME_HISTORY_DELAY: "0.55"
+        run: python offhours_timeframe_scan.py
+
+      - name: Commit latest daily timeframe scan
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add scan_logs/offhours_timeframe_latest.json scan_logs/offhours_timeframe/
+          if git diff --cached --quiet; then
+            echo "No off-hours timeframe changes to commit."
+            exit 0
+          fi
+          git commit -m "Update off-hours Swing Longer-Term scan"
+          git push
+
+      - name: Preserve off-hours scan artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: offhours-timeframe-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            scan_logs/offhours_timeframe_latest.json
+            scan_logs/offhours_timeframe/*.json
+          if-no-files-found: warn
+          retention-days: 30
