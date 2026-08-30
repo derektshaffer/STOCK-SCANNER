@@ -470,13 +470,17 @@ _SIP_PROBE = {"checked_at": 0.0, "available": None, "error": None}
 
 
 def prefer_best_live_feed(sa, symbol="SPY"):
-    """Prefer consolidated SIP automatically when the Alpaca account allows it.
+    """Use Tradier consolidated when configured; otherwise probe Alpaca SIP."""
+    if bool(getattr(sa, "USE_TRADIER", False)):
+        return {
+            "available": True,
+            "active_feed": "TRADIER CONSOLIDATED",
+            "error": None,
+            "checked_at": time.time(),
+            "provider": "tradier",
+            "alpaca_probe_skipped": True,
+        }
 
-    The old app often remained on IEX simply because ALPACA_LIVE_FEED was set
-    that way months earlier. A successful SIP snapshot is definitive enough to
-    switch the analyzer to SIP for the current process. If SIP is unavailable,
-    keep IEX and expose the reason in the Analyzer UI.
-    """
     now_ts = time.time()
     cached = _SIP_PROBE.get("available")
     if cached is not None and now_ts - float(_SIP_PROBE.get("checked_at") or 0) < 600:
@@ -543,7 +547,28 @@ def _market_context(sa, sector_etf=None):
     symbols = ["SPY", "QQQ", "IWM"]
     if sector_etf and sector_etf not in symbols:
         symbols.append(sector_etf)
-    moves = {symbol: _snapshot_day_pct(sa, symbol) for symbol in symbols}
+
+    moves = {}
+    provider = "alpaca"
+    if bool(getattr(sa, "USE_TRADIER", False)):
+        try:
+            quotes = sa.get_tradier_quotes(symbols, sa.TRADIER_TOKEN) or {}
+            for symbol in symbols:
+                quote = quotes.get(symbol) or {}
+                current = _num(quote.get("last")) or _num(quote.get("close"))
+                previous = _num(quote.get("prevclose"))
+                moves[symbol] = (
+                    round((current / previous - 1.0) * 100.0, 2)
+                    if current is not None and previous
+                    else None
+                )
+            provider = "tradier"
+        except Exception:
+            moves = {}
+
+    if not moves or all(value is None for value in moves.values()):
+        moves = {symbol: _snapshot_day_pct(sa, symbol) for symbol in symbols}
+        provider = "alpaca"
 
     vals = [moves.get(x) for x in ("SPY", "QQQ", "IWM") if moves.get(x) is not None]
     breadth_proxy = sum(vals) / len(vals) if vals else None
@@ -562,6 +587,7 @@ def _market_context(sa, sector_etf=None):
         "moves": moves,
         "sector_etf": sector_etf,
         "sector_move_pct": moves.get(sector_etf) if sector_etf else None,
+        "provider": provider,
     }
     _MARKET_CACHE.clear()
     _MARKET_CACHE[key] = result

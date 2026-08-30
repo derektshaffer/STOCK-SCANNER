@@ -261,6 +261,19 @@ def record_prediction(metrics, now=None):
     if not symbol:
         return {"recorded": False, "reason": "missing_symbol"}
 
+    session = _row_market_session(
+        {
+            "market_session": metrics.get("market_session"),
+            "timestamp": now.isoformat(),
+        }
+    )
+    if session == "closed":
+        return {
+            "recorded": False,
+            "reason": "market_closed_not_recorded",
+            "market_session": session,
+        }
+
     rows = _load()
     key = _bucket_key(symbol, now)
     if any(row.get("bucket_key") == key for row in rows[-200:]):

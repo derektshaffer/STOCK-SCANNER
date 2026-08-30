@@ -235,13 +235,37 @@ def render_v2_decision(st, metrics):
     )
     durable_on = bool(tracking.get("durable_enabled"))
     last_record = tracking.get("last_record") or {}
+    last_sync = last_record.get("durable_sync") or {}
+    durable_error = (
+        tracking.get("durable_error")
+        or (
+            last_sync.get("error")
+            if last_sync.get("reason") == "error"
+            else None
+        )
+    )
     record_ok = bool(
         last_record.get("recorded")
         or last_record.get("reason") == "already_recorded"
+        or last_record.get("reason") == "market_closed_not_recorded"
     )
-    swing_forward = bool(
-        ((v2.get("timeframe_analysis") or {}).get("swing_research_flags") or {})
-        .get("version")
+    research_state = (
+        (v2.get("timeframe_analysis") or {}).get("swing_research_flags") or {}
+    )
+    research_session = str(
+        research_state.get("live_sampling_context") or ""
+    ).lower()
+    research_match_eligible = bool(
+        research_state.get("matched")
+        and research_session == "regular_intraday"
+        and research_state.get("historical_universe_proxy_pass") is True
+    )
+    swing_forward_status = (
+        "MATCH ACTIVE"
+        if research_match_eligible
+        else "ARMED"
+        if research_session == "regular_intraday"
+        else "PAUSED OFF-HOURS"
     )
 
     if tracking.get("error"):
@@ -254,6 +278,12 @@ def render_v2_decision(st, metrics):
             "Live test status: market analysis is running, but durable prediction "
             "tracking is OFF. Live samples could be lost on an app restart."
         )
+    elif durable_error:
+        st.warning(
+            "Live test status: local prediction capture is running, but the "
+            "durable GitHub sync reported an error — "
+            + str(durable_error)[:180]
+        )
     else:
         st.caption(
             "Live test status · Data **"
@@ -262,7 +292,7 @@ def render_v2_decision(st, metrics):
             + "** · Durable tracking **ON** · Prediction capture **"
             + ("ACTIVE" if record_ok else "READY")
             + "** · Swing forward tracking **"
-            + ("ACTIVE" if swing_forward else "OFF")
+            + swing_forward_status
             + "**"
         )
 
