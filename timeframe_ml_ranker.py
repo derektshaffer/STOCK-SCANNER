@@ -202,6 +202,10 @@ def load_rows(path=DATA_PATH):
                 "first_event": outcomes.get("swing_first_event_5d"),
                 "label": int(label_num),
                 "swing_score": _num(row.get("swing_score")),
+                "market_regime_label": str(
+                    (row.get("market_context") or {}).get("regime_label")
+                    or "UNKNOWN"
+                ),
                 "features": _feature_dict(row),
             }
         )

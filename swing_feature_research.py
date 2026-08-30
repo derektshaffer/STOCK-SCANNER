@@ -331,10 +331,7 @@ def _year_stability(rows, candidate):
 def _regime_breakdown(rows, candidate):
     groups = {}
     for row in rows:
-        label = str(
-            (row.get("market_context") or {}).get("regime_label")
-            or "UNKNOWN"
-        )
+        label = str(row.get("market_regime_label") or "UNKNOWN")
         groups.setdefault(label, []).append(row)
     return {
         label: _stats(group_rows, candidate)

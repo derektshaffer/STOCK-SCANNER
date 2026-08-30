@@ -2186,6 +2186,38 @@ def test_swing_feature_research_requires_holdout_confirmation():
     assert sfr._is_robust(candidate) is False
 
 
+def test_swing_feature_research_preserves_market_regime_labels():
+    import swing_feature_research as sfr
+
+    candidate = {
+        "rules": [
+            {
+                "feature": "trend_score",
+                "op": ">=",
+                "threshold": 50.0,
+                "threshold_source": "q50",
+            }
+        ],
+        "text": "trend_score >= 50",
+    }
+    rows = [
+        {
+            "date": "2026-01-02",
+            "label": 1,
+            "market_regime_label": "RISK_ON",
+            "features": {"trend_score": 60.0},
+        },
+        {
+            "date": "2026-01-03",
+            "label": 0,
+            "market_regime_label": "RISK_OFF",
+            "features": {"trend_score": 40.0},
+        },
+    ]
+    breakdown = sfr._regime_breakdown(rows, candidate)
+    assert set(breakdown) == {"RISK_ON", "RISK_OFF"}, breakdown
+
+
 if __name__ == "__main__":
     tests = [
         test_analyzer_prefers_tradier,
@@ -2256,6 +2288,7 @@ if __name__ == "__main__":
         test_multiyear_replay_reports_calendar_year_results,
         test_swing_feature_research_freezes_thresholds_before_confirmation,
         test_swing_feature_research_requires_holdout_confirmation,
+        test_swing_feature_research_preserves_market_regime_labels,
     ]
     for test in tests:
         test()
