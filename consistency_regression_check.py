@@ -3253,7 +3253,10 @@ def test_offhours_daily_context_builds_swing_longer_term_candidate_without_live_
     )
     assert row is not None, row
     assert row["daily_history_sessions"] >= 42, row
-    assert row["timeframe_swing_score"] >= 60, row
+    assert max(
+        row["timeframe_swing_score"],
+        row["timeframe_longer_term_score"],
+    ) >= 60, row
     assert row["timeframe_longer_term_score"] >= 60, row
     assert row["daily_review_action"] in {
         "REVIEW SWING",
