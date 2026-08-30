@@ -6,6 +6,11 @@ on:
     # 17:30 ET during EDT and 16:30 ET during EST. GitHub may start scheduled
     # jobs late, so scoring must not depend on the job's actual start minute.
     - cron: '30 21 * * 1-5'
+  push:
+    branches: [main]
+    paths:
+      - "score_analyzer_outcomes.py"
+      - ".github/workflows/outcome-tracker.yml"
   workflow_dispatch:
     inputs:
       date:
@@ -19,6 +24,7 @@ permissions:
 
 jobs:
   score:
+    if: github.event_name != 'push' || contains(github.event.head_commit.message, 'Run Analyzer outcome smoke')
     runs-on: ubuntu-latest
 
     steps:
