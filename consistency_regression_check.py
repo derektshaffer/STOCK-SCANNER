@@ -2514,7 +2514,7 @@ def test_scanner_visibly_marks_stale_snapshot():
 
     source = Path("scanner_app.py").read_text(encoding="utf-8")
     assert "STALE SCAN — do not treat these rankings as current" in source
-    assert "scan_age_seconds > 8 * 60" in source
+    assert "scan_age_seconds > 4 * 60" in source
     assert "⚠ STALE SNAPSHOT" in source
 
 
