@@ -1202,7 +1202,11 @@ def tracker_summary(rows=None, symbol=None, current_metrics=None):
     # and the current Decision score formula. Lifecycle/history may still use
     # all current-provider observations because it tracks the original signal,
     # not score-band calibration.
-    calibration_rows = _independent_calibration_rows(decision_rows)
+    regular_decision_rows = [
+        row for row in decision_rows
+        if _regular_session_row(row)
+    ]
+    calibration_rows = _independent_calibration_rows(regular_decision_rows)
     resolved_60 = [
         r for r in calibration_rows
         if (r.get("outcomes") or {}).get("return_60m_pct") is not None
@@ -1225,6 +1229,7 @@ def tracker_summary(rows=None, symbol=None, current_metrics=None):
     if (
         durable.get("feature_version") != ANALYZER_FEATURE_VERSION
         or durable.get("decision_score_version") != DECISION_SCORE_VERSION
+        or str(durable.get("calibration_session") or "").upper() != "REGULAR"
     ):
         durable = {}
     durable_timeframe = (
@@ -1270,10 +1275,15 @@ def tracker_summary(rows=None, symbol=None, current_metrics=None):
         "feature_version": ANALYZER_FEATURE_VERSION,
         "decision_score_version": DECISION_SCORE_VERSION,
         "total_predictions": len(current_rows),
+        "regular_session_predictions": len(regular_decision_rows),
+        "non_regular_predictions_excluded": (
+            len(decision_rows) - len(regular_decision_rows)
+        ),
         "legacy_predictions_excluded": legacy_excluded,
         "legacy_decision_scores_excluded": legacy_decision_excluded,
         "calibration_rows": len(calibration_rows),
-        "calibration_sampling": "one observation per ticker per hour",
+        "calibration_session": "REGULAR",
+        "calibration_sampling": "one regular-session observation per ticker per hour",
         "signal_lifecycle": lifecycle,
         "resolved_60m": len(resolved_60),
         "higher_60m_rate": (
