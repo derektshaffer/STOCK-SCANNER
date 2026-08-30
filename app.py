@@ -817,7 +817,7 @@ def _install_technical_tooltips():
           const selector = '.combined-stat-label, .mk, .k, .legend-term';
 
           const normalize = (text) => String(text || '')
-            .replace(/\s+/g, ' ')
+            .replace(/\\s+/g, ' ')
             .trim()
             .toUpperCase();
 
