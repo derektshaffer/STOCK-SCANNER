@@ -1463,7 +1463,16 @@ def analyze(symbol):
     # Alpaca remains the history/news/fallback source. When Tradier is
     # configured, all CURRENT decision inputs come from one consolidated
     # Tradier quote + Time & Sales bundle so the tape and trade plan agree.
-    snap=snapshot(symbol,LIVE_FEED)
+    # Tradier is the preferred live provider. Alpaca is useful fallback/news
+    # context, but an Alpaca outage must not prevent a healthy Tradier analysis.
+    alpaca_snapshot_error=None
+    try:
+        snap=snapshot(symbol,LIVE_FEED)
+    except Exception as exc:
+        alpaca_snapshot_error=str(exc)[:180]
+        if not USE_TRADIER:
+            raise
+        snap={}
     trade=snap.get("latestTrade") or {}
     quote=snap.get("latestQuote") or {}
     day=snap.get("dailyBar") or {}
@@ -1603,7 +1612,14 @@ def analyze(symbol):
         "live_provider":live_provider,
         "live_feed":live_feed_label,
         "live_provider_error":live_provider_error,
-        "historical_provider":"alpaca",
+        "alpaca_fallback_error":alpaca_snapshot_error,
+        "historical_provider":(
+            "tradier"
+            if "tradier" in str(daysrc or "").lower()
+            else "alpaca"
+            if str(daysrc or "").strip()
+            else "unknown"
+        ),
         "historical_feed":daysrc,
         "latest_trade_time":trade_ts,
         "latest_quote_time":quote_ts,
