@@ -421,6 +421,14 @@ def test_glass_theme_styles_selectboxes_and_trade_horizon():
     assert '[1.10, 1.35, 2.65, 1.40]' in scanner_source
 
 
+
+def test_streamlit_version_is_pinned_for_ui_stability():
+    from pathlib import Path
+
+    requirements = Path("requirements.txt").read_text(encoding="utf-8")
+    assert "streamlit==1.62.0" in requirements.splitlines(), requirements
+
+
 def test_historical_trade_quality_path_is_conservative():
     import historical_scanner_replay as replay
 
@@ -3550,6 +3558,7 @@ if __name__ == "__main__":
         test_combined_candidate_list_uses_shared_trade_horizon_filter,
         test_mixed_timeframe_is_labeled_multiple_timeframes,
         test_glass_theme_styles_selectboxes_and_trade_horizon,
+        test_streamlit_version_is_pinned_for_ui_stability,
         test_historical_trade_quality_path_is_conservative,
         test_scanner_trade_quality_path_is_causal_and_conservative,
         test_stream_seed_rejects_non_tradier_metrics,
