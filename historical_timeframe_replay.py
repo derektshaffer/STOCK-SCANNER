@@ -607,6 +607,69 @@ def _directional_lift(rows, score_field, outcome_field):
     }
 
 
+
+def _binary_calibration(rows, score_field, outcome_field):
+    groups = {}
+    for row in rows:
+        score = _num(row.get(score_field))
+        outcome = (row.get("outcomes") or {}).get(outcome_field)
+        bucket = _bucket(score)
+        if bucket is None or outcome not in (0, 1):
+            continue
+        groups.setdefault(bucket, []).append(int(outcome))
+    out = {}
+    for bucket, values in groups.items():
+        out[bucket] = {
+            "n": len(values),
+            "target_before_stop_rate_pct": round(
+                sum(values) / len(values) * 100.0,
+                1,
+            ),
+        }
+    return out
+
+
+def _binary_lift(rows, score_field, outcome_field):
+    high = []
+    low = []
+    for row in rows:
+        score = _num(row.get(score_field))
+        outcome = (row.get("outcomes") or {}).get(outcome_field)
+        if score is None or outcome not in (0, 1):
+            continue
+        if score >= 72:
+            high.append(int(outcome))
+        elif score < 55:
+            low.append(int(outcome))
+
+    def stats(values):
+        return {
+            "n": len(values),
+            "target_before_stop_rate_pct": (
+                round(sum(values) / len(values) * 100.0, 1)
+                if values else None
+            ),
+        }
+
+    high_stats = stats(high)
+    low_stats = stats(low)
+    lift = None
+    if (
+        high_stats["target_before_stop_rate_pct"] is not None
+        and low_stats["target_before_stop_rate_pct"] is not None
+    ):
+        lift = round(
+            high_stats["target_before_stop_rate_pct"]
+            - low_stats["target_before_stop_rate_pct"],
+            1,
+        )
+    return {
+        "high_score_72_plus": high_stats,
+        "low_score_below_55": low_stats,
+        "target_rate_lift_pp": lift,
+    }
+
+
 def _candidate_rows(daily_index, replay_dates, universe_size, candidates_per_day):
     staged = []
     candidate_symbols = set()
@@ -865,6 +928,11 @@ def main():
     swing_5 = _calibration(observations, "swing_score", "return_5d_pct")
     long_20 = _calibration(observations, "long_term_score", "return_20d_pct")
     long_60 = _calibration(observations, "long_term_score", "return_60d_pct")
+    swing_path_calibration = _binary_calibration(
+        observations,
+        "swing_score",
+        "swing_target_before_stop_5d",
+    )
 
     fundamental_resolved = [
         row for row in observations
@@ -997,6 +1065,11 @@ def main():
             "swing_5d_directional_lift": _directional_lift(
                 observations, "swing_score", "return_5d_pct"
             ),
+            "swing_path_target_lift": _binary_lift(
+                observations,
+                "swing_score",
+                "swing_target_before_stop_5d",
+            ),
             "long_term_20d_directional_lift": _directional_lift(
                 observations, "long_term_score", "return_20d_pct"
             ),
@@ -1012,6 +1085,7 @@ def main():
         "calibration": {
             "swing_3d": swing_3,
             "swing_5d": swing_5,
+            "swing_path_target_5d": swing_path_calibration,
             "long_term_20d": long_20,
             "long_term_60d": long_60,
         },
@@ -1026,6 +1100,10 @@ def main():
     print(
         "TIMEFRAME_REPLAY_SWING_PATH="
         + json.dumps(payload["summary"]["swing_path_target"], sort_keys=True)
+    )
+    print(
+        "TIMEFRAME_REPLAY_SWING_PATH_CALIBRATION="
+        + json.dumps(swing_path_calibration, sort_keys=True)
     )
     print("TIMEFRAME_REPLAY_LONG_20D=" + json.dumps(long_20, sort_keys=True))
 
