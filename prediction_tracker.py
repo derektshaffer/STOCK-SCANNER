@@ -13,6 +13,7 @@ from timeframe_targets import (
     SWING_HORIZON_SESSIONS,
     resolve_swing_path_from_bars,
 )
+from swing_research_flags import FLAG_VERSION as SWING_RESEARCH_FLAG_VERSION
 
 
 LOG_PATH = Path(os.environ.get("ANALYZER_PREDICTION_LOG", "analysis_logs/analyzer_predictions.json"))
@@ -282,6 +283,8 @@ def record_prediction(metrics, now=None):
     scenarios = (v2.get("full_spectrum") or {}).get("scenarios") or {}
     timeframe = v2.get("timeframe_analysis") or {}
     daily_trend = timeframe.get("daily_trend") or {}
+    swing_research = timeframe.get("swing_research_flags") or {}
+    swing_research_matches = swing_research.get("matches") or []
 
     row = {
         "id": f"{key}:{len(rows)+1}",
@@ -335,6 +338,16 @@ def record_prediction(metrics, now=None):
         "timeframe_return_20d_at_signal_pct": _num(daily_trend.get("return_20d_pct")),
         "timeframe_return_60d_at_signal_pct": _num(daily_trend.get("return_60d_pct")),
         "timeframe_return_120d_at_signal_pct": _num(daily_trend.get("return_120d_pct")),
+        # Tracking-only historical research flags. These fields never feed back
+        # into production scores; they exist so brand-new live examples can be
+        # compared with the frozen 2021-2026 historical study.
+        "swing_research_flag_version": swing_research.get("version"),
+        "swing_research_flag_ids": [
+            str(item.get("id"))
+            for item in swing_research_matches
+            if item.get("id")
+        ],
+        "swing_research_flags": swing_research_matches,
         "entry_low": _num(selected.get("entry_low")),
         "entry_high": _num(selected.get("entry_high")),
         "target1": _num(selected.get("target1")),
@@ -956,6 +969,89 @@ def _timeframe_learning_progress(rows):
     return {key: stage(value) for key, value in counts.items()}
 
 
+
+def _swing_research_flag_summary(rows):
+    """Summarize one independent forward sample per flag/ticker/signal day."""
+    chosen = {}
+    for row in sorted(rows, key=lambda item: str(item.get("timestamp") or "")):
+        if row.get("swing_research_flag_version") != SWING_RESEARCH_FLAG_VERSION:
+            continue
+        symbol = str(row.get("symbol") or "").upper().strip()
+        dt = _parse_dt(row.get("timestamp"))
+        if not symbol or dt is None:
+            continue
+        flag_ids = row.get("swing_research_flag_ids") or []
+        for flag_id in flag_ids:
+            flag_id = str(flag_id or "").strip()
+            if not flag_id:
+                continue
+            key = (flag_id, symbol, dt.astimezone(ET).date().isoformat())
+            if key not in chosen:
+                chosen[key] = row
+
+    grouped = {}
+    for (flag_id, _symbol, _day), row in chosen.items():
+        g = grouped.setdefault(
+            flag_id,
+            {
+                "signals": 0,
+                "resolved": 0,
+                "wins": 0,
+                "mfe": [],
+                "mae": [],
+            },
+        )
+        g["signals"] += 1
+        outcomes = row.get("outcomes") or {}
+        label = outcomes.get("swing_target_before_stop_5d")
+        if label in (0, 1):
+            g["resolved"] += 1
+            g["wins"] += int(label)
+        mfe = _num(outcomes.get("swing_mfe_5d_pct"))
+        mae = _num(outcomes.get("swing_mae_5d_pct"))
+        if mfe is not None:
+            g["mfe"].append(mfe)
+        if mae is not None:
+            g["mae"].append(mae)
+
+    out = {}
+    for flag_id, g in sorted(grouped.items()):
+        resolved = int(g["resolved"])
+        signals = int(g["signals"])
+        if resolved < 10:
+            stage = "COLLECTING"
+            next_threshold = 10
+        elif resolved < 30:
+            stage = "EARLY READ"
+            next_threshold = 30
+        elif resolved < 100:
+            stage = "USEFUL"
+            next_threshold = 100
+        else:
+            stage = "STRONGER SAMPLE"
+            next_threshold = None
+        out[flag_id] = {
+            "signals": signals,
+            "resolved": resolved,
+            "target_before_stop_rate_pct": (
+                round(g["wins"] / resolved * 100.0, 1)
+                if resolved else None
+            ),
+            "avg_mfe_5d_pct": (
+                round(sum(g["mfe"]) / len(g["mfe"]), 3)
+                if g["mfe"] else None
+            ),
+            "avg_mae_5d_pct": (
+                round(sum(g["mae"]) / len(g["mae"]), 3)
+                if g["mae"] else None
+            ),
+            "stage": stage,
+            "next_threshold": next_threshold,
+            "sampling": "first matched observation per ticker per signal day",
+        }
+    return out
+
+
 def _repeat_bounce_summary(rows):
     candidates=[
         row for row in rows
@@ -1157,6 +1253,11 @@ def tracker_summary(rows=None, symbol=None, current_metrics=None):
         "timeframe_learning_progress": (
             durable_timeframe.get("timeframe_learning_progress")
             or _timeframe_learning_progress(calibration_rows)
+        ),
+        "swing_research_flag_version": SWING_RESEARCH_FLAG_VERSION,
+        "swing_research_flag_calibration": (
+            durable.get("swing_research_flag_calibration")
+            or _swing_research_flag_summary(current_rows)
         ),
         "repeat_bounce_calibration": (
             durable.get("repeat_bounce_calibration")
