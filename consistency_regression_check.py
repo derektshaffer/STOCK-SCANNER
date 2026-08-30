@@ -2284,6 +2284,8 @@ def test_live_swing_research_calibration_dedupes_ticker_day():
             "timestamp": "2026-08-24T14:00:00+00:00",
             "swing_research_flag_version": srf.FLAG_VERSION,
             "swing_research_flag_ids": ["reversal_ignition"],
+            "swing_research_sampling_context": "regular_intraday",
+            "swing_research_universe_proxy_pass": True,
             "outcomes": {
                 "swing_target_before_stop_5d": 1,
                 "swing_mfe_5d_pct": 8.0,
@@ -2295,6 +2297,8 @@ def test_live_swing_research_calibration_dedupes_ticker_day():
             "timestamp": "2026-08-24T14:05:00+00:00",
             "swing_research_flag_version": srf.FLAG_VERSION,
             "swing_research_flag_ids": ["reversal_ignition"],
+            "swing_research_sampling_context": "regular_intraday",
+            "swing_research_universe_proxy_pass": True,
             "outcomes": {
                 "swing_target_before_stop_5d": 0,
                 "swing_mfe_5d_pct": 1.0,
@@ -2306,6 +2310,8 @@ def test_live_swing_research_calibration_dedupes_ticker_day():
             "timestamp": "2026-08-24T15:00:00+00:00",
             "swing_research_flag_version": srf.FLAG_VERSION,
             "swing_research_flag_ids": ["reversal_ignition"],
+            "swing_research_sampling_context": "regular_intraday",
+            "swing_research_universe_proxy_pass": True,
             "outcomes": {
                 "swing_target_before_stop_5d": 0,
                 "swing_mfe_5d_pct": 2.0,
@@ -2368,9 +2374,148 @@ def test_analyzer_live_test_status_exposes_tracking_health():
     assert "Swing forward tracking **" in source
 
 
+def test_analyzer_tradier_survives_alpaca_snapshot_failure():
+    _install_common_analyzer_stubs()
+    bars = _regular_bars()
+    now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
+
+    def _fail_snapshot(*args, **kwargs):
+        raise RuntimeError("simulated Alpaca snapshot outage")
+
+    sa.snapshot = _fail_snapshot
+    sa.get_tradier_quotes = lambda symbols, token: {
+        "TEST": {
+            "symbol": "TEST",
+            "last": 10.10,
+            "bid": 10.09,
+            "ask": 10.11,
+            "prevclose": 9.70,
+            "high": 10.20,
+            "low": 9.60,
+            "trade_date": now_ms,
+            "bid_date": now_ms,
+            "ask_date": now_ms,
+        }
+    }
+    sa._tradier_regular_session_bars = lambda symbol, now: bars
+
+    result = sa.analyze("TEST")
+    assert result["market_provider"] == "tradier", result
+    assert result["price"] == 10.10, result
+    assert result.get("alpaca_fallback_error"), result
+
+
+def test_analyzer_reports_actual_historical_provider():
+    _install_common_analyzer_stubs()
+    bars = _regular_bars()
+    now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
+    sa.get_tradier_quotes = lambda symbols, token: {
+        "TEST": {
+            "symbol": "TEST",
+            "last": 10.10,
+            "bid": 10.09,
+            "ask": 10.11,
+            "prevclose": 9.70,
+            "high": 10.20,
+            "low": 9.60,
+            "trade_date": now_ms,
+            "bid_date": now_ms,
+            "ask_date": now_ms,
+        }
+    }
+    sa._tradier_regular_session_bars = lambda symbol, now: bars
+    sa.try_sip_delayed_bars = (
+        lambda symbol, timeframe, start, end, limit=1000:
+        (_daily_bars(), "Tradier consolidated daily")
+    )
+
+    result = sa.analyze("TEST")
+    assert result["historical_provider"] == "tradier", result
+    assert result["historical_feed"] == "Tradier consolidated daily", result
+
+
+def test_swing_research_live_context_is_not_historical_parity():
+    import swing_research_flags as srf
+
+    metrics = {
+        "as_of": "2026-08-28T15:00:00+00:00",
+        "price": 10.0,
+        "day_pct": 8.0,
+        "session_volume": 100_000,
+        "stair_step": {"last_step_pct": 6.5, "step_count": 2},
+    }
+    timeframe = {"daily_trend": {"return_20d_pct": -5.0}}
+    result = srf.evaluate_swing_research_flags(metrics, timeframe)
+    assert result["live_sampling_context"] == "regular_intraday", result
+    assert result["historical_universe_proxy_pass"] is True, result
+    assert result["direct_historical_parity"] is False, result
+    assert "end-of-day" in result["note"], result
+
+
+def test_swing_research_calibration_excludes_wrong_context():
+    import prediction_tracker as pt
+    import swing_research_flags as srf
+
+    rows = [
+        {
+            "symbol": "GOOD",
+            "timestamp": "2026-08-28T15:00:00+00:00",
+            "swing_research_flag_version": srf.FLAG_VERSION,
+            "swing_research_flag_ids": ["strong_momentum_day"],
+            "swing_research_sampling_context": "regular_intraday",
+            "swing_research_universe_proxy_pass": True,
+            "outcomes": {"swing_target_before_stop_5d": 1},
+        },
+        {
+            "symbol": "AFTER",
+            "timestamp": "2026-08-28T21:00:00+00:00",
+            "swing_research_flag_version": srf.FLAG_VERSION,
+            "swing_research_flag_ids": ["strong_momentum_day"],
+            "swing_research_sampling_context": "afterhours",
+            "swing_research_universe_proxy_pass": True,
+            "outcomes": {"swing_target_before_stop_5d": 0},
+        },
+        {
+            "symbol": "THIN",
+            "timestamp": "2026-08-28T15:05:00+00:00",
+            "swing_research_flag_version": srf.FLAG_VERSION,
+            "swing_research_flag_ids": ["strong_momentum_day"],
+            "swing_research_sampling_context": "regular_intraday",
+            "swing_research_universe_proxy_pass": False,
+            "outcomes": {"swing_target_before_stop_5d": 0},
+        },
+    ]
+    summary = pt._swing_research_flag_summary(rows)
+    item = summary["strong_momentum_day"]
+    assert item["signals"] == 1, item
+    assert item["resolved"] == 1, item
+    assert item["target_before_stop_rate_pct"] == 100.0, item
+    assert item["direct_historical_parity"] is False, item
+
+
+def test_scanner_visibly_marks_stale_snapshot():
+    from pathlib import Path
+
+    source = Path("scanner_app.py").read_text(encoding="utf-8")
+    assert "STALE SCAN — do not treat these rankings as current" in source
+    assert "scan_age_seconds > 8 * 60" in source
+    assert "⚠ STALE SNAPSHOT" in source
+
+
+def test_swing_research_ui_disclaims_historical_probability():
+    from pathlib import Path
+
+    source = Path("analyzer_v2_ui.py").read_text(encoding="utf-8")
+    assert "Historical EOD reference only" in source
+    assert "not a live success probability" in source
+    assert "intraday exploratory evidence" in source
+
+
 if __name__ == "__main__":
     tests = [
         test_analyzer_daily_history_prefers_tradier,
+        test_analyzer_tradier_survives_alpaca_snapshot_failure,
+        test_analyzer_reports_actual_historical_provider,
         test_analyzer_prefers_tradier,
         test_analyzer_falls_back_cleanly,
         test_scanner_ml_version_gate,
@@ -2443,6 +2588,10 @@ if __name__ == "__main__":
         test_live_swing_research_flags_match_frozen_rules,
         test_live_swing_research_flags_never_change_scores,
         test_live_swing_research_calibration_dedupes_ticker_day,
+        test_swing_research_live_context_is_not_historical_parity,
+        test_swing_research_calibration_excludes_wrong_context,
+        test_scanner_visibly_marks_stale_snapshot,
+        test_swing_research_ui_disclaims_historical_probability,
         test_monday_readiness_blocks_stale_scan_handoffs,
         test_analyzer_live_test_status_exposes_tracking_health,
     ]
