@@ -2218,6 +2218,108 @@ def test_swing_feature_research_preserves_market_regime_labels():
     assert set(breakdown) == {"RISK_ON", "RISK_OFF"}, breakdown
 
 
+def test_live_swing_research_flags_match_frozen_rules():
+    import swing_research_flags as srf
+
+    metrics = {
+        "day_pct": 8.2,
+        "stair_step": {
+            "last_step_pct": 6.4,
+            "step_count": 3,
+        },
+    }
+    timeframe = {
+        "daily_trend": {
+            "return_20d_pct": -12.0,
+        }
+    }
+    result = srf.evaluate_swing_research_flags(metrics, timeframe)
+    ids = {item["id"] for item in result["matches"]}
+    assert result["tracking_only"] is True, result
+    assert ids == {
+        "reversal_ignition",
+        "strong_stair_step",
+        "strong_momentum_day",
+    }, result
+    reversal = next(
+        item for item in result["matches"]
+        if item["id"] == "reversal_ignition"
+    )
+    assert reversal["variant"] == "DEEP REVERSAL", reversal
+    assert (
+        reversal["historical_confirmation"]["confirmation_success_pct"]
+        == 52.3
+    ), reversal
+
+
+def test_live_swing_research_flags_never_change_scores():
+    import copy
+    import swing_research_flags as srf
+
+    metrics = {
+        "day_pct": 10.0,
+        "score": 71.0,
+        "trade_plan": {"confidence": 66.0},
+        "stair_step": {"last_step_pct": 7.0, "step_count": 2},
+    }
+    timeframe = {
+        "scores": {"intraday": 61.0, "swing": 58.0, "long_term": 49.0},
+        "daily_trend": {"return_20d_pct": -5.0},
+    }
+    before_metrics = copy.deepcopy(metrics)
+    before_timeframe = copy.deepcopy(timeframe)
+    result = srf.evaluate_swing_research_flags(metrics, timeframe)
+    assert result["matched"] is True, result
+    assert metrics == before_metrics, (metrics, before_metrics)
+    assert timeframe == before_timeframe, (timeframe, before_timeframe)
+
+
+def test_live_swing_research_calibration_dedupes_ticker_day():
+    import prediction_tracker as pt
+    import swing_research_flags as srf
+
+    rows = [
+        {
+            "symbol": "TEST",
+            "timestamp": "2026-08-24T14:00:00+00:00",
+            "swing_research_flag_version": srf.FLAG_VERSION,
+            "swing_research_flag_ids": ["reversal_ignition"],
+            "outcomes": {
+                "swing_target_before_stop_5d": 1,
+                "swing_mfe_5d_pct": 8.0,
+                "swing_mae_5d_pct": -2.0,
+            },
+        },
+        {
+            "symbol": "TEST",
+            "timestamp": "2026-08-24T14:05:00+00:00",
+            "swing_research_flag_version": srf.FLAG_VERSION,
+            "swing_research_flag_ids": ["reversal_ignition"],
+            "outcomes": {
+                "swing_target_before_stop_5d": 0,
+                "swing_mfe_5d_pct": 1.0,
+                "swing_mae_5d_pct": -5.0,
+            },
+        },
+        {
+            "symbol": "NEXT",
+            "timestamp": "2026-08-24T15:00:00+00:00",
+            "swing_research_flag_version": srf.FLAG_VERSION,
+            "swing_research_flag_ids": ["reversal_ignition"],
+            "outcomes": {
+                "swing_target_before_stop_5d": 0,
+                "swing_mfe_5d_pct": 2.0,
+                "swing_mae_5d_pct": -4.5,
+            },
+        },
+    ]
+    summary = pt._swing_research_flag_summary(rows)
+    item = summary["reversal_ignition"]
+    assert item["signals"] == 2, item
+    assert item["resolved"] == 2, item
+    assert item["target_before_stop_rate_pct"] == 50.0, item
+
+
 if __name__ == "__main__":
     tests = [
         test_analyzer_prefers_tradier,
@@ -2289,6 +2391,9 @@ if __name__ == "__main__":
         test_swing_feature_research_freezes_thresholds_before_confirmation,
         test_swing_feature_research_requires_holdout_confirmation,
         test_swing_feature_research_preserves_market_regime_labels,
+        test_live_swing_research_flags_match_frozen_rules,
+        test_live_swing_research_flags_never_change_scores,
+        test_live_swing_research_calibration_dedupes_ticker_day,
     ]
     for test in tests:
         test()
