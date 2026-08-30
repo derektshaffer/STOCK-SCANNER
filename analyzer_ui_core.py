@@ -11,8 +11,9 @@ _COMBINED_WORKSPACE = st.session_state.get("app_view") == "Stock Analyzer"
 # placing credentials in GitHub. This deliberately happens BEFORE importing
 # stock_analyzer because that module reads its configuration at import time.
 def _load_streamlit_secrets_into_env():
-    required = ("ALPACA_API_KEY", "ALPACA_SECRET_KEY")
-    optional = (
+    keys = (
+        "ALPACA_API_KEY",
+        "ALPACA_SECRET_KEY",
         "ALPACA_LIVE_FEED",
         "ALPACA_HISTORICAL_FEED",
         "TRADIER_ACCESS_TOKEN",
@@ -28,18 +29,26 @@ def _load_streamlit_secrets_into_env():
         st.error(f"Streamlit Secrets could not be read: {exc}")
         st.stop()
 
-    for key in required + optional:
+    for key in keys:
         value = secrets.get(key)
         if value is not None and str(value).strip():
             os.environ[key] = str(value).strip()
 
-    missing = [key for key in required if not os.environ.get(key, "").strip()]
-    if missing:
+    has_alpaca = bool(
+        os.environ.get("ALPACA_API_KEY", "").strip()
+        and os.environ.get("ALPACA_SECRET_KEY", "").strip()
+    )
+    has_tradier = bool(
+        os.environ.get("TRADIER_ACCESS_TOKEN", "").strip()
+        or os.environ.get("TRADIER_TOKEN", "").strip()
+    )
+    if not has_alpaca and not has_tradier:
         available = ", ".join(sorted(secrets.keys())) if secrets else "none"
         st.error(
-            "Missing required Alpaca credentials in Streamlit Secrets: "
-            + ", ".join(missing)
-            + f". Secret names currently visible to the app: {available}."
+            "No market-data provider is configured. Add either "
+            "TRADIER_ACCESS_TOKEN (preferred) or both ALPACA_API_KEY and "
+            "ALPACA_SECRET_KEY in Streamlit Secrets. "
+            f"Secret names currently visible to the app: {available}."
         )
         st.stop()
 
