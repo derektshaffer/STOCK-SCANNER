@@ -2541,9 +2541,64 @@ def test_live_scanner_matches_scheduled_tradier_discovery():
     assert 'env["SCANNER_DISCOVERY_UNIVERSE_SIZE"] = "1200"' in source
 
 
+def test_analyzer_session_filter_uses_current_extended_session():
+    # 2026-08-31 is a Monday in EDT.
+    pre_now = datetime(2026, 8, 31, 12, 30, tzinfo=timezone.utc)  # 8:30 AM ET
+    pre_raw = [
+        {"t": "2026-08-31T11:55:00Z", "c": 9.9},  # 7:55 ET, before premarket
+        {"t": "2026-08-31T12:05:00Z", "c": 10.0}, # 8:05 ET, premarket
+        {"t": "2026-08-31T12:20:00Z", "c": 10.1}, # 8:20 ET, premarket
+        {"t": "2026-08-28T19:55:00Z", "c": 9.8},  # prior regular session
+    ]
+    pre = sa._filter_session_bars(pre_raw, pre_now)
+    assert [row["t"] for row in pre] == [
+        "2026-08-31T12:05:00Z",
+        "2026-08-31T12:20:00Z",
+    ], pre
+
+    after_now = datetime(2026, 8, 31, 21, 30, tzinfo=timezone.utc)  # 5:30 PM ET
+    after_raw = [
+        {"t": "2026-08-31T19:55:00Z", "c": 10.2}, # 3:55 ET regular
+        {"t": "2026-08-31T20:05:00Z", "c": 10.3}, # 4:05 ET after-hours
+        {"t": "2026-08-31T21:00:00Z", "c": 10.4}, # 5:00 ET after-hours
+    ]
+    after = sa._filter_session_bars(after_raw, after_now)
+    assert [row["t"] for row in after] == [
+        "2026-08-31T20:05:00Z",
+        "2026-08-31T21:00:00Z",
+    ], after
+
+
+def test_analyzer_closed_preview_uses_latest_regular_session():
+    now = datetime(2026, 8, 29, 16, 0, tzinfo=timezone.utc)  # Saturday
+    raw = [
+        {"t": "2026-08-28T12:00:00Z", "c": 9.7},  # Friday premarket
+        {"t": "2026-08-28T14:00:00Z", "c": 10.0}, # Friday regular
+        {"t": "2026-08-28T19:55:00Z", "c": 10.2}, # Friday regular
+        {"t": "2026-08-28T20:10:00Z", "c": 10.3}, # Friday after-hours
+    ]
+    result = sa._filter_session_bars(raw, now)
+    assert [row["t"] for row in result] == [
+        "2026-08-28T14:00:00Z",
+        "2026-08-28T19:55:00Z",
+    ], result
+
+
+def test_analyzer_does_not_fake_extended_hours_volume_pace():
+    from pathlib import Path
+
+    source = Path("stock_analyzer.py").read_text(encoding="utf-8")
+    assert 'if avgvol and session_phase=="regular":' in source
+    assert 'f"TRADIER {session_phase.upper()}"' in source
+    assert '"market_session":session_phase' in source
+
+
 if __name__ == "__main__":
     tests = [
         test_analyzer_daily_history_prefers_tradier,
+        test_analyzer_session_filter_uses_current_extended_session,
+        test_analyzer_closed_preview_uses_latest_regular_session,
+        test_analyzer_does_not_fake_extended_hours_volume_pace,
         test_analyzer_tradier_does_not_block_on_alpaca_snapshot,
         test_analyzer_reports_actual_historical_provider,
         test_analyzer_prefers_tradier,
