@@ -2041,6 +2041,77 @@ def test_swing_ml_regime_features_are_separate_from_baseline():
         assert required in tml.REGIME_FEATURES, required
 
 
+def test_multiyear_swing_ml_uses_more_walk_forward_eras():
+    import timeframe_ml_ranker as tml
+
+    rows = []
+    for day_index in range(150):
+        year = 2021 + day_index // 30
+        month = 1 + (day_index % 30) // 3
+        day = 1 + (day_index % 3)
+        date_text = f"{year:04d}-{month:02d}-{day:02d}"
+        for symbol_index in range(20):
+            rows.append(
+                {
+                    "date": date_text,
+                    "symbol": f"M{symbol_index}",
+                    "return_5d_pct": 1.0 if symbol_index % 2 else -1.0,
+                    "label": int(symbol_index % 2),
+                    "swing_score": 50.0,
+                    "features": {name: 0.0 for name in tml.FEATURES},
+                }
+            )
+
+    folds = tml._chronological_folds(rows)
+    assert len(folds) >= 5, len(folds)
+    for train, test, train_dates, test_dates in folds:
+        assert max(train_dates) < min(test_dates)
+        assert len(train) >= 500
+        assert len(test) >= 150
+
+
+def test_multiyear_replay_reports_calendar_year_results():
+    import historical_timeframe_replay as htr
+
+    rows = [
+        {
+            "as_of": "2022-06-01T16:00:00-04:00",
+            "market_context": {"regime_label": "RISK_OFF"},
+            "outcomes": {
+                "swing_target_before_stop_5d": 1,
+                "swing_mfe_5d_pct": 7.0,
+                "swing_mae_5d_pct": -2.0,
+                "excess_return_vs_spy_5d_pct": 3.0,
+            },
+        },
+        {
+            "as_of": "2022-09-01T16:00:00-04:00",
+            "market_context": {"regime_label": "MIXED"},
+            "outcomes": {
+                "swing_target_before_stop_5d": 0,
+                "swing_mfe_5d_pct": 2.0,
+                "swing_mae_5d_pct": -5.0,
+                "excess_return_vs_spy_5d_pct": -1.0,
+            },
+        },
+        {
+            "as_of": "2023-03-01T16:00:00-04:00",
+            "market_context": {"regime_label": "RISK_ON"},
+            "outcomes": {
+                "swing_target_before_stop_5d": 1,
+                "swing_mfe_5d_pct": 8.0,
+                "swing_mae_5d_pct": -1.0,
+                "excess_return_vs_spy_5d_pct": 2.0,
+            },
+        },
+    ]
+    summary = htr._year_outcome_summary(rows)
+    assert summary["2022"]["n"] == 2, summary
+    assert summary["2022"]["target_before_stop_rate_pct"] == 50.0, summary
+    assert summary["2022"]["regime_counts"]["RISK_OFF"] == 1, summary
+    assert summary["2023"]["target_before_stop_rate_pct"] == 100.0, summary
+
+
 if __name__ == "__main__":
     tests = [
         test_analyzer_prefers_tradier,
@@ -2107,6 +2178,8 @@ if __name__ == "__main__":
         test_swing_path_target_treats_no_target_as_non_success,
         test_market_regime_context_ignores_future_benchmark_bars,
         test_swing_ml_regime_features_are_separate_from_baseline,
+        test_multiyear_swing_ml_uses_more_walk_forward_eras,
+        test_multiyear_replay_reports_calendar_year_results,
     ]
     for test in tests:
         test()
