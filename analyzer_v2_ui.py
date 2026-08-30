@@ -476,10 +476,12 @@ def render_v2_decision(st, metrics):
             f"Calibration progress: **{progress_text}**"
         )
         st.caption(
-            "Calibration uses at most one observation per ticker per hour so "
-            "overlapping 5-minute refreshes do not inflate the sample. "
-            "30 resolved ticker-hours = early read · 100+ = useful · "
-            "300+ = much stronger evidence for changing score weights."
+            "Intraday calibration uses at most one regular-session observation "
+            "per ticker per Eastern-time hour, so overlapping 5-minute refreshes "
+            "and off-hours checks do not inflate the sample. Swing and Longer-term "
+            "learning use one latest regular-session observation per ticker per "
+            "Eastern trading day. 30 resolved ticker-hours = early intraday read · "
+            "100+ = useful · 300+ = much stronger evidence for changing score weights."
         )
         current_bucket = (
             "80-100" if potential >= 80 else
