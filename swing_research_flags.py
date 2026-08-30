@@ -8,8 +8,11 @@ forward outcomes before deciding whether any pattern deserves score weight.
 from __future__ import annotations
 
 import math
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
-FLAG_VERSION = "swing-research-flags-v1"
+FLAG_VERSION = "swing-research-flags-v2-context-parity"
+ET = ZoneInfo("America/New_York")
 
 # Frozen from the 2021-2026 discovery/confirmation study.
 REVERSAL_20D_MAX_PCT = -1.77
@@ -60,6 +63,69 @@ def _num(value):
         return None
 
 
+
+def _signal_context(metrics):
+    raw = (metrics or {}).get("as_of")
+    try:
+        dt = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        et = dt.astimezone(ET)
+    except Exception:
+        et = datetime.now(ET)
+
+    if et.weekday() >= 5:
+        phase = "closed"
+    else:
+        minute = et.hour * 60 + et.minute
+        if 4 * 60 <= minute < 9 * 60 + 30:
+            phase = "premarket"
+        elif 9 * 60 + 30 <= minute < 16 * 60:
+            phase = "regular_intraday"
+        elif 16 * 60 <= minute < 20 * 60:
+            phase = "afterhours"
+        else:
+            phase = "closed"
+
+    price = _num((metrics or {}).get("price"))
+    day_pct = _num((metrics or {}).get("day_pct"))
+    volume = _num((metrics or {}).get("session_volume"))
+    if volume is None:
+        volume = _num((metrics or {}).get("volume"))
+    dollar_volume = (
+        price * volume
+        if price is not None and volume is not None
+        else None
+    )
+
+    # The historical research universe was restricted to $0.50-$60 stocks,
+    # >=2% day movers and >=$500k current-day dollar volume. The historical
+    # replay also selected only its top-ranked candidates, which cannot be
+    # reproduced by a manual single-stock Analyzer call. This proxy therefore
+    # improves comparability without pretending it is exact parity.
+    universe_proxy_pass = bool(
+        price is not None
+        and 0.50 <= price <= 60.0
+        and day_pct is not None
+        and day_pct >= 2.0
+        and dollar_volume is not None
+        and dollar_volume >= 500_000
+    )
+
+    return {
+        "phase": phase,
+        "signal_time_et": et.isoformat(),
+        "universe_proxy_pass": universe_proxy_pass,
+        "dollar_volume": (
+            round(dollar_volume, 2)
+            if dollar_volume is not None
+            else None
+        ),
+        "direct_historical_parity": False,
+        "historical_reference": "end_of_day_daily_replay",
+    }
+
+
 def evaluate_swing_research_flags(metrics, timeframe):
     """Return live research matches without changing any production score."""
     metrics = metrics or {}
@@ -67,6 +133,7 @@ def evaluate_swing_research_flags(metrics, timeframe):
     daily = timeframe.get("daily_trend") or {}
     stair = metrics.get("stair_step") or {}
 
+    context = _signal_context(metrics)
     day_pct = _num(metrics.get("day_pct"))
     return_20d = _num(daily.get("return_20d_pct"))
     stair_last_step = _num(stair.get("last_step_pct"))
@@ -170,9 +237,20 @@ def evaluate_swing_research_flags(metrics, timeframe):
         "match_count": len(matches),
         "matches": matches,
         "outcome_target": "+5% before -4% within 5 trading sessions",
+        "live_sampling_context": context["phase"],
+        "historical_universe_proxy_pass": context["universe_proxy_pass"],
+        "historical_universe_proxy_dollar_volume": context["dollar_volume"],
+        "direct_historical_parity": False,
+        "historical_reference_context": context["historical_reference"],
+        "signal_time_et": context["signal_time_et"],
         "note": (
-            "Historical research matches are forward-tracking flags only. "
-            "They do not change Swing fit, trade plans, or live rankings."
+            "These live matches apply patterns discovered from end-of-day historical "
+            "replay to an intraday Analyzer snapshot. They are useful exploratory "
+            "forward samples, but the historical success rates are reference data, "
+            "not live probabilities and not direct apples-to-apples validation. "
+            "Only regular-session samples that also pass the historical-universe "
+            "proxy are included in the live research calibration. The flags never "
+            "change Swing fit, trade plans, or live rankings."
         ),
     }
 
