@@ -2539,19 +2539,23 @@ def test_legacy_analyzer_entrypoint_cannot_drift():
 def test_scanner_ui_accepts_tradier_without_alpaca_credentials():
     from pathlib import Path
 
-    source = Path("scanner_app.py").read_text(encoding="utf-8")
-    assert "if not has_alpaca and not tradier_token" in source
-    assert "if has_alpaca:" in source
-    assert 'env["TRADIER_ACCESS_TOKEN"] = tradier_token' in source
-    assert "No market-data provider is configured" in source
+    ui_source = Path("scanner_app.py").read_text(encoding="utf-8")
+    runtime_source = Path("scanner_runtime.py").read_text(encoding="utf-8")
+    assert "from scanner_runtime import run_scanner_process" in ui_source
+    assert "if not has_alpaca and not tradier_token" in runtime_source
+    assert "if has_alpaca:" in runtime_source
+    assert 'env["TRADIER_ACCESS_TOKEN"] = tradier_token' in runtime_source
+    assert "No market-data provider is configured" in runtime_source
 
 
 def test_live_scanner_matches_scheduled_tradier_discovery():
     from pathlib import Path
 
-    source = Path("scanner_app.py").read_text(encoding="utf-8")
-    assert 'env["SCANNER_TRADIER_DISCOVERY"] = "1"' in source
-    assert 'env["SCANNER_DISCOVERY_UNIVERSE_SIZE"] = "1200"' in source
+    ui_source = Path("scanner_app.py").read_text(encoding="utf-8")
+    runtime_source = Path("scanner_runtime.py").read_text(encoding="utf-8")
+    assert "discovery_universe_size=" in ui_source
+    assert 'env["SCANNER_TRADIER_DISCOVERY"] = "1"' in runtime_source
+    assert 'env["SCANNER_DISCOVERY_UNIVERSE_SIZE"]' in runtime_source
 
 
 def test_analyzer_session_filter_uses_current_extended_session():
