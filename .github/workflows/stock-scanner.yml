@@ -3,7 +3,7 @@ name: Momentum Stock Scanner
 on:
   schedule:
     # Durable ML/outcome collector only. The Streamlit app keeps its own
-    # 5-minute scan cadence. GitHub Actions is intentionally less frequent and
+    # 2-minute scan cadence. GitHub Actions is intentionally less frequent and
     # offset from common clock boundaries to reduce schedule queue delays.
     - cron: '7,37 8-23 * * 1-5'
     - cron: '7,37 0-1 * * 2-6'
