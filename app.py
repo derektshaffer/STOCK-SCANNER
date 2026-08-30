@@ -631,7 +631,8 @@ def _workspace_scanner_monitor():
         st.caption("Background scanner paused because Auto Scan is OFF.")
     elif not feed_available:
         st.caption(
-            "Background scanner armed; live scanner feed is currently closed."
+            "2-minute live momentum scan is paused because the live feed is closed. "
+            "Completed-daily Swing / Longer-Term discovery remains available."
         )
 
     _browser_alert_control(first_alert)
@@ -812,6 +813,57 @@ def _scan_age_text(seconds):
     return f"{minutes / 60.0:.1f}h old"
 
 
+def _offhours_timeframe_candidates():
+    path = Path("scan_logs/offhours_timeframe_latest.json")
+    if not path.exists():
+        return []
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return []
+
+    out = []
+    seen = set()
+    for row in payload.get("candidates") or []:
+        symbol = str(row.get("symbol") or "").upper().strip()
+        if not symbol or symbol in seen:
+            continue
+        seen.add(symbol)
+        swing = row.get("timeframe_swing_score")
+        longer = row.get("timeframe_longer_term_score")
+        out.append(
+            {
+                "symbol": symbol,
+                "grade": str(row.get("daily_setup_grade") or "—"),
+                "score": row.get("daily_discovery_score"),
+                "ml_probability": None,
+                "ml_validated": False,
+                "ml_status": "OFF-HOURS DAILY",
+                "opportunity_score": row.get("daily_discovery_score"),
+                "scanner_action": row.get("daily_review_action"),
+                "scanner_action_tier": "watch",
+                "scanner_action_reason": row.get("daily_review_reason"),
+                "timeframe_best_fit": (
+                    "LONGER-TERM"
+                    if (longer or 0) > (swing or 0) + 5
+                    else "SWING"
+                    if (swing or 0) > (longer or 0) + 5
+                    else "MIXED"
+                ),
+                "timeframe_fit_reason": row.get("daily_review_reason"),
+                "timeframe_intraday_score": row.get("timeframe_intraday_score"),
+                "timeframe_swing_score": swing,
+                "timeframe_longer_term_score": longer,
+                "day_pct": row.get("day_pct"),
+                "volume_pace": row.get("daily_volume_ratio"),
+                "volume_pace_display": row.get("daily_volume_ratio"),
+                "volume_pace_source": "daily_volume_vs_20d_average",
+                "source_mode": "offhours_daily_timeframe",
+            }
+        )
+    return out[:15]
+
+
 def _latest_scan_candidates():
     path = Path("scan_logs/latest_scan.json")
     if not path.exists():
@@ -926,6 +978,8 @@ def _volume_class(value):
 def _action_display(row):
     action = str(row.get("scanner_action") or "WATCH").upper()
     tier = str(row.get("scanner_action_tier") or "watch").lower()
+    if row.get("source_mode") == "offhours_daily_timeframe":
+        return action, "grade-b", "DAILY REVIEW"
     cls = {
         "ready": "volume-strong",
         "breakout": "grade-b",
@@ -970,12 +1024,19 @@ if view == "Momentum Scanner":
     if launch_error:
         st.error(f"Could not analyze the selected ticker: {launch_error}")
 
-    candidates = _latest_scan_candidates()
+    offhours_mode = not workspace_live
+    offhours_candidates = (
+        _offhours_timeframe_candidates()
+        if offhours_mode
+        else []
+    )
+    candidates = offhours_candidates or _latest_scan_candidates()
     latest_scan_age = _latest_scan_age_seconds()
     # Auto-scan targets every two minutes. During a live session, allow a
     # two-minute grace window and prevent one-click analysis of stale rows.
     latest_scan_stale = bool(
         workspace_live
+        and not offhours_candidates
         and (
             latest_scan_age is None
             or latest_scan_age > 4 * 60
@@ -990,8 +1051,13 @@ if view == "Momentum Scanner":
         )
 
     if candidates:
-        # Make each row useful at a glance: ticker, grade, score, scanner ACTION,
-        # today's move and Analyzer-aligned volume pace, with Analyze at the end.
+        if offhours_candidates:
+            st.caption(
+                "Showing the latest completed-daily Swing / Longer-Term discovery. "
+                "These are research candidates, not live entry signals."
+            )
+        # Make each row useful at a glance: ticker, grade, score/review cue,
+        # today's completed move and volume context, with Analyze at the end.
         for idx, row in enumerate(candidates):
             symbol = row["symbol"]
             grade = row.get("grade") or "—"
@@ -1030,7 +1096,9 @@ if view == "Momentum Scanner":
                     f'    <div class="combined-stat-value {change_cls}">{day_text}</div>'
                     f'  </div>'
                     f'  <div class="combined-stat">'
-                    f'    <div class="combined-stat-label">Volume Pace</div>'
+                    f'    <div class="combined-stat-label">'
+                    f'{"Daily Vol / Avg" if row.get("source_mode") == "offhours_daily_timeframe" else "Volume Pace"}'
+                    f'</div>'
                     f'    <div class="combined-stat-value {volume_cls}">{volume_text}</div>'
                     f'  </div>'
                     f'</div>',
@@ -1052,7 +1120,11 @@ if view == "Momentum Scanner":
                     args=(symbol,),
                 )
     else:
-        st.caption("Run a momentum scan to populate the one-click Analyze buttons.")
+        st.caption(
+            "No scanner candidates are available yet. Live momentum scanning runs "
+            "during supported market-data hours; the completed-daily Swing / "
+            "Longer-Term scan runs after each regular session."
+        )
 
 
 # Both legacy child apps call st.set_page_config themselves. In the combined

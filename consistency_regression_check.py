@@ -3223,6 +3223,106 @@ def test_momentum_alert_can_realert_only_after_leaving_ready_state():
     assert [row["symbol"] for row in reentered] == ["AAA"], reentered
 
 
+def test_offhours_daily_context_builds_swing_longer_term_candidate_without_live_action():
+    import offhours_timeframe_scan as ots
+
+    bars = []
+    start = datetime(2026, 6, 1, 16, 0, tzinfo=ET)
+    for i in range(60):
+        close = 5.0 * (1.0 + 0.008 * i)
+        bars.append(
+            {
+                "t": _iso(start + timedelta(days=i)),
+                "o": close * 0.99,
+                "h": close * 1.02,
+                "l": close * 0.98,
+                "c": close,
+                "v": 500_000 + i * 8_000,
+                "vw": None,
+            }
+        )
+
+    row = ots._daily_context(
+        "TEST",
+        {
+            "average_volume": 650_000,
+            "average_dollar_volume": 4_000_000,
+        },
+        bars,
+        spy_return_20d=3.0,
+    )
+    assert row is not None, row
+    assert row["daily_history_sessions"] >= 42, row
+    assert row["timeframe_swing_score"] >= 60, row
+    assert row["timeframe_longer_term_score"] >= 60, row
+    assert row["daily_review_action"] in {
+        "REVIEW SWING",
+        "REVIEW LONGER-TERM",
+        "REVIEW SWING / LONGER-TERM",
+    }, row
+    assert row["production_rank_impact"] is False, row
+    assert "scanner_action" not in row, row
+    assert "ml_continuation_prob_pct" not in row, row
+
+
+def test_offhours_history_pool_is_price_band_balanced_and_not_only_daily_movers():
+    import offhours_timeframe_scan as ots
+
+    quotes = {}
+    idx = 0
+    for low, high in ((1.0, 4.5), (6.0, 18.0), (22.0, 55.0)):
+        for j in range(45):
+            idx += 1
+            price = low + (high - low) * (j / 44)
+            quotes[f"T{idx:03d}"] = {
+                "type": "stock",
+                "last": price,
+                "prevclose": price / (1.0 + ((j % 5) * 0.002)),
+                "average_volume": 1_000_000 - j * 5_000,
+                "volume": 900_000 + j * 2_000,
+                "change_percentage": (j % 5) * 0.2,
+            }
+
+    pool, eligible = ots._preselect_history_pool(quotes, 90)
+    assert eligible == 135, eligible
+    assert len(pool) == 90, len(pool)
+    prices = [row["price"] for row in pool]
+    assert any(price < 5 for price in prices), prices
+    assert any(5 <= price < 20 for price in prices), prices
+    assert any(price >= 20 for price in prices), prices
+    # The screen should contain low-change names selected for liquidity/structure,
+    # not only the largest completed-session percentage movers.
+    assert any(abs(row["change_pct"]) < 0.25 for row in pool), pool[:10]
+
+
+def test_scanner_ui_surfaces_completed_daily_discovery_when_market_closed():
+    from pathlib import Path
+
+    scanner_source = Path("scanner_app.py").read_text(encoding="utf-8")
+    app_source = Path("app.py").read_text(encoding="utf-8")
+    assert "Off-Hours Swing / Longer-Term Discovery" in scanner_source
+    assert "offhours_timeframe_latest.json" in scanner_source
+    assert 'current_phase == "closed"' in scanner_source
+    assert "Off-hours timeframe focus" in scanner_source
+    assert "completed-daily Swing / Longer-Term discovery" in app_source
+    assert "source_mode" in app_source
+    assert "DAILY REVIEW" in app_source
+
+
+def test_offhours_workflow_runs_after_close_and_commits_separate_snapshot():
+    from pathlib import Path
+
+    source = Path(".github/workflows/offhours-timeframe-scan.yml").read_text(
+        encoding="utf-8"
+    )
+    assert "cron: '15 22 * * 1-5'" in source
+    assert "python offhours_timeframe_scan.py" in source
+    assert "TRADIER_ACCESS_TOKEN" in source
+    assert "scan_logs/offhours_timeframe_latest.json" in source
+    assert "contents: write" in source
+    assert "Run offhours scan smoke" in source
+
+
 if __name__ == "__main__":
     tests = [
         test_analyzer_daily_history_prefers_tradier,
@@ -3240,6 +3340,10 @@ if __name__ == "__main__":
         test_scanner_longer_term_fit_is_capped_when_history_is_sparse,
         test_scanner_timeframe_fit_never_changes_production_rank_fields,
         test_scanner_ui_exposes_timeframe_filter_without_reranking,
+        test_offhours_daily_context_builds_swing_longer_term_candidate_without_live_action,
+        test_offhours_history_pool_is_price_band_balanced_and_not_only_daily_movers,
+        test_scanner_ui_surfaces_completed_daily_discovery_when_market_closed,
+        test_offhours_workflow_runs_after_close_and_commits_separate_snapshot,
         test_prediction_tracker_skips_closed_market_records,
         test_late_scanner_report_has_explicit_no_horizon_status,
         test_manual_scanner_refreshes_combined_candidates_after_success,
