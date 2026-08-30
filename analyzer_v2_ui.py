@@ -222,6 +222,47 @@ def render_v2_decision(st, metrics):
         st.caption(str(timeframe.get("note") or ""))
 
     tracking = v2.get("tracking") or {}
+    stream = v2.get("live_stream_status") or {}
+    stream_provider = str(stream.get("provider") or "").lower()
+    stream_status = str(stream.get("status") or "").upper()
+    data_label = (
+        "TRADIER CONSOLIDATED"
+        if stream_provider == "tradier"
+        else str(stream.get("feed") or "ALPACA").upper()
+    )
+    durable_on = bool(tracking.get("durable_enabled"))
+    last_record = tracking.get("last_record") or {}
+    record_ok = bool(
+        last_record.get("recorded")
+        or last_record.get("reason") == "already_recorded"
+    )
+    swing_forward = bool(
+        ((v2.get("timeframe_analysis") or {}).get("swing_research_flags") or {})
+        .get("version")
+    )
+
+    if tracking.get("error"):
+        st.warning(
+            "Live test status: prediction tracking reported an error — "
+            + str(tracking.get("error"))[:180]
+        )
+    elif not durable_on:
+        st.warning(
+            "Live test status: market analysis is running, but durable prediction "
+            "tracking is OFF. Live samples could be lost on an app restart."
+        )
+    else:
+        st.caption(
+            "Live test status · Data **"
+            + data_label
+            + (" / " + stream_status if stream_status else "")
+            + "** · Durable tracking **ON** · Prediction capture **"
+            + ("ACTIVE" if record_ok else "READY")
+            + "** · Swing forward tracking **"
+            + ("ACTIVE" if swing_forward else "OFF")
+            + "**"
+        )
+
     lifecycle_html = _signal_progression_html(tracking.get("signal_lifecycle"))
     if lifecycle_html:
         st.markdown(lifecycle_html, unsafe_allow_html=True)
