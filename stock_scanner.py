@@ -19,9 +19,11 @@ except Exception:
     apply_scanner_ml = None
 
 try:
+    from tradier_live import get_history_bars as get_tradier_history_bars
     from tradier_live import get_quotes as get_tradier_quotes
     from tradier_live import get_timesales_bars as get_tradier_timesales_bars
 except Exception:
+    get_tradier_history_bars = None
     get_tradier_quotes = None
     get_tradier_timesales_bars = None
 
@@ -29,6 +31,15 @@ try:
     from scanner_discovery import discover_tradier_candidates
 except Exception:
     discover_tradier_candidates = None
+
+try:
+    from scanner_timeframe_fit import (
+        TIMEFRAME_FIT_VERSION,
+        attach_timeframe_fit,
+    )
+except Exception:
+    TIMEFRAME_FIT_VERSION = None
+    attach_timeframe_fit = None
 
 try:
     from scanner_behavior import (
@@ -131,7 +142,7 @@ TRADIER_VOLUME_PROFILE_LOOKBACK_DAYS = 39
 
 SCAN_LOG_DIR = os.environ.get("SCAN_LOG_DIR", "scan_logs").strip() or "scan_logs"
 SCAN_LOG_TOP = 30
-SCANNER_VERSION = "3.1"
+SCANNER_VERSION = "3.2"
 SCANNER_FEATURE_VERSION = "scanner-features-v2-consolidated"
 
 API_KEY = os.environ.get("ALPACA_API_KEY", "").strip()
@@ -1335,45 +1346,170 @@ def analyze_snapshot(symbol, tradier_quote=None, alpaca_snapshot=None):
 
 
 def daily_history_context(symbol, now_utc, current_day=None):
-    """Return average volume plus causal multi-session structure."""
-    try:
-        bars = get_bars(
-            symbol,
-            "1Day",
-            now_utc - timedelta(days=60),
-            now_utc,
-            45,
-            feed=HISTORICAL_FEED,
-        )
-    except Exception:
-        bars = get_bars(
-            symbol,
-            "1Day",
-            now_utc - timedelta(days=60),
-            now_utc,
-            45,
-            feed=LIVE_FEED,
-        )
+    """Return average volume, daily trend, and causal multi-session structure."""
+    bars = []
+    source = None
+
+    # Timeframe Fit depends on multi-week history. Prefer Tradier consolidated
+    # daily candles when Tradier is the configured live provider so the
+    # classification does not create an unnecessary Alpaca dependency.
+    if USE_TRADIER and get_tradier_history_bars is not None:
+        try:
+            bars = get_tradier_history_bars(
+                symbol,
+                TRADIER_TOKEN,
+                now_utc - timedelta(days=100),
+                now_utc,
+                interval="daily",
+            )
+            if bars:
+                source = "tradier_consolidated_daily"
+        except Exception:
+            bars = []
+
+    if not bars:
+        try:
+            bars = get_bars(
+                symbol,
+                "1Day",
+                now_utc - timedelta(days=100),
+                now_utc,
+                80,
+                feed=HISTORICAL_FEED,
+            )
+            if bars:
+                source = f"alpaca_{HISTORICAL_FEED}_daily"
+        except Exception:
+            bars = get_bars(
+                symbol,
+                "1Day",
+                now_utc - timedelta(days=100),
+                now_utc,
+                80,
+                feed=LIVE_FEED,
+            )
+            if bars:
+                source = f"alpaca_{LIVE_FEED}_daily"
+
     if not bars:
         return {}
 
     today_et = now_utc.astimezone(ZoneInfo("America/New_York")).date().isoformat()
-    completed = [
+    completed_all = [
         b for b in bars
         if str(b.get("t", ""))[:10] != today_et
-    ][-20:]
+    ][-60:]
+    completed = completed_all[-20:]
+
     volume_rows = [
         float(b["v"])
         for b in completed
         if b.get("v") is not None and float(b.get("v") or 0) > 0
     ]
+
+    current_price = None
+    if current_day:
+        try:
+            current_price = float(current_day.get("c") or 0) or None
+        except Exception:
+            current_price = None
+    if current_price is None and completed_all:
+        try:
+            current_price = float(completed_all[-1].get("c") or 0) or None
+        except Exception:
+            current_price = None
+
+    def close_n_back(sessions):
+        if len(completed_all) < sessions:
+            return None
+        try:
+            return float(completed_all[-sessions].get("c") or 0) or None
+        except Exception:
+            return None
+
+    def trailing_return(sessions):
+        old = close_n_back(sessions)
+        if current_price is None or old in (None, 0):
+            return None
+        return round(pct_change(current_price, old), 2)
+
+    def moving_average(sessions):
+        rows = completed_all[-sessions:]
+        vals = []
+        for row in rows:
+            try:
+                value = float(row.get("c") or 0)
+            except Exception:
+                value = 0
+            if value > 0:
+                vals.append(value)
+        if len(vals) < min(sessions, max(5, sessions - 2)):
+            return None
+        return round(sum(vals) / len(vals), 4)
+
+    ma10 = moving_average(10)
+    ma20 = moving_average(20)
+    ma40 = moving_average(40)
+
+    recent_highs = []
+    for row in completed_all[-45:]:
+        try:
+            value = float(row.get("h") or 0)
+        except Exception:
+            value = 0
+        if value > 0:
+            recent_highs.append(value)
+    if current_day:
+        try:
+            today_high = float(current_day.get("h") or 0)
+        except Exception:
+            today_high = 0
+        if today_high > 0:
+            recent_highs.append(today_high)
+    recent_high = max(recent_highs) if recent_highs else None
+
+    alignment = None
+    if ma10 is not None and ma20 is not None and ma40 is not None:
+        if ma10 > ma20 > ma40:
+            alignment = "BULLISH"
+        elif ma10 < ma20 < ma40:
+            alignment = "BEARISH"
+        else:
+            alignment = "MIXED"
+
     context = {
         "avg_daily_volume": (
             sum(volume_rows) / len(volume_rows)
             if volume_rows
             else None
-        )
+        ),
+        "daily_context_source": source,
+        "daily_history_sessions": len(completed_all),
+        "daily_return_5d_pct": trailing_return(5),
+        "daily_return_20d_pct": trailing_return(20),
+        "daily_return_40d_pct": trailing_return(40),
+        "daily_ma_10": ma10,
+        "daily_ma_20": ma20,
+        "daily_ma_40": ma40,
+        "daily_above_ma20": (
+            bool(current_price >= ma20)
+            if current_price is not None and ma20 is not None
+            else None
+        ),
+        "daily_above_ma40": (
+            bool(current_price >= ma40)
+            if current_price is not None and ma40 is not None
+            else None
+        ),
+        "daily_ma_alignment": alignment,
+        "daily_recent_high": round(recent_high, 4) if recent_high is not None else None,
+        "daily_from_recent_high_pct": (
+            round((current_price / recent_high - 1.0) * 100.0, 2)
+            if current_price is not None and recent_high
+            else None
+        ),
     }
+
     if multi_session_behavior_features is not None and current_day:
         try:
             context.update(
@@ -1386,7 +1522,6 @@ def daily_history_context(symbol, now_utc, current_day=None):
         except Exception:
             pass
     return context
-
 
 def avg_daily_volume(symbol, now_utc):
     return daily_history_context(symbol, now_utc).get("avg_daily_volume")
@@ -2293,6 +2428,25 @@ def candidate_log_record(c, rank):
         "scanner_action": c.get("scanner_action"),
         "scanner_action_tier": c.get("scanner_action_tier"),
         "scanner_action_reason": c.get("scanner_action_reason"),
+        "timeframe_fit_version": c.get("timeframe_fit_version"),
+        "timeframe_best_fit": c.get("timeframe_best_fit"),
+        "timeframe_primary_fit": c.get("timeframe_primary_fit"),
+        "timeframe_secondary_fit": c.get("timeframe_secondary_fit"),
+        "timeframe_fit_horizons": c.get("timeframe_fit_horizons") or [],
+        "timeframe_intraday_score": c.get("timeframe_intraday_score"),
+        "timeframe_swing_score": c.get("timeframe_swing_score"),
+        "timeframe_longer_term_score": c.get("timeframe_longer_term_score"),
+        "timeframe_fit_confidence": c.get("timeframe_fit_confidence"),
+        "timeframe_fit_reason": c.get("timeframe_fit_reason"),
+        "daily_context_source": c.get("daily_context_source"),
+        "daily_history_sessions": c.get("daily_history_sessions"),
+        "daily_return_5d_pct": c.get("daily_return_5d_pct"),
+        "daily_return_20d_pct": c.get("daily_return_20d_pct"),
+        "daily_return_40d_pct": c.get("daily_return_40d_pct"),
+        "daily_ma_20": c.get("daily_ma_20"),
+        "daily_ma_40": c.get("daily_ma_40"),
+        "daily_ma_alignment": c.get("daily_ma_alignment"),
+        "daily_from_recent_high_pct": c.get("daily_from_recent_high_pct"),
         "passed_base_filters": bool(c.get("passed_base_filters")),
         "failed_filters": c.get("failed_filters") or [],
         "tradability_warnings": c.get("tradability_warnings") or [],
@@ -2438,8 +2592,12 @@ def write_scan_logs(
                 "live_provider": LIVE_PROVIDER,
                 "live_feed": "consolidated" if USE_TRADIER else LIVE_FEED,
                 "live_feed_available": live_feed_available(now_et),
-                "historical_provider": "alpaca",
-                "historical_feed": HISTORICAL_FEED,
+                "historical_provider": "tradier" if USE_TRADIER else "alpaca",
+                "historical_feed": (
+                    "tradier_consolidated_daily"
+                    if USE_TRADIER
+                    else HISTORICAL_FEED
+                ),
                 "sip_liquidity_delay_minutes": SIP_LIQUIDITY_DELAY_MINUTES,
             },
             "summary": {
@@ -2447,6 +2605,10 @@ def write_scan_logs(
                 "candidates_logged": len(records),
                 "base_filter_passes": sum(bool(c.get("passed_base_filters")) for c in rows),
                 "grade_counts": dict(grade_counts),
+                "timeframe_fit_version": TIMEFRAME_FIT_VERSION,
+                "timeframe_fit_counts": dict(
+                    Counter(c.get("timeframe_best_fit", "UNKNOWN") for c in rows)
+                ),
                 "excluded_non_common_symbols": excluded_symbols,
                 "ml_model": ml_summary or {},
                 "performance_seconds": performance or {},
@@ -2465,6 +2627,11 @@ def write_scan_logs(
             "ml_training_samples", "ml_validation_auc",
             "setup_grade", "setup_label", "alert_tier", "alert_ready",
             "scanner_action", "scanner_action_tier", "scanner_action_reason",
+            "timeframe_best_fit", "timeframe_primary_fit", "timeframe_secondary_fit",
+            "timeframe_intraday_score", "timeframe_swing_score",
+            "timeframe_longer_term_score", "timeframe_fit_confidence",
+            "daily_return_5d_pct", "daily_return_20d_pct", "daily_return_40d_pct",
+            "daily_ma_alignment", "daily_from_recent_high_pct",
             "passed_base_filters", "momentum_5m", "momentum_15m", "volume_pace",
             "volume_pace_source", "volume_pace_display", "volume_pace_display_source",
             "expected_volume_by_now",
@@ -2504,6 +2671,18 @@ def write_scan_logs(
                     "scanner_action": r.get("scanner_action"),
                     "scanner_action_tier": r.get("scanner_action_tier"),
                     "scanner_action_reason": r.get("scanner_action_reason"),
+                    "timeframe_best_fit": r.get("timeframe_best_fit"),
+                    "timeframe_primary_fit": r.get("timeframe_primary_fit"),
+                    "timeframe_secondary_fit": r.get("timeframe_secondary_fit"),
+                    "timeframe_intraday_score": r.get("timeframe_intraday_score"),
+                    "timeframe_swing_score": r.get("timeframe_swing_score"),
+                    "timeframe_longer_term_score": r.get("timeframe_longer_term_score"),
+                    "timeframe_fit_confidence": r.get("timeframe_fit_confidence"),
+                    "daily_return_5d_pct": r.get("daily_return_5d_pct"),
+                    "daily_return_20d_pct": r.get("daily_return_20d_pct"),
+                    "daily_return_40d_pct": r.get("daily_return_40d_pct"),
+                    "daily_ma_alignment": r.get("daily_ma_alignment"),
+                    "daily_from_recent_high_pct": r.get("daily_from_recent_high_pct"),
                     "passed_base_filters": r.get("passed_base_filters"),
                     "momentum_5m": r.get("momentum_5m"),
                     "momentum_15m": r.get("momentum_15m"),
@@ -2984,6 +3163,17 @@ def main():
     # before behavior-specific overrides are allowed to change production ACTION.
     assign_scanner_actions(rows, now_et)
 
+    if attach_timeframe_fit is not None:
+        for row in rows:
+            try:
+                attach_timeframe_fit(row)
+            except Exception as exc:
+                row["timeframe_fit_error"] = str(exc)[:180]
+                row["timeframe_best_fit"] = "UNKNOWN"
+
+    # Timeframe Fit is display/logging intelligence only; the existing ranking
+    # key remains untouched so this new layer cannot silently change production
+    # momentum ordering.
     rows.sort(key=ranking_key, reverse=True)
     mark_stage("grading_and_ml")
     performance["total_before_logging"] = round(
