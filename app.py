@@ -522,6 +522,11 @@ def _latest_scan_candidates():
                 "scanner_action": row.get("scanner_action"),
                 "scanner_action_tier": row.get("scanner_action_tier"),
                 "scanner_action_reason": row.get("scanner_action_reason"),
+                "timeframe_best_fit": row.get("timeframe_best_fit"),
+                "timeframe_fit_reason": row.get("timeframe_fit_reason"),
+                "timeframe_intraday_score": row.get("timeframe_intraday_score"),
+                "timeframe_swing_score": row.get("timeframe_swing_score"),
+                "timeframe_longer_term_score": row.get("timeframe_longer_term_score"),
                 "day_pct": row.get("day_pct"),
                 "volume_pace": row.get("volume_pace"),
                 "volume_pace_display": row.get("volume_pace_display"),
@@ -671,6 +676,8 @@ if view == "Momentum Scanner":
         for idx, row in enumerate(candidates):
             symbol = row["symbol"]
             grade = row.get("grade") or "—"
+            fit = str(row.get("timeframe_best_fit") or "—")
+            grade_fit = f"{grade} · {fit}" if fit != "—" else grade
             score_text = _fmt_num(row.get("score"), "{:.0f}")
             action_text, action_cls, action_label = _action_display(row)
             day_text = _fmt_num(row.get("day_pct"), "{:+.1f}%")
@@ -687,9 +694,9 @@ if view == "Momentum Scanner":
                     f'    <div class="combined-rank">{idx + 1}.</div>'
                     f'    <div class="combined-ticker-symbol">{symbol}</div>'
                     f'  </div>'
-                    f'  <div class="combined-stat">'
-                    f'    <div class="combined-stat-label">Grade</div>'
-                    f'    <div class="combined-stat-value {grade_cls}">{grade}</div>'
+                    f'  <div class="combined-stat" title="{html.escape(str(row.get("timeframe_fit_reason") or ""))}">'
+                    f'    <div class="combined-stat-label">Grade · Best Fit</div>'
+                    f'    <div class="combined-stat-value {grade_cls}">{html.escape(grade_fit)}</div>'
                     f'  </div>'
                     f'  <div class="combined-stat">'
                     f'    <div class="combined-stat-label">Score</div>'
