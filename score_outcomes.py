@@ -922,6 +922,14 @@ def render_markdown(target_date, discovery, summary, status, error=None):
         ]
         return "\n".join(lines) + "\n"
 
+    if status == "complete_no_resolvable_horizons":
+        lines += [
+            "",
+            "> Regular-session observations were saved, but they occurred too "
+            "close to the 4:00 PM ET close for the configured +15/+30/+60 minute "
+            "horizons to resolve. This is not a market-data failure.",
+        ]
+
     lines += [
         f"- Observations: **{summary['observation_count']}**",
         f"- Unique symbols: **{summary['unique_symbols']}**",
@@ -1131,11 +1139,25 @@ def main():
         raise
 
     rows = build_observations(scans, target_date, bars_index)
-    status = "complete" if rows else "no_scoreable_observations"
+    summary = summarize(rows) if rows else None
+    resolved_horizons = sum(
+        int((summary.get("overall") or {}).get(f"{m}m", {}).get("n") or 0)
+        for m in HORIZONS_MINUTES
+    ) if summary else 0
+    if not rows:
+        status = "no_scoreable_observations"
+    elif resolved_horizons == 0:
+        status = "complete_no_resolvable_horizons"
+        discovery["outcome_note"] = (
+            "Regular-session scans were found, but every saved observation was "
+            "too close to the 4:00 PM ET close to resolve the configured "
+            "+15/+30/+60 minute horizons."
+        )
+    else:
+        status = "complete"
     write_reports(target_date, discovery, rows, status)
 
     if rows:
-        summary = summarize(rows)
         print("\nPERFORMANCE SNAPSHOT")
         for m in HORIZONS_MINUTES:
             s = summary["overall"][f"{m}m"]
