@@ -10,6 +10,7 @@ on:
     branches: [main]
     paths:
       - "score_analyzer_outcomes.py"
+      - "offhours_outcome_tracker.py"
       - ".github/workflows/outcome-tracker.yml"
   workflow_dispatch:
     inputs:
@@ -57,6 +58,12 @@ jobs:
           TRADIER_TOKEN: ${{ secrets.TRADIER_TOKEN }}
         run: python score_analyzer_outcomes.py
 
+      - name: Track off-hours Swing Longer-Term outcomes
+        env:
+          TRADIER_ACCESS_TOKEN: ${{ secrets.TRADIER_ACCESS_TOKEN }}
+          TRADIER_TOKEN: ${{ secrets.TRADIER_TOKEN }}
+        run: python offhours_outcome_tracker.py
+
       - name: Commit durable outcome history
         if: always()
         shell: bash
@@ -65,6 +72,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add outcome_reports/*.json outcome_reports/*.md 2>/dev/null || true
           git add analyzer_outcomes/*.json 2>/dev/null || true
+          git add offhours_outcomes/*.json offhours_outcomes/*.md 2>/dev/null || true
           if git diff --cached --quiet; then
             echo "No new outcome report to commit."
           else
@@ -81,5 +89,6 @@ jobs:
           path: |
             outcome_reports/*
             analyzer_outcomes/*
+            offhours_outcomes/*
           if-no-files-found: warn
           retention-days: 90
