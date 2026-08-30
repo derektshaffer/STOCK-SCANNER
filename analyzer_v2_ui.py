@@ -187,6 +187,38 @@ def render_v2_decision(st, metrics):
             str(tf_labels.get("long_term") or "—"),
             "fundamentals + multi-month trend",
         )
+        research = timeframe.get("swing_research_flags") or {}
+        matches = research.get("matches") or []
+        if matches:
+            labels = " · ".join(
+                str(item.get("label") or item.get("id") or "Research match")
+                for item in matches
+            )
+            st.info(
+                "**Historical Research Match — tracking only:** "
+                + labels
+                + ". These flags do not change the Swing score, trade plan, or ranking."
+            )
+            with st.expander("Research match details"):
+                for item in matches:
+                    hist = item.get("historical_confirmation") or {}
+                    label = str(item.get("label") or item.get("id") or "Setup")
+                    variant = str(item.get("variant") or "").strip()
+                    title = label + (f" · {variant}" if variant else "")
+                    st.markdown(f"**{title}**")
+                    st.write(str(item.get("rule") or ""))
+                    rate = hist.get("confirmation_success_pct")
+                    comp = hist.get("comparison_success_pct")
+                    lift = hist.get("confirmation_lift_pp")
+                    n = hist.get("confirmation_n")
+                    if rate is not None and comp is not None:
+                        st.caption(
+                            f"Historical untouched confirmation: {float(rate):.1f}% "
+                            f"reached +5% before -4% vs {float(comp):.1f}% for the "
+                            f"comparison set · lift {float(lift):+.1f} pp · n={int(n or 0)}."
+                        )
+                st.caption(str(research.get("note") or ""))
+
         st.caption(str(timeframe.get("note") or ""))
 
     tracking = v2.get("tracking") or {}
@@ -443,6 +475,37 @@ def render_v2_decision(st, metrics):
                 f"across n={int(entry_signal_cal.get('resolved_target_stop') or 0)} decisive outcomes · "
                 f"60m higher {_fmt_pct(entry_signal_cal.get('higher_60m_rate'))} "
                 f"across n={int(entry_signal_cal.get('resolved_60m') or 0)}."
+            )
+
+        research_cal = tracking.get("swing_research_flag_calibration") or {}
+        current_research = (
+            (v2.get("timeframe_analysis") or {}).get("swing_research_flags") or {}
+        )
+        current_matches = current_research.get("matches") or []
+        if current_matches:
+            st.markdown("#### Live Swing research tracking")
+            for item in current_matches:
+                flag_id = str(item.get("id") or "")
+                label = str(item.get("label") or flag_id or "Research match")
+                live = research_cal.get(flag_id) or {}
+                signals = int(live.get("signals") or 0)
+                resolved = int(live.get("resolved") or 0)
+                stage = str(live.get("stage") or "COLLECTING")
+                if resolved:
+                    st.write(
+                        f"**{label}:** {signals} independent live match(es) · "
+                        f"{resolved} resolved · +5% before -4% "
+                        f"{_fmt_pct(live.get('target_before_stop_rate_pct'))} · "
+                        f"{stage}."
+                    )
+                else:
+                    st.write(
+                        f"**{label}:** {signals} independent live match(es) recorded · "
+                        f"waiting for 5-trading-day outcomes · {stage}."
+                    )
+            st.caption(
+                "Forward calibration counts the first match per ticker per signal day, "
+                "so 5-minute auto-refreshes do not inflate the sample."
             )
 
         tf_progress = tracking.get("timeframe_learning_progress") or {}
