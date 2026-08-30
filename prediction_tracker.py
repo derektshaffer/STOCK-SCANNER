@@ -342,6 +342,16 @@ def record_prediction(metrics, now=None):
         # into production scores; they exist so brand-new live examples can be
         # compared with the frozen 2021-2026 historical study.
         "swing_research_flag_version": swing_research.get("version"),
+        "swing_research_sampling_context": swing_research.get("live_sampling_context"),
+        "swing_research_universe_proxy_pass": bool(
+            swing_research.get("historical_universe_proxy_pass")
+        ),
+        "swing_research_direct_historical_parity": bool(
+            swing_research.get("direct_historical_parity")
+        ),
+        "swing_research_reference_context": swing_research.get(
+            "historical_reference_context"
+        ),
         "swing_research_flag_ids": [
             str(item.get("id"))
             for item in swing_research_matches
@@ -971,10 +981,24 @@ def _timeframe_learning_progress(rows):
 
 
 def _swing_research_flag_summary(rows):
-    """Summarize one independent forward sample per flag/ticker/signal day."""
+    """Summarize comparable intraday exploratory samples only.
+
+    The historical rule study used end-of-day daily observations. Live Analyzer
+    matches are therefore not direct historical parity. To reduce selection
+    drift, forward calibration only counts regular-session samples that also
+    satisfy the historical replay's basic universe proxy.
+    """
     chosen = {}
+    excluded_context = 0
     for row in sorted(rows, key=lambda item: str(item.get("timestamp") or "")):
         if row.get("swing_research_flag_version") != SWING_RESEARCH_FLAG_VERSION:
+            continue
+        if (
+            row.get("swing_research_sampling_context") != "regular_intraday"
+            or row.get("swing_research_universe_proxy_pass") is not True
+        ):
+            if row.get("swing_research_flag_ids"):
+                excluded_context += 1
             continue
         symbol = str(row.get("symbol") or "").upper().strip()
         dt = _parse_dt(row.get("timestamp"))
@@ -1047,7 +1071,13 @@ def _swing_research_flag_summary(rows):
             ),
             "stage": stage,
             "next_threshold": next_threshold,
-            "sampling": "first matched observation per ticker per signal day",
+            "sampling": (
+                "first regular-session historical-universe-proxy match "
+                "per flag/ticker/day"
+            ),
+            "context": "intraday_exploratory",
+            "direct_historical_parity": False,
+            "excluded_context_rows": excluded_context,
         }
     return out
 

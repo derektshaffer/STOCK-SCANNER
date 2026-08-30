@@ -629,17 +629,32 @@ def _all_rows():
 
 
 def _swing_research_flag_calibration(rows):
-    """Use one forward sample per flag/ticker/signal day."""
+    """Calibrate only context-comparable live exploratory Swing samples.
+
+    Historical research used end-of-day observations. Live Analyzer matches
+    occur intraday, so they are never direct parity. To reduce selection drift,
+    only regular-session matches that also pass the historical replay's basic
+    price/day-move/dollar-volume universe proxy are counted here.
+    """
     chosen = {}
+    excluded_context = 0
     ordered = sorted(rows, key=lambda row: str(row.get("timestamp") or ""))
     for row in ordered:
         if row.get("swing_research_flag_version") != SWING_RESEARCH_FLAG_VERSION:
+            continue
+        flag_ids = row.get("swing_research_flag_ids") or []
+        if (
+            row.get("swing_research_sampling_context") != "regular_intraday"
+            or row.get("swing_research_universe_proxy_pass") is not True
+        ):
+            if flag_ids:
+                excluded_context += 1
             continue
         symbol = str(row.get("symbol") or "").upper().strip()
         dt = _parse_dt(row.get("timestamp"))
         if not symbol or dt is None:
             continue
-        for flag_id in row.get("swing_research_flag_ids") or []:
+        for flag_id in flag_ids:
             flag_id = str(flag_id or "").strip()
             if not flag_id:
                 continue
@@ -698,10 +713,15 @@ def _swing_research_flag_calibration(rows):
             ),
             "stage": stage,
             "next_threshold": next_threshold,
-            "sampling": "first matched observation per ticker per signal day",
+            "sampling": (
+                "first regular-session historical-universe-proxy match "
+                "per flag/ticker/day"
+            ),
+            "context": "intraday_exploratory",
+            "direct_historical_parity": False,
+            "excluded_context_rows": excluded_context,
         }
     return out
-
 
 def _repeat_bounce_calibration(rows):
     candidates=[
@@ -905,7 +925,7 @@ def _write_calibration():
     ]
 
     payload = {
-        "schema_version": 5,
+        "schema_version": 6,
         "feature_version": ANALYZER_FEATURE_VERSION,
         "decision_score_version": DECISION_SCORE_VERSION,
         "timeframe_score_version": TIMEFRAME_SCORE_VERSION,

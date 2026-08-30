@@ -195,9 +195,11 @@ def render_v2_decision(st, metrics):
                 for item in matches
             )
             st.info(
-                "**Historical Research Match — tracking only:** "
+                "**Swing research match — exploratory tracking only:** "
                 + labels
-                + ". These flags do not change the Swing score, trade plan, or ranking."
+                + ". The original study used end-of-day historical observations; "
+                "this live Analyzer match is intraday, so the historical rate below "
+                "is reference context, not a live success probability or direct validation."
             )
             with st.expander("Research match details"):
                 for item in matches:
@@ -213,9 +215,10 @@ def render_v2_decision(st, metrics):
                     n = hist.get("confirmation_n")
                     if rate is not None and comp is not None:
                         st.caption(
-                            f"Historical untouched confirmation: {float(rate):.1f}% "
+                            f"Historical EOD reference only: {float(rate):.1f}% "
                             f"reached +5% before -4% vs {float(comp):.1f}% for the "
-                            f"comparison set · lift {float(lift):+.1f} pp · n={int(n or 0)}."
+                            f"comparison set · lift {float(lift):+.1f} pp · n={int(n or 0)}. "
+                            "Do not read this as the probability for the current intraday match."
                         )
                 st.caption(str(research.get("note") or ""))
 
@@ -545,8 +548,10 @@ def render_v2_decision(st, metrics):
                         f"waiting for 5-trading-day outcomes · {stage}."
                     )
             st.caption(
-                "Forward calibration counts the first match per ticker per signal day, "
-                "so 5-minute auto-refreshes do not inflate the sample."
+                "Forward calibration counts only regular-session matches that pass the "
+                "historical study's basic price/day-move/dollar-volume universe proxy, "
+                "using the first match per ticker per signal day. It remains intraday "
+                "exploratory evidence rather than direct EOD historical parity."
             )
 
         tf_progress = tracking.get("timeframe_learning_progress") or {}
@@ -612,6 +617,6 @@ def render_v2_decision(st, metrics):
             )
         st.caption(
             "The app records one prediction per ticker per 5-minute bucket, resolves "
-            "older outcomes with delayed SIP data, and groups resolved predictions by "
+            "older outcomes with Tradier consolidated history (Alpaca fallback), and groups resolved predictions by "
             "score bucket so we can test whether higher scores really outperform lower scores."
         )
