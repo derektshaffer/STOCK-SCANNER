@@ -1833,6 +1833,67 @@ def test_shared_timeframe_horizon_weights_match_live_formula():
     assert capped == 57.0, capped
 
 
+
+def test_swing_timeframe_ml_features_ignore_future_outcome_fields():
+    import timeframe_ml_ranker as tml
+
+    base = {
+        "day_pct": 8.0,
+        "gap_pct": 2.0,
+        "relative_volume": 3.0,
+        "current_dollar_volume": 2_000_000,
+        "trend_score": 70.0,
+        "stair_score": 65.0,
+        "history_score": 60.0,
+        "market_score": 55.0,
+        "trend_context": {
+            "return_5d_pct": 4.0,
+            "return_20d_pct": 12.0,
+            "return_60d_pct": 25.0,
+            "return_120d_pct": 40.0,
+            "from_52w_high_pct": -8.0,
+        },
+        "stair_context": {"stair_step_count": 2, "stair_structure_score": 65.0},
+        "historical_context": {"bias_score": 4.0, "next_day_up_pct": 58.0, "sample_count": 20},
+        "market_context": {"broad_market_avg_pct": 0.4},
+        "outcomes": {"return_5d_pct": 99.0},
+        "swing_score": 99.0,
+    }
+    changed = dict(base)
+    changed["outcomes"] = {"return_5d_pct": -99.0}
+    changed["swing_score"] = 1.0
+
+    assert tml._feature_dict(base) == tml._feature_dict(changed)
+
+
+def test_swing_timeframe_ml_folds_never_mix_same_replay_date():
+    import timeframe_ml_ranker as tml
+
+    rows = []
+    for day in range(1, 49):
+        date_text = f"2026-01-{day:02d}" if day <= 31 else f"2026-02-{day-31:02d}"
+        for symbol_index in range(10):
+            rows.append(
+                {
+                    "date": date_text,
+                    "symbol": f"T{symbol_index}",
+                    "return_5d_pct": 1.0 if symbol_index % 2 else -1.0,
+                    "label": int(symbol_index % 2),
+                    "swing_score": 50.0,
+                    "features": {name: 0.0 for name in tml.FEATURES},
+                }
+            )
+
+    folds = tml._chronological_folds(rows)
+    assert len(folds) >= 3, len(folds)
+    for train, test, train_dates, test_dates in folds:
+        assert set(train_dates).isdisjoint(set(test_dates))
+        assert max(train_dates) < min(test_dates)
+        assert set(row["date"] for row in train).isdisjoint(
+            set(row["date"] for row in test)
+        )
+
+
 if __name__ == "__main__":
     tests = [
         test_analyzer_prefers_tradier,
@@ -1892,6 +1953,8 @@ if __name__ == "__main__":
         test_timeframe_calibration_uses_matched_horizons,
         test_point_in_time_fundamentals_exclude_future_filings,
         test_shared_timeframe_horizon_weights_match_live_formula,
+        test_swing_timeframe_ml_features_ignore_future_outcome_fields,
+        test_swing_timeframe_ml_folds_never_mix_same_replay_date,
     ]
     for test in tests:
         test()
