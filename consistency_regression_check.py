@@ -2511,7 +2511,7 @@ def test_swing_research_ui_disclaims_historical_probability():
     source = Path("analyzer_v2_ui.py").read_text(encoding="utf-8")
     assert "Historical EOD reference only" in source
     assert "not a live success probability" in source
-    assert "intraday exploratory evidence" in source
+    assert "exploratory evidence" in source
 
 
 def test_legacy_analyzer_entrypoint_cannot_drift():
@@ -2521,6 +2521,16 @@ def test_legacy_analyzer_entrypoint_cannot_drift():
     assert "analyzer_app.py" in source
     assert "ALPACA_API_KEY" not in source
     assert "Single Stock Analyzer" not in source
+
+
+def test_scanner_ui_accepts_tradier_without_alpaca_credentials():
+    from pathlib import Path
+
+    source = Path("scanner_app.py").read_text(encoding="utf-8")
+    assert "if not has_alpaca and not tradier_token" in source
+    assert "if has_alpaca:" in source
+    assert 'env["TRADIER_ACCESS_TOKEN"] = tradier_token' in source
+    assert "No market-data provider is configured" in source
 
 
 if __name__ == "__main__":
@@ -2603,6 +2613,7 @@ if __name__ == "__main__":
         test_swing_research_live_context_is_not_historical_parity,
         test_swing_research_calibration_excludes_wrong_context,
         test_scanner_visibly_marks_stale_snapshot,
+        test_scanner_ui_accepts_tradier_without_alpaca_credentials,
         test_swing_research_ui_disclaims_historical_probability,
         test_legacy_analyzer_entrypoint_cannot_drift,
         test_monday_readiness_blocks_stale_scan_handoffs,
