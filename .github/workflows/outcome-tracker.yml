@@ -43,11 +43,12 @@ jobs:
         run: python score_outcomes.py
 
       - name: Score Analyzer outcomes
-        continue-on-error: true
         env:
           OUTCOME_DATE: ${{ inputs.date }}
           ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
           ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+          TRADIER_ACCESS_TOKEN: ${{ secrets.TRADIER_ACCESS_TOKEN }}
+          TRADIER_TOKEN: ${{ secrets.TRADIER_TOKEN }}
         run: python score_analyzer_outcomes.py
 
       - name: Commit durable outcome history
