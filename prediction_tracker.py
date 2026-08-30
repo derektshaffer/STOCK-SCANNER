@@ -254,12 +254,46 @@ def _bucket_key(symbol, when):
     return f"{symbol}:{bucket.isoformat()}"
 
 
+def _market_session_label(when):
+    dt = when.astimezone(ET)
+    if dt.weekday() >= 5:
+        return "CLOSED"
+    minute = dt.hour * 60 + dt.minute
+    if 4 * 60 <= minute < 9 * 60 + 30:
+        return "PREMARKET"
+    if 9 * 60 + 30 <= minute < 16 * 60:
+        return "REGULAR"
+    if 16 * 60 <= minute < 20 * 60:
+        return "AFTER_HOURS"
+    return "CLOSED"
+
+
+def _row_market_session(row):
+    explicit = str(row.get("market_session") or "").upper().strip()
+    if explicit:
+        return explicit
+    dt = _parse_dt(row.get("timestamp"))
+    return _market_session_label(dt) if dt is not None else "UNKNOWN"
+
+
+def _regular_session_row(row):
+    return _row_market_session(row) == "REGULAR"
+
+
 def record_prediction(metrics, now=None):
     """Record one Analyzer prediction per ticker per five-minute bucket."""
     now = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
     symbol = str(metrics.get("symbol") or "").upper().strip()
     if not symbol:
         return {"recorded": False, "reason": "missing_symbol"}
+
+    session = _market_session_label(now)
+    if session == "CLOSED":
+        return {
+            "recorded": False,
+            "reason": "market_closed_not_recorded",
+            "market_session": session,
+        }
 
     rows = _load()
     key = _bucket_key(symbol, now)
@@ -291,6 +325,8 @@ def record_prediction(metrics, now=None):
         "bucket_key": key,
         "symbol": symbol,
         "timestamp": now.isoformat(),
+        "market_session": session,
+        "regular_session_sample": session == "REGULAR",
         "feature_version": (
             metrics.get("feature_version")
             or ANALYZER_FEATURE_VERSION
@@ -992,6 +1028,8 @@ def _swing_research_flag_summary(rows):
     excluded_context = 0
     for row in sorted(rows, key=lambda item: str(item.get("timestamp") or "")):
         if row.get("swing_research_flag_version") != SWING_RESEARCH_FLAG_VERSION:
+            continue
+        if not _regular_session_row(row):
             continue
         if (
             row.get("swing_research_sampling_context") != "regular_intraday"
