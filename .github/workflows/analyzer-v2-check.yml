@@ -154,6 +154,46 @@ jobs:
           assert len(bars.get("TEST") or []) == 4
           print("OUTCOME_PROVIDER_SMOKE=passed")
           PY
+      - name: Smoke-test Analyzer Tradier outcome provider
+        run: |
+          python - <<'PY'
+          from datetime import datetime, timezone
+          import score_analyzer_outcomes as sao
+
+          sao.TRADIER_TOKEN = "smoke-token"
+          sao.API_KEY = ""
+          sao.API_SECRET = ""
+
+          def fake_timesales(symbol, token, start, end, interval="1min", session_filter="open"):
+              assert symbol == "TEST"
+              assert token == "smoke-token"
+              assert interval == "1min"
+              assert session_filter == "open"
+              return [
+                  {"t": "2026-08-27T14:30:00Z", "o": 10.0, "h": 10.2, "l": 9.9, "c": 10.1, "v": 1000},
+                  {"t": "2026-08-27T14:31:00Z", "o": 10.1, "h": 10.4, "l": 10.0, "c": 10.3, "v": 1200},
+              ]
+
+          def fake_history(symbol, token, start, end, interval="daily"):
+              assert symbol == "TEST"
+              assert token == "smoke-token"
+              assert interval == "daily"
+              return [
+                  {"t": "2026-08-27T20:00:00Z", "o": 10.0, "h": 10.5, "l": 9.8, "c": 10.3, "v": 100000},
+              ]
+
+          sao.get_timesales_bars = fake_timesales
+          sao.get_history_bars = fake_history
+          start = datetime(2026, 8, 27, 13, 30, tzinfo=timezone.utc)
+          end = datetime(2026, 8, 27, 20, 1, tzinfo=timezone.utc)
+
+          intraday = sao._fetch_symbol_bars("TEST", start, end)
+          daily = sao._fetch_daily_bars({"TEST"}, start, end)
+          assert len(intraday) == 2, intraday
+          assert len(daily.get("TEST") or []) == 1, daily
+          print("ANALYZER_TRADIER_OUTCOME_SMOKE=passed")
+          PY
+
       - name: Smoke-test Tradier-only durable scanner logging
         if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, 'Run live-learning pipeline smoke')
         env:
