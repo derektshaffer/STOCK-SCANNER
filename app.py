@@ -460,6 +460,39 @@ if view == "Momentum Scanner":
     )
 
 
+def _latest_scan_age_seconds():
+    path = Path("scan_logs/latest_scan.json")
+    if not path.exists():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        raw = payload.get("scan_time_et")
+        if not raw:
+            return None
+        dt = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+        et = ZoneInfo("America/New_York")
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=et)
+        return max(
+            0.0,
+            (datetime.now(et) - dt.astimezone(et)).total_seconds(),
+        )
+    except Exception:
+        return None
+
+
+def _scan_age_text(seconds):
+    if seconds is None:
+        return "age unavailable"
+    seconds = float(seconds)
+    if seconds < 60:
+        return f"{seconds:.0f}s old"
+    minutes = seconds / 60.0
+    if minutes < 60:
+        return f"{minutes:.1f}m old"
+    return f"{minutes / 60.0:.1f}h old"
+
+
 def _latest_scan_candidates():
     path = Path("scan_logs/latest_scan.json")
     if not path.exists():
@@ -611,6 +644,24 @@ if view == "Momentum Scanner":
         st.error(f"Could not analyze the selected ticker: {launch_error}")
 
     candidates = _latest_scan_candidates()
+    latest_scan_age = _latest_scan_age_seconds()
+    # Auto-scan targets every five minutes. During a live session, add a
+    # three-minute grace window and prevent one-click analysis of stale rows.
+    latest_scan_stale = bool(
+        workspace_live
+        and (
+            latest_scan_age is None
+            or latest_scan_age > 8 * 60
+        )
+    )
+    if latest_scan_stale and candidates:
+        st.warning(
+            "The displayed scanner snapshot is stale ("
+            + _scan_age_text(latest_scan_age)
+            + "). A fresh scan is due; Analyze buttons are temporarily disabled "
+            "so an old setup cannot be mistaken for a current one."
+        )
+
     if candidates:
         # Make each row useful at a glance: ticker, grade, score, scanner ACTION,
         # today's move and Analyzer-aligned volume pace, with Analyze at the end.
@@ -662,6 +713,12 @@ if view == "Momentum Scanner":
                     key=f"combined_analyze_{idx}_{symbol}",
                     type="primary",
                     use_container_width=True,
+                    disabled=latest_scan_stale,
+                    help=(
+                        "Waiting for a fresh scanner snapshot."
+                        if latest_scan_stale
+                        else "Open this ticker in the live Stock Analyzer."
+                    ),
                     on_click=_open_analyzer,
                     args=(symbol,),
                 )
