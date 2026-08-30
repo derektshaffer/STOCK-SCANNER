@@ -631,7 +631,8 @@ def _workspace_scanner_monitor():
         st.caption("Background scanner paused because Auto Scan is OFF.")
     elif not feed_available:
         st.caption(
-            "Background scanner armed; live scanner feed is currently closed."
+            "2-minute live momentum scan is paused because the live feed is closed. "
+            "Completed-daily Swing / Longer-Term discovery remains available."
         )
 
     _browser_alert_control(first_alert)
