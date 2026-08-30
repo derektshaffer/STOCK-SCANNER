@@ -2523,6 +2523,95 @@ def test_legacy_analyzer_entrypoint_cannot_drift():
     assert "Single Stock Analyzer" not in source
 
 
+def test_prediction_tracker_skips_closed_market_records():
+    import prediction_tracker as pt
+
+    result = pt.record_prediction(
+        {"symbol": "TEST"},
+        now=datetime(2026, 8, 30, 16, 0, tzinfo=timezone.utc),
+    )
+    assert result["recorded"] is False, result
+    assert result["reason"] == "market_closed_not_recorded", result
+    assert result["market_session"] == "CLOSED", result
+
+
+def test_prediction_tracker_calibration_excludes_nonregular_rows():
+    import prediction_tracker as pt
+
+    regular = {
+        "symbol": "REG",
+        "timestamp": "2026-08-28T15:00:00+00:00",
+        "feature_version": pt.ANALYZER_FEATURE_VERSION,
+        "decision_score_version": pt.DECISION_SCORE_VERSION,
+        "potential_score": 70.0,
+        "entry_readiness": 65.0,
+        "evidence_strength": 75.0,
+        "outcomes": {"return_60m_pct": 2.0},
+    }
+    premarket = {
+        "symbol": "PRE",
+        "timestamp": "2026-08-28T12:00:00+00:00",
+        "feature_version": pt.ANALYZER_FEATURE_VERSION,
+        "decision_score_version": pt.DECISION_SCORE_VERSION,
+        "potential_score": 90.0,
+        "entry_readiness": 90.0,
+        "evidence_strength": 90.0,
+        "outcomes": {"return_60m_pct": -10.0},
+    }
+
+    original = pt._load_durable_calibration
+    pt._load_durable_calibration = lambda: {}
+    try:
+        summary = pt.tracker_summary(rows=[regular, premarket])
+    finally:
+        pt._load_durable_calibration = original
+
+    assert summary["total_predictions"] == 2, summary
+    assert summary["regular_session_predictions"] == 1, summary
+    assert summary["non_regular_predictions_excluded"] == 1, summary
+    assert summary["calibration_rows"] == 1, summary
+    assert summary["resolved_60m"] == 1, summary
+    assert summary["higher_60m_rate"] == 100.0, summary
+
+
+def test_analyzer_outcome_regular_session_classifier():
+    import score_analyzer_outcomes as sao
+
+    regular = {"timestamp": "2026-08-28T15:00:00+00:00"}
+    premarket = {"timestamp": "2026-08-28T12:00:00+00:00"}
+    after = {"timestamp": "2026-08-28T21:00:00+00:00"}
+    assert sao._regular_session_row(regular) is True
+    assert sao._regular_session_row(premarket) is False
+    assert sao._regular_session_row(after) is False
+
+
+def test_late_scanner_run_is_not_reported_as_normal_complete():
+    import score_outcomes as so
+
+    summary = {
+        "overall": {
+            "15m": {"n": 0},
+            "30m": {"n": 0},
+            "60m": {"n": 0},
+        }
+    }
+    assert (
+        so.outcome_report_status([{"symbol": "TEST"}], summary)
+        == "complete_no_resolvable_horizons"
+    )
+    summary["overall"]["15m"]["n"] = 1
+    assert so.outcome_report_status([{"symbol": "TEST"}], summary) == "complete"
+
+
+def test_manual_scanner_reruns_combined_candidates_after_success():
+    from pathlib import Path
+
+    source = Path("scanner_app.py").read_text(encoding="utf-8")
+    assert 'st.session_state["_scanner_flash_success"] = msg' in source
+    assert "one scan behind" in source
+    assert "st.rerun()" in source
+
+
 if __name__ == "__main__":
     tests = [
         test_analyzer_daily_history_prefers_tradier,
@@ -2605,6 +2694,11 @@ if __name__ == "__main__":
         test_scanner_visibly_marks_stale_snapshot,
         test_swing_research_ui_disclaims_historical_probability,
         test_legacy_analyzer_entrypoint_cannot_drift,
+        test_prediction_tracker_skips_closed_market_records,
+        test_prediction_tracker_calibration_excludes_nonregular_rows,
+        test_analyzer_outcome_regular_session_classifier,
+        test_late_scanner_run_is_not_reported_as_normal_complete,
+        test_manual_scanner_reruns_combined_candidates_after_success,
         test_monday_readiness_blocks_stale_scan_handoffs,
         test_analyzer_live_test_status_exposes_tracking_health,
     ]
