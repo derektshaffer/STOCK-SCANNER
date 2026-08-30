@@ -909,10 +909,39 @@ session_phase = str(payload.get("session_phase") or "")
 live = mode in {"regular_market_session", "extended_market_session"}
 scan_et = payload.get("scan_time_et")
 
+scan_age_seconds = None
 try:
-    when = datetime.fromisoformat(scan_et).strftime("%a %b %d · %I:%M:%S %p ET")
+    scan_dt = datetime.fromisoformat(str(scan_et).replace("Z", "+00:00"))
+    if scan_dt.tzinfo is None:
+        scan_dt = scan_dt.replace(tzinfo=ET)
+    scan_age_seconds = max(
+        0.0,
+        (datetime.now(ET) - scan_dt.astimezone(ET)).total_seconds(),
+    )
+    when = scan_dt.astimezone(ET).strftime("%a %b %d · %I:%M:%S %p ET")
 except Exception:
     when = scan_et or "Unknown"
+
+_market_open_for_stale_check, _now_et_for_stale_check = market_is_open()
+scan_is_stale = bool(
+    _market_open_for_stale_check
+    and (scan_age_seconds is None or scan_age_seconds > 8 * 60)
+)
+if scan_is_stale:
+    age_text = (
+        "unknown age"
+        if scan_age_seconds is None
+        else (
+            f"{scan_age_seconds / 60.0:.1f} minutes old"
+            if scan_age_seconds < 3600
+            else f"{scan_age_seconds / 3600.0:.1f} hours old"
+        )
+    )
+    st.warning(
+        "⚠️ **STALE SCAN — do not treat these rankings as current.** "
+        f"The displayed snapshot is {age_text}. A fresh scan is due; use "
+        "**Run Fresh Scan** or wait for auto-scan to complete."
+    )
 
 if session_phase == "premarket":
     pill_cls = "blue"
@@ -973,6 +1002,10 @@ st.markdown(
     f'<span class="pill {pill_cls}">{pill_text}</span>'
     f'<span class="pill {live_data_pill_cls}">{html.escape(live_data_pill)}</span>'
     f'<span class="pill {ml_pill_cls}">{html.escape(ml_pill_text)}</span>'
+    + (
+        '<span class="pill amber">⚠ STALE SNAPSHOT</span>'
+        if scan_is_stale else ''
+    )
     f'<div class="sub">Last scan: {html.escape(str(when))} · '
     f'Scanner v{html.escape(str(payload.get("scanner_version","—")))}</div></div>',
     unsafe_allow_html=True,
