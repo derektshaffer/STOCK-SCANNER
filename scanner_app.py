@@ -13,7 +13,7 @@ import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
 
-from scanner_runtime import run_scanner_process
+from scanner_runtime import cadence_health, run_scanner_process, scanner_process_busy
 
 SCAN_FILE = Path("scan_logs/latest_scan.json")
 AUTO_SCAN_SECONDS = 120
@@ -702,6 +702,13 @@ if "last_auto_message" not in st.session_state:
     st.session_state["last_auto_message"] = ""
 
 
+combined_monitor_active = bool(
+    st.session_state.get("_combined_scanner_monitor_active")
+)
+manual_scan_busy = bool(
+    st.session_state.get("_scanner_async_state")
+) or scanner_process_busy()
+
 controls_mount = st.session_state.get("_scanner_controls_mount")
 controls_context = controls_mount.container() if controls_mount is not None else st.container(key="scanner_controls_top")
 
@@ -720,6 +727,12 @@ with controls_context:
             "▶ Run Fresh Scan",
             type="primary",
             use_container_width=True,
+            disabled=manual_scan_busy,
+            help=(
+                "A scan is already running."
+                if manual_scan_busy
+                else "Run a fresh momentum scan now."
+            ),
         )
         if clicked:
             scan_button_slot.button(
@@ -740,8 +753,9 @@ with controls_context:
             "Auto scan every 2 minutes",
             key="auto_scan_enabled",
             help=(
-                f"Runs about every 2 minutes while the Momentum Scanner view is active. "
-                f"Browser backgrounding can delay refreshes. Current live feed: "
+                f"Runs about every 2 minutes across Scanner and Analyzer while this "
+                f"app session is active. Browser backgrounding can delay refreshes. "
+                f"Current live feed: "
                 f"{feed_name}; live scanner coverage: {coverage} on weekdays."
             ),
         )
@@ -767,6 +781,7 @@ with controls_context:
         )
 
 if clicked:
+    st.session_state["last_auto_scan_started_at"] = time.time()
     with st.spinner("Scanning movers and ranking live setups…"):
         ok, msg = run_scanner()
     if ok:
@@ -834,19 +849,57 @@ def auto_scan_controller():
         )
         return
 
-    elapsed = time.time() - float(st.session_state.get("last_auto_scan_at", 0.0))
-    remaining = max(0, AUTO_SCAN_SECONDS - elapsed)
+    runtime = st.session_state.get("scanner_last_runtime_seconds")
+    if combined_monitor_active:
+        state = st.session_state.get("_scanner_async_state")
+        if state:
+            running_for = max(
+                0,
+                int(time.time() - float(state.get("started_at") or time.time())),
+            )
+            st.markdown(
+                '<div class="auto-box auto-on"><b>🟢 AUTO SCAN RUNNING</b><br>'
+                f'<span class="sub">{running_for}s elapsed. Analyzer remains usable '
+                'while the scan runs in the background.</span></div>',
+                unsafe_allow_html=True,
+            )
+            return
 
-    if elapsed >= AUTO_SCAN_SECONDS:
-        with st.spinner("Automatic 2-minute scan running…"):
-            ok, msg = run_scanner()
-        st.session_state["last_auto_scan_at"] = time.time()
-        st.session_state["last_auto_message"] = msg
-        if ok:
-            st.rerun()
-        else:
-            st.error(f"Automatic scan failed: {msg}")
-        return
+        last_started = float(
+            st.session_state.get("last_auto_scan_started_at")
+            or st.session_state.get("last_auto_scan_at")
+            or 0.0
+        )
+        remaining = max(0, AUTO_SCAN_SECONDS - (time.time() - last_started))
+        if runtime is not None:
+            health = cadence_health(runtime, AUTO_SCAN_SECONDS)
+            if health.get("status") == "overrun":
+                st.markdown(
+                    '<div class="auto-box auto-wait"><b>⚠ CADENCE OVERRUN</b><br>'
+                    f'<span class="sub">{html.escape(str(health.get("message") or ""))} '
+                    'The next scan waits until the current scan is finished.</span></div>',
+                    unsafe_allow_html=True,
+                )
+                return
+
+        # The combined app shell owns the automatic scan process. This child
+        # view only renders status, preventing a second 2-minute loop.
+    else:
+        elapsed = time.time() - float(
+            st.session_state.get("last_auto_scan_at", 0.0)
+        )
+        remaining = max(0, AUTO_SCAN_SECONDS - elapsed)
+        if elapsed >= AUTO_SCAN_SECONDS:
+            st.session_state["last_auto_scan_started_at"] = time.time()
+            with st.spinner("Automatic 2-minute scan running…"):
+                ok, msg = run_scanner()
+            st.session_state["last_auto_scan_at"] = time.time()
+            st.session_state["last_auto_message"] = msg
+            if ok:
+                st.rerun()
+            else:
+                st.error(f"Automatic scan failed: {msg}")
+            return
 
     # Keep the actual scan controller lightweight, but let the browser update
     # the visible countdown every second without rerunning the Streamlit app.
