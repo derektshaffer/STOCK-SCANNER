@@ -16,6 +16,7 @@ import streamlit.components.v1 as components
 from scanner_runtime import cadence_health, run_scanner_process, scanner_process_busy
 
 SCAN_FILE = Path("scan_logs/latest_scan.json")
+OFFHOURS_SCAN_FILE = Path("scan_logs/offhours_timeframe_latest.json")
 AUTO_SCAN_SECONDS = 120
 AUTO_STATUS_REFRESH_SECONDS = 15
 
@@ -376,6 +377,143 @@ def load_scan():
         return json.loads(SCAN_FILE.read_text(encoding="utf-8"))
     except Exception:
         return None
+
+
+def load_offhours_timeframe_scan():
+    if not OFFHOURS_SCAN_FILE.exists():
+        return None
+    try:
+        return json.loads(OFFHOURS_SCAN_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+
+
+def _daily_fit_matches(row, selected):
+    if selected == "ALL":
+        return True
+    if selected == "SWING":
+        return (
+            (row.get("timeframe_swing_score") or 0) >= 60
+            and (row.get("timeframe_swing_score") or 0)
+            >= (row.get("timeframe_longer_term_score") or 0) - 5
+        )
+    if selected == "LONGER-TERM":
+        return (
+            (row.get("timeframe_longer_term_score") or 0) >= 60
+            and (row.get("timeframe_longer_term_score") or 0)
+            >= (row.get("timeframe_swing_score") or 0) - 5
+        )
+    return True
+
+
+def render_offhours_timeframe_panel(payload):
+    if not payload:
+        st.info(
+            "The off-hours Swing / Longer-Term scan has not produced a daily "
+            "snapshot yet. It is scheduled after each regular market session."
+        )
+        return
+
+    rows = payload.get("candidates") or []
+    universe = payload.get("universe") or {}
+    session_date = payload.get("last_completed_session_date") or "unknown"
+    runtime = payload.get("runtime_seconds")
+    runtime_text = (
+        f" · runtime {float(runtime):.0f}s"
+        if runtime is not None
+        else ""
+    )
+
+    st.markdown(
+        """
+        <div class="header">
+          <div class="title">Off-Hours Swing / Longer-Term Discovery</div>
+          <div class="sub">
+            Fresh completed-daily technical setups for multi-day and multi-week
+            review — this runs independently of the live intraday momentum scan.
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    st.caption(
+        f"Completed session: {session_date} · "
+        f"{universe.get('history_rows_scored', 0)} daily histories scored · "
+        f"{universe.get('returned', len(rows))} shown{runtime_text}. "
+        "Technical screen only; confirm fundamentals, dilution/filings, catalyst "
+        "durability, and entry risk in Analyzer."
+    )
+
+    focus = st.selectbox(
+        "Off-hours timeframe focus",
+        ["ALL", "SWING", "LONGER-TERM"],
+        key="offhours_timeframe_focus",
+        help=(
+            "This filters the completed-daily discovery list only. It does not "
+            "change live Momentum Scanner ACTION or intraday ML."
+        ),
+    )
+    filtered = [row for row in rows if _daily_fit_matches(row, focus)]
+
+    if not filtered:
+        st.info(f"No {focus} daily setups met the current off-hours screen.")
+        return
+
+    table_rows = []
+    for row in filtered:
+        table_rows.append(
+            {
+                "Ticker": row.get("symbol"),
+                "Grade": row.get("daily_setup_grade"),
+                "Review": row.get("daily_review_action"),
+                "Daily Score": row.get("daily_discovery_score"),
+                "Swing Fit": row.get("timeframe_swing_score"),
+                "Longer Fit": row.get("timeframe_longer_term_score"),
+                "5D %": row.get("daily_return_5d_pct"),
+                "20D %": row.get("daily_return_20d_pct"),
+                "40D %": row.get("daily_return_40d_pct"),
+                "vs SPY 20D": row.get("relative_strength_vs_spy_20d_pct"),
+                "Vol / 20D Avg": row.get("daily_volume_ratio"),
+                "MA Align": row.get("daily_ma_alignment"),
+                "From 45D High %": row.get("daily_from_recent_high_pct"),
+                "Setup": " · ".join(row.get("daily_setup_archetypes") or []),
+            }
+        )
+
+    daily_df = pd.DataFrame(table_rows)
+    st.dataframe(
+        daily_df,
+        hide_index=True,
+        width="stretch",
+        column_config={
+            "Daily Score": st.column_config.NumberColumn(format="%.1f"),
+            "Swing Fit": st.column_config.NumberColumn(format="%.0f"),
+            "Longer Fit": st.column_config.NumberColumn(format="%.0f"),
+            "5D %": st.column_config.NumberColumn(format="%.1f%%"),
+            "20D %": st.column_config.NumberColumn(format="%.1f%%"),
+            "40D %": st.column_config.NumberColumn(format="%.1f%%"),
+            "vs SPY 20D": st.column_config.NumberColumn(format="%+.1f%%"),
+            "Vol / 20D Avg": st.column_config.NumberColumn(format="%.2fx"),
+            "From 45D High %": st.column_config.NumberColumn(format="%.1f%%"),
+        },
+    )
+
+    with st.expander("How this off-hours scan works", expanded=False):
+        st.markdown(
+            """
+            It starts from a broad, price-band-balanced U.S. stock universe, then
+            evaluates completed daily candles rather than 5-minute live momentum.
+            The daily shortlist looks at 5/20/40-session trend, 10/20/40-session
+            moving-average structure, proximity to multi-week highs, volume versus
+            the recent average, 20-day relative strength versus SPY, stair-step
+            behavior, breakouts, constructive pullbacks, and reversal/ignition
+            structure.
+
+            **It is deliberately separate from live Scanner ACTION and intraday
+            ML.** A high daily score means "worth reviewing for a multi-day or
+            multi-week setup," not "buy now."
+            """
+        )
 
 
 def f(v, d=1, suffix=""):
@@ -953,6 +1091,13 @@ with status_context:
     auto_scan_controller()
 
 payload = load_scan()
+offhours_payload = load_offhours_timeframe_scan()
+current_phase = market_session_phase(datetime.now(ZoneInfo("America/New_York")))
+
+if current_phase == "closed":
+    render_offhours_timeframe_panel(offhours_payload)
+    if payload is not None:
+        st.markdown("### Last live momentum snapshot")
 
 if payload is None:
     st.markdown(
@@ -960,10 +1105,16 @@ if payload is None:
         '<div class="sub">The dashboard is ready, but it does not have a scan to display yet.</div></div>',
         unsafe_allow_html=True,
     )
-    st.info(
-        "Click **Run Fresh Scan**. Automatic scanning will also start on its own "
-        "during pre-market, regular hours, and after-hours while this app is open."
-    )
+    if current_phase == "closed" and offhours_payload:
+        st.caption(
+            "No live momentum snapshot is available yet. The completed-daily "
+            "Swing / Longer-Term list above is still usable for off-hours research."
+        )
+    else:
+        st.info(
+            "Click **Run Fresh Scan**. Automatic live scanning starts during "
+            "supported pre-market, regular-hours, and after-hours windows."
+        )
     st.stop()
 
 mode = payload.get("mode", "off_hours_test")
