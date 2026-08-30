@@ -6,6 +6,11 @@ on:
     # 17:30 ET during EDT and 16:30 ET during EST. GitHub may start scheduled
     # jobs late, so scoring must not depend on the job's actual start minute.
     - cron: '30 21 * * 1-5'
+  push:
+    branches: [main]
+    paths:
+      - "score_analyzer_outcomes.py"
+      - ".github/workflows/outcome-tracker.yml"
   workflow_dispatch:
     inputs:
       date:
@@ -19,6 +24,7 @@ permissions:
 
 jobs:
   score:
+    if: github.event_name != 'push' || contains(github.event.head_commit.message, 'Run Analyzer outcome smoke')
     runs-on: ubuntu-latest
 
     steps:
@@ -43,11 +49,12 @@ jobs:
         run: python score_outcomes.py
 
       - name: Score Analyzer outcomes
-        continue-on-error: true
         env:
           OUTCOME_DATE: ${{ inputs.date }}
           ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
           ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+          TRADIER_ACCESS_TOKEN: ${{ secrets.TRADIER_ACCESS_TOKEN }}
+          TRADIER_TOKEN: ${{ secrets.TRADIER_TOKEN }}
         run: python score_analyzer_outcomes.py
 
       - name: Commit durable outcome history
