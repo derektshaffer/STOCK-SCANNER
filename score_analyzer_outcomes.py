@@ -11,6 +11,7 @@ from timeframe_targets import (
     SWING_HORIZON_SESSIONS,
     resolve_swing_path_from_bars,
 )
+from swing_research_flags import FLAG_VERSION as SWING_RESEARCH_FLAG_VERSION
 
 
 ET = ZoneInfo("America/New_York")
@@ -562,6 +563,82 @@ def _all_rows():
     return rows
 
 
+
+def _swing_research_flag_calibration(rows):
+    """Use one forward sample per flag/ticker/signal day."""
+    chosen = {}
+    ordered = sorted(rows, key=lambda row: str(row.get("timestamp") or ""))
+    for row in ordered:
+        if row.get("swing_research_flag_version") != SWING_RESEARCH_FLAG_VERSION:
+            continue
+        symbol = str(row.get("symbol") or "").upper().strip()
+        dt = _parse_dt(row.get("timestamp"))
+        if not symbol or dt is None:
+            continue
+        for flag_id in row.get("swing_research_flag_ids") or []:
+            flag_id = str(flag_id or "").strip()
+            if not flag_id:
+                continue
+            key = (flag_id, symbol, dt.astimezone(ET).date().isoformat())
+            if key not in chosen:
+                chosen[key] = row
+
+    groups = {}
+    for (flag_id, _symbol, _day), row in chosen.items():
+        g = groups.setdefault(
+            flag_id,
+            {"signals": 0, "resolved": 0, "wins": 0, "mfe": [], "mae": []},
+        )
+        g["signals"] += 1
+        outcomes = row.get("outcomes") or {}
+        label = outcomes.get("swing_target_before_stop_5d")
+        if label in (0, 1):
+            g["resolved"] += 1
+            g["wins"] += int(label)
+        mfe = _num(outcomes.get("swing_mfe_5d_pct"))
+        mae = _num(outcomes.get("swing_mae_5d_pct"))
+        if mfe is not None:
+            g["mfe"].append(mfe)
+        if mae is not None:
+            g["mae"].append(mae)
+
+    out = {}
+    for flag_id, g in sorted(groups.items()):
+        resolved = int(g["resolved"])
+        if resolved < 10:
+            stage = "COLLECTING"
+            next_threshold = 10
+        elif resolved < 30:
+            stage = "EARLY READ"
+            next_threshold = 30
+        elif resolved < 100:
+            stage = "USEFUL"
+            next_threshold = 100
+        else:
+            stage = "STRONGER SAMPLE"
+            next_threshold = None
+        out[flag_id] = {
+            "signals": int(g["signals"]),
+            "resolved": resolved,
+            "target_before_stop_rate_pct": (
+                round(g["wins"] / resolved * 100.0, 1)
+                if resolved else None
+            ),
+            "avg_mfe_5d_pct": (
+                round(sum(g["mfe"]) / len(g["mfe"]), 3)
+                if g["mfe"] else None
+            ),
+            "avg_mae_5d_pct": (
+                round(sum(g["mae"]) / len(g["mae"]), 3)
+                if g["mae"] else None
+            ),
+            "stage": stage,
+            "next_threshold": next_threshold,
+            "sampling": "first matched observation per ticker per signal day",
+        }
+    return out
+
+
 def _repeat_bounce_calibration(rows):
     candidates=[
         row for row in rows
@@ -764,7 +841,7 @@ def _write_calibration():
     ]
 
     payload = {
-        "schema_version": 4,
+        "schema_version": 5,
         "feature_version": ANALYZER_FEATURE_VERSION,
         "decision_score_version": DECISION_SCORE_VERSION,
         "timeframe_score_version": TIMEFRAME_SCORE_VERSION,
@@ -799,6 +876,10 @@ def _write_calibration():
         },
         "timeframe_best_fit_calibration": _timeframe_best_fit_calibration(calibration_rows),
         "timeframe_learning_progress": _timeframe_learning_progress(calibration_rows),
+        "swing_research_flag_version": SWING_RESEARCH_FLAG_VERSION,
+        "swing_research_flag_calibration": _swing_research_flag_calibration(
+            feature_rows
+        ),
         "target_before_stop_rate": (
             round(len(target_wins) / len(touches) * 100.0, 1)
             if touches else None
