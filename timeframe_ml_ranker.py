@@ -183,24 +183,49 @@ def _matrix(rows, np):
     return X, y
 
 
-def _model():
-    from xgboost import XGBClassifier
+def _params():
+    return {
+        "objective": "binary:logistic",
+        "eval_metric": "logloss",
+        "max_depth": 3,
+        "eta": 0.04,
+        "min_child_weight": 6,
+        "subsample": 0.82,
+        "colsample_bytree": 0.82,
+        "alpha": 0.15,
+        "lambda": 2.5,
+        "tree_method": "hist",
+        "seed": 17,
+        "nthread": 2,
+    }
 
-    return XGBClassifier(
-        n_estimators=260,
-        max_depth=3,
-        learning_rate=0.04,
-        min_child_weight=6,
-        subsample=0.82,
-        colsample_bytree=0.82,
-        reg_alpha=0.15,
-        reg_lambda=2.5,
-        objective="binary:logistic",
-        eval_metric="logloss",
-        tree_method="hist",
-        n_jobs=2,
-        random_state=17,
+
+def _fit_booster(train, np, xgb):
+    X_train, y_train = _matrix(train, np)
+    dtrain = xgb.DMatrix(
+        X_train,
+        label=y_train,
+        feature_names=FEATURES,
+        missing=np.nan,
     )
+    booster = xgb.train(
+        _params(),
+        dtrain,
+        num_boost_round=260,
+    )
+    return booster
+
+
+def _predict_booster(booster, rows, np, xgb):
+    X, y = _matrix(rows, np)
+    dmatrix = xgb.DMatrix(
+        X,
+        label=y,
+        feature_names=FEATURES,
+        missing=np.nan,
+    )
+    probabilities = booster.predict(dmatrix).tolist()
+    return y, probabilities
 
 
 def _chronological_folds(rows):
@@ -253,6 +278,7 @@ def _probability_band_stats(rows, probabilities):
 
 def validate(rows):
     import numpy as np
+    import xgboost as xgb
 
     folds = _chronological_folds(rows)
     if not folds:
@@ -269,11 +295,8 @@ def validate(rows):
     all_test_rows = []
 
     for index, (train, test, train_dates, test_dates) in enumerate(folds, start=1):
-        X_train, y_train = _matrix(train, np)
-        X_test, y_test = _matrix(test, np)
-        model = _model()
-        model.fit(X_train, y_train)
-        probabilities = model.predict_proba(X_test)[:, 1].tolist()
+        booster = _fit_booster(train, np, xgb)
+        y_test, probabilities = _predict_booster(booster, test, np, xgb)
         labels = y_test.tolist()
         swing_scores = [
             50.0 if row.get("swing_score") is None else row["swing_score"]
@@ -357,14 +380,23 @@ def validate(rows):
 
     # Fit once on all historical rows only to inspect which inputs the model
     # uses. This model is NOT wired into production scoring.
-    X_all, y_all = _matrix(rows, np)
-    final_model = _model()
-    final_model.fit(X_all, y_all)
-    importances = final_model.feature_importances_.tolist()
+    final_model = _fit_booster(rows, np, xgb)
+    raw_importance = final_model.get_score(importance_type="gain")
+    total_gain = sum(float(raw_importance.get(name, 0.0)) for name in FEATURES)
     feature_importance = sorted(
         [
-            {"feature": name, "importance": round(float(value), 6)}
-            for name, value in zip(FEATURES, importances)
+            {
+                "feature": name,
+                "importance": round(
+                    (
+                        float(raw_importance.get(name, 0.0)) / total_gain
+                        if total_gain > 0
+                        else 0.0
+                    ),
+                    6,
+                ),
+            }
+            for name in FEATURES
         ],
         key=lambda item: item["importance"],
         reverse=True,
