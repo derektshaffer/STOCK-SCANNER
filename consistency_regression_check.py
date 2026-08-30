@@ -2112,6 +2112,80 @@ def test_multiyear_replay_reports_calendar_year_results():
     assert summary["2023"]["target_before_stop_rate_pct"] == 100.0, summary
 
 
+def test_swing_feature_research_freezes_thresholds_before_confirmation():
+    import swing_feature_research as sfr
+
+    rows = []
+    for day_index in range(40):
+        date_text = f"2025-01-{day_index + 1:02d}"
+        for symbol_index in range(20):
+            features = {name: 0.0 for name in sfr.tml.BASE_FEATURES}
+            features["trend_score"] = float(day_index + symbol_index)
+            rows.append(
+                {
+                    "date": date_text,
+                    "symbol": f"R{symbol_index}",
+                    "label": int(symbol_index % 2),
+                    "swing_score": 50.0,
+                    "features": features,
+                }
+            )
+
+    discovery, confirmation, _cutoff = sfr._discovery_split(rows)
+    before = [
+        rule
+        for rule in sfr._single_rule_pool(discovery)
+        if rule["feature"] == "trend_score"
+    ]
+
+    for row in confirmation:
+        row["features"]["trend_score"] = 99999.0
+
+    after = [
+        rule
+        for rule in sfr._single_rule_pool(discovery)
+        if rule["feature"] == "trend_score"
+    ]
+    assert before == after, (before, after)
+    assert set(row["date"] for row in discovery).isdisjoint(
+        set(row["date"] for row in confirmation)
+    )
+
+
+def test_swing_feature_research_requires_holdout_confirmation():
+    import swing_feature_research as sfr
+
+    candidate = {
+        "rules": [
+            {
+                "feature": "trend_score",
+                "op": ">=",
+                "threshold": 60.0,
+                "threshold_source": "q65",
+            }
+        ],
+        "text": "trend_score >= 60",
+        "discovery": {
+            "n": 500,
+            "rest_n": 500,
+            "lift_pp": 8.0,
+            "z_score": 3.0,
+        },
+        "confirmation": {
+            "n": 300,
+            "rest_n": 300,
+            "lift_pp": -2.0,
+            "z_score": -0.8,
+        },
+        "year_stability": {
+            "eligible_years": 6,
+            "positive_lift_years": 5,
+            "worst_year_lift_pp": -3.0,
+        },
+    }
+    assert sfr._is_robust(candidate) is False
+
+
 if __name__ == "__main__":
     tests = [
         test_analyzer_prefers_tradier,
@@ -2180,6 +2254,8 @@ if __name__ == "__main__":
         test_swing_ml_regime_features_are_separate_from_baseline,
         test_multiyear_swing_ml_uses_more_walk_forward_eras,
         test_multiyear_replay_reports_calendar_year_results,
+        test_swing_feature_research_freezes_thresholds_before_confirmation,
+        test_swing_feature_research_requires_holdout_confirmation,
     ]
     for test in tests:
         test()
