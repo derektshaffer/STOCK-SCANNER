@@ -1022,8 +1022,16 @@ if not _position_enabled:
 
     status_cls="good" if status=="ENTRY AVAILABLE" else "bad" if status=="NO TRADE" else "warn"
     why=" ".join(plan.get("reasons") or [])
+    _plan_role=str(plan.get("selected_plan_role") or "primary")
+    _plan_family=str(plan.get("preferred_plan") or "pullback").replace("_"," ").upper()
+    _rb_num=((plan.get("repeat_bounce") or {}).get("bounce_number"))
+    _plan_header=(
+        f"ACTIVE ALTERNATIVE · BOUNCE #{int(_rb_num)}"
+        if _plan_role=="alternative_repeat_bounce" and _rb_num is not None
+        else f"PRIMARY PLAN · {_plan_family}"
+    )
     st.markdown(
-        f'<div class="tradeplan"><div class="k">SUGGESTED TRADE PLAN</div>'
+        f'<div class="tradeplan"><div class="k">SUGGESTED TRADE PLAN · {html.escape(_plan_header)}</div>'
         f'<div class="tradeaction {status_cls}">{html.escape(plan.get("action") or status)}</div>'
         f'<div class="tradewhy">{html.escape(why)}</div></div>',
         unsafe_allow_html=True,
