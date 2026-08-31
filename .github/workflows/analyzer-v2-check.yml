@@ -204,6 +204,7 @@ jobs:
           print("ANALYZER_TRADIER_OUTCOME_SMOKE=passed")
           PY
 
+      # Manual/live integrity smoke: this step intentionally uses repository Tradier secrets.
       - name: Smoke-test Tradier-only durable scanner logging
         if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, 'Run live-learning pipeline smoke')
         env:
