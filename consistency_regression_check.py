@@ -5263,6 +5263,116 @@ def test_advisory_model_percentages_are_explicit_and_neutral():
 
 
 
+
+def test_setup_horizon_continuity_holds_one_noisy_fit_change():
+    import tempfile
+    from pathlib import Path
+    import timeframe_thesis as tt
+
+    now = datetime(2026, 8, 31, 14, 0, tzinfo=timezone.utc)
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "timeframe.json"
+        first = {
+            "best_fit": "LONGER-TERM",
+            "scores": {"intraday": 61.0, "swing": 66.0, "long_term": 75.0},
+        }
+        c1 = tt.track_timeframe_thesis(
+            "TEST", first, now=now, store_path=path
+        )
+        assert c1.get("stable_best_fit") == "LONGER-TERM", c1
+
+        noisy = {
+            "best_fit": "INTRADAY",
+            "scores": {"intraday": 72.0, "swing": 65.0, "long_term": 68.0},
+        }
+        c2 = tt.track_timeframe_thesis(
+            "TEST",
+            noisy,
+            now=now + timedelta(minutes=5),
+            store_path=path,
+            replacement_confirmations=3,
+        )
+        assert c2.get("status") == "HOLDING PRIOR HORIZON", c2
+        assert c2.get("stable_best_fit") == "LONGER-TERM", c2
+        assert c2.get("raw_best_fit") == "INTRADAY", c2
+        assert c2.get("production_influence") is False, c2
+
+
+def test_setup_horizon_changes_only_after_persistent_or_decisive_evidence():
+    import tempfile
+    from pathlib import Path
+    import timeframe_thesis as tt
+
+    now = datetime(2026, 8, 31, 14, 0, tzinfo=timezone.utc)
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "timeframe.json"
+        base = {
+            "best_fit": "SWING",
+            "scores": {"intraday": 58.0, "swing": 73.0, "long_term": 67.0},
+        }
+        tt.track_timeframe_thesis("TEST", base, now=now, store_path=path)
+        alt = {
+            "best_fit": "LONGER-TERM",
+            "scores": {"intraday": 55.0, "swing": 66.0, "long_term": 72.0},
+        }
+        for offset in (5, 10):
+            ctx = tt.track_timeframe_thesis(
+                "TEST",
+                alt,
+                now=now + timedelta(minutes=offset),
+                store_path=path,
+                replacement_confirmations=3,
+            )
+            assert ctx.get("stable_best_fit") == "SWING", ctx
+        ctx = tt.track_timeframe_thesis(
+            "TEST",
+            alt,
+            now=now + timedelta(minutes=15),
+            store_path=path,
+            replacement_confirmations=3,
+        )
+        assert ctx.get("status") == "HORIZON CHANGED", ctx
+        assert ctx.get("stable_best_fit") == "LONGER-TERM", ctx
+        assert "persisted across 3" in str(ctx.get("change_reason") or ""), ctx
+
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "timeframe.json"
+        tt.track_timeframe_thesis(
+            "TEST",
+            {
+                "best_fit": "INTRADAY",
+                "scores": {"intraday": 72.0, "swing": 55.0, "long_term": 48.0},
+            },
+            now=now,
+            store_path=path,
+        )
+        decisive = tt.track_timeframe_thesis(
+            "TEST",
+            {
+                "best_fit": "LONGER-TERM",
+                "scores": {"intraday": 38.0, "swing": 58.0, "long_term": 72.0},
+            },
+            now=now + timedelta(days=1),
+            store_path=path,
+            replacement_confirmations=3,
+        )
+        assert decisive.get("status") == "HORIZON CHANGED", decisive
+        assert decisive.get("stable_best_fit") == "LONGER-TERM", decisive
+        assert "decisively invalidated" in str(decisive.get("change_reason") or ""), decisive
+
+
+def test_setup_horizon_tracker_is_display_continuity_only():
+    from pathlib import Path
+
+    v2 = Path("analyzer_v2_integration.py").read_text(encoding="utf-8")
+    ui = Path("analyzer_ui_core.py").read_text(encoding="utf-8")
+    assert 'timeframe["production_influence"] = False' in v2
+    assert "stable_best_fit" in ui
+    assert "Setup horizon" in ui
+    assert "Execution plan" in ui
+    assert "one noisy candle cannot silently rewrite" in ui
+
+
 def test_intraday_thesis_state_is_namespaced_per_browser_session():
     import os
     import tempfile
@@ -6207,6 +6317,9 @@ if __name__ == "__main__":
         test_two_minute_runtime_health_flags_tight_and_overrun_scans,
         test_momentum_alert_can_realert_only_after_leaving_ready_state,
         test_analyzer_live_test_status_exposes_tracking_health,
+        test_setup_horizon_continuity_holds_one_noisy_fit_change,
+        test_setup_horizon_changes_only_after_persistent_or_decisive_evidence,
+        test_setup_horizon_tracker_is_display_continuity_only,
         test_intraday_thesis_state_is_namespaced_per_browser_session,
         test_intraday_thesis_keeps_entry_geometry_stable_and_can_still_enter,
         test_intraday_thesis_never_anchors_from_untrusted_data,
