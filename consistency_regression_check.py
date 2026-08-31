@@ -4381,7 +4381,7 @@ def test_combined_analyzer_refresh_is_background_and_saved_stocks_follow_search(
 
     controls = core.find('with st.container(key="analyzer_controls")')
     saved = core.find('with st.container(key="saved_stocks_top")')
-    position = core.find('_position_store=st.session_state.setdefault(')
+    position = core.find('_position_store = st.session_state.setdefault(')
     assert controls >= 0 and saved > controls and position > saved, (
         controls,
         saved,
