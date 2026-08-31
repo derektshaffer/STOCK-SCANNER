@@ -97,6 +97,18 @@ That is intra-session validation-boundary leakage.
 - no trading day appears in both train and validation;
 - same-session labels can therefore never cross into a validation day.
 
+### P0-4 — Repeated live scans inflated effective confirmation sample size
+
+A raw count of live observations can overstate independent evidence when the same ticker is rescanned repeatedly. For a 60-minute target, two same-ticker observations 15 or 30 minutes apart share much of the same future price path.
+
+**Remediation in PR #53:**
+
+- live confirmation keeps all raw rows for diagnostics but evaluates a de-correlated confirmation set;
+- same-ticker confirmation observations must be at least 60 minutes apart;
+- full replay-backed promotion requires at least 100 de-correlated live observations across at least 5 trading days and at least 15 distinct symbols;
+- positive/negative class-count gates still apply.
+
+
 ### P1-1 — Analyzer outcome tolerance was looser than Scanner outcome tolerance
 
 Scanner outcomes allowed a maximum 3-minute delay from the requested horizon. Analyzer outcomes allowed 5 minutes.
@@ -108,7 +120,17 @@ That could make the same nominal +15m/+30m/+60m horizon mean different things fo
 - Analyzer horizon matching is standardized to the Scanner's 180-second maximum;
 - a regression test verifies +3 minutes is accepted and +4 minutes is rejected.
 
-### P1-2 — Validation workflow ran after pushes to main, not before merge
+### P1-2 — Outcome reports used "win rate" for gross forward price movement
+
+The Scanner's outcome tracker measures price movement from the scanner snapshot price to a later bar close. That is useful signal-continuation evidence, but it is not realized trading P/L because spread, slippage, fees, and entry latency are not deducted.
+
+**Remediation in PR #53:**
+
+- human-readable reports now use **positive-return rate** instead of **win rate** for this metric;
+- generated JSON includes explicit execution-adjustment metadata;
+- the report warns that profitability claims require an execution-aware simulation.
+
+### P1-3 — Validation workflow ran after pushes to main, not before merge
 
 The repository had a substantial validation workflow, but it was triggered on pushes to `main`. The repository also has no required branch status checks.
 
