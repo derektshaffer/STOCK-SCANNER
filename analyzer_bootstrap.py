@@ -383,7 +383,7 @@ def _render_saved_stocks(key_prefix="saved"):
     current = str(
         st.session_state.get("ticker_search_request")
         or st.session_state.get("ticker")
-        or "SDOT"
+        or ""
     ).upper().strip()
 
     first_saved = saved[:5]
@@ -470,7 +470,7 @@ def _prepare_combined_result(sa):
     ticker = str(
         st.session_state.get("ticker_search_request")
         or st.session_state.get("ticker")
-        or "SDOT"
+        or ""
     ).upper().strip()
     if not ticker:
         return "No ticker was selected."
@@ -548,13 +548,62 @@ def run():
         # which freezes BOTH workspace tabs and prevents the 2-minute scanner
         # monitor from polling. Start it in the existing cancelable subprocess
         # runtime instead, then poll it from a tiny fragment.
+        existing_result = st.session_state.get("result")
+        existing_result_symbol = str(
+            (existing_result or {}).get("symbol") or ""
+        ).upper().strip() if isinstance(existing_result, dict) else ""
+
+        # Opening the Analyzer tab directly should be an idle landing page.
+        # Only an explicit ticker request (scanner Analyze, search/saved stock)
+        # or a real previously completed Analyzer result may select a symbol.
+        # Never manufacture a default ticker such as SDOT.
         requested_ticker = str(
             st.session_state.get("_analyzer_background_request_symbol")
             or st.session_state.get("ticker_search_request")
-            or st.session_state.get("ticker")
-            or "SDOT"
+            or existing_result_symbol
+            or ""
         ).upper().strip()
-        existing_result = st.session_state.get("result")
+
+        if not requested_ticker:
+            st.session_state["_analyzer_loading"] = False
+            st.session_state["_manual_analyze_requested"] = False
+            st.session_state.pop("_analyzer_background_request_symbol", None)
+
+            st.markdown(
+                '<div class="hero"><div class="title">Single Stock Analyzer</div>'
+                '<div class="sub">Choose a stock to analyze. Nothing runs until '
+                'you select a ticker.</div></div>',
+                unsafe_allow_html=True,
+            )
+
+            landing_symbol = st.text_input(
+                "Ticker",
+                key="analyzer_landing_ticker",
+                placeholder="Enter a ticker…",
+                label_visibility="collapsed",
+            ).upper().strip()
+
+            def _start_landing_analysis():
+                symbol = str(
+                    st.session_state.get("analyzer_landing_ticker") or ""
+                ).upper().strip()
+                if not symbol:
+                    return
+                st.session_state["ticker"] = symbol
+                st.session_state["ticker_search_request"] = symbol
+                st.session_state["_analyzer_loading"] = True
+                st.session_state.pop("ticker_picker", None)
+                st.session_state.pop("result", None)
+
+            st.button(
+                "Analyze",
+                type="primary",
+                key="analyzer_landing_analyze",
+                disabled=not bool(landing_symbol),
+                on_click=_start_landing_analysis,
+            )
+            _render_saved_stocks("landing")
+            return
 
         # Saved-stock/search launches can bypass app.py's scanner button path.
         # Give them the same per-session warm-result behavior.
