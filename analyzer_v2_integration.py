@@ -1953,15 +1953,26 @@ def install_v2_analysis(sa):
         }
 
         if background_worker:
-            # Prediction logging/outcome resolution can involve GitHub sync and
-            # delayed-history requests. Never put that latency on the user's
-            # click-to-Analyzer path; the persistent Analyzer/outcome workflow
-            # handles durable tracking separately.
-            tracking = {
-                "status": "deferred",
-                "persistence": "persistent-ui/outcome-workflow",
-                "background_worker": True,
-            }
+            # Preserve the live training sample, but keep GitHub sync and
+            # delayed outcome resolution off the user's click path.
+            try:
+                record_result = record_prediction(
+                    metrics,
+                    now,
+                    defer_remote=True,
+                )
+                tracking = {
+                    "status": "recorded_local_sync_deferred",
+                    "persistence": "runtime-local + async durable sync",
+                    "background_worker": True,
+                    "last_record": record_result,
+                }
+            except Exception as exc:
+                tracking = {
+                    "status": "record_failed",
+                    "error": str(exc)[:140],
+                    "background_worker": True,
+                }
         else:
             try:
                 record_result = record_prediction(metrics, now)
