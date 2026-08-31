@@ -523,7 +523,8 @@ def run():
         # monitor from polling. Start it in the existing cancelable subprocess
         # runtime instead, then poll it from a tiny fragment.
         requested_ticker = str(
-            st.session_state.get("ticker_search_request")
+            st.session_state.get("_analyzer_background_request_symbol")
+            or st.session_state.get("ticker_search_request")
             or st.session_state.get("ticker")
             or "SDOT"
         ).upper().strip()
@@ -531,21 +532,40 @@ def run():
         existing_symbol = str(
             (existing_result or {}).get("symbol") or ""
         ).upper().strip() if isinstance(existing_result, dict) else ""
+
+        from analyzer_launch_runtime import (
+            cancel_analyzer_process,
+            poll_analyzer_process,
+            start_analyzer_process,
+        )
+
+        launch_key = "_analyzer_bootstrap_launch_state"
+        launch_state = st.session_state.get(launch_key)
+        launch_process = (launch_state or {}).get("process")
+        launch_symbol = str(
+            (launch_state or {}).get("symbol") or ""
+        ).upper().strip()
+        launch_active_same_symbol = bool(
+            launch_process is not None
+            and launch_process.poll() is None
+            and launch_symbol == requested_ticker
+        )
+        forced_refresh = bool(
+            str(
+                st.session_state.get("_analyzer_background_request_symbol") or ""
+            ).upper().strip()
+            == requested_ticker
+        )
         result_ready = bool(
             requested_ticker
             and isinstance(existing_result, dict)
             and existing_result
             and (not existing_symbol or existing_symbol == requested_ticker)
+            and not forced_refresh
+            and not launch_active_same_symbol
         )
 
         if not result_ready:
-            from analyzer_launch_runtime import (
-                cancel_analyzer_process,
-                poll_analyzer_process,
-                start_analyzer_process,
-            )
-
-            launch_key = "_analyzer_bootstrap_launch_state"
             launch_state = st.session_state.get(launch_key)
             launch_symbol = str(
                 (launch_state or {}).get("symbol") or ""
@@ -584,6 +604,7 @@ def run():
                     )
                     return
                 st.session_state[launch_key] = launch_state
+                st.session_state.pop("_analyzer_background_request_symbol", None)
                 launch_active = True
 
             @st.fragment(run_every="1s")
@@ -596,6 +617,9 @@ def run():
                 if outcome.get("done"):
                     st.session_state[launch_key] = None
                     if not outcome.get("ok"):
+                        st.session_state["_analyzer_loading"] = False
+                        st.session_state["_manual_analyze_requested"] = False
+                        st.session_state.pop("_analyzer_background_request_symbol", None)
                         st.error(
                             "Analyzer failed: "
                             + str(outcome.get("message") or "unknown error")
@@ -608,6 +632,9 @@ def run():
                     st.session_state["result"] = outcome.get("result")
                     st.session_state["ticker"] = symbol
                     st.session_state["ticker_search_request"] = symbol
+                    st.session_state["_analyzer_loading"] = False
+                    st.session_state["_manual_analyze_requested"] = False
+                    st.session_state.pop("_analyzer_background_request_symbol", None)
                     st.session_state.pop("ticker_picker", None)
                     st.session_state.pop("saved_stock_loading", None)
                     st.rerun(scope="app")
@@ -616,8 +643,8 @@ def run():
                 elapsed = float(outcome.get("runtime_seconds") or 0.0)
                 st.info(
                     f"Analyzing {requested_ticker} in the background… "
-                    f"{elapsed:.0f}s elapsed. You can switch back to the "
-                    "Momentum Scanner while this finishes."
+                    f"{elapsed:.0f}s elapsed. The Analyzer shell stays responsive, "
+                    "and you can switch back to the Momentum Scanner while this finishes."
                 )
 
             _render_combined_analysis_loader()
