@@ -853,6 +853,13 @@ if not _position_enabled:
     _top_readiness=_v2_top.get("entry_readiness")
     _top_entry_label=str(_v2_top.get("entry_label") or "—")
     _top_rr=_selected_top.get("risk_reward")
+    _top_entry_state=str(plan.get("entry_state") or "WATCH")
+    _top_entry_instruction=str(
+        plan.get("entry_instruction")
+        or "Use the displayed entry zone only after the current action confirms."
+    )
+    _timeframe_top=(_v2_top.get("timeframe_analysis") or {})
+    _best_fit_top=str(_timeframe_top.get("best_fit") or "MIXED")
 
     st.markdown(
         '<div class="section">Decision first '
@@ -883,10 +890,11 @@ if not _position_enabled:
     )
     card(
         _dc[3],
-        "ENTRY ZONE",
+        "NEXT ENTRY",
         zone_text(_selected_top),
-        str(_selected_top.get("entry_source") or _selected_top.get("breakout_source") or plan.get("preferred_plan") or "—"),
+        _top_entry_state,
         "good" if _top_status=="ENTRY AVAILABLE" else "warn",
+        _top_entry_instruction,
     )
     card(
         _dc[4],
@@ -902,9 +910,15 @@ if not _position_enabled:
         f'R/R {rr(_top_rr)}' if _top_rr is not None else str(_selected_top.get("target1_reason") or "—"),
         "good",
     )
+    st.info(
+        f"**Strategy thesis · {_best_fit_top} · "
+        f"{str(plan.get('preferred_plan') or 'watch').replace('_',' ').upper()} · "
+        f"{_top_entry_state}** — {_top_entry_instruction}"
+    )
     st.caption(
-        "Priority order: trust the data → read the current action → check entry readiness → "
-        "use the entry/stop/target levels. Everything below adds context or explains why."
+        "The action tells you whether the entry is ready now; NEXT ENTRY tells you the "
+        "actual price window and condition that would make it actionable. The thesis should "
+        "evolve with evidence rather than reset on every refresh."
     )
 
 # Dynamic decision-support trade plan. Position mode replaces the visible
@@ -1136,7 +1150,14 @@ if not _position_enabled:
     )
 
     tp=st.columns(7)
-    card(tp[0],"ENTRY ZONE",zone_text(selected),str(selected.get("entry_source") or selected.get("breakout_source") or plan.get("preferred_plan") or ""),status_cls)
+    card(
+        tp[0],
+        "NEXT ENTRY",
+        zone_text(selected),
+        str(plan.get("entry_state") or selected.get("entry_source") or selected.get("breakout_source") or plan.get("preferred_plan") or ""),
+        status_cls,
+        str(plan.get("entry_instruction") or ""),
+    )
     card(tp[1],"STOP / INVALIDATION",money(selected.get("stop")),selected.get("stop_reason") or "")
     card(tp[2],"TARGET 1",money(selected.get("target1")),selected.get("target1_reason") or "","good")
     card(tp[3],"TARGET 2",money(selected.get("target2")),selected.get("target2_reason") or "","good")
