@@ -921,8 +921,7 @@ if not _position_enabled:
         f"**Strategy thesis · {_best_fit_top} · "
         f"{str(plan.get('preferred_plan') or 'watch').replace('_',' ').upper()} · "
         f"{_top_entry_state} · {_thesis_status}** — {_top_entry_instruction}"
-        + (f"  
-**Why the thesis changed/held:** {_thesis_reason}" if _thesis_reason else "")
+        + (f"  \\n**Why the thesis changed/held:** {_thesis_reason}" if _thesis_reason else "")
     )
     st.caption(
         "The action tells you whether the entry is ready now; NEXT ENTRY tells you the "
