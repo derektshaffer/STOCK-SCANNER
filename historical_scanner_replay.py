@@ -25,6 +25,7 @@ from zoneinfo import ZoneInfo
 
 from tradier_live import get_history_bars, get_timesales_bars, post_quotes
 from multi_bounce import bounce_feature_values, detect_bounce_sequence
+from market_structure import impulse_pullback_context as shared_impulse_pullback_context
 from stair_step import detect_stair_step, stair_step_feature_values
 from scanner_behavior import (
     BEHAVIOR_FEATURE_VERSION,
@@ -32,7 +33,7 @@ from scanner_behavior import (
     multi_session_behavior_features,
 )
 
-REPLAY_VERSION = "historical-scanner-replay-v4.5-balanced-swings"
+REPLAY_VERSION = "historical-scanner-replay-v4.6-shared-market-structure"
 ET = ZoneInfo("America/New_York")
 
 DEFAULT_TRADING_DAYS = int(os.environ.get("REPLAY_TRADING_DAYS", "20") or 20)
@@ -595,61 +596,24 @@ def _profile_for_checkpoint(day_map, replay_day, completed_bars):
 
 
 def _impulse_snapshot(rows, idx):
-    """Leakage-safe impulse/pullback features from replay bars through idx."""
-    if idx < 5:
+    """Leakage-safe shared-structure features from replay bars through idx."""
+    if idx<5:
         return {}
-    data=[]
-    for _minute,b in rows[:idx+1]:
-        h=_num(b.get("h")); l=_num(b.get("l")); cc=_num(b.get("c")); v=_num(b.get("v")) or 0.0
-        if h is None or l is None or cc is None or h<=0 or l<=0:
-            continue
-        data.append({"h":h,"l":l,"c":cc,"v":v})
-    if len(data)<6:
+    bars=[bar for _minute,bar in rows[:idx+1]]
+    if len(bars)<6:
         return {}
-
-    current=data[-1]["c"]
-    candidates=[]
-    n=len(data)
-    for peak_idx in range(3,n-1):
-        start=max(0,peak_idx-24)
-        low_idx=min(range(start,peak_idx),key=lambda i:data[i]["l"])
-        low=data[low_idx]["l"]; peak=data[peak_idx]["h"]
-        if peak<=low:
-            continue
-        move=(peak/low-1)*100.0
-        if move<6:
-            continue
-        after=data[peak_idx+1:]
-        if not after:
-            continue
-        trough_rel=min(range(len(after)),key=lambda i:after[i]["l"])
-        trough_idx=peak_idx+1+trough_rel
-        trough=data[trough_idx]["l"]
-        run=peak-low
-        max_retrace=(peak-trough)/run*100.0
-        current_retrace=(peak-current)/run*100.0
-        recovery=max_retrace-current_retrace
-        age=n-1-peak_idx
-        recency=max(.35,1.0-age/max(12.0,n*.8))
-        score=move*recency*(1.0 if 15<=max_retrace<=75 else .75)
-        candidates.append((score,low_idx,peak_idx,trough_idx,move,current_retrace,max_retrace,recovery))
-    if not candidates:
+    current=_num((bars[-1] or {}).get("c"))
+    ctx=shared_impulse_pullback_context(bars,current_price=current)
+    if not ctx.get("detected"):
         return {}
-
-    _,low_idx,peak_idx,trough_idx,move,current_retrace,max_retrace,recovery=max(candidates,key=lambda x:x[0])
-    iv=[data[i]["v"] for i in range(low_idx,peak_idx+1) if data[i]["v"]>0]
-    pv=[data[i]["v"] for i in range(peak_idx+1,trough_idx+1) if data[i]["v"]>0]
-    iva=sum(iv)/len(iv) if iv else None
-    pva=sum(pv)/len(pv) if pv else None
-    ratio=pva/iva if iva and pva is not None else None
     return {
-        "impulse_move_pct":round(move,3),
-        "impulse_retracement_pct":round(current_retrace,3),
-        "impulse_max_retracement_pct":round(max_retrace,3),
-        "impulse_bounce_recovery_pct":round(recovery,3),
-        "pullback_volume_ratio":round(ratio,4) if ratio is not None else None,
+        "impulse_move_pct":_num(ctx.get("impulse_move_pct")),
+        "impulse_retracement_pct":_num(ctx.get("current_retracement_pct")),
+        "impulse_max_retracement_pct":_num(ctx.get("max_retracement_pct")),
+        "impulse_bounce_recovery_pct":_num(ctx.get("bounce_recovery_pct")),
+        "pullback_volume_ratio":_num(ctx.get("pullback_volume_ratio")),
+        "structure_version":ctx.get("structure_version"),
     }
-
 
 def _current_snapshot(ss, symbol, rows, idx, prev_close, avg_daily, day_map, replay_day):
     if idx < 3 or idx >= len(rows):

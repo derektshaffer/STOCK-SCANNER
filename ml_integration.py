@@ -252,7 +252,7 @@ def install_ml_analysis(sa):
         elif peer_edge is not None:
             ml["edge_method"] = str(ml.get("edge_method") or "validated_models_only") + "_peer_advisory"
 
-        ml["version"] = "ml-v1.6-sequence-regimes-peer"
+        ml["version"] = "ml-v1.9-shared-market-structure-peer"
         metrics["ml_prediction"] = ml
 
         # Validation gate: only a model that beats naive baselines on unseen,

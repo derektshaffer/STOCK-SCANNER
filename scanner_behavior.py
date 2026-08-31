@@ -11,9 +11,10 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 
 from multi_bounce import bounce_feature_values, detect_bounce_sequence
+from market_structure import impulse_pullback_context as shared_impulse_pullback_context
 from stair_step import detect_stair_step, stair_step_feature_values
 
-BEHAVIOR_FEATURE_VERSION = "scanner-behavior-v4-balanced-swings"
+BEHAVIOR_FEATURE_VERSION = "scanner-behavior-v5-shared-market-structure"
 
 
 def _num(value):
@@ -111,123 +112,49 @@ def resample_to_5min(bars, *, as_of=None, completed_only=False):
     return out
 
 def impulse_pullback_features(bars):
-    """Find the strongest recent impulse and its current retracement."""
-    data = []
-    for bar in bars or []:
-        h = _num(bar.get("h"))
-        l = _num(bar.get("l"))
-        c = _num(bar.get("c"))
-        v = _num(bar.get("v")) or 0.0
-        if h is None or l is None or c is None or h <= 0 or l <= 0:
-            continue
-        data.append({"h": h, "l": l, "c": c, "v": v})
-    if len(data) < 6:
+    """Canonical impulse/pullback features from shared confirmed swings."""
+    rows=list(bars or [])
+    if len(rows)<6:
+        return {}
+    current=_num((rows[-1] or {}).get("c"))
+    ctx=shared_impulse_pullback_context(rows,current_price=current)
+    if not ctx.get("detected"):
         return {}
 
-    current = data[-1]["c"]
-    candidates = []
-    n = len(data)
-    for peak_idx in range(3, n - 1):
-        start = max(0, peak_idx - 24)
-        if peak_idx <= start:
-            continue
-        low_idx = min(range(start, peak_idx), key=lambda i: data[i]["l"])
-        low = data[low_idx]["l"]
-        peak = data[peak_idx]["h"]
-        if peak <= low:
-            continue
-        move = (peak / low - 1.0) * 100.0
-        if move < 6.0:
-            continue
-        after = data[peak_idx + 1 :]
-        if not after:
-            continue
-        trough_rel = min(range(len(after)), key=lambda i: after[i]["l"])
-        trough_idx = peak_idx + 1 + trough_rel
-        trough = data[trough_idx]["l"]
-        run = peak - low
-        if run <= 0:
-            continue
-        max_retrace = (peak - trough) / run * 100.0
-        current_retrace = (peak - current) / run * 100.0
-        recovery = max_retrace - current_retrace
-        age = n - 1 - peak_idx
-        recency = max(0.35, 1.0 - age / max(12.0, n * 0.8))
-        score = move * recency * (1.0 if 15 <= max_retrace <= 75 else 0.75)
-        candidates.append(
-            (
-                score,
-                low_idx,
-                peak_idx,
-                trough_idx,
-                move,
-                current_retrace,
-                max_retrace,
-                recovery,
-            )
-        )
+    current_retrace=_num(ctx.get("current_retracement_pct"))
+    max_retrace=_num(ctx.get("max_retracement_pct"))
+    recovery=_num(ctx.get("bounce_recovery_pct"))
+    volume_ratio=_num(ctx.get("pullback_volume_ratio"))
 
-    if not candidates:
-        return {}
-
-    (
-        _score,
-        low_idx,
-        peak_idx,
-        trough_idx,
-        move,
-        current_retrace,
-        max_retrace,
-        recovery,
-    ) = max(candidates, key=lambda item: item[0])
-
-    impulse_vol = [
-        data[i]["v"]
-        for i in range(low_idx, peak_idx + 1)
-        if data[i]["v"] > 0
-    ]
-    pullback_vol = [
-        data[i]["v"]
-        for i in range(peak_idx + 1, trough_idx + 1)
-        if data[i]["v"] > 0
-    ]
-    impulse_avg = sum(impulse_vol) / len(impulse_vol) if impulse_vol else None
-    pullback_avg = sum(pullback_vol) / len(pullback_vol) if pullback_vol else None
-    volume_ratio = (
-        pullback_avg / impulse_avg
-        if impulse_avg and pullback_avg is not None
-        else None
-    )
-
-    quality = 50.0
-    if 20.0 <= current_retrace <= 55.0:
-        quality += 18.0
-    elif current_retrace > 75.0:
-        quality -= 20.0
-    elif current_retrace < 5.0:
-        quality -= 8.0
+    quality=50.0
+    if current_retrace is not None:
+        if 20.0<=current_retrace<=55.0:
+            quality+=18.0
+        elif current_retrace>75.0:
+            quality-=20.0
+        elif current_retrace<5.0:
+            quality-=8.0
     if volume_ratio is not None:
-        if volume_ratio <= 0.65:
-            quality += 16.0
-        elif volume_ratio >= 1.15:
-            quality -= 14.0
-    if recovery >= 10.0:
-        quality += 12.0
-    elif recovery < 0:
-        quality -= 10.0
-    quality = max(0.0, min(100.0, quality))
+        if volume_ratio<=0.65:
+            quality+=16.0
+        elif volume_ratio>=1.15:
+            quality-=14.0
+    if recovery is not None:
+        if recovery>=10.0:
+            quality+=12.0
+        elif recovery<0:
+            quality-=10.0
+    quality=max(0.0,min(100.0,quality))
 
     return {
-        "impulse_move_pct": round(move, 3),
-        "impulse_retracement_pct": round(current_retrace, 3),
-        "impulse_max_retracement_pct": round(max_retrace, 3),
-        "impulse_bounce_recovery_pct": round(recovery, 3),
-        "pullback_volume_ratio": (
-            round(volume_ratio, 4) if volume_ratio is not None else None
-        ),
-        "pullback_quality_score": round(quality, 1),
+        "impulse_move_pct":_num(ctx.get("impulse_move_pct")),
+        "impulse_retracement_pct":current_retrace,
+        "impulse_max_retracement_pct":max_retrace,
+        "impulse_bounce_recovery_pct":recovery,
+        "pullback_volume_ratio":volume_ratio,
+        "pullback_quality_score":round(quality,1),
+        "structure_version":ctx.get("structure_version"),
     }
-
 
 def _cumulative_vwap_series(bars):
     out = []
