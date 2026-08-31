@@ -1176,6 +1176,120 @@ def _timeframe_analysis(sa, symbol, metrics, sec, market, catalyst, potential, r
 MAX_ACTIONABLE_MARKET_DATA_AGE_SECONDS = 120
 
 
+def _finalize_trade_plan_contract(metrics, live_data_integrity=None):
+    """Normalize the final production trade plan after every enrichment layer."""
+    plan = metrics.get("trade_plan") or {}
+    if not isinstance(plan, dict) or not plan:
+        return {
+            "version": "trade-plan-contract-v1",
+            "ok": False,
+            "corrections": ["trade plan missing"],
+        }
+
+    corrections = []
+    selected = plan.get("selected") or {}
+    status = str(plan.get("status") or "WAIT").upper().strip()
+    if status not in {"ENTRY AVAILABLE", "WAIT", "NO TRADE"}:
+        corrections.append(f"unknown status normalized from {status or 'blank'}")
+        status = "WAIT"
+        plan["status"] = status
+
+    entry_low = _num(selected.get("entry_low"))
+    entry_high = _num(selected.get("entry_high"))
+    entry_mid = _num(selected.get("entry_mid"))
+    stop = _num(selected.get("stop"))
+    target1 = _num(selected.get("target1"))
+    if entry_mid is None and entry_low is not None and entry_high is not None:
+        entry_mid = (entry_low + entry_high) / 2.0
+        selected["entry_mid"] = round(entry_mid, 4)
+
+    geometry_errors = []
+    if entry_low is not None and entry_high is not None and entry_low > entry_high:
+        geometry_errors.append("entry_low exceeds entry_high")
+    if entry_mid is not None and stop is not None and stop >= entry_mid:
+        geometry_errors.append("stop is not below entry")
+    if entry_mid is not None and target1 is not None and target1 <= entry_mid:
+        geometry_errors.append("Target 1 is not above entry")
+
+    computed_rr = None
+    if (
+        entry_mid is not None
+        and stop is not None
+        and target1 is not None
+        and entry_mid > stop
+        and target1 > entry_mid
+    ):
+        computed_rr = (target1 - entry_mid) / (entry_mid - stop)
+        displayed_rr = _num(selected.get("risk_reward"))
+        if displayed_rr is None or abs(displayed_rr - computed_rr) > 0.08:
+            selected["risk_reward"] = round(computed_rr, 2)
+            corrections.append("reward/risk recomputed from displayed geometry")
+
+    integrity_ok = True
+    if isinstance(live_data_integrity, dict):
+        integrity_ok = bool(live_data_integrity.get("ok"))
+
+    if geometry_errors:
+        plan["status"] = "NO TRADE"
+        plan["action"] = "NO TRADE — invalid plan geometry"
+        plan["entry_state"] = "NO ENTRY"
+        plan["entry_instruction"] = (
+            "NO ENTRY SIGNAL because the displayed entry/stop/target geometry "
+            "failed the final integrity check."
+        )
+        corrections.extend(geometry_errors)
+    elif status == "ENTRY AVAILABLE" and not integrity_ok:
+        plan["status"] = "WAIT"
+        plan["action"] = "WAIT — LIVE DATA INTEGRITY CHECK"
+        plan["entry_state"] = "DATA CHECK"
+        plan["entry_instruction"] = (
+            "NO ENTRY SIGNAL until live market data is fresh, complete, and "
+            "consolidated. The displayed zone is watch-only."
+        )
+        corrections.append("entry blocked by live-data integrity")
+
+    final_status = str(plan.get("status") or status).upper().strip()
+    entry_state = str(plan.get("entry_state") or "").upper().strip()
+    if final_status != "ENTRY AVAILABLE" and entry_state == "ENTRY AVAILABLE":
+        plan["entry_state"] = (
+            "NO ENTRY" if final_status == "NO TRADE" else "WAIT FOR CONFIRMATION"
+        )
+        zone = (
+            f"${entry_low:.2f}–${entry_high:.2f}"
+            if entry_low is not None and entry_high is not None
+            else "the displayed entry zone"
+        )
+        plan["entry_instruction"] = (
+            f"NEXT ENTRY remains ${zone}, but it is NOT actionable yet. "
+            "Wait for the final confirmation gates to clear."
+            if final_status != "NO TRADE"
+            else "NO ENTRY SIGNAL while the current plan is rejected."
+        )
+        corrections.append("entry_state aligned with final status")
+
+    if final_status == "NO TRADE":
+        if str(plan.get("entry_state") or "").upper() != "NO ENTRY":
+            plan["entry_state"] = "NO ENTRY"
+            corrections.append("NO TRADE aligned to NO ENTRY")
+        if "NO ENTRY" not in str(plan.get("entry_instruction") or "").upper():
+            plan["entry_instruction"] = "NO ENTRY SIGNAL while the current plan is rejected."
+            corrections.append("NO TRADE instruction aligned")
+
+    plan["selected"] = selected
+    contract = {
+        "version": "trade-plan-contract-v1",
+        "ok": not geometry_errors,
+        "status": plan.get("status"),
+        "entry_state": plan.get("entry_state"),
+        "geometry_errors": geometry_errors,
+        "computed_rr": round(computed_rr, 3) if computed_rr is not None else None,
+        "corrections": corrections,
+    }
+    plan["decision_contract"] = contract
+    metrics["trade_plan"] = plan
+    return contract
+
+
 def _analyzer_live_data_integrity(metrics):
     reasons = []
     provider = str(
@@ -1949,8 +2063,14 @@ def install_v2_analysis(sa):
                 if old_readiness != readiness:
                     entry_components["evidence_safety_cap"] = round(readiness - old_readiness, 1)
 
+        decision_contract = _finalize_trade_plan_contract(
+            metrics,
+            live_data_integrity=live_data_integrity,
+        )
+        plan = metrics.get("trade_plan") or {}
+
         metrics["decision_v2"] = {
-            "version": "decision-v2.6-sequence-regimes",
+            "version": "decision-v2.7-final-contract",
             "potential_score": potential,
             "potential_label": _label(potential, 72, 52),
             "entry_readiness": readiness,
@@ -1968,6 +2088,7 @@ def install_v2_analysis(sa):
             "float_context": float_context,
             "turnover_context": turnover,
             "live_data_integrity": live_data_integrity,
+            "decision_contract": decision_contract,
             "timeframe_analysis": timeframe,
             "full_spectrum": full_spectrum,
             "sip_status": sip_status,
