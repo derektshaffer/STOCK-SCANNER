@@ -35,6 +35,8 @@ def audit_source_contracts(root: Path = ROOT) -> list[dict[str, Any]]:
     scorer = _read(root / "score_outcomes.py")
     opportunity_scorer = _read(root / "score_opportunity_outcomes.py")
     scanner = _read(root / "stock_scanner.py")
+    live_journal = _read(root / "scanner_live_journal.py")
+    scanner_runtime = _read(root / "scanner_runtime.py")
     workflow = _read(root / ".github/workflows/stock-scanner.yml")
     app = _read(root / "app.py")
 
@@ -147,7 +149,14 @@ def audit_source_contracts(root: Path = ROOT) -> list[dict[str, Any]]:
 
     durable_30m = bool(re.search(r"cron:\s*['\"]7,37", workflow))
     app_2m = "2-minute" in app or "120" in app
-    if durable_30m and app_2m:
+    live_journal_present = (
+        "capture_live_scan" in live_journal
+        and "BUCKET_MINUTES = 15" in live_journal
+        and "learning-journal" in live_journal
+        and "SCANNER_LIVE_JOURNAL_ENABLED" in scanner_runtime
+        and "capture_live_scan(rows, now_et)" in scanner
+    )
+    if durable_30m and app_2m and not live_journal_present:
         findings.append(
             {
                 "id": "live_vs_durable_cadence_gap",
@@ -165,6 +174,29 @@ def audit_source_contracts(root: Path = ROOT) -> list[dict[str, Any]]:
                 "recommended_action": (
                     "Add a durable, deduplicated high-value observation journal for "
                     "the live app stream."
+                ),
+            }
+        )
+    elif durable_30m and app_2m and live_journal_present:
+        findings.append(
+            {
+                "id": "high_frequency_live_journal",
+                "severity": "info",
+                "status": "resolved_shadow",
+                "category": "capture",
+                "evidence": (
+                    "Every live app scan is inspected by a bounded 15-minute-bucket "
+                    "learning journal, with periodic durable sync to the isolated "
+                    "learning-journal branch."
+                ),
+                "risk": (
+                    "This reduces the 2-minute-vs-30-minute capture gap, but the "
+                    "journal remains shadow data and still requires nightly outcome "
+                    "resolution and later validation."
+                ),
+                "recommended_action": (
+                    "Continue monitoring journal sync health and use de-correlated "
+                    "rows for any later validation."
                 ),
             }
         )
