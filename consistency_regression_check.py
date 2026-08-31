@@ -1416,6 +1416,39 @@ def test_impulse_and_bounce_consumers_share_identical_structure_version():
     assert impulse.get("impulse_high_time") == sequence.get("impulse_peak_time"), (impulse,sequence)
 
 
+def test_bounce_sequence_counts_rebounds_inside_dominant_impulse():
+    from market_structure import bounce_sequence_context
+    from datetime import datetime, timedelta, timezone
+
+    # Stair-step momentum run: the final high is also the dominant impulse
+    # peak, but there are already clear HIGH->LOW->HIGH bounce cycles inside
+    # that run. These must count as bounces rather than being swallowed into
+    # one giant impulse.
+    start=datetime(2026,8,31,13,30,tzinfo=timezone.utc)
+    closes=(
+        7.00,7.18,7.35,7.55,7.72,7.88,
+        7.62,7.48,7.56,7.72,7.92,8.10,
+        7.88,7.76,7.92,8.18,8.45,8.70,
+        8.52,8.40,8.58,8.82,9.08,9.02,8.96,
+    )
+    bars=[]
+    for i,close in enumerate(closes):
+        bars.append({
+            "t":(start+timedelta(minutes=i)).isoformat(),
+            "o":close-0.02,
+            "h":close+0.05,
+            "l":close-0.05,
+            "c":close,
+            "v":1200 if i in {4,10,16,22} else 800,
+        })
+
+    seq=bounce_sequence_context(bars,current_price=8.96,atr_pct=6)
+    assert seq.get("detected"), seq
+    assert int(seq.get("completed_bounces") or 0) >= 1, seq
+    assert seq.get("sequence_anchor_peak_index") < seq.get("impulse_peak_index"), seq
+    assert seq.get("bounce1_pct") is not None, seq
+
+
 def test_unconfirmed_rebound_is_labeled_developing_not_confirmed():
     import stock_analyzer as sa
     from datetime import datetime, timedelta, timezone
@@ -5307,6 +5340,7 @@ if __name__ == "__main__":
         test_shared_market_structure_is_causal_alternating_and_append_invariant,
         test_shared_structure_does_not_confirm_same_candle_reversal,
         test_impulse_and_bounce_consumers_share_identical_structure_version,
+        test_bounce_sequence_counts_rebounds_inside_dominant_impulse,
         test_unconfirmed_rebound_is_labeled_developing_not_confirmed,
         test_developing_rebound_surfaces_before_formal_bounce_confirmation,
         test_breakout_requires_previously_confirmed_swing_high,
