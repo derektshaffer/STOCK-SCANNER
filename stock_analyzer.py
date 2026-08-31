@@ -1778,9 +1778,14 @@ def analyze(symbol):
     daily_full,daysrc=try_sip_delayed_bars(
         symbol,"1Day",now-timedelta(days=600),now,420
     )
-    avgvol,volsrc=avg_daily_volume(
-        symbol,now,daily_bars=daily_full,source=daysrc
-    )
+    try:
+        avgvol,volsrc=avg_daily_volume(
+            symbol,now,daily_bars=daily_full,source=daysrc
+        )
+    except TypeError:
+        # Compatibility for test/provider adapters that still expose the
+        # original two-argument helper signature.
+        avgvol,volsrc=avg_daily_volume(symbol,now)
     session_phase=market_session_phase(now_et)
     session_volume=sum((fnum(x.get("v")) or 0) for x in intraday)
     if live_provider=="tradier":
@@ -1815,9 +1820,12 @@ def analyze(symbol):
     daily=list(daily_full or [])
     supports,resist=pivot_levels(daily,price)
     try:
-        touch_bars=support_resistance_touch_bars(
-            symbol,now,intraday,daily_bars=daily
-        )
+        try:
+            touch_bars=support_resistance_touch_bars(
+                symbol,now,intraday,daily_bars=daily
+            )
+        except TypeError:
+            touch_bars=support_resistance_touch_bars(symbol,now,intraday)
         supports=annotate_level_touches(supports,touch_bars,now)
         resist=annotate_level_touches(resist,touch_bars,now)
     except Exception:
@@ -1827,9 +1835,12 @@ def analyze(symbol):
     supports=score_level_quality(supports,vwap,now)
     resist=score_level_quality(resist,vwap,now)
     atr14,atr14_pct=atr_from_daily(daily,now,14)
-    hist=historical_spikes(
-        symbol,now,day_pct,daily_bars=daily,source=daysrc
-    )
+    try:
+        hist=historical_spikes(
+            symbol,now,day_pct,daily_bars=daily,source=daysrc
+        )
+    except TypeError:
+        hist=historical_spikes(symbol,now,day_pct)
     arts=[]
     try: arts=catalyst_summary(news(symbol,now),now)
     except Exception: pass
