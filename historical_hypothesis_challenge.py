@@ -502,15 +502,21 @@ def _path_target_challenge(rows):
         and _num(model.get("model_top_decile_lift_pp")) is not None
         and model["model_top_decile_lift_pp"] > 0
     )
-    pass_stability = bool(
+    stability_coverage = bool(
         int(stability.get("eligible_days") or 0) >= MIN_CONFIRMATION_DAYS
-        and (_num(stability.get("positive_lift_day_fraction")) or 0.0) >= 0.50
         and int(stability.get("selected_distinct_symbols") or 0) >= 10
+    )
+    regime_coverage = bool(
+        int(stability.get("regimes_represented") or 0) >= 2
+    )
+    pass_stability = bool(
+        stability_coverage
+        and regime_coverage
+        and (_num(stability.get("positive_lift_day_fraction")) or 0.0) >= 0.50
         and (
             _num(stability.get("selected_top_symbol_share_pct"))
             or 100.0
         ) <= 20.0
-        and int(stability.get("regimes_represented") or 0) >= 2
     )
     target_difference_real = bool(
         len(comparable) >= 100
@@ -531,6 +537,10 @@ def _path_target_challenge(rows):
         decision = "rejected_not_distinct_enough"
     elif not pass_model:
         decision = "rejected_no_predictive_skill"
+    elif not stability_coverage:
+        decision = "blocked_insufficient_stability_coverage"
+    elif not regime_coverage:
+        decision = "blocked_insufficient_regime_coverage"
     elif not pass_stability:
         decision = "rejected_unstable"
     else:
@@ -555,6 +565,8 @@ def _path_target_challenge(rows):
         "gates": {
             "target_difference_real": target_difference_real,
             "model_skill": pass_model,
+            "stability_coverage": stability_coverage,
+            "regime_coverage": regime_coverage,
             "stability": pass_stability,
         },
     }
