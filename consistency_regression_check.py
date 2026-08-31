@@ -3000,7 +3000,9 @@ def test_monday_readiness_blocks_stale_scan_handoffs():
     source = Path("app.py").read_text(encoding="utf-8")
     assert "latest_scan_stale" in source
     assert "latest_scan_age > 4 * 60" in source
-    assert "disabled=latest_scan_stale" in source
+    # Stale snapshots still block starting a new Analyzer handoff, but an
+    # already-running analysis must keep its Cancel button available.
+    assert "disabled=bool(latest_scan_stale and not _this_running)" in source
     assert "old setup cannot be mistaken for a current one" in source
 
 
