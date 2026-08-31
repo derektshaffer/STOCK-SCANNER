@@ -54,7 +54,10 @@ FEATURES = [
     "stair_higher_plateau_count",
     "stair_structure_score",
     "stair_reaccelerating",
+    "stair_reacceleration_developing",
     "stair_breakdown",
+    "stair_breakdown_confirmed",
+    "stair_breakdown_developing",
 ]
 
 _CACHE = {}
@@ -1191,7 +1194,7 @@ def predict_ml(symbol, now, metrics, fetch_bars, et):
     result = {
         "status": "ok",
         "model_type": "XGBoost",
-        "version": "ml-v1.9-shared-market-structure",
+        "version": "ml-v2.0-confirmed-multisession",
         "source": source,
         "history_source_consolidated": history_source_ok,
         "live_source_consolidated": live_source_ok,

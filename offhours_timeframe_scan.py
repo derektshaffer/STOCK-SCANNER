@@ -285,6 +285,7 @@ def _daily_context(symbol, quote_seed, bars, spy_return_20d=None):
                     bars[-21:-1],
                     current,
                     atr_pct=None,
+                    current_day_completed=True,
                 )
             )
         except Exception:

@@ -113,7 +113,7 @@ def test_analyzer_prefers_tradier():
     result = sa.analyze("TEST")
     assert result["market_provider"] == "tradier", result
     assert result["live_feed"] == "TRADIER CONSOLIDATED", result
-    assert result["feature_version"] == "analyzer-features-v9-shared-break-structure", result
+    assert result["feature_version"] == "analyzer-features-v10-confirmed-multisession", result
     assert abs(result["price"] - 10.10) < 1e-9, result
     assert result["bid"] == 10.09 and result["ask"] == 10.11, result
     assert str(result["volume_source"]).startswith("TRADIER"), result
@@ -1763,8 +1763,8 @@ def test_distinct_bounce_semantics_are_version_isolated_for_peer_ml():
     import peer_ml_predictor as peer
     import scanner_behavior as behavior
 
-    assert behavior.BEHAVIOR_FEATURE_VERSION == "scanner-behavior-v6-shared-break-structure"
-    assert peer.PEER_MODEL_VERSION == "analyzer-peer-v8-shared-break-structure"
+    assert behavior.BEHAVIOR_FEATURE_VERSION == "scanner-behavior-v7-confirmed-multisession"
+    assert peer.PEER_MODEL_VERSION == "analyzer-peer-v9-confirmed-multisession"
 
     rows=[
         {"symbol":"OLD","behavior_feature_version":"scanner-behavior-v2-completed-bars"},
@@ -1821,6 +1821,120 @@ def test_multi_bounce_full_spectrum_accepts_sequence_state():
     assert "multi_bounce_sequence" in (fs.get("categories") or {}), fs
     assert fs["categories"]["multi_bounce_sequence"]["score"] == 44.0, fs
     assert fs.get("scenarios",{}).get("pullback_bounce"), fs
+
+
+def test_partial_daily_reacceleration_stays_developing_until_session_complete():
+    from stair_step import detect_stair_step
+
+    daily=[
+        {"t":"2026-08-24","o":9.9,"h":10.2,"l":9.8,"c":10.0,"v":1000},
+        {"t":"2026-08-25","o":10.0,"h":10.3,"l":9.9,"c":10.1,"v":1100},
+        {"t":"2026-08-26","o":10.2,"h":12.2,"l":10.15,"c":12.0,"v":4200},
+        {"t":"2026-08-27","o":12.0,"h":12.3,"l":11.8,"c":12.1,"v":1500},
+        {"t":"2026-08-28","o":12.1,"h":12.25,"l":11.9,"c":12.0,"v":1300},
+    ]
+    current={
+        "t":"2026-08-31",
+        "o":12.1,"h":15.2,"l":12.0,"c":15.0,"v":5000,
+    }
+
+    live=detect_stair_step(
+        daily,
+        current_day=current,
+        current_day_completed=False,
+        atr_pct=8,
+    )
+    completed=detect_stair_step(
+        daily,
+        current_day=current,
+        current_day_completed=True,
+        atr_pct=8,
+    )
+
+    assert live.get("detected"), live
+    assert live.get("reacceleration_developing") is True, live
+    assert live.get("reaccelerating") is False, live
+    assert live.get("developing_step"), live
+    assert int(live.get("step_count") or 0) == 1, live
+
+    assert completed.get("reacceleration_developing") is False, completed
+    assert completed.get("reaccelerating") is True, completed
+    assert int(completed.get("step_count") or 0) >= 2, completed
+    assert all(step.get("confirmed") is True for step in completed.get("steps") or []), completed
+
+
+def test_partial_daily_plateau_loss_is_developing_not_confirmed_breakdown():
+    from stair_step import detect_stair_step
+
+    daily=[
+        {"t":"2026-08-24","o":9.9,"h":10.2,"l":9.8,"c":10.0,"v":1000},
+        {"t":"2026-08-25","o":10.0,"h":10.3,"l":9.9,"c":10.1,"v":1100},
+        {"t":"2026-08-26","o":10.2,"h":12.2,"l":10.15,"c":12.0,"v":4200},
+        {"t":"2026-08-27","o":12.0,"h":12.3,"l":11.8,"c":12.1,"v":1500},
+        {"t":"2026-08-28","o":12.1,"h":12.25,"l":11.9,"c":12.0,"v":1300},
+    ]
+    current={
+        "t":"2026-08-31",
+        "o":11.9,"h":12.0,"l":10.3,"c":10.5,"v":4500,
+    }
+
+    live=detect_stair_step(
+        daily,
+        current_day=current,
+        current_day_completed=False,
+        atr_pct=8,
+    )
+    completed=detect_stair_step(
+        daily,
+        current_day=current,
+        current_day_completed=True,
+        atr_pct=8,
+    )
+
+    assert live.get("breakdown_developing") is True, live
+    assert live.get("breakdown_confirmed") is False, live
+    assert live.get("breakdown") is True, live
+
+    assert completed.get("breakdown_confirmed") is True, completed
+    assert completed.get("breakdown_developing") is False, completed
+
+
+def test_multi_session_feature_paths_preserve_completion_lifecycle():
+    from pathlib import Path
+    from multi_session_structure import MULTI_SESSION_STRUCTURE_VERSION
+
+    stair=Path("stair_step.py").read_text(encoding="utf-8")
+    behavior=Path("scanner_behavior.py").read_text(encoding="utf-8")
+    replay=Path("historical_timeframe_replay.py").read_text(encoding="utf-8")
+    offhours=Path("offhours_timeframe_scan.py").read_text(encoding="utf-8")
+    ui=Path("analyzer_ui_core.py").read_text(encoding="utf-8")
+
+    assert MULTI_SESSION_STRUCTURE_VERSION == "multi-session-structure-v1-confirmed-levels"
+    assert "return detect_multi_session_structure(" in stair
+    assert "current_day_completed=current_day_completed" in stair
+    assert "current_day_completed=False" in behavior
+    assert "current_day_completed=True" in replay
+    assert "current_day_completed=True" in offhours
+    assert "… DEVELOPING" in ui
+    assert "completed session confirmed a new expansion step" in ui
+
+
+def test_stair_ml_features_separate_confirmed_and_developing_states():
+    from stair_step import stair_step_feature_values
+
+    features=stair_step_feature_values({
+        "step_count":1,
+        "structure_score":68,
+        "reaccelerating":False,
+        "reacceleration_developing":True,
+        "breakdown":False,
+        "breakdown_confirmed":False,
+        "breakdown_developing":False,
+    })
+    assert features.get("stair_reaccelerating") == 0.0, features
+    assert features.get("stair_reacceleration_developing") == 1.0, features
+    assert features.get("stair_breakdown_confirmed") == 0.0, features
+    assert features.get("stair_breakdown_developing") == 0.0, features
 
 
 def test_stair_step_detector_finds_higher_plateau_sequence():
@@ -1999,7 +2113,7 @@ def test_analyzer_visual_specs_show_real_pattern_markers():
 
     stair_text=str(stair)
     assert "Step 1 +22.0%" in stair_text
-    assert "Reacceleration active" in stair_text
+    assert "Reacceleration ✓ confirmed" in stair_text
 
     trade_text=str(trade)
     assert "Target 1" in trade_text
@@ -4917,6 +5031,10 @@ if __name__ == "__main__":
         test_multi_bounce_recognizes_dpro_large_rebound_and_smaller_later_bounce,
         test_distinct_bounce_semantics_are_version_isolated_for_peer_ml,
         test_multi_bounce_full_spectrum_accepts_sequence_state,
+        test_partial_daily_reacceleration_stays_developing_until_session_complete,
+        test_partial_daily_plateau_loss_is_developing_not_confirmed_breakdown,
+        test_multi_session_feature_paths_preserve_completion_lifecycle,
+        test_stair_ml_features_separate_confirmed_and_developing_states,
         test_stair_step_detector_finds_higher_plateau_sequence,
         test_scanner_behavior_completed_bar_parity,
         test_scanner_behavior_detects_reclaim_acceleration_and_breakout,
