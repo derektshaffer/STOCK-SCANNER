@@ -1491,10 +1491,74 @@ def build_trade_plan(metrics, now):
         confidence=min(confidence,45)
     confidence=int(round(confidence))
 
+    # Always expose an explicit next-entry instruction. "WAIT" describes
+    # whether the setup is ready *now*; it should never hide the actual price
+    # and condition that would turn the setup into an entry.
+    selected_low=fnum(chosen.get("entry_low"))
+    selected_high=fnum(chosen.get("entry_high"))
+    selected_zone=(
+        f"$\{selected_low:.2f}–$\{selected_high:.2f}"
+        if selected_low is not None and selected_high is not None
+        else "the displayed entry zone"
+    )
+    if status=="ENTRY AVAILABLE":
+        entry_state="ENTRY AVAILABLE"
+        entry_instruction=(
+            f"ENTRY AVAILABLE NOW in \{selected_zone}. "
+            "Use the displayed stop/invalidation; do not enter above the zone."
+        )
+    elif preferred=="breakout":
+        if live_breakout_failed:
+            entry_state="BREAKOUT FAILED"
+            entry_instruction=(
+                f"NO BREAKOUT ENTRY. Next valid entry is a pullback/reclaim in "
+                f"$\{pull_plan['entry_low']:.2f}–$\{pull_plan['entry_high']:.2f} "
+                "after support holds and short-term momentum turns positive."
+            )
+        elif breakout_above_zone:
+            entry_state="WAIT FOR RETEST"
+            entry_instruction=(
+                f"DO NOT CHASE. Next breakout entry is a controlled retest/hold of "
+                f"\{selected_zone} with positive 5m momentum and acceptable volume."
+            )
+        elif in_break:
+            entry_state="TRIGGER TESTING"
+            entry_instruction=(
+                f"ENTRY TRIGGER IS \{selected_zone}. Enter only if price holds the zone "
+                "with positive 5m momentum and adequate participation; otherwise wait."
+            )
+        else:
+            entry_state="ARMED"
+            entry_instruction=(
+                f"NEXT ENTRY: \{selected_zone} on a confirmed breakout hold "
+                "(positive 5m momentum, no failed-breakout signal, and preferably ≥1.5x volume pace)."
+            )
+    elif preferred=="repeat_bounce":
+        entry_state="BOUNCE ENTRY WATCH"
+        entry_instruction=(
+            f"NEXT ENTRY: \{selected_zone} only after the developing bounce dip holds "
+            "and reclaims with improving short-term momentum."
+        )
+    else:
+        if in_pull and pullback_confirm:
+            entry_state="ENTRY AVAILABLE" if status=="ENTRY AVAILABLE" else "PULLBACK TESTING"
+        elif in_pull:
+            entry_state="PULLBACK TESTING"
+        elif price > (selected_high or price):
+            entry_state="WAIT FOR PULLBACK"
+        else:
+            entry_state="WAIT FOR RECLAIM"
+        entry_instruction=(
+            f"NEXT ENTRY: \{selected_zone} only after support holds / a higher low or reclaim "
+            "forms with positive short-term momentum. A touch alone is not an entry."
+        )
+
     support_distance=(price/support_price-1)*100 if support_price else None
     resistance_distance=(resistance_price/price-1)*100 if resistance_price else None
     return {
         "status":status,"action":action,"preferred_plan":preferred,
+        "entry_state":entry_state,
+        "entry_instruction":entry_instruction,
         "primary_plan":primary_preferred,
         "primary_selected":primary_chosen,
         "selected_plan_role":"alternative_repeat_bounce" if preferred=="repeat_bounce" else "primary",
