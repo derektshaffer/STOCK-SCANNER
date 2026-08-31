@@ -36,7 +36,7 @@ USE_TRADIER_HISTORY = bool(
 )
 LIVE_MARKET_PROVIDER = "tradier" if USE_TRADIER else "alpaca"
 LIVE_MARKET_LABEL = "TRADIER CONSOLIDATED" if USE_TRADIER else LIVE_FEED.upper()
-ANALYZER_FEATURE_VERSION = "analyzer-features-v6-sequence-regimes"
+ANALYZER_FEATURE_VERSION = "analyzer-features-v7-balanced-bounces"
 ANALYZER_ENGINE_VERSION = "trade-plan-v7-repeat-bounce-stair"
 ET = ZoneInfo("America/New_York")
 
