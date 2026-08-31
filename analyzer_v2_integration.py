@@ -5,11 +5,13 @@ import time
 import urllib.request
 from datetime import datetime, timedelta, timezone
 from functools import lru_cache
+from concurrent.futures import ThreadPoolExecutor
 
 from prediction_tracker import record_prediction, resolve_symbol_predictions
 from live_market_stream import ensure_live_stream, get_live_overlay
 from float_data import get_public_float
 from swing_research_flags import evaluate_swing_research_flags
+from analyzer_context_cache import get_cached_context, set_cached_context
 
 
 SEC_BASE = "https://data.sec.gov"
@@ -380,7 +382,7 @@ def _sector_from_sic(sic):
     return None, None
 
 
-def _recent_sec_risk(symbol):
+def _recent_sec_risk_uncached(symbol):
     bucket = int(time.time() // 21600)
     try:
         cik = _ticker_map(bucket).get(symbol)
@@ -463,6 +465,24 @@ def _recent_sec_risk(symbol):
         }
     except Exception as exc:
         return {"status": "unavailable", "error": str(exc)[:140]}
+
+
+def _recent_sec_risk(symbol):
+    symbol=str(symbol or "").upper().strip()
+    key=f"sec-risk-v2:{symbol}"
+    cached=get_cached_context(key,21600)
+    if cached is not None:
+        cached=dict(cached)
+        cached["cache_status"]="warm"
+        return cached
+
+    result=_recent_sec_risk_uncached(symbol)
+    if isinstance(result,dict) and result.get("status")=="ok":
+        set_cached_context(key,result)
+    if isinstance(result,dict):
+        result=dict(result)
+        result["cache_status"]="cold"
+    return result
 
 
 _MARKET_CACHE = {}
@@ -1822,8 +1842,14 @@ def install_v2_analysis(sa):
             )
             live_overlay = get_live_overlay(metrics)
 
-        sec = _recent_sec_risk(symbol_clean)
-        float_context = get_public_float(symbol_clean)
+        # SEC filings/fundamentals and optional public-float data are
+        # independent slow-context requests. Fetch them concurrently on a cold
+        # cache; warm launches read the disk cache immediately.
+        with ThreadPoolExecutor(max_workers=2) as _slow_pool:
+            _sec_future=_slow_pool.submit(_recent_sec_risk,symbol_clean)
+            _float_future=_slow_pool.submit(get_public_float,symbol_clean)
+            sec=_sec_future.result()
+            float_context=_float_future.result()
         market = _market_context(sa, sec.get("sector_etf"))
         catalyst = _catalyst_strength(metrics.get("news") or [])
         turnover = _turnover_context(metrics, sec, float_context)
