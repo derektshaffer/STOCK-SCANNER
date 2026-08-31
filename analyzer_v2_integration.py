@@ -1203,11 +1203,23 @@ def _finalize_trade_plan_contract(metrics, live_data_integrity=None):
     target1 = _num(selected.get("target1"))
     target2 = _num(selected.get("target2"))
     stretch = _num(selected.get("stretch_target"))
+    current_price = _num(metrics.get("price"))
     if entry_mid is None and entry_low is not None and entry_high is not None:
         entry_mid = (entry_low + entry_high) / 2.0
         selected["entry_mid"] = round(entry_mid, 4)
 
     geometry_errors = []
+    if status == "ENTRY AVAILABLE":
+        required = {
+            "entry_low": entry_low,
+            "entry_high": entry_high,
+            "stop": stop,
+            "target1": target1,
+        }
+        for key, value in required.items():
+            if value is None:
+                geometry_errors.append(f"{key} is missing for ENTRY AVAILABLE")
+
     if entry_low is not None and entry_high is not None and entry_low > entry_high:
         geometry_errors.append("entry_low exceeds entry_high")
     # A long plan must remain valid anywhere inside the advertised entry zone,
@@ -1259,6 +1271,22 @@ def _finalize_trade_plan_contract(metrics, live_data_integrity=None):
             "consolidated. The displayed zone is watch-only."
         )
         corrections.append("entry blocked by live-data integrity")
+    elif (
+        status == "ENTRY AVAILABLE"
+        and current_price is not None
+        and entry_low is not None
+        and entry_high is not None
+        and not (entry_low <= current_price <= entry_high)
+    ):
+        plan["status"] = "WAIT"
+        plan["action"] = "WAIT — PRICE OUTSIDE ENTRY ZONE"
+        plan["entry_state"] = "WAIT FOR ENTRY ZONE"
+        plan["entry_instruction"] = (
+            f"NO ENTRY SIGNAL at ${current_price:.2f}. The actionable zone is "
+            f"${entry_low:.2f}–${entry_high:.2f}; wait for price to return to "
+            "the zone with the required confirmation."
+        )
+        corrections.append("entry blocked because current price is outside entry zone")
 
     final_status = str(plan.get("status") or status).upper().strip()
     entry_state = str(plan.get("entry_state") or "").upper().strip()
