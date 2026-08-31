@@ -2113,7 +2113,7 @@ def test_analyzer_visual_specs_show_real_pattern_markers():
 
     stair_text=str(stair)
     assert "Step 1 +22.0%" in stair_text
-    assert "Reacceleration active" in stair_text
+    assert "Reacceleration ✓ confirmed" in stair_text
 
     trade_text=str(trade)
     assert "Target 1" in trade_text
