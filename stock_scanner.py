@@ -3166,7 +3166,7 @@ def main():
         )
 
     candidates = get_candidate_universe(now_et)
-    print(f"Alpaca discovery returned {len(candidates)} candidate symbols.")
+    print(f"Combined discovery returned {len(candidates)} candidate symbols.")
 
     tradier_quotes = {}
     if USE_TRADIER:
