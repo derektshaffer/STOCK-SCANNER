@@ -108,9 +108,24 @@ def _selected_geometry(plan):
     }
 
 
-def _new_state(symbol, now, plan, reason, revision=1):
+def _new_state(symbol, now, plan, reason, revision=1, prior_state=None):
     family = str(plan.get("preferred_plan") or "").lower().strip()
     geometry = _selected_geometry(plan)
+    prior_state = prior_state if isinstance(prior_state, dict) else {}
+    history = list(prior_state.get("history") or [])[-72:]
+    transitions = list(prior_state.get("transitions") or [])[-20:]
+    prior_family = str(prior_state.get("active_family") or "").lower().strip()
+    if prior_family:
+        transitions.append(
+            {
+                "timestamp": now.astimezone(timezone.utc).isoformat(),
+                "from_family": prior_family,
+                "to_family": family,
+                "reason": reason,
+                "from_revision": int(prior_state.get("revision") or 0),
+                "to_revision": int(revision),
+            }
+        )
     return {
         "version": THESIS_VERSION,
         "symbol": str(symbol).upper().strip(),
@@ -131,6 +146,8 @@ def _new_state(symbol, now, plan, reason, revision=1):
         "confidence": _num(plan.get("confidence")),
         "trigger_seen": bool(plan.get("breakout_trigger_reached")),
         "entry_available_seen": str(plan.get("status") or "").upper() == "ENTRY AVAILABLE",
+        "history": history,
+        "transitions": transitions[-20:],
     }
 
 
@@ -357,12 +374,14 @@ def prepare_intraday_thesis(
     active = str(state.get("active_family") or "").lower().strip()
     terminal = _terminal_reason(state, metrics, plan, now, expiry_minutes)
     if terminal:
+        prior_state = state
         state = _new_state(
             symbol,
             now,
             plan,
             terminal,
-            revision=int(state.get("revision") or 0) + 1,
+            revision=int(prior_state.get("revision") or 0) + 1,
+            prior_state=prior_state,
         )
         store[key] = state
         _save(store, store_path)
@@ -394,12 +413,14 @@ def prepare_intraday_thesis(
             reason = (
                 f"replacement plan persisted across {pending_count} consecutive analyses"
             )
+            prior_state = state
             state = _new_state(
                 symbol,
                 now,
                 plan,
                 reason,
-                revision=int(state.get("revision") or 0) + 1,
+                revision=int(prior_state.get("revision") or 0) + 1,
+                prior_state=prior_state,
             )
             store[key] = state
             _save(store, store_path)
@@ -503,6 +524,24 @@ def commit_intraday_thesis(metrics, context, *, now=None, store_path=None):
         or str(plan.get("status") or "").upper() == "ENTRY AVAILABLE"
     )
 
+    v2 = metrics.get("decision_v2") or {}
+    history = list(state.get("history") or [])
+    history.append(
+        {
+            "timestamp": now.isoformat(),
+            "price": _num(metrics.get("price")),
+            "family": plan.get("preferred_plan"),
+            "revision": int(state.get("revision") or 1),
+            "status": plan.get("status"),
+            "entry_state": plan.get("entry_state"),
+            "confidence": _num(plan.get("confidence")),
+            "entry_readiness": _num(v2.get("entry_readiness")),
+            "evidence_strength": _num(v2.get("evidence_strength")),
+            "potential_score": _num(v2.get("potential_score")),
+        }
+    )
+    state["history"] = history[-72:]
+
     price = _num(metrics.get("price"))
     geometry = state.get("geometry") or {}
     low = _num(geometry.get("entry_low"))
@@ -521,6 +560,8 @@ def commit_intraday_thesis(metrics, context, *, now=None, store_path=None):
             "final_entry_state": plan.get("entry_state"),
             "trigger_seen": bool(state.get("trigger_seen")),
             "entry_available_seen": bool(state.get("entry_available_seen")),
+            "history_points": len(state.get("history") or []),
+            "transition_count": len(state.get("transitions") or []),
         }
     )
     plan["thesis_continuity"] = continuity
