@@ -596,6 +596,7 @@ def _calibrate(rows, score_field):
                 "60m": [],
                 "target_wins": 0,
                 "target_losses": 0,
+                "target_ambiguous": 0,
             },
         )
         outcomes = row.get("outcomes") or {}
@@ -608,6 +609,12 @@ def _calibrate(rows, score_field):
             g["target_wins"] += 1
         elif touch == "stop":
             g["target_losses"] += 1
+        elif touch == "ambiguous":
+            # Same-bar order is unknowable in OHLC data. Count it in the
+            # conservative lower-bound denominator as a failure rather than
+            # discarding a volatile observation and inflating hit rates.
+            g["target_losses"] += 1
+            g["target_ambiguous"] += 1
 
     out = {}
     for bucket, g in groups.items():
@@ -627,9 +634,13 @@ def _calibrate(rows, score_field):
             "return_30m": s30,
             "return_60m": s60,
             "target_stop_n": target_n,
+            "target_ambiguous_count": g["target_ambiguous"],
             "target_before_stop_rate": (
                 round(g["target_wins"] / target_n * 100.0, 1)
                 if target_n else None
+            ),
+            "target_ambiguity_policy": (
+                "same-bar target+stop counted as failure for conservative calibration"
             ),
         }
     return out
@@ -789,7 +800,7 @@ def _repeat_bounce_calibration(rows):
     ]
     touches=[
         row for row in entry
-        if (row.get("outcomes") or {}).get("repeat_bounce_target1_first_touch") in {"target","stop"}
+        if (row.get("outcomes") or {}).get("repeat_bounce_target1_first_touch") in {"target","stop","ambiguous"}
     ]
     wins=[
         row for row in touches
@@ -814,7 +825,7 @@ def _repeat_bounce_calibration(rows):
         g["signals"]+=1
         touch=(row.get("outcomes") or {}).get("repeat_bounce_target1_first_touch")
         if touch=="target":g["wins"]+=1
-        elif touch=="stop":g["losses"]+=1
+        elif touch in {"stop","ambiguous"}:g["losses"]+=1
     for number,g in by_number.items():
         resolved=g["wins"]+g["losses"]
         g["target_before_stop_rate"]=round(g["wins"]/resolved*100.0,1) if resolved else None
@@ -823,7 +834,12 @@ def _repeat_bounce_calibration(rows):
         "candidate_rows":len(candidates),
         "entry_signals":len(entry),
         "resolved_target_stop":len(touches),
+        "ambiguous_count":sum(
+            (row.get("outcomes") or {}).get("repeat_bounce_target1_first_touch")=="ambiguous"
+            for row in touches
+        ),
         "target_before_stop_rate":round(len(wins)/len(touches)*100.0,1) if touches else None,
+        "ambiguity_policy":"same-bar target+stop counted as failure",
         "avg_mfe_30m_pct":round(sum(mfe30)/len(mfe30),3) if mfe30 else None,
         "avg_mae_30m_pct":round(sum(mae30)/len(mae30),3) if mae30 else None,
         "by_bounce_number":{str(k):v for k,v in sorted(by_number.items())},
@@ -960,7 +976,9 @@ def _write_calibration():
     ]
     touches = [
         row for row in calibration_rows
-        if (row.get("outcomes") or {}).get("target1_first_touch") in {"target", "stop"}
+        if (row.get("outcomes") or {}).get("target1_first_touch") in {
+            "target", "stop", "ambiguous"
+        }
     ]
     target_wins = [
         row for row in touches
@@ -973,7 +991,9 @@ def _write_calibration():
     ]
     entry_signal_touches = [
         row for row in entry_signals
-        if (row.get("outcomes") or {}).get("target1_first_touch") in {"target", "stop"}
+        if (row.get("outcomes") or {}).get("target1_first_touch") in {
+            "target", "stop", "ambiguous"
+        }
     ]
     entry_signal_wins = [
         row for row in entry_signal_touches
@@ -986,7 +1006,7 @@ def _write_calibration():
     ]
 
     payload = {
-        "schema_version": 7,
+        "schema_version": 8,
         "feature_version": ANALYZER_FEATURE_VERSION,
         "decision_score_version": DECISION_SCORE_VERSION,
         "timeframe_score_version": TIMEFRAME_SCORE_VERSION,
@@ -1039,15 +1059,25 @@ def _write_calibration():
             if touches else None
         ),
         "target_stop_resolved": len(touches),
+        "target_stop_ambiguous": sum(
+            (row.get("outcomes") or {}).get("target1_first_touch") == "ambiguous"
+            for row in touches
+        ),
+        "target_ambiguity_policy": "same-bar target+stop counted as failure",
         "repeat_bounce_calibration": _repeat_bounce_calibration(calibration_rows),
         "mature_bounce_failure_calibration": _mature_bounce_failure_calibration(calibration_rows),
         "entry_signal_calibration": {
             "signals": len(entry_signals),
             "resolved_target_stop": len(entry_signal_touches),
+            "ambiguous_count": sum(
+                (row.get("outcomes") or {}).get("target1_first_touch") == "ambiguous"
+                for row in entry_signal_touches
+            ),
             "target_before_stop_rate": (
                 round(len(entry_signal_wins) / len(entry_signal_touches) * 100.0, 1)
                 if entry_signal_touches else None
             ),
+            "ambiguity_policy": "same-bar target+stop counted as failure",
             "resolved_60m": len(entry_signal_60m),
             "higher_60m_rate": (
                 round(sum(v > 0 for v in entry_signal_60m) / len(entry_signal_60m) * 100.0, 1)
