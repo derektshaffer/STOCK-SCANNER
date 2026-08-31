@@ -998,6 +998,31 @@ def _render_position_exit_plan():
         unsafe_allow_html=True,
     )
 
+    _rebound = _position_plan.get("rebound_watch") or {}
+    _rebound_status = str(_rebound.get("status") or "")
+    if (
+        _pread in {"EXIT", "REDUCE"}
+        and _rebound_status in {
+            "CAPITULATION / REBOUND WATCH",
+            "REBOUND DEVELOPING",
+            "REBOUND WATCH",
+        }
+    ):
+        _reclaim = _rebound.get("reclaim_level")
+        _reclaim_text = (
+            f" · next reclaim confirmation {money(_reclaim)}"
+            if _reclaim is not None
+            else ""
+        )
+        _rebound_why = "; ".join(_rebound.get("reasons") or [])
+        st.warning(
+            f"↗ **POST-EXIT REBOUND WATCH · {_rebound_status}**{_reclaim_text}. "
+            "This does **not** cancel the protective-exit call; it means the "
+            "selloff is stretched enough that a reflex bounce/re-entry setup "
+            "should be monitored separately."
+            + (f" Evidence: {_rebound_why}." if _rebound_why else "")
+        )
+
     _protect_note = (
         f'{pp(_position_plan.get("protective_exit_return_pct"))} vs cost · '
         f'{_position_plan.get("room_to_protective_pct", 0):.1f}% below current'
@@ -1081,6 +1106,17 @@ def _render_position_exit_plan():
                 f'**Stretch exit:** {money(_position_plan.get("stretch_target"))} — '
                 f'{_position_plan.get("stretch_reason") or "—"}'
             )
+        _rebound = _position_plan.get("rebound_watch") or {}
+        if _rebound:
+            st.markdown("#### Rebound / re-entry watch")
+            st.write(f'**Status:** {_rebound.get("status") or "—"}')
+            st.write(f'**Rebound-watch score:** {_rebound.get("score") if _rebound.get("score") is not None else "—"} / 100')
+            if _rebound.get("reclaim_level") is not None:
+                st.write(
+                    f'**Reclaim confirmation:** {money(_rebound.get("reclaim_level"))} — '
+                    f'{_rebound.get("reclaim_reason") or "overhead structure"}'
+                )
+            st.caption(_rebound.get("note") or "")
         st.caption(_position_plan.get("method_note") or "")
 
 
