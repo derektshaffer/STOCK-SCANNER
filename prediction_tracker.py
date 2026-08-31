@@ -492,11 +492,16 @@ def record_prediction(metrics, now=None, defer_remote=False):
     }
     rows.append(row)
     force_remote = not bool(_REMOTE_STATE.get("last_sync"))
-    ok = _save(
-        rows,
-        force_remote=force_remote and not defer_remote,
-        sync_remote=not defer_remote,
-    )
+    if defer_remote:
+        ok = _save(
+            rows,
+            force_remote=False,
+            sync_remote=False,
+        )
+    else:
+        # Preserve the historical call shape for tests/adapters that monkeypatch
+        # _save(rows, force_remote=False).
+        ok = _save(rows, force_remote=force_remote)
     sync = _REMOTE_STATE.get("last_sync_result") or {}
     return {
         "recorded": ok,
