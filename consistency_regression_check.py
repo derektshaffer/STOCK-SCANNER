@@ -2967,6 +2967,19 @@ def test_prediction_tracker_skips_closed_market_records():
     assert result["market_session"] == "closed", result
 
 
+def test_scanner_outcome_report_does_not_call_gross_returns_trade_wins():
+    from pathlib import Path
+
+    source = Path("score_outcomes.py").read_text(encoding="utf-8")
+    assert "Positive-return rate" in source
+    assert "not realized trade P/L" in source
+    assert '"execution_adjusted": False' in source
+    assert '"spread_applied_to_returns": False' in source
+    assert '"slippage_applied": False' in source
+    assert '"fees_applied": False' in source
+    assert "Use an execution-aware simulation before making profitability claims." in source
+
+
 def test_late_scanner_report_has_explicit_no_horizon_status():
     from pathlib import Path
 
@@ -3660,6 +3673,7 @@ if __name__ == "__main__":
         test_scanner_ui_surfaces_completed_daily_discovery_when_market_closed,
         test_offhours_workflow_runs_after_close_and_commits_separate_snapshot,
         test_prediction_tracker_skips_closed_market_records,
+        test_scanner_outcome_report_does_not_call_gross_returns_trade_wins,
         test_late_scanner_report_has_explicit_no_horizon_status,
         test_manual_scanner_refreshes_combined_candidates_after_success,
         test_v2_skips_alpaca_sip_probe_when_tradier_primary,
