@@ -597,11 +597,32 @@ def run():
                 st.session_state.pop("_analyzer_background_request_symbol", None)
                 launch_active = True
 
+            def _cancel_combined_loader():
+                state = st.session_state.get(launch_key)
+                if state:
+                    cancelled = cancel_analyzer_process(state)
+                    st.session_state["_analyzer_cancel_notice"] = (
+                        cancelled.get("message") or "Analysis cancelled."
+                    )
+                st.session_state[launch_key] = None
+                st.session_state["_analyzer_launch_state"] = None
+                st.session_state["_analyzer_loading"] = False
+                st.session_state["_manual_analyze_requested"] = False
+                st.session_state.pop("_analyzer_background_request_symbol", None)
+                st.session_state["app_view"] = "Momentum Scanner"
+
             @st.fragment(run_every="1s")
             def _render_combined_analysis_loader():
                 state = st.session_state.get(launch_key)
                 if not state:
                     return
+
+                st.markdown(
+                    f'<div class="hero"><div class="title">Single Stock Analyzer</div>'
+                    f'<div class="sub">Loading deep analysis for '
+                    f'{requested_ticker}…</div></div>',
+                    unsafe_allow_html=True,
+                )
 
                 outcome = poll_analyzer_process(state)
                 if outcome.get("done"):
@@ -631,11 +652,23 @@ def run():
                     return
 
                 elapsed = float(outcome.get("runtime_seconds") or 0.0)
-                st.info(
-                    f"Analyzing {requested_ticker} in the background… "
-                    f"{elapsed:.0f}s elapsed. The Analyzer shell stays responsive, "
-                    "and you can switch back to the Momentum Scanner while this finishes."
+                status_col, cancel_col = st.columns(
+                    [4.5, 1.2],
+                    vertical_alignment="center",
                 )
+                with status_col:
+                    st.info(
+                        f"Analyzing {requested_ticker} in the background… "
+                        f"{elapsed:.0f}s elapsed. You are already in Analyzer; "
+                        "the full analysis will appear here as soon as it finishes."
+                    )
+                with cancel_col:
+                    st.button(
+                        f"Cancel {requested_ticker}",
+                        key=f"cancel_combined_loader_{requested_ticker}",
+                        use_container_width=True,
+                        on_click=_cancel_combined_loader,
+                    )
 
             _render_combined_analysis_loader()
 
