@@ -50,7 +50,7 @@ from timeframe_targets import (
 
 
 ET = ZoneInfo("America/New_York")
-REPLAY_VERSION = "historical-timeframe-replay-v4-multiyear-regimes"
+REPLAY_VERSION = "historical-timeframe-replay-v5-confirmed-multisession"
 TIMEFRAME_SCORE_VERSION = "timeframe-fit-v1"
 DEFAULT_REPLAY_DAYS = int(os.environ.get("TIMEFRAME_REPLAY_TRADING_DAYS", "1250") or 1250)
 DEFAULT_STRIDE = int(os.environ.get("TIMEFRAME_REPLAY_STRIDE_DAYS", "5") or 5)
@@ -222,6 +222,7 @@ def _stair_context(rows, idx):
             prior,
             current_day=current,
             atr_pct=None,
+            current_day_completed=True,
         )
     except Exception:
         features = {}
