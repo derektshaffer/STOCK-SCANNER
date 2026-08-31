@@ -781,6 +781,55 @@ def test_position_exit_underwater_weakness():
     assert "EXIT" in plan["action"] or "REDUCE" in plan["action"], plan
 
 
+
+def test_position_exit_keeps_protective_exit_separate_from_reflex_rebound_watch():
+    from position_exit import build_position_exit_plan
+
+    metrics = _position_metrics(
+        price=6.57,
+        vwap=8.80,
+        vwap_position="BELOW",
+        vwap_extension_pct=-25.34,
+        momentum_5m=1.2,
+        momentum_15m=-4.0,
+        score=42.0,
+        day_high=12.20,
+        day_low=5.50,
+        from_high_pct=46.15,
+        supports=[{"price": 5.88, "quality": "Moderate", "quality_score": 55}],
+        resistances=[{"price": 7.13, "quality": "Strong", "quality_score": 72}],
+        bounce_sequence={
+            "detected": True,
+            "observed_bounces": 1,
+            "completed_bounces": 0,
+            "developing_bounce": True,
+            "developing_bounce_pct": 12.0,
+            "reference_peak": 7.13,
+        },
+        impulse_pullback={
+            "detected": True,
+            "current_retracement_pct": 82.0,
+            "bounce_recovery_pct": 14.0,
+        },
+    )
+    plan = build_position_exit_plan(metrics, 8.80)
+    assert plan["read"] in {"EXIT", "REDUCE"}, plan
+    rebound = plan.get("rebound_watch") or {}
+    assert rebound.get("status") == "REBOUND DEVELOPING", rebound
+    assert rebound.get("production_entry_signal") is False, rebound
+    assert rebound.get("reclaim_level") == 7.13, rebound
+    assert "does not cancel a protective exit" in rebound.get("note", ""), rebound
+
+
+def test_position_exit_ui_explicitly_separates_exit_from_reentry_watch():
+    from pathlib import Path
+
+    source = Path("analyzer_ui_core.py").read_text(encoding="utf-8")
+    assert "POST-EXIT REBOUND WATCH" in source
+    assert "does **not** cancel the protective-exit call" in source
+    assert "re-entry setup" in source
+
+
 def test_position_exit_profit_floor():
     from position_exit import build_position_exit_plan
 
@@ -7024,6 +7073,8 @@ if __name__ == "__main__":
         test_entry_plan_status_is_safety_cap_not_double_count,
         test_position_exit_profitable_hold,
         test_position_exit_underwater_weakness,
+        test_position_exit_keeps_protective_exit_separate_from_reflex_rebound_watch,
+        test_position_exit_ui_explicitly_separates_exit_from_reentry_watch,
         test_position_exit_profit_floor,
         test_position_live_overlay_recomputes_derived_fields,
         test_analyzer_ui_preserves_historical_context_dependencies,
