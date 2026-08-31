@@ -551,6 +551,16 @@ def _bar_dt(bar):
 OUTCOME_MAX_BAR_DELAY_SECONDS = 180
 
 
+def _strict_future_bars(bars, created):
+    """Return only bars strictly after the prediction observation timestamp."""
+    out = []
+    for bar in bars or []:
+        dt = _bar_dt(bar)
+        if dt is not None and dt > created:
+            out.append(bar)
+    return out
+
+
 def _first_close_at_or_after(
     bars,
     target_dt,
@@ -722,11 +732,7 @@ def resolve_symbol_predictions(sa, symbol, now=None, current_metrics=None):
         if created is None or price is None:
             continue
         outcomes = row.setdefault("outcomes", {})
-        future = []
-        for bar in bars:
-            bar_dt = _bar_dt(bar)
-            if bar_dt is not None and bar_dt > created:
-                future.append(bar)
+        future = _strict_future_bars(bars, created)
 
         for mins in (15, 30, 60):
             key = f"return_{mins}m_pct"
