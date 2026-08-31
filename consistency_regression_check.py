@@ -4360,9 +4360,38 @@ def test_old_calibration_schema_is_rejected():
     from pathlib import Path
 
     source = Path("prediction_tracker.py").read_text(encoding="utf-8")
-    assert 'int(durable.get("schema_version") or 0) < 7' in source
+    assert 'int(durable.get("schema_version") or 0) < 8' in source
     outcome_source = Path("score_analyzer_outcomes.py").read_text(encoding="utf-8")
-    assert '"schema_version": 7' in outcome_source
+    assert '"schema_version": 8' in outcome_source
+
+
+
+def test_ambiguous_ohlc_bar_is_conservative_in_calibration():
+    import score_analyzer_outcomes as sao
+    from pathlib import Path
+
+    model_source = Path("ml_predictor.py").read_text(encoding="utf-8")
+    assert 'target_outcome in {"stop", "ambiguous"}' in model_source
+    assert "same-bar target+stop is scored as failure for model validation" in model_source
+
+    rows = [
+        {
+            "potential_score": 80,
+            "outcomes": {"target1_first_touch": "target"},
+        },
+        {
+            "potential_score": 80,
+            "outcomes": {"target1_first_touch": "ambiguous"},
+        },
+    ]
+    calibrated = sao._calibrate(rows, "potential_score")
+    bucket = next(iter(calibrated.values()))
+    assert bucket.get("target_stop_n") == 2, bucket
+    assert bucket.get("target_ambiguous_count") == 1, bucket
+    assert bucket.get("target_before_stop_rate") == 50.0, bucket
+    assert "counted as failure" in str(
+        bucket.get("target_ambiguity_policy") or ""
+    ), bucket
 
 
 def test_outcome_tracker_runs_after_extended_hours():
@@ -6939,6 +6968,7 @@ if __name__ == "__main__":
         test_timeframe_calibration_uses_one_latest_regular_row_per_ticker_day,
         test_prediction_tracker_mirrors_daily_timeframe_sampling,
         test_old_calibration_schema_is_rejected,
+        test_ambiguous_ohlc_bar_is_conservative_in_calibration,
         test_outcome_tracker_runs_after_extended_hours,
         test_scanner_table_volume_pace_formatter_matches_column,
         test_combined_scanner_uses_display_volume_pace_source,
