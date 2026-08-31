@@ -1441,6 +1441,31 @@ def test_unconfirmed_rebound_is_labeled_developing_not_confirmed():
     assert ctx.get("phase") in {"BOUNCE DEVELOPING","PULLBACK FORMING"}, ctx
 
 
+def test_developing_rebound_surfaces_before_formal_bounce_confirmation():
+    from market_structure import bounce_sequence_context
+    from datetime import datetime, timedelta, timezone
+
+    start=datetime(2026,8,31,13,30,tzinfo=timezone.utc)
+    bars=[]
+    for i in range(12):
+        close=10.0+i*(8.0/11.0)
+        bars.append({
+            "t":(start+timedelta(minutes=i)).isoformat(),
+            "o":close-0.04,"h":close+0.08,"l":close-0.08,"c":close,"v":1000,
+        })
+    for j,close in enumerate((17.1,16.2,15.5,15.8,16.2,16.5),start=12):
+        bars.append({
+            "t":(start+timedelta(minutes=j)).isoformat(),
+            "o":close-0.04,"h":close+0.08,"l":close-0.08,"c":close,"v":800,
+        })
+
+    seq=bounce_sequence_context(bars,current_price=16.5,atr_pct=8)
+    assert seq.get("detected"), seq
+    assert int(seq.get("completed_bounces") or 0) == 0, seq
+    assert seq.get("developing_bounce") is True, seq
+    assert float(seq.get("developing_bounce_pct") or 0) > 0, seq
+
+
 def test_breakout_requires_previously_confirmed_swing_high():
     from market_structure import breakout_behavior_context
     from datetime import datetime, timedelta, timezone
@@ -1547,6 +1572,59 @@ def test_trade_plan_blocks_canonical_failed_breakout_confirmation():
         plan.get("status")=="ENTRY AVAILABLE"
         and plan.get("preferred_plan")=="breakout"
     ), plan
+
+
+def test_trade_plan_does_not_move_breakout_goalpost_after_trigger_is_reached():
+    import stock_analyzer as sa
+    from datetime import datetime, timezone
+
+    metrics={
+        "price":9.08,
+        "vwap":8.30,
+        "supports":[{"price":8.45,"quality_score":70,"quality":"STRONG"}],
+        "resistances":[{"price":9.15,"quality_score":80,"quality":"STRONG"}],
+        "atr_14":0.55,
+        "atr_14_pct":6.1,
+        "spread_pct":0.4,
+        "volume_pace":2.1,
+        "momentum_5m":0.2,
+        "momentum_15m":0.5,
+        "day_pct":32.0,
+        "vwap_extension_pct":9.4,
+        "score":80,
+        "historical_analogs":{"status":"insufficient_history"},
+        "historical_setup":{"status":"insufficient_history","intraday":{}},
+        "impulse_pullback":{
+            "detected":True,
+            "impulse_low":7.0,
+            "impulse_high":9.10,
+            "impulse_move_pct":30.0,
+            "current_retracement_pct":1.0,
+            "bounce_recovery_pct":0.0,
+            "bounce_confirmed":False,
+            "levels":{"61.8%":7.80},
+        },
+        "bounce_sequence":{"detected":True,"completed_bounces":0},
+        "breakout_structure":{
+            "breakout_recent":1.0,
+            "breakout_holding":0.0,
+            "failed_breakout":0.0,
+            "breakout_level":9.00,
+        },
+        "stair_step":{"detected":False},
+        "run_exhaustion":{"score":30},
+        "liquidity":{"label":"HIGH","avg_dollar_volume":10_000_000},
+        "news":[],
+        "day_high":9.10,
+    }
+
+    plan=sa.build_trade_plan(metrics,datetime.now(timezone.utc))
+    assert plan.get("preferred_plan") == "breakout", plan
+    assert abs(float(plan.get("breakout_reference_level") or 0)-9.0) < 1e-6, plan
+    assert plan.get("breakout_reference_locked") is True, plan
+    assert plan.get("breakout_trigger_reached") is True, plan
+    assert "BREAKOUT" in str(plan.get("action") or ""), plan
+    assert "PULLBACK" not in str(plan.get("action") or ""), plan
 
 
 def test_all_intraday_movement_feature_paths_use_shared_structure_engine():
@@ -2120,6 +2198,8 @@ def test_analyzer_bounce_progress_and_plan_change_are_explicit():
     assert '"✓ CONFIRMED"' in source
     assert '"… DEVELOPING"' in source
     assert '"○ FORMING"' in source
+    assert '_developing_top=bool(_seq_top.get("developing_bounce"))' in source
+    assert '"BOUNCE DEVELOPING"' in source
     assert "PLAN CHANGED:" in source
     assert "PRIMARY PLAN ·" in source
     assert "ACTIVE ALTERNATIVE · BOUNCE #" in source
@@ -5183,11 +5263,13 @@ if __name__ == "__main__":
         test_shared_structure_does_not_confirm_same_candle_reversal,
         test_impulse_and_bounce_consumers_share_identical_structure_version,
         test_unconfirmed_rebound_is_labeled_developing_not_confirmed,
+        test_developing_rebound_surfaces_before_formal_bounce_confirmation,
         test_breakout_requires_previously_confirmed_swing_high,
         test_failed_breakout_uses_same_confirmed_level_not_new_raw_high,
         test_scanner_breakout_features_use_shared_confirmed_levels,
         test_run_exhaustion_uses_confirmed_swing_reversal_structure,
         test_trade_plan_blocks_canonical_failed_breakout_confirmation,
+        test_trade_plan_does_not_move_breakout_goalpost_after_trigger_is_reached,
         test_all_intraday_movement_feature_paths_use_shared_structure_engine,
         test_impulse_detector_measures_fraction_of_run,
         test_entry_readiness_penalizes_unconfirmed_shallow_retrace,
