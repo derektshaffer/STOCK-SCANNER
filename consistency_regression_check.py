@@ -2299,7 +2299,7 @@ def test_analyzer_bounce_progress_and_plan_change_are_explicit():
     assert "PRIMARY PLAN ·" in source
     assert "ACTIVE ALTERNATIVE · BOUNCE #" in source
     assert '"NEXT ENTRY"' in source
-    assert "Strategy thesis" in source
+    assert "Execution plan" in source
     assert "_top_entry_instruction" in source
 
 
