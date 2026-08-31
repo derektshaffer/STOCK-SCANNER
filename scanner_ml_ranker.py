@@ -33,6 +33,8 @@ MIN_VALIDATION_SAMPLES = 60
 MIN_LIVE_CONFIRMATION_SAMPLES = 100
 MIN_LIVE_CONFIRMATION_DAYS = 5
 MIN_LIVE_CONFIRMATION_CLASS_COUNT = 15
+MIN_LIVE_CONFIRMATION_SYMBOLS = 15
+LIVE_CONFIRMATION_MIN_GAP_SECONDS = 60 * 60
 MAX_ARTIFACTS = 12
 ARTIFACT_PREFIX = "outcome-report-"
 MODEL_CACHE_DIR = Path(
@@ -392,6 +394,35 @@ def load_training_observations():
     }
 
 
+def independent_confirmation_rows(
+    rows,
+    min_gap_seconds=LIVE_CONFIRMATION_MIN_GAP_SECONDS,
+):
+    """De-correlate same-ticker confirmation rows by the target horizon.
+
+    The Scanner target is 60-minute continuation. Two rows for the same ticker
+    inside the same 60-minute window share much of the same future price path
+    and must not count as independent confirmation evidence.
+    """
+    selected = []
+    last_timestamp_by_symbol = {}
+    ordered = sorted(
+        rows,
+        key=lambda row: float(row.get("timestamp") or 0.0),
+    )
+    for row in ordered:
+        symbol = str(row.get("symbol") or "").upper().strip()
+        timestamp = _num(row.get("timestamp"))
+        if not symbol or timestamp is None or timestamp <= 0:
+            continue
+        last = last_timestamp_by_symbol.get(symbol)
+        if last is not None and timestamp - last < min_gap_seconds:
+            continue
+        selected.append(row)
+        last_timestamp_by_symbol[symbol] = timestamp
+    return selected
+
+
 def _training_fingerprint(rows):
     digest = hashlib.sha256()
     digest.update(MODEL_VERSION.encode("utf-8"))
@@ -588,7 +619,7 @@ def _validation_and_model(rows):
     # A live-confirmation holdout must occur strictly after the replay period.
     # Otherwise the same symbol/day can appear in replay training and the live
     # holdout, making confirmation look stronger than it really is.
-    live_confirmation_rows = [
+    live_confirmation_rows_raw = [
         row
         for row in live_rows
         if (
@@ -599,11 +630,21 @@ def _validation_and_model(rows):
             )
         )
     ]
+    live_confirmation_rows = independent_confirmation_rows(
+        live_confirmation_rows_raw
+    )
     live_confirmation_days = sorted(
         {
             row.get("trading_date")
             for row in live_confirmation_rows
             if row.get("trading_date")
+        }
+    )
+    live_confirmation_symbols = sorted(
+        {
+            row.get("symbol")
+            for row in live_confirmation_rows
+            if row.get("symbol")
         }
     )
 
@@ -622,11 +663,15 @@ def _validation_and_model(rows):
         "historical_replay_samples": len(replay_rows),
         "live_samples": len(live_rows),
         "live_trading_days": len(live_days),
+        "live_confirmation_raw_samples": len(live_confirmation_rows_raw),
         "live_confirmation_samples": len(live_confirmation_rows),
         "live_confirmation_days": len(live_confirmation_days),
+        "live_confirmation_symbols": len(live_confirmation_symbols),
+        "live_confirmation_min_gap_seconds": LIVE_CONFIRMATION_MIN_GAP_SECONDS,
         "live_confirmation_after_replay_day": replay_end_day,
         "live_confirmation_min_samples": MIN_LIVE_CONFIRMATION_SAMPLES,
         "live_confirmation_min_days": MIN_LIVE_CONFIRMATION_DAYS,
+        "live_confirmation_min_symbols": MIN_LIVE_CONFIRMATION_SYMBOLS,
     }
 
     # When replay evidence exists, keep the historical validation pool
@@ -819,6 +864,7 @@ def _validation_and_model(rows):
         enough_live = bool(
             len(live_confirmation_rows) >= MIN_LIVE_CONFIRMATION_SAMPLES
             and len(live_confirmation_days) >= MIN_LIVE_CONFIRMATION_DAYS
+            and len(live_confirmation_symbols) >= MIN_LIVE_CONFIRMATION_SYMBOLS
             and live_positives >= MIN_LIVE_CONFIRMATION_CLASS_COUNT
             and live_negatives >= MIN_LIVE_CONFIRMATION_CLASS_COUNT
         )
