@@ -1497,14 +1497,14 @@ def build_trade_plan(metrics, now):
     selected_low=fnum(chosen.get("entry_low"))
     selected_high=fnum(chosen.get("entry_high"))
     selected_zone=(
-        f"$\{selected_low:.2f}–$\{selected_high:.2f}"
+        f"${selected_low:.2f}–${selected_high:.2f}"
         if selected_low is not None and selected_high is not None
         else "the displayed entry zone"
     )
     if status=="ENTRY AVAILABLE":
         entry_state="ENTRY AVAILABLE"
         entry_instruction=(
-            f"ENTRY AVAILABLE NOW in \{selected_zone}. "
+            f"ENTRY AVAILABLE NOW in {selected_zone}. "
             "Use the displayed stop/invalidation; do not enter above the zone."
         )
     elif preferred=="breakout":
@@ -1512,31 +1512,31 @@ def build_trade_plan(metrics, now):
             entry_state="BREAKOUT FAILED"
             entry_instruction=(
                 f"NO BREAKOUT ENTRY. Next valid entry is a pullback/reclaim in "
-                f"$\{pull_plan['entry_low']:.2f}–$\{pull_plan['entry_high']:.2f} "
+                f"${pull_plan['entry_low']:.2f}–${pull_plan['entry_high']:.2f} "
                 "after support holds and short-term momentum turns positive."
             )
         elif breakout_above_zone:
             entry_state="WAIT FOR RETEST"
             entry_instruction=(
                 f"DO NOT CHASE. Next breakout entry is a controlled retest/hold of "
-                f"\{selected_zone} with positive 5m momentum and acceptable volume."
+                f"{selected_zone} with positive 5m momentum and acceptable volume."
             )
         elif in_break:
             entry_state="TRIGGER TESTING"
             entry_instruction=(
-                f"ENTRY TRIGGER IS \{selected_zone}. Enter only if price holds the zone "
+                f"ENTRY TRIGGER IS {selected_zone}. Enter only if price holds the zone "
                 "with positive 5m momentum and adequate participation; otherwise wait."
             )
         else:
             entry_state="ARMED"
             entry_instruction=(
-                f"NEXT ENTRY: \{selected_zone} on a confirmed breakout hold "
+                f"NEXT ENTRY: {selected_zone} on a confirmed breakout hold "
                 "(positive 5m momentum, no failed-breakout signal, and preferably ≥1.5x volume pace)."
             )
     elif preferred=="repeat_bounce":
         entry_state="BOUNCE ENTRY WATCH"
         entry_instruction=(
-            f"NEXT ENTRY: \{selected_zone} only after the developing bounce dip holds "
+            f"NEXT ENTRY: {selected_zone} only after the developing bounce dip holds "
             "and reclaims with improving short-term momentum."
         )
     else:
@@ -1549,7 +1549,7 @@ def build_trade_plan(metrics, now):
         else:
             entry_state="WAIT FOR RECLAIM"
         entry_instruction=(
-            f"NEXT ENTRY: \{selected_zone} only after support holds / a higher low or reclaim "
+            f"NEXT ENTRY: {selected_zone} only after support holds / a higher low or reclaim "
             "forms with positive short-term momentum. A touch alone is not an entry."
         )
 
