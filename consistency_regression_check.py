@@ -3514,6 +3514,7 @@ def test_analyzer_outcome_horizon_rejects_late_gap_bars():
 
 
 def test_peer_ml_replay_requires_strictly_later_live_confirmation():
+    from pathlib import Path
     import peer_ml_predictor as peer
 
     rows = [
