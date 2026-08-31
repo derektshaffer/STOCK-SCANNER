@@ -137,7 +137,7 @@ jobs:
               # bounce semantics must not be silently mixed with the new model.
               assert before_filter >= 1000
               assert result.get("status") == "collecting"
-              assert result.get("behavior_feature_version") == "scanner-behavior-v4-balanced-swings"
+              assert result.get("behavior_feature_version") == "scanner-behavior-v5-shared-market-structure"
           else:
               assert int(result.get("samples") or 0) > 0
           PY
