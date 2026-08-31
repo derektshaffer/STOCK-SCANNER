@@ -3576,6 +3576,19 @@ def test_peer_ml_replay_requires_strictly_later_live_confirmation():
     assert '"replay_survivorship_limit": bool(replay_rows)' in source
 
 
+def test_scanner_historical_validation_excludes_live_confirmation_pool():
+    from pathlib import Path
+
+    source = Path("scanner_ml_ranker.py").read_text(encoding="utf-8")
+    assert "validation_rows = replay_rows if replay_rows else rows" in source
+    assert "for i, row in enumerate(validation_rows)" in source
+    assert '"historical_validation_source"' in source
+    assert '"historical_replay" if replay_rows else "live_only"' in source
+    # The later live holdout must remain a distinct pool.
+    assert "live_confirmation_rows = [" in source
+    assert "row[\"trading_date\"] > replay_end_day" in source
+
+
 def test_scanner_replay_live_confirmation_gate_is_integrity_sized():
     import scanner_ml_ranker as sm
 
@@ -3692,6 +3705,7 @@ if __name__ == "__main__":
         test_replay_requires_live_confirmation_before_full_badge,
         test_analyzer_ml_walk_forward_never_splits_one_trading_day,
         test_peer_ml_replay_requires_strictly_later_live_confirmation,
+        test_scanner_historical_validation_excludes_live_confirmation_pool,
         test_scanner_replay_live_confirmation_gate_is_integrity_sized,
         test_validation_workflow_runs_before_merge_on_pull_requests,
         test_analyzer_ml_validation_requires_probability_skill,
