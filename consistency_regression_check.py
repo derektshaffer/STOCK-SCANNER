@@ -2190,6 +2190,42 @@ def test_low_rr_repeat_bounce_cannot_replace_primary_plan():
     assert "secondary" in str(plan.get("plan_selection_note") or "").lower(), plan
 
 
+def test_trade_plan_always_exposes_explicit_next_entry_rule():
+    import stock_analyzer as sa
+    from datetime import datetime, timezone
+
+    metrics={
+        "price":9.00,
+        "vwap":8.50,
+        "supports":[{"price":8.40,"quality_score":70,"quality":"STRONG"}],
+        "resistances":[{"price":9.10,"quality_score":80,"quality":"STRONG"}],
+        "atr_14":0.50,
+        "atr_14_pct":5.5,
+        "spread_pct":0.4,
+        "volume_pace":2.0,
+        "momentum_5m":0.3,
+        "momentum_15m":0.5,
+        "day_pct":20.0,
+        "vwap_extension_pct":5.8,
+        "score":78,
+        "historical_analogs":{"status":"insufficient_history"},
+        "historical_setup":{"status":"insufficient_history","intraday":{}},
+        "impulse_pullback":{"detected":False},
+        "bounce_sequence":{"detected":False,"completed_bounces":0},
+        "breakout_structure":{"failed_breakout":False,"breakout_holding":False},
+        "stair_step":{"detected":False},
+        "run_exhaustion":{"score":20},
+        "liquidity":{"label":"HIGH","avg_dollar_volume":10_000_000},
+        "news":[],
+        "day_high":9.05,
+    }
+    plan=sa.build_trade_plan(metrics,datetime.now(timezone.utc))
+    assert plan.get("entry_state"), plan
+    instruction=str(plan.get("entry_instruction") or "")
+    assert "ENTRY" in instruction.upper(), plan
+    assert "$" in instruction, plan
+
+
 def test_analyzer_bounce_progress_and_plan_change_are_explicit():
     from pathlib import Path
 
@@ -2203,6 +2239,9 @@ def test_analyzer_bounce_progress_and_plan_change_are_explicit():
     assert "PLAN CHANGED:" in source
     assert "PRIMARY PLAN ·" in source
     assert "ACTIVE ALTERNATIVE · BOUNCE #" in source
+    assert '"NEXT ENTRY"' in source
+    assert "Strategy thesis" in source
+    assert "_top_entry_instruction" in source
 
 
 def test_analyzer_exposes_same_evidence_bars_for_visual_snapshots():
@@ -5290,6 +5329,7 @@ if __name__ == "__main__":
         test_scanner_behavior_detects_failed_breakout,
         test_scanner_behavior_fields_survive_scan_logging,
         test_low_rr_repeat_bounce_cannot_replace_primary_plan,
+        test_trade_plan_always_exposes_explicit_next_entry_rule,
         test_analyzer_bounce_progress_and_plan_change_are_explicit,
         test_analyzer_exposes_same_evidence_bars_for_visual_snapshots,
         test_analyzer_visual_specs_show_real_pattern_markers,
