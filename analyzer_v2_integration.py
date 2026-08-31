@@ -1148,6 +1148,54 @@ def _timeframe_analysis(sa, symbol, metrics, sec, market, catalyst, potential, r
     }
 
 
+MAX_ACTIONABLE_MARKET_DATA_AGE_SECONDS = 120
+
+
+def _analyzer_live_data_integrity(metrics):
+    reasons = []
+    provider = str(
+        metrics.get("market_provider")
+        or metrics.get("live_provider")
+        or ""
+    ).lower()
+    feed = str(metrics.get("live_feed") or "").lower()
+    consolidated = (
+        provider == "tradier"
+        or "tradier" in feed
+        or "sip" in feed
+        or "consolidated" in feed
+    )
+    if not consolidated:
+        reasons.append("live market data is not consolidated")
+
+    for label, key in (
+        ("trade", "trade_age_seconds"),
+        ("quote", "quote_age_seconds"),
+    ):
+        age = _num(metrics.get(key))
+        if age is None:
+            reasons.append(f"latest {label} freshness is unknown")
+        elif age > MAX_ACTIONABLE_MARKET_DATA_AGE_SECONDS:
+            reasons.append(f"latest {label} is stale ({age:.0f}s old)")
+
+    for key, label in (
+        ("price", "price"),
+        ("vwap", "VWAP"),
+        ("momentum_5m", "5-minute momentum"),
+        ("momentum_15m", "15-minute momentum"),
+        ("spread_pct", "live spread"),
+    ):
+        if _num(metrics.get(key)) is None:
+            reasons.append(f"{label} is missing")
+
+    return {
+        "ok": not reasons,
+        "reasons": reasons,
+        "consolidated": consolidated,
+        "max_age_seconds": MAX_ACTIONABLE_MARKET_DATA_AGE_SECONDS,
+    }
+
+
 def _entry_readiness(metrics):
     """Current entry quality from direct timing/execution inputs.
 
@@ -1798,6 +1846,7 @@ def install_v2_analysis(sa):
         market = _market_context(sa, sec.get("sector_etf"))
         catalyst = _catalyst_strength(metrics.get("news") or [])
         turnover = _turnover_context(metrics, sec, float_context)
+        live_data_integrity = _analyzer_live_data_integrity(metrics)
 
         potential, potential_reasons, potential_components = _potential_score(
             metrics, sec, market, catalyst
@@ -1830,6 +1879,13 @@ def install_v2_analysis(sa):
         plan = metrics.get("trade_plan") or {}
         if str(plan.get("status") or "") == "ENTRY AVAILABLE":
             safety_reasons = []
+            if not live_data_integrity.get("ok"):
+                safety_reasons.append(
+                    "live-data integrity check failed: "
+                    + "; ".join(
+                        (live_data_integrity.get("reasons") or [])[:3]
+                    )
+                )
             if readiness < 60:
                 safety_reasons.append("entry readiness is below 60/100")
             if evidence < 50:
@@ -1881,6 +1937,7 @@ def install_v2_analysis(sa):
             "fundamental_context": sec,
             "float_context": float_context,
             "turnover_context": turnover,
+            "live_data_integrity": live_data_integrity,
             "timeframe_analysis": timeframe,
             "full_spectrum": full_spectrum,
             "sip_status": sip_status,
