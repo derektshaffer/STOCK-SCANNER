@@ -3564,6 +3564,25 @@ def test_analyzer_outcome_horizon_rejects_late_gap_bars():
     assert sao._price_at_or_after(late_only, target) is None
 
 
+def test_live_confirmation_rows_do_not_double_count_overlapping_ticker_windows():
+    import scanner_ml_ranker as sm
+
+    rows = [
+        {"symbol": "AAA", "timestamp": 10_000.0},
+        {"symbol": "AAA", "timestamp": 11_800.0},
+        {"symbol": "AAA", "timestamp": 13_600.0},
+        {"symbol": "BBB", "timestamp": 10_600.0},
+        {"symbol": "BBB", "timestamp": 14_300.0},
+    ]
+    selected = sm.independent_confirmation_rows(rows)
+    assert [(row["symbol"], row["timestamp"]) for row in selected] == [
+        ("AAA", 10_000.0),
+        ("BBB", 10_600.0),
+        ("AAA", 13_600.0),
+        ("BBB", 14_300.0),
+    ], selected
+
+
 def test_peer_ml_replay_requires_strictly_later_live_confirmation():
     from pathlib import Path
     import peer_ml_predictor as peer
@@ -3573,18 +3592,21 @@ def test_peer_ml_replay_requires_strictly_later_live_confirmation():
             "symbol": "OLD",
             "trading_date": "2026-08-28",
             "observation_source": "historical_replay",
+            "timestamp": 1000.0,
             "label": 1,
         },
         {
             "symbol": "SAME",
             "trading_date": "2026-08-28",
             "observation_source": "live_scan",
+            "timestamp": 2000.0,
             "label": 0,
         },
         {
             "symbol": "LATER",
             "trading_date": "2026-08-31",
             "observation_source": "live_scan",
+            "timestamp": 3000.0,
             "label": 1,
         },
     ]
@@ -3596,6 +3618,7 @@ def test_peer_ml_replay_requires_strictly_later_live_confirmation():
     assert peer.MIN_LIVE_CONFIRMATION_SAMPLES >= 100
     assert peer.MIN_LIVE_CONFIRMATION_DAYS >= 5
     assert peer.MIN_LIVE_CONFIRMATION_CLASS_COUNT >= 15
+    assert peer.MIN_LIVE_CONFIRMATION_SYMBOLS >= 15
 
     source = Path("peer_ml_predictor.py").read_text(encoding="utf-8")
     assert 'validation_status = "replay_validated_waiting_live"' in source
@@ -3611,7 +3634,8 @@ def test_scanner_historical_validation_excludes_live_confirmation_pool():
     assert '"historical_validation_source"' in source
     assert '"historical_replay" if replay_rows else "live_only"' in source
     # The later live holdout must remain a distinct pool.
-    assert "live_confirmation_rows = [" in source
+    assert "live_confirmation_rows_raw = [" in source
+    assert "independent_confirmation_rows(" in source
     assert "row[\"trading_date\"] > replay_end_day" in source
 
 
@@ -3621,6 +3645,8 @@ def test_scanner_replay_live_confirmation_gate_is_integrity_sized():
     assert sm.MIN_LIVE_CONFIRMATION_SAMPLES >= 100
     assert sm.MIN_LIVE_CONFIRMATION_DAYS >= 5
     assert sm.MIN_LIVE_CONFIRMATION_CLASS_COUNT >= 15
+    assert sm.MIN_LIVE_CONFIRMATION_SYMBOLS >= 15
+    assert sm.LIVE_CONFIRMATION_MIN_GAP_SECONDS >= 60 * 60
 
 
 def test_validation_workflow_runs_before_merge_on_pull_requests():
@@ -3688,6 +3714,7 @@ if __name__ == "__main__":
         test_scanner_outcome_metadata,
         test_scanner_outcome_horizon_rejects_late_gap_bars,
         test_analyzer_outcome_horizon_rejects_late_gap_bars,
+        test_live_confirmation_rows_do_not_double_count_overlapping_ticker_windows,
         test_scanner_outcomes_expose_deduplicated_actionable_events,
         test_scanner_historical_returns_are_causal_and_timestamp_matched,
         test_scanner_enrichment_pool_is_not_display_watchlist_truncated,
