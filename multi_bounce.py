@@ -225,8 +225,16 @@ def detect_bounce_sequence(
             ):
                 trough_price = candidate_price
                 trough_idx = candidate_idx
-                candidate_price = row["h"]
-                candidate_idx = i
+                # If this same candle created the trough, we do not know
+                # whether its high happened before or after that low. Start
+                # the rebound candidate on a later candle instead of assuming
+                # an intrabar order we cannot observe.
+                if trough_idx is not None and trough_idx < i:
+                    candidate_price = row["h"]
+                    candidate_idx = i
+                else:
+                    candidate_price = None
+                    candidate_idx = None
                 state = "seek_peak"
 
         else:  # seek_peak
@@ -236,8 +244,10 @@ def detect_bounce_sequence(
             if trough_price is not None and row["l"] < trough_price:
                 trough_price = row["l"]
                 trough_idx = i
-                candidate_price = row["h"]
-                candidate_idx = i
+                # Same-candle high may have occurred before the new low; wait
+                # for a later candle before measuring the rebound.
+                candidate_price = None
+                candidate_idx = None
                 continue
 
             if candidate_price is None or row["h"] > candidate_price:
@@ -517,7 +527,9 @@ def detect_bounce_sequence(
         if current_leg_move_pct is not None
         else None,
         "impulse_low": round(impulse_low, 4),
+        "impulse_low_index": int(low_idx),
         "impulse_high": round(impulse_high, 4),
+        "impulse_peak_index": int(impulse_peak_idx),
         "impulse_move_pct": round(impulse_move_pct, 2),
         "completed_bounces": len(bounces),
         "next_bounce_number": len(bounces) + 1,
