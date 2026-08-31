@@ -305,6 +305,7 @@ def record_prediction(metrics, now=None, defer_remote=False):
     sequence = metrics.get("bounce_sequence") or {}
     stair = metrics.get("stair_step") or {}
     repeat_plan = plan.get("repeat_bounce") or {}
+    thesis = plan.get("thesis_continuity") or v2.get("thesis_continuity") or {}
     models = ml.get("models") or {}
     scenarios = (v2.get("full_spectrum") or {}).get("scenarios") or {}
     timeframe = v2.get("timeframe_analysis") or {}
@@ -348,6 +349,15 @@ def record_prediction(metrics, now=None, defer_remote=False):
         "plan_status": plan.get("status"),
         "plan_action": plan.get("action"),
         "preferred_plan": plan.get("preferred_plan"),
+        "thesis_version": thesis.get("version"),
+        "thesis_status": thesis.get("status"),
+        "thesis_active_family": thesis.get("active_family"),
+        "thesis_proposed_family": thesis.get("proposed_family"),
+        "thesis_revision": int(thesis.get("revision") or 0),
+        "thesis_held": bool(thesis.get("held")),
+        "thesis_change_reason": thesis.get("change_reason"),
+        "thesis_trigger_seen": bool(thesis.get("trigger_seen")),
+        "thesis_entry_available_seen": bool(thesis.get("entry_available_seen")),
         "potential_score": _num(v2.get("potential_score")),
         "entry_readiness": _num(v2.get("entry_readiness")),
         "evidence_strength": _num(v2.get("evidence_strength")),
@@ -388,6 +398,8 @@ def record_prediction(metrics, now=None, defer_remote=False):
         "entry_low": _num(selected.get("entry_low")),
         "entry_high": _num(selected.get("entry_high")),
         "target1": _num(selected.get("target1")),
+        "target2": _num(selected.get("target2")),
+        "stretch_target": _num(selected.get("stretch_target")),
         "stop": _num(selected.get("stop")),
         "ml_edge": _num(ml.get("ml_edge_score")),
         "ml_same_ticker_edge": _num(ml.get("same_ticker_edge_score")),
