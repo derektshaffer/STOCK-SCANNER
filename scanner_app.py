@@ -13,7 +13,12 @@ import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
 
-from scanner_runtime import cadence_health, run_scanner_process, scanner_process_busy
+from scanner_runtime import (
+    cadence_health,
+    cancel_scanner_process,
+    run_scanner_process,
+    scanner_process_busy,
+)
 
 SCAN_FILE = Path("scan_logs/latest_scan.json")
 OFFHOURS_SCAN_FILE = Path("scan_logs/offhours_timeframe_latest.json")
@@ -858,9 +863,13 @@ if "last_auto_message" not in st.session_state:
 combined_monitor_active = bool(
     st.session_state.get("_combined_scanner_monitor_active")
 )
-manual_scan_busy = bool(
-    st.session_state.get("_scanner_async_state")
-) or scanner_process_busy()
+_active_scan_state = st.session_state.get("_scanner_async_state") or {}
+_active_scan_process = _active_scan_state.get("process")
+_active_scan_running = bool(
+    _active_scan_process is not None
+    and _active_scan_process.poll() is None
+)
+manual_scan_busy = _active_scan_running or scanner_process_busy()
 
 controls_mount = st.session_state.get("_scanner_controls_mount")
 controls_context = controls_mount.container() if controls_mount is not None else st.container(key="scanner_controls_top")
@@ -876,25 +885,35 @@ with controls_context:
     )
     with scan_col:
         scan_button_slot = st.empty()
-        clicked = scan_button_slot.button(
-            "▶ Run Fresh Scan",
-            type="primary",
-            use_container_width=True,
-            disabled=manual_scan_busy,
-            help=(
-                "A scan is already running."
-                if manual_scan_busy
-                else "Run a fresh momentum scan now."
-            ),
-        )
-        if clicked:
-            scan_button_slot.button(
-                "Working…",
+        cancel_clicked = False
+        if _active_scan_running:
+            clicked = False
+            cancel_clicked = scan_button_slot.button(
+                "■ Cancel Scan",
+                type="secondary",
+                use_container_width=True,
+                help="Stop the current scan if it appears stuck.",
+            )
+        else:
+            clicked = scan_button_slot.button(
+                "▶ Run Fresh Scan",
                 type="primary",
                 use_container_width=True,
-                disabled=True,
-                key="scan_working_button",
+                disabled=manual_scan_busy,
+                help=(
+                    "Another scan is already running."
+                    if manual_scan_busy
+                    else "Run a fresh momentum scan now."
+                ),
             )
+            if clicked:
+                scan_button_slot.button(
+                    "Working…",
+                    type="primary",
+                    use_container_width=True,
+                    disabled=True,
+                    key="scan_working_button",
+                )
     with auto_col:
         feed_name = configured_live_label()
         coverage = (
@@ -945,6 +964,17 @@ with controls_context:
             f'<span class="market-time">{now_et:%I:%M %p ET}</span></div>',
             unsafe_allow_html=True,
         )
+
+if cancel_clicked:
+    cancelled = cancel_scanner_process(_active_scan_state)
+    st.session_state["_scanner_async_state"] = None
+    st.session_state["_scanner_process_running"] = False
+    st.session_state["last_auto_scan_started_at"] = time.time()
+    st.session_state["last_auto_message"] = str(
+        cancelled.get("message") or "Momentum scan cancelled."
+    )
+    st.toast("Momentum scan cancelled.", icon="✕")
+    st.rerun()
 
 if clicked:
     st.session_state["last_auto_scan_started_at"] = time.time()
