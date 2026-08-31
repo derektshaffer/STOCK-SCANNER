@@ -576,42 +576,49 @@ if view == "Stock Analyzer":
             margin: 0 !important;
         }
 
-        /* Saved Stocks toolbar: one compact, balanced row. */
+        /* Saved Stocks toolbar: title/actions/first tickers share one row. */
         .st-key-saved_stocks_top {
-            margin: 0 0 10px !important;
+            margin: 0 0 4px !important;
             padding: 0 !important;
         }
         .st-key-saved_stocks_top > [data-testid="stVerticalBlock"] {
-            gap: 5px !important;
+            gap: 3px !important;
         }
         .st-key-saved_stocks_top [data-testid="stHorizontalBlock"]:has(.saved-stock-inline-title) {
-            gap: 8px !important;
+            gap: 6px !important;
             align-items: center !important;
             margin: 0 !important;
         }
         .st-key-saved_stocks_top [data-testid="stHorizontalBlock"]:has(.saved-stock-inline-title)
           > [data-testid="stColumn"]:nth-child(1) {
-            flex: 0 0 145px !important;
-            width: 145px !important;
-            max-width: 145px !important;
+            flex: 0 0 132px !important;
+            width: 132px !important;
+            max-width: 132px !important;
         }
         .st-key-saved_stocks_top [data-testid="stHorizontalBlock"]:has(.saved-stock-inline-title)
           > [data-testid="stColumn"]:nth-child(2),
         .st-key-saved_stocks_top [data-testid="stHorizontalBlock"]:has(.saved-stock-inline-title)
           > [data-testid="stColumn"]:nth-child(3) {
-            flex: 0 0 180px !important;
-            width: 180px !important;
-            max-width: 180px !important;
+            flex: 0 0 150px !important;
+            width: 150px !important;
+            max-width: 150px !important;
         }
         .st-key-saved_stocks_top [data-testid="stHorizontalBlock"]:has(.saved-stock-inline-title)
-          > [data-testid="stColumn"]:nth-child(4) {
-            flex: 1 1 auto !important;
-            width: auto !important;
-            max-width: none !important;
+          > [data-testid="stColumn"]:nth-child(n+4) {
+            flex: 0 0 108px !important;
+            width: 108px !important;
+            max-width: 108px !important;
         }
         .st-key-saved_stocks_top button {
-            min-height: 34px !important;
-            height: 34px !important;
+            min-height: 30px !important;
+            height: 30px !important;
+            padding-top: 2px !important;
+            padding-bottom: 2px !important;
+        }
+        .st-key-saved_stocks_top button p,
+        .st-key-saved_stocks_top button span {
+            font-size: 12px !important;
+            line-height: 1 !important;
         }
 
         /* Analyzer title and controls */
