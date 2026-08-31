@@ -24,6 +24,7 @@ def is_actionable_momentum_alert(row):
     return bool(
         row.get("passed_base_filters")
         and row.get("alert_ready")
+        and row.get("action_data_integrity_ok") is True
         and grade in {"A", "B"}
         and action == "ANALYZE NOW"
     )
