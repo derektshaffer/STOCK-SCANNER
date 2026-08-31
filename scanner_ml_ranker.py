@@ -629,29 +629,55 @@ def _validation_and_model(rows):
         "live_confirmation_min_days": MIN_LIVE_CONFIRMATION_DAYS,
     }
 
+    # When replay evidence exists, keep the historical validation pool
+    # completely separate from the later live confirmation pool. Otherwise a
+    # live row could help earn the first validation badge and then be reused as
+    # supposedly independent confirmation.
+    validation_rows = replay_rows if replay_rows else rows
+    validation_samples = len(validation_rows)
+    validation_positives = sum(row["label"] for row in validation_rows)
+    validation_negatives = validation_samples - validation_positives
+    validation_scans = sorted({
+        row.get("scan_id") or row.get("scan_time_et")
+        for row in validation_rows
+    })
+    validation_days = sorted({
+        row.get("trading_date")
+        for row in validation_rows
+        if row.get("trading_date")
+    })
+    base_meta.update(
+        {
+            "historical_validation_source": (
+                "historical_replay" if replay_rows else "live_only"
+            ),
+            "historical_validation_samples": validation_samples,
+            "historical_validation_unique_scans": len(validation_scans),
+            "historical_validation_trading_days": len(validation_days),
+            "historical_validation_positives": validation_positives,
+            "historical_validation_negatives": validation_negatives,
+        }
+    )
+
     if (
-        samples < MIN_SAMPLES
-        or len(scans) < MIN_UNIQUE_SCANS
-        or len(days) < MIN_TRADING_DAYS
-        or positives < MIN_CLASS_COUNT
-        or negatives < MIN_CLASS_COUNT
+        validation_samples < MIN_SAMPLES
+        or len(validation_scans) < MIN_UNIQUE_SCANS
+        or len(validation_days) < MIN_TRADING_DAYS
+        or validation_positives < MIN_CLASS_COUNT
+        or validation_negatives < MIN_CLASS_COUNT
     ):
         return None, base_meta
 
+    # Final/advisory fitting may use every resolved observation available at
+    # prediction time, but validation itself stays source-isolated.
     X, y = _matrix(rows, np)
+    validation_X, validation_y = _matrix(validation_rows, np)
 
     # Validate on whole trading days, not intraday timestamps. The target uses
     # the price 60 minutes after each observation, so an intraday cutoff can
     # leak outcome information from the validation period into training labels.
     # Whole-day boundaries provide a natural embargo because replay targets are
     # resolved within the same regular-market session.
-    validation_days = [
-        day
-        for day in days
-        if day
-    ]
-    if len(validation_days) < MIN_TRADING_DAYS:
-        return None, base_meta
 
     fold_bounds = (
         (0.55, 0.70),
@@ -677,21 +703,21 @@ def _validation_and_model(rows):
             continue
         train_idx = [
             i
-            for i, row in enumerate(rows)
+            for i, row in enumerate(validation_rows)
             if row.get("trading_date")
             and row["trading_date"] <= train_cut_day
         ]
         val_idx = [
             i
-            for i, row in enumerate(rows)
+            for i, row in enumerate(validation_rows)
             if row.get("trading_date")
             and train_cut_day < row["trading_date"] <= val_cut_day
         ]
         if len(train_idx) < 100 or len(val_idx) < 20:
             continue
 
-        ytr = y[train_idx]
-        yv = y[val_idx]
+        ytr = validation_y[train_idx]
+        yv = validation_y[val_idx]
         if (
             len(set(ytr.tolist())) < 2
             or len(set(yv.tolist())) < 2
@@ -701,7 +727,7 @@ def _validation_and_model(rows):
         model = xgb.train(
             _params(),
             xgb.DMatrix(
-                X[train_idx],
+                validation_X[train_idx],
                 label=ytr,
                 feature_names=FEATURES,
             ),
@@ -710,7 +736,7 @@ def _validation_and_model(rows):
         )
         probs = model.predict(
             xgb.DMatrix(
-                X[val_idx],
+                validation_X[val_idx],
                 feature_names=FEATURES,
             )
         )
