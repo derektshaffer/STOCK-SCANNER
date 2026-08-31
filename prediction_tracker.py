@@ -1252,7 +1252,7 @@ def _repeat_bounce_summary(rows):
     ]
     resolved=[
         row for row in candidates
-        if (row.get("outcomes") or {}).get("repeat_bounce_target1_first_touch") in {"target","stop"}
+        if (row.get("outcomes") or {}).get("repeat_bounce_target1_first_touch") in {"target","stop","ambiguous"}
     ]
     wins=[
         row for row in resolved
@@ -1271,9 +1271,14 @@ def _repeat_bounce_summary(rows):
     return {
         "entry_signals":len(candidates),
         "resolved_target_stop":len(resolved),
+        "ambiguous_count":sum(
+            (row.get("outcomes") or {}).get("repeat_bounce_target1_first_touch")=="ambiguous"
+            for row in resolved
+        ),
         "target_before_stop_rate":(
             round(len(wins)/len(resolved)*100.0,1) if resolved else None
         ),
+        "ambiguity_policy":"same-bar target+stop counted as failure",
         "avg_mfe_30m_pct":round(sum(mfe)/len(mfe),3) if mfe else None,
         "avg_mae_30m_pct":round(sum(mae)/len(mae),3) if mae else None,
     }
@@ -1338,7 +1343,7 @@ def tracker_summary(rows=None, symbol=None, current_metrics=None):
     ]
     touches = [
         r for r in calibration_rows
-        if (r.get("outcomes") or {}).get("target1_first_touch") in {"target", "stop"}
+        if (r.get("outcomes") or {}).get("target1_first_touch") in {"target", "stop", "ambiguous"}
     ]
     target_wins = [
         r for r in touches
@@ -1347,13 +1352,14 @@ def tracker_summary(rows=None, symbol=None, current_metrics=None):
 
     durable = _load_durable_calibration()
     if (
-        int(durable.get("schema_version") or 0) < 7
+        int(durable.get("schema_version") or 0) < 8
         or durable.get("feature_version") != ANALYZER_FEATURE_VERSION
         or durable.get("decision_score_version") != DECISION_SCORE_VERSION
     ):
-        # Schema 7 changed calibration sampling to regular-session ET
-        # ticker-hours and one ticker/day for multi-day horizons. Older
-        # calibration files can over-count off-hours or same-day observations.
+        # Schema 8 preserves the causal sampling from schema 7 and adds a
+        # conservative same-bar ambiguity policy: target+stop inside one OHLC
+        # bar counts as failure in calibration rather than being silently
+        # dropped from the denominator.
         durable = {}
     durable_timeframe = (
         durable
@@ -1414,10 +1420,15 @@ def tracker_summary(rows=None, symbol=None, current_metrics=None):
             if resolved_60 else None
         ),
         "resolved_target_stop": len(touches),
+        "target_stop_ambiguous": sum(
+            (r.get("outcomes") or {}).get("target1_first_touch") == "ambiguous"
+            for r in touches
+        ),
         "target_before_stop_rate": (
             round(len(target_wins) / len(touches) * 100.0, 1)
             if touches else None
         ),
+        "target_ambiguity_policy": "same-bar target+stop counted as failure",
         "potential_calibration": (
             (durable.get("potential_calibration") or {})
             or _bucket_calibration(calibration_rows, "potential_score")
