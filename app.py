@@ -597,6 +597,29 @@ _install_workspace_selector_cleanup()
 if view != previous_rendered_view:
     if view == "Momentum Scanner" and previous_rendered_view == "Stock Analyzer":
         st.session_state["_scanner_return_grace_until"] = time.time() + 2.5
+
+    if view == "Stock Analyzer":
+        # A direct click on the Analyzer tab is a clean landing page. Only a
+        # deliberate Scanner -> Analyze launch is allowed to carry a ticker
+        # into Analyzer automatically.
+        launch_state = (
+            st.session_state.get("_analyzer_bootstrap_launch_state")
+            or st.session_state.get("_analyzer_launch_state")
+            or {}
+        )
+        launch_process = launch_state.get("process")
+        launched_from_scanner = bool(
+            launch_process is not None and launch_process.poll() is None
+        )
+        if not launched_from_scanner:
+            st.session_state.pop("ticker_search_request", None)
+            st.session_state.pop("ticker", None)
+            st.session_state.pop("result", None)
+            st.session_state.pop("ticker_picker", None)
+            st.session_state.pop("_analyzer_background_request_symbol", None)
+            st.session_state["_analyzer_loading"] = False
+            st.session_state["_manual_analyze_requested"] = False
+
     st.session_state["_rendered_app_view"] = view
 
 @st.fragment(run_every=5)
