@@ -3294,6 +3294,42 @@ def test_point_in_time_fundamentals_exclude_future_filings():
     assert result["shares_change_yoy_pct"] == 10.0, result
 
 
+
+def test_point_in_time_sec_replay_excludes_future_dilution_filings():
+    import historical_timeframe_replay as htr
+
+    replay_day = datetime(2025, 8, 15, tzinfo=timezone.utc).date()
+    submissions = {
+        "sic": 3571,
+        "filings": {
+            "recent": {
+                "form": ["S-3", "424B5", "10-Q"],
+                "filingDate": [
+                    "2025-07-25",
+                    "2026-01-10",
+                    "2025-08-01",
+                ],
+            }
+        },
+    }
+    risk, count = htr._dilution_as_of(submissions, replay_day)
+    assert risk == "MODERATE", (risk, count)
+    assert count == 1, (risk, count)
+
+    earlier_day = datetime(2025, 7, 1, tzinfo=timezone.utc).date()
+    risk, count = htr._dilution_as_of(submissions, earlier_day)
+    assert risk == "NONE FOUND", (risk, count)
+    assert count == 0, (risk, count)
+
+    # The replay context must explicitly apply the replay date to company facts
+    # instead of using today's latest SEC values.
+    source = __import__("pathlib").Path(
+        "historical_timeframe_replay.py"
+    ).read_text(encoding="utf-8")
+    assert "_fundamental_snapshot(facts, as_of=replay_day.isoformat())" in source
+    assert "_dilution_as_of(submissions, replay_day)" in source
+
+
 def test_shared_timeframe_horizon_weights_match_live_formula():
     import analyzer_v2_integration as v2
 
@@ -6929,6 +6965,7 @@ if __name__ == "__main__":
         test_timeframe_trading_day_outcomes_skip_weekends,
         test_timeframe_calibration_uses_matched_horizons,
         test_point_in_time_fundamentals_exclude_future_filings,
+        test_point_in_time_sec_replay_excludes_future_dilution_filings,
         test_shared_timeframe_horizon_weights_match_live_formula,
         test_swing_timeframe_ml_features_ignore_future_outcome_fields,
         test_swing_timeframe_ml_folds_never_mix_same_replay_date,
