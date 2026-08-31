@@ -5409,6 +5409,104 @@ def test_intraday_thesis_keeps_entry_geometry_stable_and_can_still_enter():
 
 
 
+
+def test_intraday_thesis_never_anchors_from_untrusted_data():
+    import tempfile
+    from pathlib import Path
+    import strategy_thesis as thesis
+
+    now = datetime(2026, 8, 31, 14, 0, tzinfo=timezone.utc)
+    candidate = {
+        "symbol": "TEST",
+        "price": 9.0,
+        "trade_plan": {
+            "status": "WAIT",
+            "preferred_plan": "breakout",
+            "breakout_reference_level": 9.0,
+            "breakout_reference_locked": True,
+            "breakout": {
+                "entry_low": 9.0, "entry_high": 9.1, "stop": 8.7,
+                "target1": 9.8,
+            },
+            "selected": {
+                "entry_low": 9.0, "entry_high": 9.1, "stop": 8.7,
+                "target1": 9.8,
+            },
+        },
+    }
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "thesis.json"
+        context = thesis.prepare_intraday_thesis(
+            candidate,
+            now=now,
+            store_path=path,
+            evidence_trusted=False,
+        )
+        assert context.get("status") == "NO ACTIVE THESIS", context
+        assert "not trusted" in str(context.get("change_reason") or ""), context
+        assert thesis._load(path) == {}, thesis._load(path)
+
+
+def test_untrusted_refresh_cannot_accumulate_plan_switch_confirmation():
+    import tempfile
+    from pathlib import Path
+    import strategy_thesis as thesis
+
+    now = datetime(2026, 8, 31, 14, 0, tzinfo=timezone.utc)
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "thesis.json"
+        active = {
+            "symbol": "TEST",
+            "price": 8.95,
+            "trade_plan": {
+                "status": "WAIT",
+                "preferred_plan": "breakout",
+                "breakout_reference_level": 9.0,
+                "breakout_reference_locked": True,
+                "breakout_structure": {"failed_breakout": False},
+                "breakout": {
+                    "entry_low": 9.0, "entry_high": 9.1, "stop": 8.7,
+                    "target1": 9.8,
+                },
+                "selected": {
+                    "entry_low": 9.0, "entry_high": 9.1, "stop": 8.7,
+                    "target1": 9.8,
+                },
+            },
+        }
+        thesis.prepare_intraday_thesis(
+            active, now=now, store_path=path, evidence_trusted=True
+        )
+
+        stale_alternate = {
+            "symbol": "TEST",
+            "price": 9.05,
+            "trade_plan": {
+                "status": "WAIT",
+                "preferred_plan": "pullback",
+                "breakout_structure": {"failed_breakout": False},
+                "pullback": {
+                    "entry_low": 8.4, "entry_high": 8.6, "stop": 8.1,
+                    "target1": 9.3,
+                },
+                "selected": {
+                    "entry_low": 8.4, "entry_high": 8.6, "stop": 8.1,
+                    "target1": 9.3,
+                },
+            },
+        }
+        context = thesis.prepare_intraday_thesis(
+            stale_alternate,
+            now=now + timedelta(minutes=5),
+            store_path=path,
+            replacement_confirmations=3,
+            evidence_trusted=False,
+        )
+        assert context.get("status") == "HOLDING PRIOR THESIS / DATA CHECK", context
+        assert context.get("pending_count") == 0, context
+        assert stale_alternate["trade_plan"]["preferred_plan"] == "breakout", stale_alternate
+
+
 def test_intraday_thesis_never_softens_no_trade_to_wait():
     import tempfile
     from pathlib import Path
@@ -6103,6 +6201,8 @@ if __name__ == "__main__":
         test_analyzer_live_test_status_exposes_tracking_health,
         test_intraday_thesis_state_is_namespaced_per_browser_session,
         test_intraday_thesis_keeps_entry_geometry_stable_and_can_still_enter,
+        test_intraday_thesis_never_anchors_from_untrusted_data,
+        test_untrusted_refresh_cannot_accumulate_plan_switch_confirmation,
         test_intraday_thesis_never_softens_no_trade_to_wait,
         test_intraday_thesis_does_not_anchor_a_rejected_first_plan,
         test_intraday_thesis_requires_persistent_replacement_before_family_switch,
