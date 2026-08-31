@@ -330,7 +330,7 @@ def get_multi_bars(symbols, start_et, end_et):
     return dict(merged)
 
 
-def _tradier_symbol_bars(symbol, start_et, end_et):
+def _tradier_symbol_bars(symbol, start_et, end_et, session_filter="open"):
     if not TRADIER_TOKEN or get_tradier_timesales_bars is None:
         return symbol, []
 
@@ -343,7 +343,7 @@ def _tradier_symbol_bars(symbol, start_et, end_et):
                 start_et.astimezone(timezone.utc),
                 end_et.astimezone(timezone.utc),
                 interval="1min",
-                session_filter="open",
+                session_filter=session_filter,
             )
             return symbol, bars or []
         except urllib.error.HTTPError as exc:
@@ -358,7 +358,7 @@ def _tradier_symbol_bars(symbol, start_et, end_et):
     return symbol, []
 
 
-def get_tradier_bars(symbols, start_et, end_et):
+def get_tradier_bars(symbols, start_et, end_et, session_filter="open"):
     symbols = sorted({str(symbol).upper().strip() for symbol in symbols if symbol})
     if not symbols:
         return {}
@@ -372,6 +372,7 @@ def get_tradier_bars(symbols, start_et, end_et):
                 symbol,
                 start_et,
                 end_et,
+                session_filter,
             ): symbol
             for symbol in symbols
         }
@@ -386,8 +387,13 @@ def get_tradier_bars(symbols, start_et, end_et):
     return merged
 
 
-def get_outcome_bars(symbols, start_et, end_et):
-    """Resolve outcome prices without making either provider mandatory."""
+def get_outcome_bars(symbols, start_et, end_et, tradier_session_filter="open"):
+    """Resolve outcome prices without making either provider mandatory.
+
+    Production Scanner outcomes keep the historical regular-session default.
+    Shadow opportunity research may request session_filter="all" so premarket
+    and after-hours bars are measurable without changing the production target.
+    """
     symbols = sorted({str(symbol).upper().strip() for symbol in symbols if symbol})
     merged = {}
     sources = []
@@ -395,10 +401,14 @@ def get_outcome_bars(symbols, start_et, end_et):
     prefer_tradier = OUTCOME_MARKET_PROVIDER != "alpaca"
     if prefer_tradier and TRADIER_TOKEN and get_tradier_timesales_bars is not None:
         try:
-            tradier = get_tradier_bars(symbols, start_et, end_et)
+            tradier = get_tradier_bars(
+                symbols, start_et, end_et, session_filter=tradier_session_filter
+            )
             merged.update(tradier)
             if tradier:
-                sources.append("tradier_1min_open")
+                sources.append(
+                    "tradier_1min_" + str(tradier_session_filter or "open")
+                )
         except Exception as exc:
             print(f"WARN Tradier outcome data failed: {exc}")
 
@@ -420,10 +430,14 @@ def get_outcome_bars(symbols, start_et, end_et):
         and TRADIER_TOKEN
         and get_tradier_timesales_bars is not None
     ):
-        tradier = get_tradier_bars(symbols, start_et, end_et)
+        tradier = get_tradier_bars(
+            symbols, start_et, end_et, session_filter=tradier_session_filter
+        )
         merged.update(tradier)
         if tradier:
-            sources.append("tradier_1min_open")
+            sources.append(
+                "tradier_1min_" + str(tradier_session_filter or "open")
+            )
 
     if not merged:
         raise RuntimeError(
