@@ -228,7 +228,7 @@ def _load():
     return local
 
 
-def _save(rows, force_remote=False):
+def _save(rows, force_remote=False, sync_remote=True):
     local_ok = False
     try:
         LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -239,11 +239,20 @@ def _save(rows, force_remote=False):
     except Exception:
         local_ok = False
 
-    sync = _sync_remote(rows, force=force_remote) if local_ok else {
-        "enabled": bool(GITHUB_TOKEN),
-        "synced": False,
-        "reason": "local_save_failed",
-    }
+    if local_ok and sync_remote:
+        sync = _sync_remote(rows, force=force_remote)
+    elif local_ok:
+        sync = {
+            "enabled": bool(GITHUB_TOKEN),
+            "synced": False,
+            "reason": "deferred_background_sync",
+        }
+    else:
+        sync = {
+            "enabled": bool(GITHUB_TOKEN),
+            "synced": False,
+            "reason": "local_save_failed",
+        }
     _REMOTE_STATE["last_sync_result"] = sync
     return local_ok
 
@@ -254,8 +263,12 @@ def _bucket_key(symbol, when):
     return f"{symbol}:{bucket.isoformat()}"
 
 
-def record_prediction(metrics, now=None):
-    """Record one Analyzer prediction per ticker per five-minute bucket."""
+def record_prediction(metrics, now=None, defer_remote=False):
+    """Record one Analyzer prediction per ticker per five-minute bucket.
+
+    defer_remote keeps the launch path fast: the row is still written locally
+    immediately, while durable GitHub sync can run asynchronously afterward.
+    """
     now = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
     symbol = str(metrics.get("symbol") or "").upper().strip()
     if not symbol:
@@ -479,7 +492,11 @@ def record_prediction(metrics, now=None):
     }
     rows.append(row)
     force_remote = not bool(_REMOTE_STATE.get("last_sync"))
-    ok = _save(rows, force_remote=force_remote)
+    ok = _save(
+        rows,
+        force_remote=force_remote and not defer_remote,
+        sync_remote=not defer_remote,
+    )
     sync = _REMOTE_STATE.get("last_sync_result") or {}
     return {
         "recorded": ok,
@@ -487,6 +504,14 @@ def record_prediction(metrics, now=None):
         "path": str(LOG_PATH),
         "durable_sync": sync,
     }
+
+
+def sync_predictions_remote(force=True):
+    """Durably sync locally recorded predictions without blocking analysis."""
+    rows=_load()
+    if not rows:
+        return {"enabled":bool(GITHUB_TOKEN),"synced":False,"reason":"no_rows"}
+    return _sync_remote(rows,force=bool(force))
 
 
 def _bar_dt(bar):
