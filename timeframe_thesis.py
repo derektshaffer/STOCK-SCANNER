@@ -18,6 +18,8 @@ import tempfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from analyzer_runtime_context import get_analyzer_namespace
+
 
 VERSION = "timeframe-thesis-v1"
 VALID_FITS = {"INTRADAY", "SWING", "LONGER-TERM", "MIXED"}
@@ -59,10 +61,7 @@ def _parse_dt(value):
 def _state_path(path=None):
     if path is not None:
         return Path(path)
-    namespace = (
-        os.environ.get("ANALYZER_THESIS_NAMESPACE", "").strip()
-        or "standalone"
-    )
+    namespace = get_analyzer_namespace()
     digest = hashlib.sha256(namespace.encode("utf-8")).hexdigest()[:16]
     return STATE_PATH.with_name(
         f"{STATE_PATH.stem}-{digest}{STATE_PATH.suffix}"
