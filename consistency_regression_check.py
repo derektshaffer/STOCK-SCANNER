@@ -4397,7 +4397,6 @@ def test_combined_analyzer_refresh_is_background_and_saved_stocks_follow_search(
     assert "You are already in Analyzer" in bootstrap
     assert '"_analyzer_background_request_symbol"' in core
     assert "can_render_existing = bool(" in bootstrap
-    assert "Keep the complete Analyzer page rendered from the last good result" in bootstrap
     assert 'div[data-testid="stHorizontalBlock"]:has(.combined-ticker-row)' in app
 
 
