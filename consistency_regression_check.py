@@ -5780,6 +5780,133 @@ def test_intraday_thesis_keeps_entry_geometry_stable_and_can_still_enter():
 
 
 
+
+def test_cancelled_analyzer_cannot_persist_a_staged_new_thesis():
+    import tempfile
+    from pathlib import Path
+    import strategy_thesis as thesis
+
+    now = datetime(2026, 8, 31, 14, 0, tzinfo=timezone.utc)
+    metrics = {
+        "symbol": "TEST",
+        "price": 8.95,
+        "trade_plan": {
+            "status": "WAIT",
+            "preferred_plan": "breakout",
+            "breakout_reference_level": 9.0,
+            "breakout_reference_locked": True,
+            "breakout": {
+                "entry_low": 9.0, "entry_high": 9.1, "stop": 8.7,
+                "target1": 9.8,
+            },
+            "selected": {
+                "entry_low": 9.0, "entry_high": 9.1, "stop": 8.7,
+                "target1": 9.8,
+            },
+        },
+    }
+
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "thesis.json"
+        context = thesis.prepare_intraday_thesis(
+            metrics,
+            now=now,
+            store_path=path,
+            persist=False,
+        )
+        assert context.get("status") == "NEW THESIS", context
+        assert metrics.get("_thesis_transaction", {}).get("action") == "upsert", metrics
+        # This is the cancellation case: prepare ran, but final commit did not.
+        assert thesis._load(path) == {}, thesis._load(path)
+
+        metrics["decision_v2"] = {
+            "entry_readiness": 60.0,
+            "evidence_strength": 65.0,
+            "potential_score": 70.0,
+        }
+        assert thesis.commit_intraday_thesis(
+            metrics,
+            context,
+            now=now,
+            store_path=path,
+        )
+        stored = thesis._load(path)
+        assert len(stored) == 1, stored
+
+
+def test_cancelled_plan_switch_does_not_advance_replacement_counter():
+    import copy
+    import tempfile
+    from pathlib import Path
+    import strategy_thesis as thesis
+
+    now = datetime(2026, 8, 31, 14, 0, tzinfo=timezone.utc)
+    base = {
+        "symbol": "TEST",
+        "price": 8.95,
+        "trade_plan": {
+            "status": "WAIT",
+            "preferred_plan": "breakout",
+            "breakout_reference_level": 9.0,
+            "breakout_reference_locked": True,
+            "breakout_structure": {"failed_breakout": False},
+            "breakout": {
+                "entry_low": 9.0, "entry_high": 9.1, "stop": 8.7,
+                "target1": 9.8,
+            },
+            "selected": {
+                "entry_low": 9.0, "entry_high": 9.1, "stop": 8.7,
+                "target1": 9.8,
+            },
+        },
+    }
+    alternate = {
+        "symbol": "TEST",
+        "price": 9.05,
+        "trade_plan": {
+            "status": "WAIT",
+            "preferred_plan": "pullback",
+            "breakout_structure": {"failed_breakout": False},
+            "pullback": {
+                "entry_low": 8.4, "entry_high": 8.6, "stop": 8.1,
+                "target1": 9.3,
+            },
+            "selected": {
+                "entry_low": 8.4, "entry_high": 8.6, "stop": 8.1,
+                "target1": 9.3,
+            },
+        },
+    }
+
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "thesis.json"
+        thesis.prepare_intraday_thesis(base, now=now, store_path=path)
+
+        cancelled = copy.deepcopy(alternate)
+        first = thesis.prepare_intraday_thesis(
+            cancelled,
+            now=now + timedelta(minutes=5),
+            store_path=path,
+            replacement_confirmations=3,
+            persist=False,
+        )
+        assert first.get("pending_count") == 1, first
+        # No commit: this simulated run is discarded.
+        persisted = next(iter(thesis._load(path).values()))
+        assert int(persisted.get("pending_count") or 0) == 0, persisted
+
+        next_run = copy.deepcopy(alternate)
+        second = thesis.prepare_intraday_thesis(
+            next_run,
+            now=now + timedelta(minutes=10),
+            store_path=path,
+            replacement_confirmations=3,
+            persist=False,
+        )
+        assert second.get("pending_count") == 1, second
+        assert second.get("status") == "HOLDING PRIOR THESIS", second
+
+
 def test_intraday_thesis_never_anchors_from_untrusted_data():
     import tempfile
     from pathlib import Path
@@ -6709,6 +6836,8 @@ if __name__ == "__main__":
         test_setup_horizon_tracker_is_display_continuity_only,
         test_intraday_thesis_state_is_namespaced_per_browser_session,
         test_intraday_thesis_keeps_entry_geometry_stable_and_can_still_enter,
+        test_cancelled_analyzer_cannot_persist_a_staged_new_thesis,
+        test_cancelled_plan_switch_does_not_advance_replacement_counter,
         test_intraday_thesis_never_anchors_from_untrusted_data,
         test_untrusted_refresh_cannot_accumulate_plan_switch_confirmation,
         test_intraday_thesis_never_softens_no_trade_to_wait,
