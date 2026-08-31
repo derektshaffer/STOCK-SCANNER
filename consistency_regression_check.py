@@ -3849,6 +3849,8 @@ def test_historical_analogs_cannot_change_live_plan_geometry_or_scores():
     assert '"historical_research_only":True' in stock_source
     assert "history_points = 0.0" in v2_source
     assert "Historical bounce occurrence rates are reference context only" in v2_source
+    assert "Historical behavior is displayed separately as research-only" in v2_source
+    assert "Historical failure rates remain research-only" in v2_source
     assert "must not help an entry clear the safety gate" in v2_source
 
 
