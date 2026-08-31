@@ -959,10 +959,79 @@ if _position_enabled:
 if not _position_enabled:
     selected=plan.get("selected") or {}
     status=plan.get("status") or "WAIT"
+
+    _plan_type=str(plan.get("preferred_plan") or "pullback")
+    _plan_snapshot_key=f"_analyzer_plan_snapshot_{ticker}"
+    _previous_plan_snapshot=st.session_state.get(_plan_snapshot_key)
+    _current_plan_snapshot={
+        "type":_plan_type,
+        "entry":zone_text(selected),
+        "target1":money(selected.get("target1")),
+    }
+    if (
+        isinstance(_previous_plan_snapshot,dict)
+        and _previous_plan_snapshot.get("type")
+        and _previous_plan_snapshot.get("type") != _plan_type
+    ):
+        _old_type=str(_previous_plan_snapshot.get("type") or "—").replace("_"," ").upper()
+        _new_type=_plan_type.replace("_"," ").upper()
+        st.warning(
+            f"🔄 **PLAN CHANGED: {_old_type} → {_new_type}** · "
+            f"Previous entry {_previous_plan_snapshot.get('entry') or '—'} / "
+            f"T1 {_previous_plan_snapshot.get('target1') or '—'} → "
+            f"new entry {_current_plan_snapshot.get('entry')} / "
+            f"T1 {_current_plan_snapshot.get('target1')}. "
+            + str(plan.get("plan_selection_note") or "")
+        )
+    st.session_state[_plan_snapshot_key]=_current_plan_snapshot
+
+    _seq_top=r.get("bounce_sequence") or {}
+    _completed_top=int(_seq_top.get("completed_bounces") or 0)
+    _next_top=int(_seq_top.get("next_bounce_number") or (_completed_top+1))
+    _leg_top=str(_seq_top.get("current_leg") or "").upper()
+    _bounce_cols=st.columns(3)
+    for _idx,_col in enumerate(_bounce_cols, start=1):
+        if _completed_top >= _idx:
+            _bounce_value=f"✓ CONFIRMED"
+            _bounce_note=(
+                f"{float(_seq_top.get(f'bounce{_idx}_pct')):.1f}% rebound"
+                if _seq_top.get(f"bounce{_idx}_pct") is not None
+                else "completed swing rebound"
+            )
+            _bounce_cls="good"
+        elif _next_top == _idx and _leg_top=="BOUNCING":
+            _bounce_value="… DEVELOPING"
+            _bounce_note="rebound underway; not confirmed yet"
+            _bounce_cls="warn"
+        elif _next_top == _idx and "PULL" in _leg_top:
+            _bounce_value="○ FORMING"
+            _bounce_note="dip/pullback forming before possible bounce"
+            _bounce_cls="warn"
+        else:
+            _bounce_value="— NOT REACHED"
+            _bounce_note="no confirmed bounce at this stage"
+            _bounce_cls=""
+        card(
+            _col,
+            f"BOUNCE #{_idx}",
+            _bounce_value,
+            _bounce_note,
+            _bounce_cls,
+            "A check mark only appears after the sequence detector confirms a completed pullback-to-rebound swing. A developing bounce is not treated as confirmed.",
+        )
+
     status_cls="good" if status=="ENTRY AVAILABLE" else "bad" if status=="NO TRADE" else "warn"
     why=" ".join(plan.get("reasons") or [])
+    _plan_role=str(plan.get("selected_plan_role") or "primary")
+    _plan_family=str(plan.get("preferred_plan") or "pullback").replace("_"," ").upper()
+    _rb_num=((plan.get("repeat_bounce") or {}).get("bounce_number"))
+    _plan_header=(
+        f"ACTIVE ALTERNATIVE · BOUNCE #{int(_rb_num)}"
+        if _plan_role=="alternative_repeat_bounce" and _rb_num is not None
+        else f"PRIMARY PLAN · {_plan_family}"
+    )
     st.markdown(
-        f'<div class="tradeplan"><div class="k">SUGGESTED TRADE PLAN</div>'
+        f'<div class="tradeplan"><div class="k">SUGGESTED TRADE PLAN · {html.escape(_plan_header)}</div>'
         f'<div class="tradeaction {status_cls}">{html.escape(plan.get("action") or status)}</div>'
         f'<div class="tradewhy">{html.escape(why)}</div></div>',
         unsafe_allow_html=True,
@@ -978,6 +1047,7 @@ if not _position_enabled:
     card(tp[6],"PLAN CONFIDENCE",f'{plan.get("confidence","—")} / 100',plan.get("confidence_label") or "","good" if (plan.get("confidence") or 0)>=75 else "warn")
 
     with st.expander("Trade plan details — pullback · repeat bounce · breakout"):
+        st.caption(plan.get("plan_selection_note") or "")
         pc1,pc2=st.columns(2)
         pull=plan.get("pullback") or {}
         brk=plan.get("breakout") or {}
@@ -1004,6 +1074,8 @@ if not _position_enabled:
         rb=plan.get("repeat_bounce") or {}
         if rb:
             st.markdown(f"#### Bounce #{int(rb.get('bounce_number') or 0)} quick-trade plan")
+            if plan.get("repeat_bounce_status"):
+                st.info("**Status:** " + str(plan.get("repeat_bounce_status")))
             _rb1,_rb2,_rb3=st.columns(3)
             with _rb1:
                 st.write(f'**Developing dip:** {money(rb.get("dip_low"))}')
@@ -1123,10 +1195,11 @@ if _impulse.get("detected"):
         "contracting vs impulse" if _impulse.get("pullback_volume_contracting") else "not clearly contracting",
         "good" if _impulse.get("pullback_volume_contracting") else "warn",
     )
-    st.caption(
-        "The analyzer measures the pullback as a fraction of the preceding impulse. "
-        "A touch of the preferred zone is not an automatic entry; the trade plan waits for a hold/bounce/reclaim."
-    )
+    with st.expander("Impulse / pullback context", expanded=False):
+        st.caption(
+            "The analyzer measures the pullback as a fraction of the preceding impulse. "
+            "A touch of the preferred zone is not an automatic entry; the trade plan waits for a hold/bounce/reclaim."
+        )
 
 
 _sequence = r.get("bounce_sequence") or {}
@@ -1199,10 +1272,11 @@ if _sequence.get("detected"):
         "A structural score for the multi-bounce sequence using bounce size, bounce decay, volume decay, lower highs, higher lows, and the current leg. It is not a probability of profit.",
     )
 
-    st.caption(
-        "Repeat-bounce opportunity and full-run continuation are intentionally separate. "
-        "A second or third bounce can still offer a short-duration opportunity even when the larger run is weakening."
-    )
+    with st.expander("Multi-bounce context", expanded=False):
+        st.caption(
+            "Repeat-bounce opportunity and full-run continuation are intentionally separate. "
+            "A second or third bounce can still offer a short-duration opportunity even when the larger run is weakening."
+        )
 
     _post2 = _hist_intr.get("post_second_bounce_drop5_rate_pct")
     _post3 = _hist_intr.get("post_third_bounce_drop5_rate_pct")
@@ -1357,11 +1431,14 @@ if _full:
         )
 
     _dominant = str(_full.get("dominant_scenario") or "").replace("_", " ").upper()
-    st.caption(
-        f'Current dominant scenario: {_dominant or "—"}. '
-        'Scenario percentages are relative evidence weights, not calibrated probabilities. '
-        'Validated ML probabilities remain separate.'
-    )
+    with st.expander(
+        f"Scenario context · dominant: {_dominant or '—'}",
+        expanded=False,
+    ):
+        st.caption(
+            'Scenario percentages are relative evidence weights, not calibrated probabilities. '
+            'Validated ML probabilities remain separate.'
+        )
 
     with st.expander("Full-spectrum analysis details"):
         _cats = _full.get("categories") or {}
@@ -1467,7 +1544,8 @@ with st.expander("Support & resistance levels", expanded=False):
             hide_index=True,
             column_config={"Price":st.column_config.NumberColumn(format="$%.2f")},
         )
-    st.caption("Last touch = most recent regular-session test of the level. Recent tests use 1-minute bars; older tests use 5-minute bars as a fallback. Times are Eastern (ET).")
+    with st.expander("Support / resistance timing note", expanded=False):
+        st.caption("Last touch = most recent regular-session test of the level. Recent tests use 1-minute bars; older tests use 5-minute bars as a fallback. Times are Eastern (ET).")
 
 h=r.get("historical_analogs") or {}
 st.markdown('<div class="section">Historical spike analogs <span style="font-size:12px;color:#91a7c2">research-only</span></div>',unsafe_allow_html=True)
@@ -1476,11 +1554,12 @@ if h.get("status")=="ok":
     for col,n in zip(hc,(1,2,3,5)):
         x=sm.get(f"d{n}") or {}
         card(col,f"+{n} DAY",f'{x.get("up_pct") if x.get("up_pct") is not None else "—"}% higher',f'Median {pp(x.get("median"))} · n={x.get("n",0)}')
-    st.caption(
-        f'Closest {h.get("sample_count",0)} same-ticker spikes, threshold ≥ '
-        f'{h.get("threshold_pct")}% · source: {h.get("feed")} · research-only; '
-        'these completed-day analogs do not change the live entry/target/confidence.'
-    )
+    with st.expander("Historical analog context", expanded=False):
+        st.caption(
+            f'Closest {h.get("sample_count",0)} same-ticker spikes, threshold ≥ '
+            f'{h.get("threshold_pct")}% · source: {h.get("feed")} · research-only; '
+            'these completed-day analogs do not change the live entry/target/confidence.'
+        )
     sdf=pd.DataFrame(h.get("samples") or [])
     if not sdf.empty:
         show=[c for c in ["date","spike_pct","d1","d2","d3","d5"] if c in sdf.columns]
