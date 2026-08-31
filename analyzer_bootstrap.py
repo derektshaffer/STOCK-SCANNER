@@ -2,6 +2,7 @@ from pathlib import Path
 import os
 import runpy
 import threading
+import uuid
 
 import pandas as pd
 import streamlit as st
@@ -524,6 +525,14 @@ def prepare_analyzer_result(symbol):
 
 def run():
     _preload_secrets()
+    thesis_namespace=st.session_state.setdefault(
+        "_analyzer_thesis_namespace",
+        uuid.uuid4().hex,
+    )
+    # Standalone Analyzer executes in this process; combined mode also passes
+    # this namespace into its subprocess. Either way, one browser session can
+    # never inherit another user's active ticker thesis.
+    os.environ["ANALYZER_THESIS_NAMESPACE"]=str(thesis_namespace)
     combined = _combined_workspace()
     # Fragment reruns should never dim the Analyzer. Scope this CSS to stale
     # Streamlit elements so numbers can update without the page flashing.
@@ -634,6 +643,7 @@ def run():
                         os.environ.get("TRADIER_ACCESS_TOKEN", "")
                         or os.environ.get("TRADIER_TOKEN", "")
                     ),
+                    thesis_namespace=thesis_namespace,
                     timeout_seconds=180,
                 )
                 if not launch_state.get("started"):
