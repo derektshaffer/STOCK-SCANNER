@@ -513,7 +513,6 @@ def run():
     install_ml_analysis(sa)
     install_v2_analysis(sa)
 
-    launch_error = None
     if combined:
         _cleanup_combined_browser_helpers()
 
@@ -525,16 +524,112 @@ def run():
             with st.container(key="saved_stocks_top"):
                 _render_saved_stocks("toolbar")
 
-        # Render the toolbar first so saved-ticker clicks can visibly show
-        # "Analyzing..." before the expensive combined analysis executes.
         _render_saved_stock_toolbar()
 
-        # Scanner/saved-stock launches may arrive with result cleared. This is
-        # a fast no-op when the requested ticker is already analyzed.
-        launch_error = _prepare_combined_result(sa)
+        # Never run a fresh Analyzer calculation inside the full-app render.
+        # A deep analysis can take long enough to block Streamlit's session,
+        # which freezes BOTH workspace tabs and prevents the 2-minute scanner
+        # monitor from polling. Start it in the existing cancelable subprocess
+        # runtime instead, then poll it from a tiny fragment.
+        requested_ticker = str(
+            st.session_state.get("ticker_search_request")
+            or st.session_state.get("ticker")
+            or "SDOT"
+        ).upper().strip()
+        existing_result = st.session_state.get("result")
+        existing_symbol = str(
+            (existing_result or {}).get("symbol") or ""
+        ).upper().strip() if isinstance(existing_result, dict) else ""
+        result_ready = bool(
+            requested_ticker
+            and isinstance(existing_result, dict)
+            and existing_result
+            and (not existing_symbol or existing_symbol == requested_ticker)
+        )
 
-        if launch_error:
-            st.error(f"Could not analyze the selected ticker: {launch_error}")
+        if not result_ready:
+            from analyzer_launch_runtime import (
+                cancel_analyzer_process,
+                poll_analyzer_process,
+                start_analyzer_process,
+            )
+
+            launch_key = "_analyzer_bootstrap_launch_state"
+            launch_state = st.session_state.get(launch_key)
+            launch_symbol = str(
+                (launch_state or {}).get("symbol") or ""
+            ).upper().strip()
+            launch_process = (launch_state or {}).get("process")
+            launch_active = bool(
+                launch_process is not None
+                and launch_process.poll() is None
+            )
+
+            # A saved-ticker click can change the requested symbol while a
+            # previous launch is still running. Cancel the obsolete work rather
+            # than letting it overwrite the newly requested analysis later.
+            if launch_state and launch_symbol != requested_ticker:
+                cancel_analyzer_process(launch_state)
+                st.session_state[launch_key] = None
+                launch_state = None
+                launch_active = False
+
+            if not launch_state:
+                launch_state = start_analyzer_process(
+                    requested_ticker,
+                    alpaca_key=os.environ.get("ALPACA_API_KEY", ""),
+                    alpaca_secret=os.environ.get("ALPACA_SECRET_KEY", ""),
+                    alpaca_live_feed=os.environ.get("ALPACA_LIVE_FEED", "iex"),
+                    tradier_token=(
+                        os.environ.get("TRADIER_ACCESS_TOKEN", "")
+                        or os.environ.get("TRADIER_TOKEN", "")
+                    ),
+                    timeout_seconds=180,
+                )
+                if not launch_state.get("started"):
+                    st.error(
+                        "Could not start Analyzer: "
+                        + str(launch_state.get("message") or "unknown error")
+                    )
+                    return
+                st.session_state[launch_key] = launch_state
+                launch_active = True
+
+            @st.fragment(run_every="1s")
+            def _render_combined_analysis_loader():
+                state = st.session_state.get(launch_key)
+                if not state:
+                    return
+
+                outcome = poll_analyzer_process(state)
+                if outcome.get("done"):
+                    st.session_state[launch_key] = None
+                    if not outcome.get("ok"):
+                        st.error(
+                            "Analyzer failed: "
+                            + str(outcome.get("message") or "unknown error")
+                        )
+                        return
+
+                    symbol = str(
+                        outcome.get("symbol") or requested_ticker
+                    ).upper().strip()
+                    st.session_state["result"] = outcome.get("result")
+                    st.session_state["ticker"] = symbol
+                    st.session_state["ticker_search_request"] = symbol
+                    st.session_state.pop("ticker_picker", None)
+                    st.session_state.pop("saved_stock_loading", None)
+                    st.rerun(scope="app")
+                    return
+
+                elapsed = float(outcome.get("runtime_seconds") or 0.0)
+                st.info(
+                    f"Analyzing {requested_ticker} in the background… "
+                    f"{elapsed:.0f}s elapsed. You can switch back to the "
+                    "Momentum Scanner while this finishes."
+                )
+
+            _render_combined_analysis_loader()
             return
 
     from historical_ui import render_historical_setup
