@@ -705,14 +705,10 @@ def _potential_score(metrics, sec, market, catalyst):
 
     hist = metrics.get("historical_setup") or {}
     if hist.get("status") == "ok":
-        bias = _num(hist.get("bias_score")) or 0.0
-        n = int(hist.get("sample_count") or 0)
-        weight = min(1.0, n / 20.0)
-        history_points = _clamp(bias * 0.8 * weight, -8.0, 8.0)
-        if bias >= 5:
-            reasons.append("bullish same-ticker analogs")
-        elif bias <= -5:
-            reasons.append("bearish same-ticker analogs")
+        # Completed historical analogs remain visible in the research section,
+        # but they are not allowed to change the live upside score.
+        history_points = 0.0
+        reasons.append("historical analogs shown as research-only context")
 
     ml = metrics.get("ml_prediction") or {}
     edge = _num(ml.get("ml_edge_score"))
@@ -1317,10 +1313,8 @@ def _entry_readiness(metrics):
         number=int(rb.get("bounce_number") or 0)
         if status=="ENTRY AVAILABLE":
             repeat_points+=7.0
-        hist_rate=_num(rb.get("historical_bounce_rate_pct"))
-        if hist_rate is not None:
-            if hist_rate>=65:repeat_points+=4.0
-            elif hist_rate<35:repeat_points-=4.0
+        # Historical bounce occurrence rates are reference context only.
+        # Live entry readiness uses the current sequence, trigger and execution.
         if number>=3:
             repeat_points-=2.0  # later bounces deserve a small maturity penalty
         if int(sequence.get("lower_high_streak") or 0)>=2:
@@ -1365,14 +1359,14 @@ def _evidence_strength(metrics, sec, market, catalyst):
 
     hist = metrics.get("historical_setup") or {}
     n = int(hist.get("sample_count") or 0)
-    hist_points = min(32.0, n * 1.3)
-    score += hist_points
-    if n >= 25:
-        reasons.append("high historical analog sample")
-    elif n >= 15:
-        reasons.append("moderate historical analog sample")
+    # Historical analog coverage is informative research context, not live
+    # evidence strength. It must not help an entry clear the safety gate.
+    if n:
+        reasons.append(
+            f"{n} historical analog(s) available · research-only"
+        )
     else:
-        reasons.append("limited historical analog sample")
+        reasons.append("historical analog research context unavailable")
 
     ml = metrics.get("ml_prediction") or {}
     validated = int(ml.get("validated_edge_model_count") or 0)
