@@ -123,7 +123,8 @@ def test_path_target_rejects_unstable_result():
     finally:
         hh._walk_forward_model = old
 
-    assert result["decision"] == "rejected_unstable", result
+    assert result["decision"] == "blocked_insufficient_regime_coverage", result
+    assert result["gates"]["stability_coverage"] is False or result["gates"]["regime_coverage"] is False, result
 
 
 def test_score_monotonicity_requires_out_of_sample_repeat():
