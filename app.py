@@ -735,7 +735,7 @@ def _workspace_scanner_monitor():
         latest = history[-1]
         if time.time() - float(latest.get("detected_at") or 0) <= 600:
             st.warning(
-                "🚨 **Actionable Momentum Alert:** "
+                "🚨 **Momentum Review Alert:** "
                 + str(latest.get("message") or "")
                 + ". **Review it in Analyzer before deciding whether to trade.**"
             )
