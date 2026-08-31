@@ -504,15 +504,6 @@ def run():
     # Streamlit elements so numbers can update without the page flashing.
     _install_no_fade_css(combined=combined)
 
-    import stock_analyzer as sa
-    from historical_integration import install_historical_analysis
-    from ml_integration import install_ml_analysis
-    from analyzer_v2_integration import install_v2_analysis
-
-    install_historical_analysis(sa)
-    install_ml_analysis(sa)
-    install_v2_analysis(sa)
-
     if combined:
         _cleanup_combined_browser_helpers()
 
@@ -631,6 +622,15 @@ def run():
 
             _render_combined_analysis_loader()
             return
+
+    import stock_analyzer as sa
+    from historical_integration import install_historical_analysis
+    from ml_integration import install_ml_analysis
+    from analyzer_v2_integration import install_v2_analysis
+
+    install_historical_analysis(sa)
+    install_ml_analysis(sa)
+    install_v2_analysis(sa)
 
     from historical_ui import render_historical_setup
     from ml_ui import render_ml_prediction
