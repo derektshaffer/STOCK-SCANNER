@@ -517,9 +517,14 @@ def render_ticker_search(asset_choices, current_symbol):
         options=asset_choices,
         index=None,
         key="ticker_picker",
-        placeholder="Start typing a ticker or company name…",
+        placeholder=(
+            "Type a ticker or choose a saved stock…"
+            if _COMBINED_WORKSPACE
+            else "Start typing a ticker or company name…"
+        ),
         label_visibility="collapsed",
         width="stretch",
+        accept_new_options=True,
     )
 
     selected_symbol = _ticker_from_choice(selected_asset)
@@ -541,6 +546,9 @@ def render_ticker_search(asset_choices, current_symbol):
                 f"Search ready · {len(asset_choices):,} active US equities loaded from Alpaca. "
                 "Type a symbol or company name; press Enter to choose the highlighted match."
             )
+    elif _COMBINED_WORKSPACE:
+        # Free-form ticker entry still works even with no seeded choices.
+        pass
     else:
         load_error = st.session_state.get("_ticker_asset_load_error")
         detail = f" ({load_error})" if load_error else ""
@@ -555,8 +563,24 @@ with st.container(key="analyzer_controls"):
     c1,c2,c3,c4=st.columns([2.3,1,0.9,0.65], vertical_alignment="center")
     term_tool_col = c4
     with c1:
-        asset_choices=load_active_us_equities()
-        current_symbol=str(st.session_state.get("ticker","SDOT") or "SDOT").upper().strip()
+        current_symbol=str(
+            st.session_state.get("ticker","SDOT") or "SDOT"
+        ).upper().strip()
+        if _COMBINED_WORKSPACE:
+            # Do not block Analyzer page switches on Alpaca's full active-asset
+            # directory. The picker accepts typed tickers directly; seed it
+            # with the current and saved symbols so the control is useful
+            # immediately. Standalone Analyzer keeps full company autocomplete.
+            saved_symbols = [
+                str(value).upper().strip()
+                for value in (st.session_state.get("saved_stocks") or [])
+                if str(value).strip()
+            ]
+            asset_choices = list(
+                dict.fromkeys([current_symbol] + saved_symbols)
+            )
+        else:
+            asset_choices=load_active_us_equities()
         render_ticker_search(asset_choices, current_symbol)
 
     ticker=str(
