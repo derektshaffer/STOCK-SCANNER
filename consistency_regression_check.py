@@ -1623,8 +1623,14 @@ def test_trade_plan_does_not_move_breakout_goalpost_after_trigger_is_reached():
     assert abs(float(plan.get("breakout_reference_level") or 0)-9.0) < 1e-6, plan
     assert plan.get("breakout_reference_locked") is True, plan
     assert plan.get("breakout_trigger_reached") is True, plan
-    assert "BREAKOUT" in str(plan.get("action") or ""), plan
     assert "PULLBACK" not in str(plan.get("action") or ""), plan
+    assert "PULLBACK" not in str(plan.get("entry_instruction") or ""), plan
+    assert str(plan.get("entry_state") or "") in {
+        "TRIGGER TESTING",
+        "WAIT FOR RETEST",
+        "ENTRY AVAILABLE",
+        "ARMED",
+    }, plan
 
 
 def test_all_intraday_movement_feature_paths_use_shared_structure_engine():
