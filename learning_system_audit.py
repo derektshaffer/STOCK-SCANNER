@@ -454,7 +454,24 @@ def audit_observations(observations: Iterable[dict[str, Any]]) -> dict[str, Any]
         if str(row.get("symbol") or "").strip()
     }
 
+    evidence_dates = sorted(
+        {
+            str(row.get("scan_time_et") or "")[:10]
+            for row in rows
+            if str(row.get("scan_time_et") or "")[:10]
+        }
+    )
+    evidence_symbols = {
+        str(row.get("symbol") or "").upper().strip()
+        for row in rows
+        if str(row.get("symbol") or "").strip()
+    }
+
     return {
+        "evidence_start_date": evidence_dates[0] if evidence_dates else None,
+        "evidence_end_date": evidence_dates[-1] if evidence_dates else None,
+        "evidence_days": len(evidence_dates),
+        "evidence_symbols": len(evidence_symbols),
         "observations_total_raw": len(raw_rows),
         "observations_total": len(rows),
         "resolved_60m": len(resolved),
@@ -531,14 +548,29 @@ def load_outcome_observations(report_dir: Path = DEFAULT_REPORT_DIR) -> tuple[li
         return rows, report_count
 
     for path in sorted(report_dir.glob("outcomes_*.json")):
+        # Phase 6 independence: historical replay may challenge a hypothesis,
+        # but it may never help generate that hypothesis in the first place.
+        if "historical_replay" in path.name.lower():
+            continue
         try:
             payload = json.loads(path.read_text(encoding="utf-8"))
         except Exception:
             continue
+        if str(payload.get("source") or "").lower() == "historical_scanner_replay":
+            continue
+        live_rows = [
+            row
+            for row in (payload.get("observations") or [])
+            if (
+                isinstance(row, dict)
+                and str(row.get("observation_source") or "").lower()
+                != "historical_replay"
+            )
+        ]
+        if not live_rows:
+            continue
         report_count += 1
-        for row in payload.get("observations") or []:
-            if isinstance(row, dict):
-                rows.append(row)
+        rows.extend(live_rows)
     return rows, report_count
 
 
@@ -566,6 +598,14 @@ def load_opportunity_observations(
 def build_hypotheses(source_findings: list[dict[str, Any]], empirical: dict[str, Any]) -> list[dict[str, Any]]:
     """Generate testable shadow hypotheses only when minimum evidence exists."""
     hypotheses: list[dict[str, Any]] = []
+    evidence_window = {
+        "start_date": empirical.get("evidence_start_date"),
+        "end_date": empirical.get("evidence_end_date"),
+        "days": empirical.get("evidence_days"),
+        "symbols": empirical.get("evidence_symbols"),
+        "source": "live_and_shadow_outcomes_only",
+        "historical_replay_used_to_generate": False,
+    }
 
     contradiction_n = int(empirical.get("endpoint_label_contradictions_n") or 0)
     contradiction_symbols = int(
@@ -691,6 +731,9 @@ def build_hypotheses(source_findings: list[dict[str, Any]], empirical: dict[str,
                 }
             )
             break
+
+    for hypothesis in hypotheses:
+        hypothesis.setdefault("evidence_window", dict(evidence_window))
 
     return hypotheses
 
