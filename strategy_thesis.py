@@ -343,6 +343,7 @@ def prepare_intraday_thesis(
     replacement_confirmations=DEFAULT_REPLACEMENT_CONFIRMATIONS,
     expiry_minutes=DEFAULT_EXPIRY_MINUTES,
     evidence_trusted=True,
+    persist=True,
 ):
     """Apply intraday plan continuity before readiness/evidence scoring."""
     metrics = metrics or {}
@@ -368,6 +369,26 @@ def prepare_intraday_thesis(
     key = _session_key(symbol, now)
     state = store.get(key)
     raw_status = str(plan.get("status") or "WAIT").upper().strip()
+
+    def _stage_upsert(candidate):
+        if persist:
+            store[key] = candidate
+            _save(store, store_path)
+        else:
+            metrics["_thesis_transaction"] = {
+                "action": "upsert",
+                "key": key,
+                "state": candidate,
+            }
+
+    def _stage_delete():
+        if persist:
+            _stage_delete()
+        else:
+            metrics["_thesis_transaction"] = {
+                "action": "delete",
+                "key": key,
+            }
 
     # A rejected setup is not a thesis worth anchoring. Wait until the rule
     # engine has at least a valid watch/entry plan before creating session
@@ -401,8 +422,7 @@ def prepare_intraday_thesis(
             "new intraday thesis for this market session",
             revision=1,
         )
-        store[key] = state
-        _save(store, store_path)
+        _stage_upsert(state)
         context = {
             "version": THESIS_VERSION,
             "status": "NEW THESIS",
@@ -448,8 +468,7 @@ def prepare_intraday_thesis(
             revision=int(prior_state.get("revision") or 0) + 1,
             prior_state=prior_state,
         )
-        store[key] = state
-        _save(store, store_path)
+        _stage_upsert(state)
         context = {
             "version": THESIS_VERSION,
             "status": "REPLAN ACCEPTED",
@@ -490,8 +509,7 @@ def prepare_intraday_thesis(
             plan["plan_selection_note"] = reason
             plan["thesis_continuity"] = context
             metrics["trade_plan"] = plan
-            store[key] = state
-            _save(store, store_path)
+            _stage_upsert(state)
             return context
 
         # A rejected alternate family cannot accumulate evidence toward
@@ -521,8 +539,7 @@ def prepare_intraday_thesis(
             plan["plan_selection_note"] = reason
             plan["thesis_continuity"] = context
             metrics["trade_plan"] = plan
-            store[key] = state
-            _save(store, store_path)
+            _stage_upsert(state)
             return context
 
         if state.get("pending_family") == proposed:
@@ -546,8 +563,7 @@ def prepare_intraday_thesis(
                 revision=int(prior_state.get("revision") or 0) + 1,
                 prior_state=prior_state,
             )
-            store[key] = state
-            _save(store, store_path)
+            _stage_upsert(state)
             context = {
                 "version": THESIS_VERSION,
                 "status": "REPLAN ACCEPTED",
@@ -584,8 +600,7 @@ def prepare_intraday_thesis(
         plan["plan_selection_note"] = reason
         plan["thesis_continuity"] = context
         metrics["trade_plan"] = plan
-        store[key] = state
-        _save(store, store_path)
+        _stage_upsert(state)
         return context
 
     # Same family: preserve the accepted geometry. New bars are allowed to
@@ -622,7 +637,34 @@ def commit_intraday_thesis(metrics, context, *, now=None, store_path=None):
 
     store = _load(store_path)
     key = _session_key(symbol, now)
-    state = store.get(key)
+    transaction = metrics.pop("_thesis_transaction", None) or {}
+    transaction_key = str(transaction.get("key") or key)
+
+    if transaction.get("action") == "delete":
+        store.pop(transaction_key, None)
+        ok = _save(store, store_path)
+        continuity = dict(plan.get("thesis_continuity") or context or {})
+        continuity.update(
+            {
+                "final_status": plan.get("status"),
+                "final_entry_state": plan.get("entry_state"),
+                "trigger_seen": False,
+                "entry_available_seen": False,
+                "history_points": 0,
+                "transition_count": 0,
+            }
+        )
+        plan["thesis_continuity"] = continuity
+        metrics["trade_plan"] = plan
+        return ok
+
+    if transaction.get("action") == "upsert":
+        staged = transaction.get("state")
+        state = dict(staged) if isinstance(staged, dict) else None
+        key = transaction_key
+    else:
+        state = store.get(key)
+
     if not isinstance(state, dict):
         return False
 
