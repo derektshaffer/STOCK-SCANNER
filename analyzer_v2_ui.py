@@ -131,12 +131,12 @@ def render_v2_decision(st, metrics):
     _score_card(
         st, cols[0], "UPSIDE POTENTIAL", potential,
         str(v2.get("potential_label") or "—"),
-        "chance/quality of further upside, not entry timing",
+        "setup-strength score for further upside; not a probability",
     )
     _score_card(
         st, cols[1], "ENTRY READINESS", readiness,
         str(v2.get("entry_label") or "—"),
-        "quality of entering around the current price",
+        "current entry-quality score; not a success probability",
     )
     _score_card(
         st, cols[2], "EVIDENCE STRENGTH", evidence,
@@ -160,7 +160,7 @@ def render_v2_decision(st, metrics):
             tf_cols[0],
             "BEST FIT",
             best_fit,
-            "strongest current evidence match",
+            "strongest current evidence match; fit scores are not probabilities",
             "good" if best_fit != "MIXED" else "warn",
         )
         _score_card(
