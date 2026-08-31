@@ -3496,6 +3496,60 @@ def test_scanner_ui_surfaces_completed_daily_discovery_when_market_closed():
     assert "DAILY REVIEW" in app_source
 
 
+def test_peer_ml_replay_requires_strictly_later_live_confirmation():
+    import peer_ml_predictor as peer
+
+    rows = [
+        {
+            "symbol": "OLD",
+            "trading_date": "2026-08-28",
+            "observation_source": "historical_replay",
+            "label": 1,
+        },
+        {
+            "symbol": "SAME",
+            "trading_date": "2026-08-28",
+            "observation_source": "live_scan",
+            "label": 0,
+        },
+        {
+            "symbol": "LATER",
+            "trading_date": "2026-08-31",
+            "observation_source": "live_scan",
+            "label": 1,
+        },
+    ]
+    context = peer._source_integrity_context(rows)
+    assert context["replay_end_day"] == "2026-08-28", context
+    assert [row["symbol"] for row in context["live_confirmation_rows"]] == [
+        "LATER"
+    ], context
+    assert peer.MIN_LIVE_CONFIRMATION_SAMPLES >= 100
+    assert peer.MIN_LIVE_CONFIRMATION_DAYS >= 5
+    assert peer.MIN_LIVE_CONFIRMATION_CLASS_COUNT >= 15
+
+    source = Path("peer_ml_predictor.py").read_text(encoding="utf-8")
+    assert 'validation_status = "replay_validated_waiting_live"' in source
+    assert '"replay_survivorship_limit": bool(replay_rows)' in source
+
+
+def test_scanner_replay_live_confirmation_gate_is_integrity_sized():
+    import scanner_ml_ranker as sm
+
+    assert sm.MIN_LIVE_CONFIRMATION_SAMPLES >= 100
+    assert sm.MIN_LIVE_CONFIRMATION_DAYS >= 5
+    assert sm.MIN_LIVE_CONFIRMATION_CLASS_COUNT >= 15
+
+
+def test_validation_workflow_runs_before_merge_on_pull_requests():
+    source = Path(".github/workflows/analyzer-v2-check.yml").read_text(
+        encoding="utf-8"
+    )
+    assert "pull_request:" in source
+    assert "branches: [main]" in source
+    assert "python consistency_regression_check.py" in source
+
+
 def test_offhours_workflow_runs_after_close_and_commits_separate_snapshot():
     from pathlib import Path
 
@@ -3590,6 +3644,9 @@ if __name__ == "__main__":
         test_historical_replay_universe_uses_prior_days_only,
         test_historical_replay_source_survives_ml_extraction,
         test_replay_requires_live_confirmation_before_full_badge,
+        test_peer_ml_replay_requires_strictly_later_live_confirmation,
+        test_scanner_replay_live_confirmation_gate_is_integrity_sized,
+        test_validation_workflow_runs_before_merge_on_pull_requests,
         test_analyzer_ml_validation_requires_probability_skill,
         test_impulse_detector_measures_fraction_of_run,
         test_entry_readiness_penalizes_unconfirmed_shallow_retrace,
