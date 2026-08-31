@@ -4388,6 +4388,7 @@ def test_actionable_momentum_alert_requires_existing_strong_scanner_state():
         "scanner_action": "ANALYZE NOW",
         "passed_base_filters": True,
         "alert_ready": True,
+        "action_data_integrity_ok": True,
     }
     assert ma.is_actionable_momentum_alert(base) is True
 
@@ -4396,6 +4397,7 @@ def test_actionable_momentum_alert_requires_existing_strong_scanner_state():
         ("scanner_action", "WAIT PULLBACK"),
         ("passed_base_filters", False),
         ("alert_ready", False),
+        ("action_data_integrity_ok", False),
     ):
         row = dict(base)
         row[field] = value
@@ -4481,6 +4483,7 @@ def test_momentum_alert_only_fires_when_symbol_newly_enters_ready_state():
                 "scanner_action": "ANALYZE NOW",
                 "passed_base_filters": True,
                 "alert_ready": True,
+                "action_data_integrity_ok": True,
             },
             {
                 "symbol": "BBB",
@@ -4488,6 +4491,7 @@ def test_momentum_alert_only_fires_when_symbol_newly_enters_ready_state():
                 "scanner_action": "WATCH",
                 "passed_base_filters": True,
                 "alert_ready": True,
+                "action_data_integrity_ok": True,
             },
         ]
     }
@@ -4520,7 +4524,7 @@ def test_momentum_alert_ui_has_in_app_and_optional_browser_notifications():
     from pathlib import Path
 
     source = Path("app.py").read_text(encoding="utf-8")
-    assert "ACTIONABLE MOMENTUM ALERT" in source
+    assert "Momentum Review Alert" in source
     assert "PULLBACK WATCH" in source
     assert "HIGH-SCORE PULLBACK WATCH" in source
     assert "Early heads-up — not an entry signal." in source
@@ -4533,6 +4537,10 @@ def test_momentum_alert_ui_has_in_app_and_optional_browser_notifications():
     assert "permission === 'denied'" in source
     assert "browser notifications unavailable" in source
     assert "not an automatic buy signal" in source
+    alert_source = Path("momentum_alerts.py").read_text(encoding="utf-8")
+    assert 'row.get("action_data_integrity_ok") is True' in alert_source
+    assert "ENTRY AVAILABLE" not in alert_source
+    assert "BUY NOW" not in alert_source
 
 
 def test_scanner_monitor_and_saved_stocks_are_vertically_compact():
