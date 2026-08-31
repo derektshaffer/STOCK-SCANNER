@@ -3658,6 +3658,8 @@ def test_combined_analyze_button_has_no_obvious_help_popup_and_can_cancel():
     assert "start_analyzer_process(" in source
     assert "poll_analyzer_process(state)" in source
     assert "cancel_analyzer_process(state)" in source
+    assert 'st.session_state["app_view"]="Stock Analyzer"' in source
+    assert 'st.session_state["_analyzer_bootstrap_launch_state"]=launch' in source
     assert "subprocess.Popen" in runtime
     assert "process.terminate()" in runtime
     assert "sa.analyze(symbol)" in worker
@@ -4391,6 +4393,8 @@ def test_combined_analyzer_refresh_is_background_and_saved_stocks_follow_search(
     assert '"_render_combined_saved_stocks": _render_saved_stocks' in bootstrap
     assert "_render_saved_stock_toolbar" not in bootstrap
     assert 'if _needs_analysis and not _COMBINED_WORKSPACE:' in core
+    assert "_cancel_combined_loader" in bootstrap
+    assert "You are already in Analyzer" in bootstrap
     assert '"_analyzer_background_request_symbol"' in core
     assert "can_render_existing = bool(" in bootstrap
     assert "Keep the complete Analyzer page rendered from the last good result" in bootstrap
