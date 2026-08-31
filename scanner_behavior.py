@@ -13,7 +13,7 @@ from datetime import datetime, timedelta
 from multi_bounce import bounce_feature_values, detect_bounce_sequence
 from stair_step import detect_stair_step, stair_step_feature_values
 
-BEHAVIOR_FEATURE_VERSION = "scanner-behavior-v2-completed-bars"
+BEHAVIOR_FEATURE_VERSION = "scanner-behavior-v3-distinct-swings"
 
 
 def _num(value):

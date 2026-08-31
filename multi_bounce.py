@@ -9,6 +9,7 @@ existed at the historical snapshot; that keeps the features leakage-safe.
 from __future__ import annotations
 
 import math
+from datetime import datetime, timezone
 from statistics import median
 
 
@@ -22,6 +23,43 @@ def _num(value):
 
 def _clamp(value, low, high):
     return max(low, min(high, value))
+
+
+def _parse_dt(value):
+    if value is None:
+        return None
+    try:
+        text=str(value).strip()
+        if not text:
+            return None
+        if text.isdigit():
+            numeric=float(text)
+            if numeric > 10_000_000_000:
+                numeric /= 1000.0
+            return datetime.fromtimestamp(numeric, tz=timezone.utc)
+        dt=datetime.fromisoformat(text.replace("Z","+00:00"))
+        if dt.tzinfo is None:
+            dt=dt.replace(tzinfo=timezone.utc)
+        return dt
+    except Exception:
+        return None
+
+
+def _bar_spacing_minutes(rows):
+    diffs=[]
+    previous=None
+    for row in rows:
+        current=_parse_dt(row.get("t"))
+        if current is None:
+            continue
+        if previous is not None:
+            diff=(current-previous).total_seconds()/60.0
+            if 0 < diff <= 60:
+                diffs.append(diff)
+        previous=current
+    if not diffs:
+        return 1.0
+    return max(0.25, float(median(diffs)))
 
 
 def _rows(bars):
@@ -129,10 +167,22 @@ def detect_bounce_sequence(
     price = _num(current_price) or rows[-1]["c"]
     atrp = _num(atr_pct) or 8.0
 
-    # Zig-zag threshold: enough to ignore ordinary bar noise, but not so large
-    # that a quick second/third bounce disappears on volatile small caps.
+    # Price threshold alone is not enough on volatile small caps: one-minute
+    # candles can zig-zag by several percent inside a single larger pullback.
+    # Require distinct swing separation and meaningful recovery as well.
     swing_pct = _clamp(atrp * 0.32, 1.8, 6.0)
     swing_abs = max(impulse_high * swing_pct / 100.0, run_size * 0.045)
+    bar_minutes = _bar_spacing_minutes(rows)
+    min_leg_minutes = max(2.0, bar_minutes)
+    first_bounce_min_cycle_minutes = max(3.0, bar_minutes * 1.5)
+    min_cycle_minutes = max(5.0, bar_minutes * 2.0)
+    min_leg_bars = max(1, int(math.ceil(min_leg_minutes / bar_minutes)))
+    first_bounce_min_cycle_bars = max(
+        2,
+        int(math.ceil(first_bounce_min_cycle_minutes / bar_minutes)),
+    )
+    min_cycle_bars = max(2, int(math.ceil(min_cycle_minutes / bar_minutes)))
+    min_recovery_fraction = 0.35
 
     state = "seek_trough"
     trough_idx = None
@@ -163,14 +213,43 @@ def detect_bounce_sequence(
                 candidate_price = row["l"]
                 candidate_idx = i
 
-            if candidate_price is not None and enough_up(candidate_price, row["h"]):
+            pullback_is_distinct = bool(
+                candidate_price is not None
+                and candidate_idx is not None
+                and candidate_idx - prior_peak_idx >= min_leg_bars
+                and enough_down(prior_peak_price, candidate_price)
+            )
+            if (
+                pullback_is_distinct
+                and enough_up(candidate_price, row["h"])
+            ):
                 trough_price = candidate_price
                 trough_idx = candidate_idx
-                candidate_price = row["h"]
-                candidate_idx = i
+                # If this same candle created the trough, we do not know
+                # whether its high happened before or after that low. Start
+                # the rebound candidate on a later candle instead of assuming
+                # an intrabar order we cannot observe.
+                if trough_idx is not None and trough_idx < i:
+                    candidate_price = row["h"]
+                    candidate_idx = i
+                else:
+                    candidate_price = None
+                    candidate_idx = None
                 state = "seek_peak"
 
         else:  # seek_peak
+            # A lower low before confirmation means the apparent rebound was
+            # only noise inside the same pullback. Re-anchor the trough rather
+            # than counting a micro-bounce.
+            if trough_price is not None and row["l"] < trough_price:
+                trough_price = row["l"]
+                trough_idx = i
+                # Same-candle high may have occurred before the new low; wait
+                # for a later candle before measuring the rebound.
+                candidate_price = None
+                candidate_idx = None
+                continue
+
             if candidate_price is None or row["h"] > candidate_price:
                 candidate_price = row["h"]
                 candidate_idx = i
@@ -178,6 +257,32 @@ def detect_bounce_sequence(
             if candidate_price is not None and enough_down(candidate_price, row["l"]):
                 bounce_peak = candidate_price
                 bounce_peak_idx = candidate_idx
+
+                pullback_range = (
+                    prior_peak_price - trough_price
+                    if trough_price is not None
+                    else 0.0
+                )
+                recovery_fraction = (
+                    (bounce_peak - trough_price) / pullback_range
+                    if pullback_range > 0
+                    else 0.0
+                )
+                required_cycle_bars = (
+                    first_bounce_min_cycle_bars
+                    if not bounces
+                    else min_cycle_bars
+                )
+                bounce_is_distinct = bool(
+                    bounce_peak_idx is not None
+                    and trough_idx is not None
+                    and i > bounce_peak_idx
+                    and bounce_peak_idx - trough_idx >= min_leg_bars
+                    and bounce_peak_idx - prior_peak_idx >= required_cycle_bars
+                    and recovery_fraction >= min_recovery_fraction
+                )
+                if not bounce_is_distinct:
+                    continue
 
                 pullback_drop_pct = (
                     (prior_peak_price / trough_price - 1.0) * 100.0
@@ -242,8 +347,11 @@ def detect_bounce_sequence(
                         "number": len(bounces) + 1,
                         "pullback_low": round(trough_price, 4),
                         "pullback_low_index": int(trough_idx),
+                        "pullback_low_time": rows[trough_idx].get("t"),
                         "bounce_peak": round(bounce_peak, 4),
                         "bounce_peak_index": int(bounce_peak_idx),
+                        "bounce_peak_time": rows[bounce_peak_idx].get("t"),
+                        "confirmation_time": row.get("t"),
                         "pullback_drop_pct": round(pullback_drop_pct, 2)
                         if pullback_drop_pct is not None
                         else None,
@@ -260,6 +368,7 @@ def detect_bounce_sequence(
                         )
                         if recovery_to_prior_peak_pct is not None
                         else None,
+                        "recovery_fraction": round(recovery_fraction, 3),
                         "lower_high": bool(
                             bounce_peak < prior_peak_price * 0.995
                         ),
@@ -418,7 +527,9 @@ def detect_bounce_sequence(
         if current_leg_move_pct is not None
         else None,
         "impulse_low": round(impulse_low, 4),
+        "impulse_low_index": int(low_idx),
         "impulse_high": round(impulse_high, 4),
+        "impulse_peak_index": int(impulse_peak_idx),
         "impulse_move_pct": round(impulse_move_pct, 2),
         "completed_bounces": len(bounces),
         "next_bounce_number": len(bounces) + 1,
@@ -452,6 +563,14 @@ def detect_bounce_sequence(
         else None,
         "sequence_health_score": round(health, 1),
         "swing_threshold_pct": round(swing_pct, 2),
+        "bar_spacing_minutes": round(bar_minutes, 2),
+        "min_leg_minutes": round(min_leg_minutes, 2),
+        "first_bounce_min_cycle_minutes": round(first_bounce_min_cycle_minutes, 2),
+        "min_cycle_minutes": round(min_cycle_minutes, 2),
+        "min_leg_bars": int(min_leg_bars),
+        "first_bounce_min_cycle_bars": int(first_bounce_min_cycle_bars),
+        "min_cycle_bars": int(min_cycle_bars),
+        "min_recovery_fraction": min_recovery_fraction,
     }
 
 

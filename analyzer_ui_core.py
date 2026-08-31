@@ -69,10 +69,18 @@ from analyzer_visuals import (
 AUTO_REFRESH_SECONDS = max(30, int(os.environ.get("ANALYZER_REFRESH_SECONDS", "60") or 60))
 
 
-def _render_visual_snapshot(label, spec, caption=None):
-    if not spec:
+def _render_visual_snapshot(label, spec_factory, caption=None, key=None):
+    preview = spec_factory(False) if callable(spec_factory) else spec_factory
+    if not preview:
         return
     with st.expander(label, expanded=False):
+        overlay = st.toggle(
+            "Close-line overlay",
+            value=False,
+            key=f"{key or label}_close_line",
+            help="Candlesticks are the primary chart. Turn this on to add a subtle close-price line over them.",
+        )
+        spec = spec_factory(overlay) if callable(spec_factory) else preview
         st.vega_lite_chart(spec=spec, use_container_width=True)
         if caption:
             st.caption(caption)
@@ -1064,8 +1072,9 @@ if not _position_enabled:
 
     _render_visual_snapshot(
         "📈 Trade plan visual · entry · stop · targets",
-        trade_plan_chart_spec(r),
-        "Uses the same live regular-session bars and the currently selected trade plan. The shaded band is the entry zone; dashed levels are stop, targets and VWAP.",
+        lambda overlay: trade_plan_chart_spec(r, line_overlay=overlay),
+        "Candlesticks use the same live regular-session bars as the Analyzer. The shaded band is the entry zone; dashed levels are stop, targets and VWAP.",
+        key="trade_plan_visual",
     )
 
     with st.expander("Trade plan details — pullback · repeat bounce · breakout"):
@@ -1219,8 +1228,9 @@ if _impulse.get("detected"):
     )
     _render_visual_snapshot(
         "📈 Impulse / pullback visual",
-        impulse_pullback_chart_spec(r),
-        "Shows the actual intraday price path, detected impulse low/high, the live pullback entry band, and reclaim confirmation when present.",
+        lambda overlay: impulse_pullback_chart_spec(r, line_overlay=overlay),
+        "Candlesticks show the actual intraday path, detected impulse low/high, the live pullback entry band, and reclaim confirmation when present.",
+        key="impulse_pullback_visual",
     )
 
     with st.expander("Impulse / pullback context", expanded=False):
@@ -1302,14 +1312,25 @@ if _sequence.get("detected"):
 
     _render_visual_snapshot(
         "📈 Multi-bounce visual · dips · confirmed bounces",
-        multi_bounce_chart_spec(r),
-        "Confirmed bounce peaks are marked with ✓. The next forming/developing bounce is shown separately so it is not mistaken for a confirmed rebound.",
+        lambda overlay: multi_bounce_chart_spec(r, line_overlay=overlay),
+        "Candlesticks show the actual 1-minute swings. Confirmed bounce peaks are marked ✓; lows and developing bounces are labeled separately.",
+        key="multi_bounce_visual",
     )
 
     with st.expander("Multi-bounce context", expanded=False):
+        _cycle_min=_sequence.get("min_cycle_minutes")
+        _recovery_min=_sequence.get("min_recovery_fraction")
         st.caption(
-            "Repeat-bounce opportunity and full-run continuation are intentionally separate. "
-            "A second or third bounce can still offer a short-duration opportunity even when the larger run is weakening."
+            "A confirmed bounce is now a distinct swing, not every one-minute zig-zag. "
+            + (
+                f"On the current bars, confirmed peaks must be separated by about {_cycle_min:.0f}+ minutes and "
+                if _cycle_min is not None else ""
+            )
+            + (
+                f"the rebound must recover at least {float(_recovery_min)*100:.0f}% of its preceding pullback. "
+                if _recovery_min is not None else ""
+            )
+            + "Repeat-bounce opportunity and full-run continuation remain separate."
         )
 
     _post2 = _hist_intr.get("post_second_bounce_drop5_rate_pct")
@@ -1349,7 +1370,9 @@ if _sequence.get("detected"):
             for _b in _bounce_rows:
                 _show_rows.append({
                     "Bounce": f'#{int(_b.get("number") or 0)}',
+                    "Low time": _b.get("pullback_low_time") or "—",
                     "Dip low": _b.get("pullback_low"),
+                    "Peak time": _b.get("bounce_peak_time") or "—",
                     "Bounce peak": _b.get("bounce_peak"),
                     "Bounce %": _b.get("bounce_pct"),
                     "Recovery vs prior peak %": _b.get("recovery_to_prior_peak_pct"),
@@ -1424,8 +1447,9 @@ if _stair.get("detected"):
     )
     _render_visual_snapshot(
         "📈 Stair-step visual · steps · plateau · reacceleration",
-        stair_step_chart_spec(r),
-        "Uses recent daily price history. Step markers show detected expansion legs; the plateau band shows the latest accepted level and the current reacceleration is called out when active.",
+        lambda overlay: stair_step_chart_spec(r, line_overlay=overlay),
+        "Daily candlesticks show the actual multi-session structure. Step markers show expansion legs; the plateau band shows the latest accepted level.",
+        key="stair_step_visual",
     )
 
     _steps=_stair.get("steps") or []
@@ -1565,10 +1589,16 @@ def level_table(rows):
     return pd.DataFrame(out,columns=columns)
 
 with st.expander("Support & resistance levels", expanded=False):
-    _sr_visual=support_resistance_chart_spec(r)
+    _sr_line=st.toggle(
+        "Close-line overlay",
+        value=False,
+        key="support_resistance_close_line",
+        help="Candlesticks are primary; enable this for a subtle close-price line.",
+    )
+    _sr_visual=support_resistance_chart_spec(r,line_overlay=_sr_line)
     if _sr_visual:
         st.vega_lite_chart(spec=_sr_visual, use_container_width=True)
-        st.caption("Horizontal levels are the same nearby support/resistance levels listed in the tables below.")
+        st.caption("Candlesticks show recent price action. Horizontal levels are the same nearby support/resistance levels listed below.")
     scol,rcol=st.columns(2)
     with scol:
         st.markdown('<div class="section">Support</div>',unsafe_allow_html=True)

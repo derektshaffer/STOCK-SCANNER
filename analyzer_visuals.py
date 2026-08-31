@@ -54,13 +54,14 @@ def _config():
     }
 
 
-def _price_line_layer(bars, *, x_type="temporal"):
+def _price_line_layer(bars, *, x_type="temporal", opacity=0.72):
     return {
         "data": {"values": bars},
         "mark": {
             "type": "line",
-            "strokeWidth": 3,
-            "color": "#f2f8ff",
+            "strokeWidth": 2,
+            "color": "#dbeafe",
+            "opacity": opacity,
             "tooltip": True,
         },
         "encoding": {
@@ -78,12 +79,69 @@ def _price_line_layer(bars, *, x_type="temporal"):
             },
             "tooltip": [
                 {"field": "t", "type": x_type, "title": "Time"},
-                {"field": "c", "type": "quantitative", "title": "Close", "format": "$.2f"},
+                {"field": "o", "type": "quantitative", "title": "Open", "format": "$.2f"},
                 {"field": "h", "type": "quantitative", "title": "High", "format": "$.2f"},
                 {"field": "l", "type": "quantitative", "title": "Low", "format": "$.2f"},
+                {"field": "c", "type": "quantitative", "title": "Close", "format": "$.2f"},
+                {"field": "v", "type": "quantitative", "title": "Volume", "format": ",.0f"},
             ],
         },
     }
+
+
+def _candlestick_layers(bars, *, x_type="temporal", line_overlay=False):
+    candles=[
+        row for row in bars
+        if all(_num(row.get(key)) is not None for key in ("o","h","l","c"))
+    ]
+    if not candles:
+        return [_price_line_layer(bars, x_type=x_type)]
+
+    color_encoding={
+        "condition":{"test":"datum.c >= datum.o","value":"#00d26a"},
+        "value":"#ff5a1f",
+    }
+    tooltip=[
+        {"field":"t","type":x_type,"title":"Time"},
+        {"field":"o","type":"quantitative","title":"Open","format":"$.2f"},
+        {"field":"h","type":"quantitative","title":"High","format":"$.2f"},
+        {"field":"l","type":"quantitative","title":"Low","format":"$.2f"},
+        {"field":"c","type":"quantitative","title":"Close","format":"$.2f"},
+        {"field":"v","type":"quantitative","title":"Volume","format":",.0f"},
+    ]
+    layers=[
+        {
+            "data":{"values":candles},
+            "mark":{"type":"rule","strokeWidth":1.25},
+            "encoding":{
+                "x":{
+                    "field":"t","type":x_type,"title":None,
+                    "axis":{"labelOverlap":True},
+                },
+                "y":{
+                    "field":"l","type":"quantitative","title":"Price",
+                    "scale":{"zero":False},
+                },
+                "y2":{"field":"h"},
+                "color":color_encoding,
+                "tooltip":tooltip,
+            },
+        },
+        {
+            "data":{"values":candles},
+            "mark":{"type":"bar","size":7},
+            "encoding":{
+                "x":{"field":"t","type":x_type},
+                "y":{"field":"o","type":"quantitative","scale":{"zero":False}},
+                "y2":{"field":"c"},
+                "color":color_encoding,
+                "tooltip":tooltip,
+            },
+        },
+    ]
+    if line_overlay:
+        layers.append(_price_line_layer(candles,x_type=x_type,opacity=0.55))
+    return layers
 
 
 def _horizontal_level_layers(levels):
@@ -147,7 +205,7 @@ def _horizontal_level_layers(levels):
     ]
 
 
-def trade_plan_chart_spec(result):
+def trade_plan_chart_spec(result, line_overlay=False):
     result = result or {}
     bars = _bars(result, "intraday")
     plan = result.get("trade_plan") or {}
@@ -158,7 +216,7 @@ def trade_plan_chart_spec(result):
     first_t, last_t = bars[0]["t"], bars[-1]["t"]
     entry_low = _num(selected.get("entry_low"))
     entry_high = _num(selected.get("entry_high"))
-    layers = [_price_line_layer(bars)]
+    layers = _candlestick_layers(bars, line_overlay=line_overlay)
 
     if entry_low is not None and entry_high is not None:
         layers.append(
@@ -206,7 +264,7 @@ def trade_plan_chart_spec(result):
     }
 
 
-def multi_bounce_chart_spec(result):
+def multi_bounce_chart_spec(result, line_overlay=False):
     result = result or {}
     bars = _bars(result, "intraday")
     sequence = result.get("bounce_sequence") or {}
@@ -218,17 +276,27 @@ def multi_bounce_chart_spec(result):
         number = int(bounce.get("number") or 0)
         low_idx = bounce.get("pullback_low_index")
         peak_idx = bounce.get("bounce_peak_index")
-        if isinstance(low_idx, int) and 0 <= low_idx < len(bars):
+        low_time = bounce.get("pullback_low_time")
+        peak_time = bounce.get("bounce_peak_time")
+        if low_time or (isinstance(low_idx, int) and 0 <= low_idx < len(bars)):
             markers.append({
-                "t": bars[low_idx]["t"],
-                "price": _num(bounce.get("pullback_low")) or bars[low_idx]["c"],
-                "label": f"B{number} dip",
+                "t": str(low_time or bars[low_idx]["t"]),
+                "price": _num(bounce.get("pullback_low")) or (
+                    bars[low_idx]["c"]
+                    if isinstance(low_idx,int) and 0 <= low_idx < len(bars)
+                    else None
+                ),
+                "label": f"B{number} low",
                 "kind": "dip",
             })
-        if isinstance(peak_idx, int) and 0 <= peak_idx < len(bars):
+        if peak_time or (isinstance(peak_idx, int) and 0 <= peak_idx < len(bars)):
             markers.append({
-                "t": bars[peak_idx]["t"],
-                "price": _num(bounce.get("bounce_peak")) or bars[peak_idx]["c"],
+                "t": str(peak_time or bars[peak_idx]["t"]),
+                "price": _num(bounce.get("bounce_peak")) or (
+                    bars[peak_idx]["c"]
+                    if isinstance(peak_idx,int) and 0 <= peak_idx < len(bars)
+                    else None
+                ),
                 "label": f"Bounce #{number} ✓",
                 "kind": "confirmed",
             })
@@ -266,67 +334,80 @@ def multi_bounce_chart_spec(result):
             "kind": "developing",
         })
 
-    layers = [_price_line_layer(bars)]
+    layers = _candlestick_layers(bars, line_overlay=line_overlay)
     if markers:
-        layers.extend([
-            {
-                "data": {"values": markers},
-                "mark": {"type": "point", "filled": True, "size": 120},
-                "encoding": {
-                    "x": {"field": "t", "type": "temporal"},
-                    "y": {"field": "price", "type": "quantitative"},
-                    "color": {
-                        "field": "kind",
-                        "type": "nominal",
-                        "scale": {
-                            "domain": ["confirmed", "dip", "developing"],
-                            "range": ["#50fa9b", "#8be9fd", "#ffd166"],
-                        },
-                        "legend": None,
+        valid_markers=[m for m in markers if _num(m.get("price")) is not None]
+        top_markers=[m for m in valid_markers if m.get("kind") != "dip"]
+        dip_markers=[m for m in valid_markers if m.get("kind") == "dip"]
+        layers.append({
+            "data": {"values": valid_markers},
+            "mark": {"type": "point", "filled": True, "size": 120},
+            "encoding": {
+                "x": {"field": "t", "type": "temporal"},
+                "y": {"field": "price", "type": "quantitative"},
+                "color": {
+                    "field": "kind",
+                    "type": "nominal",
+                    "scale": {
+                        "domain": ["confirmed", "dip", "developing"],
+                        "range": ["#57f287", "#8be9fd", "#ffd166"],
                     },
-                    "shape": {
-                        "field": "kind",
-                        "type": "nominal",
-                        "scale": {
-                            "domain": ["confirmed", "dip", "developing"],
-                            "range": ["circle", "triangle-up", "diamond"],
-                        },
-                        "legend": None,
+                    "legend": None,
+                },
+                "shape": {
+                    "field": "kind",
+                    "type": "nominal",
+                    "scale": {
+                        "domain": ["confirmed", "dip", "developing"],
+                        "range": ["circle", "triangle-up", "diamond"],
                     },
-                    "tooltip": [
-                        {"field": "label", "title": "Pattern"},
-                        {"field": "price", "type": "quantitative", "title": "Price", "format": "$.2f"},
-                    ],
+                    "legend": None,
                 },
+                "tooltip": [
+                    {"field": "label", "title": "Pattern"},
+                    {"field": "price", "type": "quantitative", "title": "Price", "format": "$.2f"},
+                ],
             },
-            {
-                "data": {"values": markers},
-                "mark": {
-                    "type": "text",
-                    "dy": -12,
-                    "fontSize": 11,
-                    "fontWeight": "bold",
-                    "color": "#f2f8ff",
+        })
+        if top_markers:
+            layers.append({
+                "data":{"values":top_markers},
+                "mark":{
+                    "type":"text","dy":-14,"fontSize":11,
+                    "fontWeight":"bold","color":"#f2f8ff",
                 },
-                "encoding": {
-                    "x": {"field": "t", "type": "temporal"},
-                    "y": {"field": "price", "type": "quantitative"},
-                    "text": {"field": "label"},
+                "encoding":{
+                    "x":{"field":"t","type":"temporal"},
+                    "y":{"field":"price","type":"quantitative"},
+                    "text":{"field":"label"},
                 },
-            },
-        ])
+            })
+        if dip_markers:
+            layers.append({
+                "data":{"values":dip_markers},
+                "mark":{
+                    "type":"text","dy":16,"fontSize":10,
+                    "fontWeight":"bold","color":"#c7e9f7",
+                },
+                "encoding":{
+                    "x":{"field":"t","type":"temporal"},
+                    "y":{"field":"price","type":"quantitative"},
+                    "text":{"field":"label"},
+                },
+            })
+
 
     return {"height": 280, "layer": layers, "config": _config()}
 
 
-def stair_step_chart_spec(result):
+def stair_step_chart_spec(result, line_overlay=False):
     result = result or {}
     bars = _bars(result, "daily")
     stair = result.get("stair_step") or {}
     if len(bars) < 3 or not stair.get("detected"):
         return None
 
-    layers = [_price_line_layer(bars, x_type="temporal")]
+    layers = _candlestick_layers(bars, x_type="temporal", line_overlay=line_overlay)
     steps = []
     for idx, step in enumerate(stair.get("steps") or [], start=1):
         price = _num(step.get("step_close"))
@@ -429,7 +510,7 @@ def stair_step_chart_spec(result):
     return {"height": 280, "layer": layers, "config": _config()}
 
 
-def impulse_pullback_chart_spec(result):
+def impulse_pullback_chart_spec(result, line_overlay=False):
     result = result or {}
     bars = _bars(result, "intraday")
     impulse = result.get("impulse_pullback") or {}
@@ -437,7 +518,7 @@ def impulse_pullback_chart_spec(result):
     if len(bars) < 2 or not impulse.get("detected"):
         return None
 
-    layers = [_price_line_layer(bars)]
+    layers = _candlestick_layers(bars, line_overlay=line_overlay)
     markers = []
     low = _num(impulse.get("impulse_low"))
     high = _num(impulse.get("impulse_high"))
@@ -528,7 +609,7 @@ def impulse_pullback_chart_spec(result):
     return {"height": 270, "layer": layers, "config": _config()}
 
 
-def support_resistance_chart_spec(result):
+def support_resistance_chart_spec(result, line_overlay=False):
     result = result or {}
     bars = _bars(result, "intraday")
     if len(bars) < 2:
@@ -555,7 +636,7 @@ def support_resistance_chart_spec(result):
                 "kind": "resistance",
             })
 
-    layers = [_price_line_layer(bars)]
+    layers = _candlestick_layers(bars, line_overlay=line_overlay)
     layers.extend(_horizontal_level_layers(levels))
     return {
         "height": 260,
