@@ -5,7 +5,10 @@ import time
 from collections import Counter, defaultdict
 from statistics import mean
 
-from scanner_ml_ranker import load_training_observations
+from scanner_ml_ranker import (
+    independent_confirmation_rows,
+    load_training_observations,
+)
 from multi_bounce import bounce_feature_values
 from stair_step import stair_step_feature_values
 
@@ -64,6 +67,7 @@ MIN_VALIDATION_SAMPLES = 100
 MIN_LIVE_CONFIRMATION_SAMPLES = 100
 MIN_LIVE_CONFIRMATION_DAYS = 5
 MIN_LIVE_CONFIRMATION_CLASS_COUNT = 15
+MIN_LIVE_CONFIRMATION_SYMBOLS = 15
 MAX_PEER_SAMPLES = 2400
 MAX_PER_SYMBOL = 180
 MAX_PER_SYMBOL_DAY = 12
@@ -330,7 +334,7 @@ def _source_integrity_context(rows):
     # Only live observations strictly AFTER the replay period qualify as the
     # independent confirmation set. Same-day live copies cannot confirm a
     # replay model because that symbol/day may already exist in replay.
-    live_confirmation_rows = [
+    live_confirmation_rows_raw = [
         row for row in live_rows
         if (
             not replay_end_day
@@ -340,17 +344,27 @@ def _source_integrity_context(rows):
             )
         )
     ]
+    live_confirmation_rows = independent_confirmation_rows(
+        live_confirmation_rows_raw
+    )
     live_confirmation_days = sorted({
         str(row.get("trading_date") or "")
         for row in live_confirmation_rows
         if row.get("trading_date")
     })
+    live_confirmation_symbols = sorted({
+        str(row.get("symbol") or "")
+        for row in live_confirmation_rows
+        if row.get("symbol")
+    })
     return {
         "replay_rows": replay_rows,
         "live_rows": live_rows,
         "replay_end_day": replay_end_day,
+        "live_confirmation_rows_raw": live_confirmation_rows_raw,
         "live_confirmation_rows": live_confirmation_rows,
         "live_confirmation_days": live_confirmation_days,
+        "live_confirmation_symbols": live_confirmation_symbols,
     }
 
 
@@ -418,8 +432,10 @@ def _validate_and_predict(rows, current):
 
     source_context = _source_integrity_context(rows)
     replay_rows = source_context["replay_rows"]
+    live_confirmation_rows_raw = source_context["live_confirmation_rows_raw"]
     live_confirmation_rows = source_context["live_confirmation_rows"]
     live_confirmation_days = source_context["live_confirmation_days"]
+    live_confirmation_symbols = source_context["live_confirmation_symbols"]
     replay_end_day = source_context["replay_end_day"]
 
     # Keep the post-replay live holdout completely outside the historical
@@ -524,6 +540,7 @@ def _validate_and_predict(rows, current):
         live_confirmation_ready = bool(
             len(live_confirmation_rows) >= MIN_LIVE_CONFIRMATION_SAMPLES
             and len(live_confirmation_days) >= MIN_LIVE_CONFIRMATION_DAYS
+            and len(live_confirmation_symbols) >= MIN_LIVE_CONFIRMATION_SYMBOLS
             and live_positives >= MIN_LIVE_CONFIRMATION_CLASS_COUNT
             and live_negatives >= MIN_LIVE_CONFIRMATION_CLASS_COUNT
         )
@@ -629,8 +646,11 @@ def _validate_and_predict(rows, current):
             "replay_samples": len(replay_rows),
             "replay_end_day": replay_end_day,
             "replay_survivorship_limit": bool(replay_rows),
+            "live_confirmation_raw_samples": len(live_confirmation_rows_raw),
             "live_confirmation_samples": len(live_confirmation_rows),
             "live_confirmation_days": len(live_confirmation_days),
+            "live_confirmation_symbols": len(live_confirmation_symbols),
+            "live_confirmation_min_symbols": MIN_LIVE_CONFIRMATION_SYMBOLS,
             "live_confirmation_ready": live_confirmation_ready,
             "live_confirmation_passed": live_confirmation_passed,
             "live_confirmation_auc": (
