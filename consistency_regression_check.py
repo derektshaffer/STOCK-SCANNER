@@ -4407,11 +4407,13 @@ def test_prediction_tracker_mirrors_daily_timeframe_sampling():
 
 def test_old_calibration_schema_is_rejected():
     from pathlib import Path
+    import analyzer_versions as versions
 
     source = Path("prediction_tracker.py").read_text(encoding="utf-8")
-    assert 'int(durable.get("schema_version") or 0) < 8' in source
+    assert 'int(durable.get("schema_version") or 0) < CALIBRATION_SCHEMA_VERSION' in source
     outcome_source = Path("score_analyzer_outcomes.py").read_text(encoding="utf-8")
-    assert '"schema_version": 8' in outcome_source
+    assert '"schema_version": CALIBRATION_SCHEMA_VERSION' in outcome_source
+    assert versions.CALIBRATION_SCHEMA_VERSION >= 8
 
 
 
