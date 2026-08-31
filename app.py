@@ -11,7 +11,12 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 from glass_theme import inject_glass_theme
-from momentum_alerts import alert_message, newly_actionable
+from momentum_alerts import (
+    alert_message,
+    newly_actionable,
+    newly_high_score_pullback,
+    pullback_watch_message,
+)
 from scanner_runtime import (
     cadence_health,
     poll_scanner_process,
@@ -306,13 +311,63 @@ def _process_momentum_alerts(payload):
     return new_rows
 
 
-def _browser_alert_control(alert_row=None):
+def _process_pullback_watch_alerts(payload):
+    if not payload:
+        return []
+    scan_key = str(payload.get("scan_time_et") or "").strip()
+    if not scan_key:
+        return []
+
+    previous_scan = st.session_state.get("_pullback_watch_processed_scan")
+    previous_keys = st.session_state.get("_pullback_watch_current_keys") or []
+    new_rows, current_keys = newly_high_score_pullback(payload, previous_keys)
+
+    st.session_state["_pullback_watch_current_keys"] = sorted(current_keys)
+    st.session_state["_pullback_watch_processed_scan"] = scan_key
+
+    # Do not fire stale alerts just because the page was opened; wait for a
+    # genuinely newer scan to show that the ticker entered the watch state.
+    if previous_scan is None or scan_key == previous_scan:
+        return []
+
+    if new_rows:
+        history = list(st.session_state.get("_pullback_watch_history") or [])
+        now_ts = time.time()
+        for row in new_rows:
+            history.append(
+                {
+                    "symbol": str(row.get("symbol") or "").upper(),
+                    "message": pullback_watch_message(row),
+                    "detected_at": now_ts,
+                    "scan_time_et": scan_key,
+                }
+            )
+        st.session_state["_pullback_watch_history"] = history[-12:]
+    return new_rows
+
+
+def _browser_alert_control(alert_row=None, alert_kind="actionable"):
     alert_payload = None
     if alert_row:
+        is_pullback_watch = alert_kind == "pullback_watch"
+        message = (
+            pullback_watch_message(alert_row)
+            if is_pullback_watch
+            else alert_message(alert_row)
+        )
         alert_payload = {
             "symbol": str(alert_row.get("symbol") or "").upper(),
-            "body": alert_message(alert_row)
-            + " · Review in Analyzer; this is not an automatic buy signal.",
+            "title": (
+                "Pullback Watch"
+                if is_pullback_watch
+                else "Momentum Alert"
+            ),
+            "body": message
+            + (
+                " · Watch for pullback/reclaim confirmation in Analyzer; this is not an entry signal."
+                if is_pullback_watch
+                else " · Review in Analyzer; this is not an automatic buy signal."
+            ),
         }
     payload_json = json.dumps(alert_payload)
     components.html(
@@ -366,7 +421,7 @@ def _browser_alert_control(alert_row=None):
           const alertPayload = {payload_json};
           if (alertPayload) {{
             const oldTitle = p.document.title;
-            p.document.title = '🚨 ' + alertPayload.symbol + ' Momentum Alert';
+            p.document.title = '🚨 ' + alertPayload.symbol + ' ' + alertPayload.title;
             p.setTimeout(() => {{ p.document.title = oldTitle; }}, 30000);
             if (hasNotifications && p.Notification.permission === 'granted') {{
               try {{
@@ -567,7 +622,22 @@ def _workspace_scanner_monitor():
 
     payload = _read_latest_scan_payload()
     new_alerts = _process_momentum_alerts(payload)
-    first_alert = new_alerts[0] if new_alerts else None
+    new_pullback_watches = _process_pullback_watch_alerts(payload)
+
+    first_alert = None
+    first_alert_kind = "actionable"
+    if new_alerts:
+        first_alert = new_alerts[0]
+    elif new_pullback_watches:
+        first_alert = new_pullback_watches[0]
+        first_alert_kind = "pullback_watch"
+
+    for row in new_pullback_watches[:3]:
+        st.toast(
+            "PULLBACK WATCH · "
+            + pullback_watch_message(row),
+            icon="👀",
+        )
 
     for row in new_alerts[:3]:
         st.toast(
@@ -576,6 +646,16 @@ def _workspace_scanner_monitor():
             + " · Review in Analyzer.",
             icon="📈",
         )
+
+    pullback_history = list(st.session_state.get("_pullback_watch_history") or [])
+    if pullback_history:
+        latest = pullback_history[-1]
+        if time.time() - float(latest.get("detected_at") or 0) <= 600:
+            st.info(
+                "👀 **High-Score Pullback Watch:** "
+                + str(latest.get("message") or "")
+                + ". **This is an early heads-up, not an entry signal.**"
+            )
 
     history = list(st.session_state.get("_momentum_alert_history") or [])
     if history:
@@ -637,7 +717,7 @@ def _workspace_scanner_monitor():
             "Completed-daily Swing / Longer-Term discovery remains available."
         )
 
-    _browser_alert_control(first_alert)
+    _browser_alert_control(first_alert, first_alert_kind)
 
 
 _workspace_scanner_monitor()
