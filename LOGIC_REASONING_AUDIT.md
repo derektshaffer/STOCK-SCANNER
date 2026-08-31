@@ -26,16 +26,16 @@ The app must satisfy these invariants before the audit is considered green:
 ### CRITICAL / HIGH
 
 - **Final-entry contradiction:** Analyzer v2 could demote a raw ENTRY AVAILABLE plan to WAIT because of stale/missing data or weak evidence while leaving the older `entry_state=ENTRY AVAILABLE` and “ENTRY AVAILABLE NOW” instruction intact. This produced contradictory UI. **Fixed and covered by final decision-contract regression.**
-- **Historical-policy contradiction:** `historical_integration.py` currently says same-ticker historical matches affect the actual setup score, rebuild the trade plan, shift pullback geometry, adjust plan confidence, and can demote breakout entries. Later Analyzer v2 code explicitly describes historical analogs as research-only. These two policies conflicted. **Same-ticker historical production influence has now been removed; continuing the sweep for any remaining historical leakage.**
+- **Historical-policy contradiction:** same-ticker historical matches previously changed the live setup score/geometry even though other layers labeled them research-only. **Resolved: same-ticker analogs and stair-step historical outcomes are neutral in live production scoring/geometry, timeframe research remains shadow-only, and regression tests verify bullish vs bearish historical analogs cannot change the live plan.**
 - **Plan continuity was not canonical:** The current trade plan was recomputed from the latest snapshot. **Intraday continuity is now implemented with a persistent session thesis, anchored geometry, explicit invalidation/completion/expiry events, three-observation replacement confirmation, and transition/history logging. Swing/longer-term continuity remains open.**
 - **Layered plan mutation:** `stock_analyzer` builds the plan and enrichment layers can refine it. **A final decision contract now normalizes status/entry language and geometry after all layers; historical analog mutation has been removed. Continued audit is checking for remaining pre-contract semantic drift.**
 
 ### HIGH / MEDIUM
 
 - **Bounce semantics previously swallowed visible rebounds inside a larger impulse.** Active observed bounces are now separated from confirmed bounce peaks. **Core regression now passes.**
-- **Historical analog matching compares a live partial-day setup with completed historical-day statistics.** This is acceptable as descriptive research, but unsafe as an unvalidated live-action input. **Production influence must be gated.**
-- **Full-spectrum scenario math still includes some historical stair-step study context even though the live score path calls history neutral/research-only.** It does not currently own the final entry gate, but labeling/semantics need cleanup.
-- **Scanner production ACTION intentionally ignores advanced behavior features unless validation improves.** This is conservative and currently desirable, but the audit must verify that UI/ranking does not imply behavior validation that does not exist.
+- **Historical analog matching compares a live partial-day setup with completed historical-day statistics.** It is now explicitly descriptive/research-only and cannot clear an entry gate or move live geometry.
+- **Full-spectrum historical leakage was found and removed.** Completed stair-step/history studies remain visible as research context but no longer tilt live scenario weights.
+- **Scanner production ACTION intentionally ignores advanced behavior features unless validation improves.** Regression coverage now verifies timeframe/behavior labels do not rerank production and Scanner alerts remain review-only.
 - **Timeframe fit is currently classification, not a persistent horizon-specific strategy state.** This does not yet meet the desired “combine information throughout the day/week/month” behavior.
 
 ## Audit phases
@@ -60,34 +60,34 @@ The app must satisfy these invariants before the audit is considered green:
 - [ ] Append-future invariance tests for every production detector.
 
 ### Phase 4 — Historical / ML integrity
-- [~] Remove or gate every unvalidated historical input from production action/geometry. Same-ticker and stair-step historical live influence removed; continuing full sweep.
-- [ ] Verify point-in-time SEC/fundamental replay.
-- [ ] Verify scanner ML split/embargo/same-symbol correlation controls.
-- [ ] Verify same-ticker and peer ML cannot affect live action without validation gates.
-- [ ] Verify model-version changes invalidate incompatible historical features.
+- [x] Remove/gate unvalidated historical inputs from production action/geometry. Same-ticker analogs and historical stair outcomes are research-only; timeframe ML/research remains production-disabled.
+- [x] Verify point-in-time SEC/fundamental replay. Company facts and dilution forms are filing-date gated; future filings are excluded by regression.
+- [x] Verify scanner ML split/embargo/same-symbol correlation controls. Whole-day chronological folds, strictly later live confirmation, and 60-minute same-symbol effective-sample spacing are enforced for replay validation and served-model fitting.
+- [x] Verify same-ticker and peer ML cannot affect live action without validation gates. Composite ML potential/evidence/scenario influence now requires the complete production gate; peer/replay validation uses de-correlated effective samples.
+- [x] Verify model-version changes invalidate incompatible historical features. Scanner feature-version, Analyzer calibration schema, peer behavior-feature version, and bounce-semantics version gates are regression-tested.
 
 ### Phase 5 — Scanner / Analyzer consistency
-- [ ] Scanner action cannot outrank data-integrity state.
-- [ ] Scanner timeframe labels cannot silently change production ranking.
-- [ ] Analyzer final action is the only source of “entry available.”
-- [ ] Alerts use the same final decision contract as the displayed app.
+- [x] Scanner action cannot outrank data-integrity state.
+- [x] Scanner timeframe labels cannot silently change production ranking.
+- [x] Analyzer final decision contract is the only source of actionable entry language; Scanner/alerts are review cues only.
+- [x] Scanner alerts are explicitly review-only, require trusted Scanner data, and cannot emit ENTRY AVAILABLE / BUY NOW language.
 
 ### Phase 6 — Data/provider integrity
-- [ ] Freshness/fallback matrix: Tradier, SIP, IEX, extended hours, stale quote, missing momentum.
-- [ ] No mixed-provider timestamp or volume denominator errors.
+- [~] Freshness/fallback matrix: Tradier and Alpaca SIP accepted when fresh; IEX, stale quote/trade, provider/feed disagreement, missing momentum, and missing intraday source fail closed. Extended-hours edge cases remain under review.
+- [x] No mixed-provider technical-source acceptance: Scanner rejects quote/technical provider disagreement, and Analyzer rejects provider/feed metadata mismatch. Existing volume-pace tests keep regular vs extended-session denominators separate.
 - [~] Streaming session failures cannot create fake freshness. Tradier code-1007 / too-many-sessions now enters a 120-second session-limit cooldown instead of a reconnect loop; freshness/fallback matrix still in progress.
 
 ### Phase 7 — Outcome learning
-- [ ] Ensure logged prediction contains the exact displayed plan and final gate state.
-- [ ] Ensure outcome horizons start after the observation timestamp.
-- [ ] Distinguish active/developing patterns from confirmed patterns in labels.
-- [ ] Verify repeated intraday samples are de-correlated for validation.
+- [x] Logged prediction contains final status/action/entry instruction, displayed geometry, thesis revision, and final decision-contract corrections.
+- [x] Outcome horizons and path labels start strictly after the observation timestamp in both opportunistic and durable Analyzer scorers; the signal candle is excluded.
+- [x] Active/developing patterns are logged separately from confirmed patterns (including active bounce vs confirmed bounce).
+- [x] Repeated intraday samples are de-correlated for validation: same-ticker ML, Scanner replay/live confirmation, and peer ML use 60-minute same-symbol effective-sample spacing.
 
 ### Phase 8 — Performance / state safety
 - [~] Cached results retain their original market-data age and final live-data gate blocks stale entries; explicit cache-age UI audit still in progress.
-- [ ] Background work cannot block Scanner cadence.
+- [x] Scanner uses one async background process/lock across views; runtime regressions cover nonblocking start, timeout release, stale-lock recovery, and cadence health.
 - [ ] No duplicate deep-history, SEC, float, or stream work on normal Analyzer launch.
-- [ ] Timeout/cancel paths leave no stale locks or stale plan state.
+- [x] Timeout/cancel paths cannot advance execution-thesis or setup-horizon state: continuity updates are staged transactionally and committed only after a complete Analyzer result.
 
 ## Exit criteria
 
@@ -122,3 +122,12 @@ These tests passed in the Analyzer validation workflow on the commit that introd
 - Same-bar stop/target ambiguity is scored stop-first conservatively.
 - Each final displayed decision records price, plan family, revision, action, entry state, confidence, entry readiness, evidence strength, and potential score.
 - Thesis state is namespaced per browser session so one user's/ticker-session state cannot bleed into another session.
+
+
+## Additional integrity findings fixed during the audit
+
+- **Observation-candle outcome leakage:** both Analyzer outcome paths previously allowed the candle stamped at the prediction time to contribute high/low data to later first-touch and MFE/MAE labels. That could credit movement that happened before the signal. Both paths now start strictly after the observation candle.
+- **Correlated replay evidence:** Scanner and peer-ML replay validation previously counted dense same-symbol observations inside the same 60-minute target window as separate evidence. Replay validation and served-model fitting now use 60-minute same-symbol effective-sample spacing.
+- **Composite ML gate inconsistency:** a numeric ML edge / validated submodel count could previously boost live potential/evidence before the complete production gate passed. Composite ML influence is now neutral until the production gate and consolidated-source checks pass.
+- **Mixed-provider technicals:** Scanner integrity previously checked the quote source but not the source of VWAP/momentum bars. Scanner now requires both quote and intraday technical sources to be consolidated and mutually consistent.
+- **Cancelled-analysis state mutation:** execution and setup-horizon continuity could previously update before a long Analyzer run finished. Both continuity layers now stage changes and commit only after successful final decision construction.
