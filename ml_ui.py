@@ -201,10 +201,11 @@ def render_ml_prediction(st, pd, result, card):
         _probability_class(stair_reaccel, high=60, low=40),
         "When a multi-session stair-step or higher plateau exists, estimates whether another expansion leg happens before the accepted higher level breaks down.",
     )
-    st.caption(
-        "A later bounce can be a good short-duration trade even when NEW HIGH probability is low. "
-        "Post-bounce failure and stair-step reacceleration are modeled separately so weakening bounces are not confused with healthy higher-plateau continuation."
-    )
+    with st.expander("ML sequence context", expanded=False):
+        st.caption(
+            "A later bounce can be a good short-duration trade even when NEW HIGH probability is low. "
+            "Post-bounce failure and stair-step reacceleration are modeled separately so weakening bounces are not confused with healthy higher-plateau continuation."
+        )
 
     peer_cols = st.columns([1.35, 1.0, 3.65])
     peer_probability = peer.get("probability_pct")
@@ -249,21 +250,21 @@ def render_ml_prediction(st, pd, result, card):
             for item in top_peers[:6]
             if item.get("symbol")
         )
-        if peer_names:
+        with st.expander("Peer cohort context", expanded=False):
+            if peer_names:
+                st.caption(
+                    "Peer cohort emphasizes behaviorally similar momentum setups from other symbols. "
+                    f"Most represented peers: {peer_names}."
+                )
+            else:
+                st.caption(
+                    "Peer ML is collecting a sufficiently large, diverse cohort of similar momentum setups."
+                )
             st.caption(
-                "Peer cohort emphasizes behaviorally similar momentum setups from other symbols. "
-                f"Most represented peers: {peer_names}."
+                "Same-ticker ML stays primary. A peer model can contribute at most 30% of the headline edge, "
+                "and only after the stock's own same-ticker validation gate and the peer model's separate "
+                "whole-trading-day validation gate have both passed."
             )
-        else:
-            st.caption(
-                "Peer ML is collecting a sufficiently large, diverse cohort of similar momentum setups."
-            )
-
-    st.caption(
-        "Same-ticker ML stays primary. A peer model can contribute at most 30% of the headline edge, "
-        "and only after the stock's own same-ticker validation gate and the peer model's separate "
-        "whole-trading-day validation gate have both passed."
-    )
 
     with ml_details_slot.popover("ML details"):
         st.write(
