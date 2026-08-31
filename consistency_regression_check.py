@@ -4914,6 +4914,71 @@ def test_combined_analyzer_refresh_is_background_and_saved_stocks_follow_search(
     assert 'div[data-testid="stHorizontalBlock"]:has(.combined-ticker-row)' in app
 
 
+
+def test_shared_deep_history_cache_prevents_duplicate_same_launch_fetches():
+    import tempfile
+    from pathlib import Path
+    import analyzer_history_cache as hc
+
+    original_dir = hc.CACHE_DIR
+    original_ttl = hc.DEEP_5M_TTL_SECONDS
+    calls = []
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            hc.CACHE_DIR = Path(tmp)
+            hc.DEEP_5M_TTL_SECONDS = 900
+            end = datetime(2026, 8, 31, 20, 0, tzinfo=timezone.utc)
+
+            def fake_fetch(symbol, timeframe, start, chunk_end, limit):
+                calls.append((symbol, start, chunk_end))
+                return [
+                    {"t": _iso(start), "o": 10, "h": 10, "l": 10, "c": 10, "v": 1},
+                    {"t": _iso(chunk_end), "o": 10, "h": 10, "l": 10, "c": 10, "v": 1},
+                ], "alpaca_sip_test"
+
+            first, source1 = hc.load_deep_5m_history(
+                "TEST",
+                end=end,
+                fetch_bars=fake_fetch,
+                days=540,
+                step_days=45,
+            )
+            first_call_count = len(calls)
+            assert first, first
+            assert first_call_count > 1, calls
+            assert "sip" in source1.lower(), source1
+
+            second, source2 = hc.load_deep_5m_history(
+                "TEST",
+                end=end,
+                fetch_bars=fake_fetch,
+                days=540,
+                step_days=45,
+            )
+            assert second, second
+            assert len(calls) == first_call_count, calls
+            assert source2 == source1, (source1, source2)
+    finally:
+        hc.CACHE_DIR = original_dir
+        hc.DEEP_5M_TTL_SECONDS = original_ttl
+
+
+def test_background_analyzer_worker_never_opens_long_lived_live_stream():
+    from pathlib import Path
+
+    runtime = Path("analyzer_launch_runtime.py").read_text(encoding="utf-8")
+    v2 = Path("analyzer_v2_integration.py").read_text(encoding="utf-8")
+    assert 'env["ANALYZER_BACKGROUND_WORKER"]="1"' in runtime
+    assert 'if background_worker:' in v2
+    assert '"status": "snapshot_only"' in v2
+    assert 'stream_status = ensure_live_stream(' in v2
+    worker_branch = v2.find("if background_worker:")
+    stream_call = v2.find("stream_status = ensure_live_stream(", worker_branch)
+    else_branch = v2.find("else:", worker_branch)
+    assert worker_branch >= 0 and else_branch > worker_branch, (worker_branch, else_branch)
+    assert stream_call > else_branch, (else_branch, stream_call)
+
+
 def test_scanner_runtime_async_start_is_nonblocking_and_lock_safe():
     import sys
     import tempfile
@@ -7212,6 +7277,8 @@ if __name__ == "__main__":
         test_momentum_alert_ui_has_in_app_and_optional_browser_notifications,
         test_scanner_monitor_and_saved_stocks_are_vertically_compact,
         test_combined_analyzer_refresh_is_background_and_saved_stocks_follow_search,
+        test_shared_deep_history_cache_prevents_duplicate_same_launch_fetches,
+        test_background_analyzer_worker_never_opens_long_lived_live_stream,
         test_scanner_runtime_async_start_is_nonblocking_and_lock_safe,
         test_scanner_runtime_timeout_releases_shared_lock,
         test_scanner_runtime_recovers_stale_lock_after_crash,
