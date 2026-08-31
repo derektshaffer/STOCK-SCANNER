@@ -877,7 +877,7 @@ def test_analyzer_page_leads_with_actionable_decision_hierarchy():
     assert v2 > snapshot, "Decision-v2 explanations should follow the primary plan"
     assert impulse > v2, "Pattern engines should remain below decision-level information"
 
-    assert "The action tells you whether the entry is ready now" in core
+    assert "Setup horizon describes whether the stock currently fits an intraday, swing" in core
     assert "Research-only context; these completed historical matches are not included" in historical
     assert "Live 33–50% impulse zone" in core
 
@@ -4740,6 +4740,7 @@ def test_momentum_alert_can_realert_only_after_leaving_ready_state():
                 "scanner_action": "ANALYZE NOW",
                 "passed_base_filters": True,
                 "alert_ready": True,
+                "action_data_integrity_ok": True,
             }
         ]
     }
@@ -4751,6 +4752,7 @@ def test_momentum_alert_can_realert_only_after_leaving_ready_state():
                 "scanner_action": "WAIT PULLBACK",
                 "passed_base_filters": True,
                 "alert_ready": True,
+                "action_data_integrity_ok": True,
             }
         ]
     }
