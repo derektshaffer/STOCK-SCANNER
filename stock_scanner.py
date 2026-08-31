@@ -400,6 +400,57 @@ def get_most_actives(by="volume", top=100):
     return get_json(url).get("most_actives") or []
 
 
+def _merge_candidate_rows(*sources, limit=180):
+    """Union discovery sources by symbol without hiding a live rescue mover."""
+    merged = {}
+    order = []
+    for source in sources:
+        for row in source or []:
+            if not isinstance(row, dict):
+                continue
+            symbol = str(row.get("symbol") or "").upper().strip()
+            if not symbol:
+                continue
+            if symbol not in merged:
+                merged[symbol] = {"symbol": symbol}
+                order.append(symbol)
+            for key, value in row.items():
+                if value is not None:
+                    merged[symbol][key] = value
+    return [merged[symbol] for symbol in order[: max(1, int(limit))]]
+
+
+def _alpaca_rescue_candidates(phase):
+    """Small live-discovery rescue set layered on top of Tradier's broad cache."""
+    if not ALPACA_CONFIGURED:
+        return []
+    if phase == "regular":
+        return get_movers()
+
+    merged = {}
+    errors = []
+    if phase in {"premarket", "afterhours"}:
+        for by in ("volume", "trades"):
+            try:
+                for row in get_most_actives(by=by, top=100):
+                    symbol = str(row.get("symbol") or "").upper().strip()
+                    if symbol:
+                        merged[symbol] = {"symbol": symbol}
+            except Exception as exc:
+                errors.append(str(exc))
+        if phase == "afterhours":
+            try:
+                for row in get_movers():
+                    symbol = str(row.get("symbol") or "").upper().strip()
+                    if symbol:
+                        merged[symbol] = {"symbol": symbol}
+            except Exception as exc:
+                errors.append(str(exc))
+    if errors and not merged:
+        raise RuntimeError(" | ".join(errors[:2]))
+    return list(merged.values())
+
+
 def get_candidate_universe(now_et):
     """Discover momentum candidates without a hard Alpaca dependency.
 
@@ -427,7 +478,25 @@ def get_candidate_universe(now_et):
                     f"from {meta.get('symbols', '?')} cached-universe symbols "
                     f"(cache_hit={meta.get('cache_hit')})."
                 )
-                return rows
+                rescue = []
+                try:
+                    rescue = _alpaca_rescue_candidates(phase)
+                except Exception as exc:
+                    print(f"WARN live mover rescue discovery failed: {exc}")
+                merged = _merge_candidate_rows(rows, rescue, limit=180)
+                if rescue:
+                    added = len({
+                        str(row.get("symbol") or "").upper().strip()
+                        for row in merged
+                    } - {
+                        str(row.get("symbol") or "").upper().strip()
+                        for row in rows
+                    })
+                    print(
+                        f"Live mover rescue: {len(rescue)} supplemental rows, "
+                        f"{added} unique symbols added."
+                    )
+                return merged
         except Exception as exc:
             print(f"WARN Tradier discovery failed: {exc}")
             if not ALPACA_CONFIGURED:
@@ -3097,7 +3166,7 @@ def main():
         )
 
     candidates = get_candidate_universe(now_et)
-    print(f"Alpaca discovery returned {len(candidates)} candidate symbols.")
+    print(f"Combined discovery returned {len(candidates)} candidate symbols.")
 
     tradier_quotes = {}
     if USE_TRADIER:

@@ -3122,6 +3122,62 @@ def test_live_scanner_matches_scheduled_tradier_discovery():
     assert 'env["SCANNER_DISCOVERY_UNIVERSE_SIZE"]' in runtime_source
 
 
+def test_discovery_universe_reserves_extreme_mover_rescue_slot():
+    import scanner_discovery as discovery
+
+    rows={}
+    # Ten highly liquid ordinary stocks would normally dominate a tiny universe.
+    for i in range(20):
+        symbol=f"LQ{i:02d}"
+        rows[symbol]={
+            "type":"stock",
+            "last":10.0,
+            "prevclose":10.0,
+            "average_volume":10_000_000-i*10_000,
+            "change_percentage":1.0,
+        }
+    # WETO-like case: materially lower normal dollar volume but a huge current/
+    # recent move. The rescue lane must keep it visible to the live scanner.
+    rows["WETO"]={
+        "type":"stock",
+        "last":7.24,
+        "prevclose":5.72,
+        "average_volume":250_000,
+        "change_percentage":26.57,
+    }
+    selected,_=discovery._select_seed_symbols(rows,10)
+    assert "WETO" in selected, selected
+
+
+def test_live_mover_rescue_is_merged_without_duplicate_symbols():
+    import stock_scanner as scanner
+
+    primary=[
+        {"symbol":"AAA","discovery_change_pct":8.0},
+        {"symbol":"BBB","discovery_change_pct":6.0},
+    ]
+    rescue=[
+        {"symbol":"WETO","change_pct":28.0},
+        {"symbol":"AAA","change_pct":9.0},
+    ]
+    merged=scanner._merge_candidate_rows(primary,rescue,limit=10)
+    symbols=[row.get("symbol") for row in merged]
+    assert symbols == ["AAA","BBB","WETO"], merged
+    aaa=next(row for row in merged if row.get("symbol")=="AAA")
+    assert aaa.get("change_pct")==9.0, aaa
+
+
+def test_tradier_discovery_does_not_short_circuit_live_mover_rescue():
+    from pathlib import Path
+
+    source=Path("stock_scanner.py").read_text(encoding="utf-8")
+    discovery_source=Path("scanner_discovery.py").read_text(encoding="utf-8")
+    assert "rescue = _alpaca_rescue_candidates(phase)" in source
+    assert "_merge_candidate_rows(rows, rescue" in source
+    assert "VOLATILITY_RESCUE_SHARE" in discovery_source
+    assert "CACHE_SCHEMA_VERSION = 2" in discovery_source
+
+
 def test_analyzer_session_filter_uses_current_extended_session():
     # 2026-08-31 is a Monday in EDT.
     pre_now = datetime(2026, 8, 31, 12, 30, tzinfo=timezone.utc)  # 8:30 AM ET
@@ -4530,6 +4586,9 @@ if __name__ == "__main__":
         test_scanner_visibly_marks_stale_snapshot,
         test_scanner_ui_accepts_tradier_without_alpaca_credentials,
         test_live_scanner_matches_scheduled_tradier_discovery,
+        test_discovery_universe_reserves_extreme_mover_rescue_slot,
+        test_live_mover_rescue_is_merged_without_duplicate_symbols,
+        test_tradier_discovery_does_not_short_circuit_live_mover_rescue,
         test_swing_research_ui_disclaims_historical_probability,
         test_legacy_analyzer_entrypoint_cannot_drift,
         test_monday_readiness_blocks_stale_scan_handoffs,
