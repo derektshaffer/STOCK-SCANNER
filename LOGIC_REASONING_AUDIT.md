@@ -36,7 +36,8 @@ The app must satisfy these invariants before the audit is considered green:
 - **Historical analog matching compares a live partial-day setup with completed historical-day statistics.** It is now explicitly descriptive/research-only and cannot clear an entry gate or move live geometry.
 - **Full-spectrum historical leakage was found and removed.** Completed stair-step/history studies remain visible as research context but no longer tilt live scenario weights.
 - **Scanner production ACTION intentionally ignores advanced behavior features unless validation improves.** Regression coverage now verifies timeframe/behavior labels do not rerank production and Scanner alerts remain review-only.
-- **Timeframe fit is currently classification, not a persistent horizon-specific strategy state.** This does not yet meet the desired “combine information throughout the day/week/month” behavior.
+- **Timeframe fit was previously a reset-on-refresh classification.** A separate persistent setup-horizon continuity tracker now holds INTRADAY / SWING / LONGER-TERM context through noisy refreshes while raw scores remain visible. Deeper multi-day/month thesis persistence is still being audited.
+- **Protective-exit logic previously ignored post-flush rebound risk.** This could correctly say EXIT / PROTECT CAPITAL after a structural breakdown yet give no warning that a capitulation/reflex rebound might follow. Position mode now keeps the exit decision intact while separately flagging CAPITULATION / REBOUND WATCH or REBOUND DEVELOPING and an overhead reclaim level. This is explicitly not a new entry signal.
 
 ## Audit phases
 
@@ -107,7 +108,8 @@ The audit now includes explicit tests built from the kind of visual mistake that
 - a large stair-step run with multiple obvious pullback/rebound cycles may not collapse into “Bounce #1 not reached”;
 - once a breakout trigger is reached, the Analyzer must keep evaluating the same structural breakout reference rather than instantly switching to a deeper pullback goal;
 - a final safety WAIT/DATA CHECK may never coexist with “ENTRY AVAILABLE NOW” language;
-- impossible long geometry (stop above entry or Target 1 below entry) is rejected automatically.
+- impossible long geometry (stop above entry or Target 1 below entry) is rejected automatically;
+- a sharp capitulation-style selloff may still trigger a separate post-exit rebound watch without cancelling the protective exit.
 
 These tests passed in the Analyzer validation workflow on the commit that introduced them.
 
