@@ -8,6 +8,8 @@ import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
 
+from analyzer_runtime_context import set_analyzer_namespace
+
 
 def _preload_secrets():
     """Load Streamlit secrets before stock_analyzer reads its environment."""
@@ -529,10 +531,10 @@ def run():
         "_analyzer_thesis_namespace",
         uuid.uuid4().hex,
     )
-    # Standalone Analyzer executes in this process; combined mode also passes
-    # this namespace into its subprocess. Either way, one browser session can
-    # never inherit another user's active ticker thesis.
-    os.environ["ANALYZER_THESIS_NAMESPACE"]=str(thesis_namespace)
+    # Standalone Analyzer executes in this process; ContextVar keeps its
+    # namespace isolated from other Streamlit sessions sharing the process.
+    # Combined mode also passes the same namespace into its subprocess.
+    set_analyzer_namespace(thesis_namespace)
     combined = _combined_workspace()
     # Fragment reruns should never dim the Analyzer. Scope this CSS to stale
     # Streamlit elements so numbers can update without the page flashing.
