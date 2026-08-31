@@ -26,9 +26,13 @@ TRADIER_TOKEN = (
 )
 OUTCOME_DATE = os.environ.get("OUTCOME_DATE", "").strip()
 OUT_DIR = Path(os.environ.get("ANALYZER_OUTCOME_DIR", "analyzer_outcomes"))
-ANALYZER_FEATURE_VERSION = "analyzer-features-v6-sequence-regimes"
-DECISION_SCORE_VERSION = "decision-v2.6-sequence-regimes"
-TIMEFRAME_SCORE_VERSION = "timeframe-fit-v1"
+from analyzer_versions import (
+    ANALYZER_FEATURE_VERSION,
+    CALIBRATION_SCHEMA_VERSION,
+    DECISION_SCORE_VERSION,
+    TIMEFRAME_SCORE_VERSION,
+)
+
 OUTCOME_MAX_BAR_DELAY_SECONDS = 180
 
 
@@ -1006,7 +1010,7 @@ def _write_calibration():
     ]
 
     payload = {
-        "schema_version": 8,
+        "schema_version": CALIBRATION_SCHEMA_VERSION,
         "feature_version": ANALYZER_FEATURE_VERSION,
         "decision_score_version": DECISION_SCORE_VERSION,
         "timeframe_score_version": TIMEFRAME_SCORE_VERSION,
