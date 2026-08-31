@@ -694,7 +694,7 @@ def card(c):
         <span class="{day_cls}">&nbsp;{f(day,1,"%")} today</span>
       </div>
     </div>
-    <div class="score" style="color:{score_color}">{score:.0f}<small>SCORE / 100</small></div>
+    <div class="score" style="color:{score_color}">{score:.0f}<small>SETUP SCORE / 100</small></div>
   </div>
   <div>
     <span class="badge {badge_cls}">GRADE {html.escape(grade)} · {html.escape(label)}</span>
@@ -1325,6 +1325,12 @@ st.markdown(
 <div class="legend-box">
   <div class="legend-title">Quick metric guide</div>
   <div class="legend-grid">
+    <div class="legend-item">
+      <div class="legend-term">Setup Score — 0 to 100</div>
+      <div class="legend-def">
+        This is a rules-based <b>setup-quality ranking score</b>, not a probability of profit and not an entry command. A high score means the stock matches more of the scanner's momentum-quality conditions. The separate <b>ACTION</b> field tells you whether the current price behavior is actually suitable for Analyzer review now. A stock can therefore have a very high Setup Score and still say <b>WAIT PULLBACK</b>, <b>CAUTION</b>, or <b>NO TRADE</b>.
+      </div>
+    </div>
     <div class="legend-item">
       <div class="legend-term">Best Fit — Intraday / Swing / Longer-Term</div>
       <div class="legend-def">

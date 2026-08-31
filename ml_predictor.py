@@ -536,6 +536,11 @@ def _build_dataset(bars5, et, target_pct, stop_pct):
             row.update(
                 {
                     "timestamp": dt.astimezone(timezone.utc).timestamp() if dt else 0.0,
+                    "trading_date": (
+                        dt.astimezone(et).date().isoformat()
+                        if dt
+                        else None
+                    ),
                     "higher_30": int(bool(c30 and c30 > price)),
                     "higher_60": int(bool(c60 and c60 > price)),
                     "target_before_stop": target_label,
@@ -668,6 +673,51 @@ def _probability_validation_summary(actual, probabilities, baseline_probabilitie
     }
 
 
+def _walk_forward_day_splits(clean):
+    """Return expanding-window folds whose train/validation dates never overlap."""
+    days = sorted({
+        str(row.get("trading_date") or "")
+        for row in clean
+        if row.get("trading_date")
+    })
+    if len(days) < 6:
+        return []
+
+    folds = []
+    fold_bounds = (
+        (0.55, 0.70),
+        (0.70, 0.85),
+        (0.85, 1.00),
+    )
+    for train_frac, val_frac in fold_bounds:
+        train_pos = min(
+            len(days) - 1,
+            max(0, int(len(days) * train_frac) - 1),
+        )
+        val_pos = min(
+            len(days) - 1,
+            max(0, int(len(days) * val_frac) - 1),
+        )
+        train_cut = days[train_pos]
+        val_cut = days[val_pos]
+        if val_cut <= train_cut:
+            continue
+
+        train_idx = [
+            i for i, row in enumerate(clean)
+            if row.get("trading_date")
+            and str(row["trading_date"]) <= train_cut
+        ]
+        val_idx = [
+            i for i, row in enumerate(clean)
+            if row.get("trading_date")
+            and train_cut < str(row["trading_date"]) <= val_cut
+        ]
+        if train_idx and val_idx:
+            folds.append((train_idx, val_idx, train_cut, val_cut))
+    return folds
+
+
 def _walk_forward_fit(rows, label, current_features):
     try:
         import numpy as np
@@ -694,14 +744,12 @@ def _walk_forward_fit(rows, label, current_features):
     val_probs = []
     val_y = []
     baseline_probs = []
-    cut_fracs = (0.55, 0.70, 0.85)
-    for fold, train_frac in enumerate(cut_fracs):
-        train_end = max(80, int(n * train_frac))
-        val_end = int(n * (cut_fracs[fold + 1] if fold + 1 < len(cut_fracs) else 1.0))
-        if val_end <= train_end + 15:
+    folds = _walk_forward_day_splits(clean)
+    for train_idx, val_idx, _train_cut, _val_cut in folds:
+        if len(train_idx) < 80 or len(val_idx) < 16:
             continue
-        Xtr, ytr = X[:train_end], y[:train_end]
-        Xv, yv = X[train_end:val_end], y[train_end:val_end]
+        Xtr, ytr = X[train_idx], y[train_idx]
+        Xv, yv = X[val_idx], y[val_idx]
         if len(set(ytr.tolist())) < 2 or len(set(yv.tolist())) < 2:
             continue
         model = xgb.train(
@@ -773,6 +821,8 @@ def _walk_forward_fit(rows, label, current_features):
         "positives": positives,
         "negatives": max(0, n - positives),
         "validation_samples": len(val_y),
+        "validation_split_unit": "trading_day",
+        "walk_forward_folds": len(folds),
         "walk_forward_accuracy_pct": round(accuracy * 100.0, 1),
         "baseline_accuracy_pct": round(baseline_accuracy * 100.0, 1),
         "accuracy_edge_pct": round(edge * 100.0, 1),

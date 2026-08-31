@@ -62,6 +62,9 @@ on:
       - "tradier_live_stream.py"
       - "live_market_stream.py"
       - ".github/workflows/analyzer-v2-check.yml"
+  # Integrity-first gate: validate proposed code before it can reach main.
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:

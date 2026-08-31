@@ -1125,6 +1125,31 @@ def test_replay_requires_live_confirmation_before_full_badge():
     assert sm.MIN_LIVE_CONFIRMATION_CLASS_COUNT >= 5
 
 
+def test_analyzer_ml_walk_forward_never_splits_one_trading_day():
+    import ml_predictor as ml
+
+    rows = []
+    for day_index in range(12):
+        day = f"2026-08-{day_index + 10:02d}"
+        for sample_index in range(8):
+            rows.append(
+                {
+                    "trading_date": day,
+                    "timestamp": float(day_index * 100 + sample_index),
+                }
+            )
+
+    folds = ml._walk_forward_day_splits(rows)
+    assert folds, folds
+    for train_idx, val_idx, train_cut, val_cut in folds:
+        train_days = {rows[i]["trading_date"] for i in train_idx}
+        val_days = {rows[i]["trading_date"] for i in val_idx}
+        assert train_days.isdisjoint(val_days), (train_days, val_days)
+        assert max(train_days) == train_cut
+        assert max(train_days) < min(val_days)
+        assert max(val_days) == val_cut
+
+
 def test_analyzer_ml_validation_requires_probability_skill():
     import ml_predictor as ml
 
@@ -2942,6 +2967,19 @@ def test_prediction_tracker_skips_closed_market_records():
     assert result["market_session"] == "closed", result
 
 
+def test_scanner_outcome_report_does_not_call_gross_returns_trade_wins():
+    from pathlib import Path
+
+    source = Path("score_outcomes.py").read_text(encoding="utf-8")
+    assert "Positive-return rate" in source
+    assert "not realized trade P/L" in source
+    assert '"execution_adjusted": False' in source
+    assert '"spread_applied_to_returns": False' in source
+    assert '"slippage_applied": False' in source
+    assert '"fees_applied": False' in source
+    assert "Use an execution-aware simulation before making profitability claims." in source
+
+
 def test_late_scanner_report_has_explicit_no_horizon_status():
     from pathlib import Path
 
@@ -3125,6 +3163,19 @@ def test_scanner_timeframe_fit_never_changes_production_rank_fields():
     assert row["opportunity_score"] == before["opportunity_score"], row
     assert row["scanner_action"] == before["scanner_action"], row
     assert row["timeframe_fit"]["production_rank_impact"] is False, row
+
+
+def test_scanner_and_analyzer_scores_are_labeled_as_non_probabilities():
+    from pathlib import Path
+
+    scanner = Path("scanner_app.py").read_text(encoding="utf-8")
+    analyzer = Path("analyzer_v2_ui.py").read_text(encoding="utf-8")
+    assert "SETUP SCORE / 100" in scanner
+    assert "not a probability of profit and not an entry command" in scanner
+    assert "very high Setup Score" in scanner
+    assert "setup-strength score for further upside; not a probability" in analyzer
+    assert "current entry-quality score; not a success probability" in analyzer
+    assert "fit scores are not probabilities" in analyzer
 
 
 def test_scanner_ui_exposes_timeframe_filter_without_reranking():
@@ -3496,6 +3547,119 @@ def test_scanner_ui_surfaces_completed_daily_discovery_when_market_closed():
     assert "DAILY REVIEW" in app_source
 
 
+def test_analyzer_outcome_horizon_rejects_late_gap_bars():
+    import score_analyzer_outcomes as sao
+
+    target = datetime(2026, 8, 28, 15, 0, tzinfo=timezone.utc)
+    bars = [
+        {"t": "2026-08-28T15:03:00Z", "c": 10.3},
+        {"t": "2026-08-28T15:04:00Z", "c": 10.4},
+    ]
+    assert sao.OUTCOME_MAX_BAR_DELAY_SECONDS == 180
+    assert sao._price_at_or_after(bars, target) == 10.3
+
+    late_only = [
+        {"t": "2026-08-28T15:04:00Z", "c": 10.4},
+    ]
+    assert sao._price_at_or_after(late_only, target) is None
+
+
+def test_live_confirmation_rows_do_not_double_count_overlapping_ticker_windows():
+    import scanner_ml_ranker as sm
+
+    rows = [
+        {"symbol": "AAA", "timestamp": 10_000.0},
+        {"symbol": "AAA", "timestamp": 11_800.0},
+        {"symbol": "AAA", "timestamp": 13_600.0},
+        {"symbol": "BBB", "timestamp": 10_600.0},
+        {"symbol": "BBB", "timestamp": 14_300.0},
+    ]
+    selected = sm.independent_confirmation_rows(rows)
+    assert [(row["symbol"], row["timestamp"]) for row in selected] == [
+        ("AAA", 10_000.0),
+        ("BBB", 10_600.0),
+        ("AAA", 13_600.0),
+        ("BBB", 14_300.0),
+    ], selected
+
+
+def test_peer_ml_replay_requires_strictly_later_live_confirmation():
+    from pathlib import Path
+    import peer_ml_predictor as peer
+
+    rows = [
+        {
+            "symbol": "OLD",
+            "trading_date": "2026-08-28",
+            "observation_source": "historical_replay",
+            "timestamp": 1000.0,
+            "label": 1,
+        },
+        {
+            "symbol": "SAME",
+            "trading_date": "2026-08-28",
+            "observation_source": "live_scan",
+            "timestamp": 2000.0,
+            "label": 0,
+        },
+        {
+            "symbol": "LATER",
+            "trading_date": "2026-08-31",
+            "observation_source": "live_scan",
+            "timestamp": 3000.0,
+            "label": 1,
+        },
+    ]
+    context = peer._source_integrity_context(rows)
+    assert context["replay_end_day"] == "2026-08-28", context
+    assert [row["symbol"] for row in context["live_confirmation_rows"]] == [
+        "LATER"
+    ], context
+    assert peer.MIN_LIVE_CONFIRMATION_SAMPLES >= 100
+    assert peer.MIN_LIVE_CONFIRMATION_DAYS >= 5
+    assert peer.MIN_LIVE_CONFIRMATION_CLASS_COUNT >= 15
+    assert peer.MIN_LIVE_CONFIRMATION_SYMBOLS >= 15
+
+    source = Path("peer_ml_predictor.py").read_text(encoding="utf-8")
+    assert 'validation_status = "replay_validated_waiting_live"' in source
+    assert '"replay_survivorship_limit": bool(replay_rows)' in source
+
+
+def test_scanner_historical_validation_excludes_live_confirmation_pool():
+    from pathlib import Path
+
+    source = Path("scanner_ml_ranker.py").read_text(encoding="utf-8")
+    assert "validation_rows = replay_rows if replay_rows else rows" in source
+    assert "for i, row in enumerate(validation_rows)" in source
+    assert '"historical_validation_source"' in source
+    assert '"historical_replay" if replay_rows else "live_only"' in source
+    # The later live holdout must remain a distinct pool.
+    assert "live_confirmation_rows_raw = [" in source
+    assert "independent_confirmation_rows(" in source
+    assert "row[\"trading_date\"] > replay_end_day" in source
+
+
+def test_scanner_replay_live_confirmation_gate_is_integrity_sized():
+    import scanner_ml_ranker as sm
+
+    assert sm.MIN_LIVE_CONFIRMATION_SAMPLES >= 100
+    assert sm.MIN_LIVE_CONFIRMATION_DAYS >= 5
+    assert sm.MIN_LIVE_CONFIRMATION_CLASS_COUNT >= 15
+    assert sm.MIN_LIVE_CONFIRMATION_SYMBOLS >= 15
+    assert sm.LIVE_CONFIRMATION_MIN_GAP_SECONDS >= 60 * 60
+
+
+def test_validation_workflow_runs_before_merge_on_pull_requests():
+    from pathlib import Path
+
+    source = Path(".github/workflows/analyzer-v2-check.yml").read_text(
+        encoding="utf-8"
+    )
+    assert "pull_request:" in source
+    assert "branches: [main]" in source
+    assert "python consistency_regression_check.py" in source
+
+
 def test_offhours_workflow_runs_after_close_and_commits_separate_snapshot():
     from pathlib import Path
 
@@ -3528,12 +3692,14 @@ if __name__ == "__main__":
         test_scanner_timeframe_fit_separates_intraday_swing_and_longer_term,
         test_scanner_longer_term_fit_is_capped_when_history_is_sparse,
         test_scanner_timeframe_fit_never_changes_production_rank_fields,
+        test_scanner_and_analyzer_scores_are_labeled_as_non_probabilities,
         test_scanner_ui_exposes_timeframe_filter_without_reranking,
         test_offhours_daily_context_builds_swing_longer_term_candidate_without_live_action,
         test_offhours_history_pool_is_price_band_balanced_and_not_only_daily_movers,
         test_scanner_ui_surfaces_completed_daily_discovery_when_market_closed,
         test_offhours_workflow_runs_after_close_and_commits_separate_snapshot,
         test_prediction_tracker_skips_closed_market_records,
+        test_scanner_outcome_report_does_not_call_gross_returns_trade_wins,
         test_late_scanner_report_has_explicit_no_horizon_status,
         test_manual_scanner_refreshes_combined_candidates_after_success,
         test_v2_skips_alpaca_sip_probe_when_tradier_primary,
@@ -3547,6 +3713,8 @@ if __name__ == "__main__":
         test_analyzer_calibration_version_gate,
         test_scanner_outcome_metadata,
         test_scanner_outcome_horizon_rejects_late_gap_bars,
+        test_analyzer_outcome_horizon_rejects_late_gap_bars,
+        test_live_confirmation_rows_do_not_double_count_overlapping_ticker_windows,
         test_scanner_outcomes_expose_deduplicated_actionable_events,
         test_scanner_historical_returns_are_causal_and_timestamp_matched,
         test_scanner_enrichment_pool_is_not_display_watchlist_truncated,
@@ -3590,6 +3758,11 @@ if __name__ == "__main__":
         test_historical_replay_universe_uses_prior_days_only,
         test_historical_replay_source_survives_ml_extraction,
         test_replay_requires_live_confirmation_before_full_badge,
+        test_analyzer_ml_walk_forward_never_splits_one_trading_day,
+        test_peer_ml_replay_requires_strictly_later_live_confirmation,
+        test_scanner_historical_validation_excludes_live_confirmation_pool,
+        test_scanner_replay_live_confirmation_gate_is_integrity_sized,
+        test_validation_workflow_runs_before_merge_on_pull_requests,
         test_analyzer_ml_validation_requires_probability_skill,
         test_impulse_detector_measures_fraction_of_run,
         test_entry_readiness_penalizes_unconfirmed_shallow_retrace,

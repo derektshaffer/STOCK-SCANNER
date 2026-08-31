@@ -1021,7 +1021,9 @@ def render_markdown(target_date, discovery, summary, status, error=None):
         "",
         "## Overall",
         "",
-        "| Horizon | N | Win rate | Median return | Average return |",
+        "> **Measurement note:** Forward returns measure gross price movement from the scanner snapshot price to the matched horizon bar close. They are not realized trade P/L and do not subtract bid/ask spread, slippage, fees, or entry latency.",
+        "",
+        "| Horizon | N | Positive-return rate | Median return | Average return |",
         "|---|---:|---:|---:|---:|",
     ]
 
@@ -1036,7 +1038,7 @@ def render_markdown(target_date, discovery, summary, status, error=None):
         "",
         "## By setup grade",
         "",
-        "| Grade | Observations | +15m win | +30m win | +60m win | +30m median |",
+        "| Grade | Observations | +15m positive | +30m positive | +60m positive | +30m median |",
         "|---|---:|---:|---:|---:|---:|",
     ]
 
@@ -1060,7 +1062,7 @@ def render_markdown(target_date, discovery, summary, status, error=None):
             "same-ticker cooldown. Raw scan observations are still retained separately."
         ),
         "",
-        "| Horizon | N | Win rate | Median return | Average return |",
+        "| Horizon | N | Positive-return rate | Median return | Average return |"
         "|---|---:|---:|---:|---:|",
     ]
     for m in HORIZONS_MINUTES:
@@ -1116,6 +1118,19 @@ def write_reports(target_date, discovery, rows, status, error=None):
         "trading_date": target_date.isoformat(),
         "status": status,
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
+        "measurement": {
+            "return_basis": "scanner snapshot price to matched horizon bar close",
+            "execution_adjusted": False,
+            "spread_applied_to_returns": False,
+            "slippage_applied": False,
+            "fees_applied": False,
+            "entry_latency_applied": False,
+            "positive_return_rate_definition": "gross forward return > 0%",
+            "note": (
+                "These are signal-continuation measurements, not realized trade P/L. "
+                "Use an execution-aware simulation before making profitability claims."
+            ),
+        },
         "discovery": discovery,
         "summary": summary,
         "error": error,
@@ -1273,7 +1288,7 @@ def main():
             s = summary["overall"][f"{m}m"]
             print(
                 f"+{m}m: n={s['n']} | "
-                f"win={s['win_rate_pct'] if s['win_rate_pct'] is not None else '-'}% | "
+                f"positive={s['win_rate_pct'] if s['win_rate_pct'] is not None else '-'}% | "
                 f"median={s['median_return_pct'] if s['median_return_pct'] is not None else '-'}%"
             )
         quality = summary.get("trade_quality") or {}
