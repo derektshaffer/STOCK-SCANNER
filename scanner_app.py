@@ -18,7 +18,7 @@ from scanner_runtime import cadence_health, run_scanner_process, scanner_process
 SCAN_FILE = Path("scan_logs/latest_scan.json")
 OFFHOURS_SCAN_FILE = Path("scan_logs/offhours_timeframe_latest.json")
 AUTO_SCAN_SECONDS = 120
-AUTO_STATUS_REFRESH_SECONDS = 15
+AUTO_STATUS_REFRESH_SECONDS = 5
 
 TRADE_HORIZON_OPTIONS = ["ALL", "INTRADAY", "SWING", "LONGER-TERM", "MIXED"]
 TRADE_HORIZON_LABELS = {
@@ -367,7 +367,7 @@ def run_scanner():
         alpaca_live_feed=configured_live_feed(),
         tradier_token=get_tradier_token(),
         discovery_universe_size="1200",
-        timeout_seconds=180,
+        timeout_seconds=105,
     )
 
     st.session_state["scanner_out"] = str(result.get("stdout") or "")[-12000:]
