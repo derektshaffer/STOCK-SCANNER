@@ -1512,6 +1512,121 @@ def test_analyzer_bounce_progress_and_plan_change_are_explicit():
     assert "ACTIVE ALTERNATIVE · BOUNCE #" in source
 
 
+def test_analyzer_exposes_same_evidence_bars_for_visual_snapshots():
+    from pathlib import Path
+
+    source=Path("stock_analyzer.py").read_text(encoding="utf-8")
+    assert '"chart_data":{' in source
+    assert '"intraday":_chart_bars(intraday,420)' in source
+    assert '"daily":_chart_bars(' in source
+    assert "list(daily or []) +" in source
+
+
+def test_analyzer_visual_specs_show_real_pattern_markers():
+    import analyzer_visuals as av
+
+    intraday=[]
+    for i, price in enumerate((10.0, 11.0, 9.5, 10.4, 9.8, 10.5, 10.2)):
+        intraday.append({
+            "t": f"2026-08-31T14:{30+i:02d}:00Z",
+            "o": price,
+            "h": price + 0.2,
+            "l": price - 0.2,
+            "c": price,
+            "v": 1000 + i * 100,
+        })
+    daily=[
+        {"t":"2026-08-26","o":8,"h":8.5,"l":7.8,"c":8.2,"v":1000},
+        {"t":"2026-08-27","o":8.2,"h":10.2,"l":8.1,"c":10.0,"v":4000},
+        {"t":"2026-08-28","o":10.0,"h":10.4,"l":9.8,"c":10.2,"v":1500},
+        {"t":"2026-08-31","o":10.3,"h":12.0,"l":10.2,"c":11.8,"v":5000},
+    ]
+    result={
+        "chart_data":{"intraday":intraday,"daily":daily},
+        "vwap":10.1,
+        "trade_plan":{
+            "selected":{
+                "entry_low":9.8,"entry_high":10.0,"stop":9.4,
+                "target1":10.8,"target2":11.2,"stretch_target":11.8,
+            }
+        },
+        "bounce_sequence":{
+            "detected":True,
+            "completed_bounces":1,
+            "next_bounce_number":2,
+            "current_leg":"BOUNCING",
+            "reference_peak_index":3,
+            "current_dip_low":9.6,
+            "bounces":[{
+                "number":1,
+                "pullback_low":9.3,
+                "pullback_low_index":2,
+                "bounce_peak":10.6,
+                "bounce_peak_index":3,
+            }],
+        },
+        "stair_step":{
+            "detected":True,
+            "reaccelerating":True,
+            "current_plateau_center":10.2,
+            "current_plateau_range_pct":2.0,
+            "steps":[
+                {"date":"2026-08-27","step_close":10.0,"step_pct":22.0},
+                {"date":"2026-08-31","step_close":11.8,"step_pct":15.7},
+            ],
+        },
+        "impulse_pullback":{
+            "detected":True,
+            "impulse_low":9.3,
+            "impulse_high":11.2,
+            "bounce_confirmed":True,
+        },
+        "supports":[{"price":9.5}],
+        "resistances":[{"price":11.0}],
+    }
+
+    trade=av.trade_plan_chart_spec(result)
+    bounce=av.multi_bounce_chart_spec(result)
+    stair=av.stair_step_chart_spec(result)
+    impulse=av.impulse_pullback_chart_spec(result)
+    sr=av.support_resistance_chart_spec(result)
+
+    for spec in (trade,bounce,stair,impulse,sr):
+        assert spec and spec.get("layer"), spec
+
+    bounce_text=str(bounce)
+    assert "Bounce #1 ✓" in bounce_text
+    assert "Bounce #2 developing" in bounce_text
+    assert "B2 forming dip" in bounce_text
+
+    stair_text=str(stair)
+    assert "Step 1 +22.0%" in stair_text
+    assert "Reacceleration active" in stair_text
+
+    trade_text=str(trade)
+    assert "Target 1" in trade_text
+    assert "VWAP" in trade_text
+
+
+def test_analyzer_visual_snapshots_are_collapsible_and_contextual():
+    from pathlib import Path
+
+    source=Path("analyzer_ui_core.py").read_text(encoding="utf-8")
+    for label in (
+        "📈 Trade plan visual · entry · stop · targets",
+        "📈 Impulse / pullback visual",
+        "📈 Multi-bounce visual · dips · confirmed bounces",
+        "📈 Stair-step visual · steps · plateau · reacceleration",
+    ):
+        assert label in source, label
+
+    assert "trade_plan_chart_spec(r)" in source
+    assert "multi_bounce_chart_spec(r)" in source
+    assert "stair_step_chart_spec(r)" in source
+    assert "impulse_pullback_chart_spec(r)" in source
+    assert "support_resistance_chart_spec(r)" in source
+
+
 def test_analyzer_long_context_text_is_collapsible():
     from pathlib import Path
 
@@ -4269,6 +4384,9 @@ if __name__ == "__main__":
         test_scanner_behavior_fields_survive_scan_logging,
         test_low_rr_repeat_bounce_cannot_replace_primary_plan,
         test_analyzer_bounce_progress_and_plan_change_are_explicit,
+        test_analyzer_exposes_same_evidence_bars_for_visual_snapshots,
+        test_analyzer_visual_specs_show_real_pattern_markers,
+        test_analyzer_visual_snapshots_are_collapsible_and_contextual,
         test_analyzer_long_context_text_is_collapsible,
         test_dedicated_repeat_bounce_trade_plan_uses_latest_dip,
         test_prediction_tracker_records_sequence_regime_fields,
