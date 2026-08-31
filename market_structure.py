@@ -389,6 +389,83 @@ def swing_trend_context(bars_or_structure):
     }
 
 
+def _established_range_breaks(rows, noise_pct, break_buffer_pct):
+    """Causal breaks of tight ranges established entirely before the event bar."""
+    if len(rows) < 5:
+        return {"upside": [], "downside": []}
+
+    max_range_width = _clamp(noise_pct * 3.0, 1.0, 4.0)
+    touch_tolerance = _clamp(noise_pct * 0.35, 0.10, 0.60)
+    upside = []
+    downside = []
+
+    for j in range(4, len(rows)):
+        prior = rows[max(0, j - 12):j]
+        if len(prior) < 4:
+            continue
+        ceiling = max(row["h"] for row in prior)
+        floor = min(row["l"] for row in prior)
+        if floor <= 0:
+            continue
+        width_pct = (ceiling / floor - 1.0) * 100.0
+        if width_pct > max_range_width:
+            continue
+
+        ceiling_touches = sum(
+            1 for row in prior
+            if abs(row["h"] / ceiling - 1.0) * 100.0 <= touch_tolerance
+        )
+        floor_touches = sum(
+            1 for row in prior
+            if abs(row["l"] / floor - 1.0) * 100.0 <= touch_tolerance
+        )
+        row = rows[j]
+
+        if (
+            ceiling_touches >= 2
+            and row["h"] >= ceiling * (1.0 + break_buffer_pct / 100.0)
+        ):
+            upside.append(
+                {
+                    "level_kind": "RANGE_HIGH",
+                    "level_source": "established_range_ceiling",
+                    "level": round(ceiling, 6),
+                    "level_time": prior[-1].get("t"),
+                    "level_confirmed_time": prior[-1].get("t"),
+                    "range_start_time": prior[0].get("t"),
+                    "range_width_pct": round(width_pct, 3),
+                    "range_touches": int(ceiling_touches),
+                    "event_index": j,
+                    "event_source_index": int(row["source_index"]),
+                    "event_time": row.get("t"),
+                    "bars_since": int(len(rows) - 1 - j),
+                }
+            )
+
+        if (
+            floor_touches >= 2
+            and row["l"] <= floor * (1.0 - break_buffer_pct / 100.0)
+        ):
+            downside.append(
+                {
+                    "level_kind": "RANGE_LOW",
+                    "level_source": "established_range_floor",
+                    "level": round(floor, 6),
+                    "level_time": prior[-1].get("t"),
+                    "level_confirmed_time": prior[-1].get("t"),
+                    "range_start_time": prior[0].get("t"),
+                    "range_width_pct": round(width_pct, 3),
+                    "range_touches": int(floor_touches),
+                    "event_index": j,
+                    "event_source_index": int(row["source_index"]),
+                    "event_time": row.get("t"),
+                    "bars_since": int(len(rows) - 1 - j),
+                }
+            )
+
+    return {"upside": upside, "downside": downside}
+
+
 def break_of_structure_context(bars):
     """Canonical upside/downside breaks of already-confirmed swing levels.
 
@@ -432,6 +509,11 @@ def break_of_structure_context(bars):
                     events.append(
                         {
                             "level_kind": kind,
+                            "level_source": (
+                                "confirmed_swing_high"
+                                if kind == "HIGH"
+                                else "confirmed_swing_low"
+                            ),
                             "level": round(level, 6),
                             "level_time": swing.get("time"),
                             "level_confirmed_time": swing.get("confirmed_time"),
@@ -446,6 +528,31 @@ def break_of_structure_context(bars):
 
     upside = latest_break("HIGH")
     downside = latest_break("LOW")
+
+    range_breaks = _established_range_breaks(
+        rows,
+        noise,
+        break_buffer_pct,
+    )
+    range_up = max(
+        range_breaks.get("upside") or [],
+        key=lambda e: e["event_index"],
+        default=None,
+    )
+    range_down = max(
+        range_breaks.get("downside") or [],
+        key=lambda e: e["event_index"],
+        default=None,
+    )
+    if range_up and (
+        upside is None or range_up["event_index"] >= upside["event_index"]
+    ):
+        upside = range_up
+    if range_down and (
+        downside is None or range_down["event_index"] >= downside["event_index"]
+    ):
+        downside = range_down
+
     current = rows[-1]["c"]
 
     if upside:
