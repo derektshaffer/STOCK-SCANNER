@@ -1088,6 +1088,11 @@ if not _position_enabled:
     _seq_top=r.get("bounce_sequence") or {}
     _impulse_top=r.get("impulse_pullback") or {}
     _completed_top=int(_seq_top.get("completed_bounces") or 0)
+    _observed_top=int(
+        _seq_top.get("observed_bounces")
+        or _completed_top
+        or 0
+    )
     _next_top=int(_seq_top.get("next_bounce_number") or (_completed_top+1))
     _leg_top=str(_seq_top.get("current_leg") or "").upper()
     _developing_top=bool(_seq_top.get("developing_bounce"))
@@ -1107,12 +1112,19 @@ if not _position_enabled:
                 else "completed swing rebound"
             )
             _bounce_cls="good"
-        elif _next_top == _idx and (_leg_top=="BOUNCING" or _developing_top):
-            _bounce_value="… DEVELOPING"
+        elif (
+            _next_top == _idx
+            and (
+                _leg_top=="BOUNCING"
+                or _developing_top
+                or _observed_top >= _idx
+            )
+        ):
+            _bounce_value="↗ ACTIVE BOUNCE"
             _bounce_note=(
-                f"{float(_developing_pct):.1f}% rebound underway; awaiting formal swing confirmation"
+                f"{float(_developing_pct):.1f}% rebound already observed; peak not formally confirmed yet"
                 if _developing_pct is not None
-                else "rebound underway; awaiting formal swing confirmation"
+                else "rebound already observed; peak not formally confirmed yet"
             )
             _bounce_cls="warn"
         elif _next_top == _idx and "PULL" in _leg_top:
@@ -1129,7 +1141,7 @@ if not _position_enabled:
             _bounce_value,
             _bounce_note,
             _bounce_cls,
-            "A check mark only appears after the sequence detector confirms a completed pullback-to-rebound swing. A developing bounce is not treated as confirmed.",
+            "ACTIVE BOUNCE means the rebound is already visible and recorded. A check mark appears only after later candles formally confirm the rebound peak; ML keeps those two states separate.",
         )
 
     status_cls="good" if status=="ENTRY AVAILABLE" else "bad" if status=="NO TRADE" else "warn"
