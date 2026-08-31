@@ -5072,6 +5072,47 @@ def test_prediction_tracker_uses_first_post_horizon_bar_with_three_minute_cap():
     ) is None
 
 
+
+def test_prediction_tracker_outcomes_start_strictly_after_observation():
+    import prediction_tracker as pt
+
+    created = datetime(2026, 8, 28, 15, 0, tzinfo=timezone.utc)
+    bars = [
+        {
+            "t": _iso(created),
+            "o": 10.0,
+            "h": 12.0,
+            "l": 8.0,
+            "c": 10.0,
+        },
+        {
+            "t": _iso(created + timedelta(minutes=5)),
+            "o": 10.0,
+            "h": 10.4,
+            "l": 9.8,
+            "c": 10.2,
+        },
+    ]
+
+    future = pt._strict_future_bars(bars, created)
+    assert len(future) == 1, future
+    assert pt._bar_dt(future[0]) == created + timedelta(minutes=5), future
+
+    # Same-timestamp extremes must not contaminate post-signal MFE/MAE.
+    mfe, mae = pt._window_excursions(
+        bars,
+        created,
+        10.0,
+        15,
+    )
+    assert round(mfe, 3) == 4.0, (mfe, mae)
+    assert round(mae, 3) == -2.0, (mfe, mae)
+
+    # Likewise, a target/stop touch that happened only inside the observation
+    # candle must not be labeled as a future first-touch outcome.
+    assert pt._first_touch(future, 11.0, 9.0) is None, future
+
+
 def test_same_ticker_ml_uses_clock_horizons_and_effective_samples():
     import ml_predictor as mp
 
@@ -6473,6 +6514,7 @@ if __name__ == "__main__":
         test_scanner_replay_live_confirmation_gate_is_integrity_sized,
         test_validation_workflow_runs_before_merge_on_pull_requests,
         test_prediction_tracker_uses_first_post_horizon_bar_with_three_minute_cap,
+        test_prediction_tracker_outcomes_start_strictly_after_observation,
         test_same_ticker_ml_uses_clock_horizons_and_effective_samples,
         test_same_ticker_ml_requires_consolidated_live_and_history_for_validation,
         test_scanner_ml_excludes_non_consolidated_observations,
