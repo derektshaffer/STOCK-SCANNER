@@ -5178,6 +5178,65 @@ def test_scanner_actions_fail_closed_on_data_integrity():
     assert any("stale" in reason for reason in reasons)
 
 
+
+def test_scanner_integrity_gate_overrides_any_review_cue_and_disables_alerts():
+    import stock_scanner as ss
+
+    now_et = datetime(2026, 8, 31, 10, 0, tzinfo=ET)
+    row = {
+        "market_session": "regular",
+        "setup_grade": "A",
+        "failed_count": 0,
+        "critical_fail_count": 0,
+        "failed_filters": [],
+        "tradability_warnings": [],
+        "spread_pct": 0.4,
+        "day_pct": 12.0,
+        "distance_from_high_pct": 2.0,
+        "distance_from_vwap_pct": 2.0,
+        "momentum_5m": 1.0,
+        "momentum_15m": 2.0,
+        "volume_pace_display": 2.0,
+        "above_vwap": True,
+        "price": 10.0,
+        "vwap": 9.8,
+        "live_quote_source": "alpaca_iex",
+        "latest_trade_time": _iso(now_et - timedelta(seconds=10)),
+        "latest_quote_time": _iso(now_et - timedelta(seconds=10)),
+        "alert_ready": True,
+        "alert_tier": "HIGH",
+    }
+    ss.assign_scanner_actions([row], now_et)
+    assert row.get("scanner_action") in {"ANALYZE NOW", "BREAKOUT WATCH", "WATCH"}, row
+
+    ss.apply_scanner_data_integrity_gate([row], now_et)
+    assert row.get("action_data_integrity_ok") is False, row
+    assert row.get("scanner_action") == "DATA CHECK", row
+    assert row.get("scanner_action_tier") == "BLOCKED", row
+    assert row.get("alert_ready") is False, row
+    assert row.get("alert_tier") is None, row
+
+
+def test_scanner_and_alert_layers_never_claim_entry_available():
+    from pathlib import Path
+
+    scanner_logic = Path("stock_scanner.py").read_text(encoding="utf-8")
+    scanner_ui = Path("scanner_app.py").read_text(encoding="utf-8")
+    combined_ui = Path("app.py").read_text(encoding="utf-8")
+    alerts = Path("momentum_alerts.py").read_text(encoding="utf-8")
+
+    # The Scanner may say ANALYZE NOW / WATCH / DATA CHECK, but only the
+    # Analyzer's final decision contract owns actionable entry language.
+    assert "ENTRY AVAILABLE NOW" not in scanner_logic
+    assert "ENTRY AVAILABLE NOW" not in scanner_ui
+    assert "ENTRY AVAILABLE NOW" not in alerts
+    assert "BUY NOW" not in scanner_logic
+    assert "BUY NOW" not in scanner_ui
+    assert "BUY NOW" not in alerts
+    assert "Momentum Review Alert" in combined_ui
+    assert "not an automatic buy signal" in combined_ui
+
+
 def test_analyzer_entries_fail_closed_on_data_integrity():
     import analyzer_v2_integration as v2
 
@@ -6418,6 +6477,8 @@ if __name__ == "__main__":
         test_same_ticker_ml_requires_consolidated_live_and_history_for_validation,
         test_scanner_ml_excludes_non_consolidated_observations,
         test_scanner_actions_fail_closed_on_data_integrity,
+        test_scanner_integrity_gate_overrides_any_review_cue_and_disables_alerts,
+        test_scanner_and_alert_layers_never_claim_entry_available,
         test_analyzer_entries_fail_closed_on_data_integrity,
         test_historical_analogs_cannot_change_live_plan_geometry_or_scores,
         test_advisory_model_percentages_are_explicit_and_neutral,
