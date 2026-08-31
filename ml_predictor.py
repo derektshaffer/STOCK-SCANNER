@@ -586,7 +586,7 @@ def _build_dataset(bars5, et, target_pct, stop_pct):
             )
             target_label = (
                 1 if target_outcome == "target"
-                else 0 if target_outcome == "stop"
+                else 0 if target_outcome in {"stop", "ambiguous"}
                 else None
             )
 
@@ -1102,6 +1102,10 @@ def predict_ml(symbol, now, metrics, fetch_bars, et):
     target_model["horizon"] = "same_session"
     target_model["target_source"] = selected.get("target1_reason") or "Target 1"
     target_model["outcome_summary"] = target_outcomes
+    target_model["ambiguous_bar_policy"] = (
+        "same-bar target+stop is scored as failure for model validation; "
+        "raw outcome remains labeled ambiguous"
+    )
     models["target_before_stop"] = target_model
 
     reversal_model=models.get("reversal_30") or {}
