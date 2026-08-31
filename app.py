@@ -613,7 +613,6 @@ def _workspace_scanner_monitor():
         if poll.get("done"):
             st.session_state["_scanner_async_state"] = None
             st.session_state["_scanner_process_running"] = False
-            st.session_state["last_auto_scan_at"] = now_ts
             st.session_state["last_auto_message"] = str(
                 poll.get("message") or ""
             )
@@ -634,6 +633,7 @@ def _workspace_scanner_monitor():
                 )
                 scan_running = False
             else:
+                st.session_state["last_auto_scan_at"] = now_ts
                 # The candidate rows live outside this monitor fragment. Force
                 # one full-app rerun as soon as a fresh background scan lands
                 # so the visible Scanner actually loads the new snapshot.
@@ -673,11 +673,11 @@ def _workspace_scanner_monitor():
             scan_running = True
         elif started.get("busy"):
             # Another browser session or manual scan owns the shared lock.
-            # Retry on the next 15-second monitor tick instead of moving the
+            # Retry on the next monitor tick instead of moving the
             # two-minute clock forward and silently skipping a scan.
             scan_running = True
         else:
-            # Configuration/startup failures should not fire every 15 seconds.
+            # Configuration/startup failures should not fire on every monitor tick.
             st.session_state["last_auto_scan_started_at"] = now_ts
             st.warning(
                 "Could not start background momentum scan: "
