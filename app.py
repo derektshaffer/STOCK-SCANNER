@@ -816,6 +816,26 @@ if view == "Momentum Scanner":
     st.session_state["_scanner_status_mount"] = st.empty()
 
 
+if view == "Stock Analyzer":
+    st.markdown(
+        """
+        <style>
+        /* During a Streamlit full-app rerun, stale Scanner rows can remain in
+           the browser DOM until their replacements arrive. Hide those
+           Scanner-only row structures immediately when Analyzer is selected so
+           a background analysis never looks like a mixed Scanner/Analyzer page. */
+        .combined-ticker-row,
+        [class*="st-key-combined_analyze_"],
+        div[data-testid="stHorizontalBlock"]:has(.combined-ticker-row) {
+            display: none !important;
+            pointer-events: none !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 if view == "Momentum Scanner":
     st.markdown(
         """
