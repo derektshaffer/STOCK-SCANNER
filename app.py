@@ -598,7 +598,7 @@ if view != previous_rendered_view:
         st.session_state["_scanner_return_grace_until"] = time.time() + 2.5
     st.session_state["_rendered_app_view"] = view
 
-@st.fragment(run_every=15)
+@st.fragment(run_every=5)
 def _workspace_scanner_monitor():
     now_et = datetime.now(ZoneInfo("America/New_York"))
     enabled = bool(st.session_state.get("auto_scan_enabled", True))
@@ -632,7 +632,16 @@ def _workspace_scanner_monitor():
                     "Background momentum scan failed: "
                     + str(poll.get("message") or "unknown error")[:260]
                 )
-            scan_running = False
+                scan_running = False
+            else:
+                # The candidate rows live outside this monitor fragment. Force
+                # one full-app rerun as soon as a fresh background scan lands
+                # so the visible Scanner actually loads the new snapshot.
+                scan_running = False
+                st.session_state["_scanner_flash_success"] = str(
+                    poll.get("message") or "Fresh background scan complete."
+                )
+                st.rerun(scope="app")
         else:
             scan_running = True
 
@@ -655,7 +664,7 @@ def _workspace_scanner_monitor():
             alpaca_live_feed=_shell_live_feed(),
             tradier_token=_shell_tradier_token(),
             discovery_universe_size="1200",
-            timeout_seconds=180,
+            timeout_seconds=105,
         )
         if started.get("started"):
             st.session_state["_scanner_async_state"] = started
