@@ -153,6 +153,14 @@ def _compact_row(candidate, rank, now_et, role):
         "failed_breakout": candidate.get("failed_breakout"),
         "tradability_warning_count": len(candidate.get("tradability_warnings") or []),
         "failed_filter_count": len(candidate.get("failed_filters") or []),
+        "failed_filters": [
+            str(value)[:100]
+            for value in (candidate.get("failed_filters") or [])[:4]
+        ],
+        "setup_flags": [
+            str(value)[:100]
+            for value in (candidate.get("setup_flags") or [])[:4]
+        ],
     }
 
 
