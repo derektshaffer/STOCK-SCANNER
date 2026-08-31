@@ -8,6 +8,7 @@ from functools import lru_cache
 from concurrent.futures import ThreadPoolExecutor
 
 from prediction_tracker import record_prediction, resolve_symbol_predictions
+from analyzer_versions import DECISION_SCORE_VERSION, TIMEFRAME_SCORE_VERSION
 from live_market_stream import ensure_live_stream, get_live_overlay
 from float_data import get_public_float
 from swing_research_flags import evaluate_swing_research_flags
@@ -1194,7 +1195,7 @@ def _timeframe_analysis(sa, symbol, metrics, sec, market, catalyst, potential, r
         long_reasons.append("multi-month price trend is weak")
 
     return {
-        "version": "timeframe-fit-v1",
+        "version": TIMEFRAME_SCORE_VERSION,
         "best_fit": best_fit,
         "scores": scores,
         "labels": {key: fit_label(value) for key, value in scores.items()},
@@ -2214,7 +2215,7 @@ def install_v2_analysis(sa):
         thesis_context = plan.get("thesis_continuity") or thesis_context
 
         metrics["decision_v2"] = {
-            "version": "decision-v2.7-final-contract",
+            "version": DECISION_SCORE_VERSION,
             "potential_score": potential,
             "potential_label": _label(potential, 72, 52),
             "entry_readiness": readiness,
