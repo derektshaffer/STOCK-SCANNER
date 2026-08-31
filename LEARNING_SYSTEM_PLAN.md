@@ -84,11 +84,11 @@ A change is not marked complete here until the code exists, a regression/smoke c
 **Definition of done:** the system proposes testable improvements rather than silently changing its own rules.
 
 ### Phase 6 — Automatic historical challenge
-- [ ] Test every candidate hypothesis on data not used to invent it.
-- [ ] Use whole-day / embargoed walk-forward splits where future windows overlap.
-- [ ] Compare against the current hand score and naive baselines.
-- [ ] Evaluate calibration, discrimination, MFE/MAE, and execution-aware utility.
-- [ ] Reject unstable rules that only work in one ticker, day, or market regime.
+- [~] Test every candidate hypothesis on data not used to invent it. The automatic challenger now routes all emitted hypotheses to a challenge spec or an explicit blocked status; session-specific calibration is correctly blocked until extended-hours historical replay exists.
+- [x] Use whole-day / embargoed walk-forward splits where future windows overlap. The newest 40% of replay trading days are frozen confirmation data, and same-symbol observations are de-correlated by the 60-minute target horizon.
+- [x] Compare against the current hand score and naive baselines. Path-target challenges report candidate-model AUC vs Scanner hand-score AUC, plus model Brier vs the discovery base-rate baseline and top-decile lift comparisons.
+- [~] Evaluate calibration, discrimination, MFE/MAE, and execution-aware utility. AUC, Brier, calibration ECE, full-path MFE/MAE labels, +5-before--3 barrier utility, and 0/.25/.50/1.00% friction sensitivity are implemented; true historical spread/fill reconstruction is still unavailable, so utility remains an explicitly labeled proxy.
+- [~] Reject unstable rules that only work in one ticker, day, or market regime. The path-target gate rejects weak day stability, symbol concentration, or single-regime support; score-order and missed-explosive hypotheses require repetition in frozen confirmation data. Broader regime stability for every hypothesis family remains open.
 
 **Definition of done:** the system tries to disprove its own ideas before asking for production promotion.
 
@@ -136,6 +136,16 @@ A change is not marked complete here until the code exists, a regression/smoke c
 - The opportunity audit now compares market sessions, score buckets, rank buckets, high-rank winners/failures, low-rank explosive misses, and failed-filter counts.
 - The hypothesis layer now requires minimum sample counts and cross-symbol evidence before emitting path-target, session-calibration, missed-explosive, or score-monotonicity candidates.
 - No hypothesis from this layer can affect production ranking or Analyzer trade decisions.
+
+### 2026-08-31 — Phase 6 historical challenge
+- Added `historical_hypothesis_challenge.py`: every learning hypothesis is challenged against causal historical replay or explicitly blocked when the required historical coverage does not exist.
+- The challenger freezes the newest 40% of whole trading days for confirmation and de-correlates same-symbol observations by 60 minutes.
+- Path-target candidates are fit only on earlier discovery days and evaluated on frozen later days against both the current Scanner hand score and a naive base-rate baseline.
+- Validation receipts include AUC, Brier score, calibration ECE, top-decile lift, day-by-day lift, symbol concentration, market-regime coverage, and a conservative +5%/-3% path utility proxy under multiple friction assumptions.
+- Added out-of-sample challenge specs for score monotonicity and missed-explosive/filter hypotheses. Session-specific calibration fails closed until multi-session historical replay exists.
+- Historical Scanner replay v4.9 now records full 60-minute MFE/MAE, +3/+5/+10/+20 threshold timing/order, a -3% failure path, and causal SPY/QQQ/IWM regime context specifically for hypothesis challenges.
+- Added `historical_hypothesis_regression_check.py`. The main integrity CI completed successfully with `PHASE6_HISTORICAL_CHALLENGE_REGRESSIONS=passed`.
+- A fresh deep historical backfill/challenge run has been triggered. Its empirical Phase 6 verdicts are not marked complete here until that run finishes and its durable challenge receipt is inspected.
 
 ## Rule for updating this file
 
