@@ -988,17 +988,38 @@ def build_trade_plan(metrics, now):
     pull_stop=round(pull_stop,4)
     pull_entry=(pull_zone["low"]+pull_zone["high"])/2
 
-    # Breakout trigger: nearest overhead resistance or day high, whichever is
-    # the first meaningful barrier above current price.
+    # Breakout trigger: prefer the canonical, already-established swing/range
+    # level from the shared structure engine. This prevents the trigger from
+    # "moving the goalpost" upward merely because price just printed a new day
+    # high. Fall back to current resistance/day-high geometry only when there
+    # is no usable structural reference.
     day_high=fnum(metrics.get("day_high"))
-    breakout_candidates=[]
-    if resistance_price and resistance_price > price*1.001:breakout_candidates.append((resistance_price,"resistance"))
-    if day_high and day_high > price*1.003:breakout_candidates.append((day_high,"day high"))
-    if breakout_candidates:
-        breakout_level,breakout_source=min(breakout_candidates,key=lambda x:x[0])
+    live_breakout_failed=bool(breakout_structure.get("failed_breakout"))
+    live_breakout_holding=bool(breakout_structure.get("breakout_holding"))
+    live_breakout_recent=bool(fnum(breakout_structure.get("breakout_recent")) or 0)
+    structural_breakout_level=fnum(breakout_structure.get("breakout_level"))
+    structural_reference_usable=bool(
+        structural_breakout_level
+        and (
+            structural_breakout_level > price*1.001
+            or live_breakout_recent
+            or live_breakout_holding
+            or live_breakout_failed
+        )
+    )
+
+    if structural_reference_usable:
+        breakout_level=structural_breakout_level
+        breakout_source="confirmed swing/range structure"
     else:
-        breakout_level=max(price,day_high or price)
-        breakout_source="current/day high"
+        breakout_candidates=[]
+        if resistance_price and resistance_price > price*1.001:breakout_candidates.append((resistance_price,"resistance"))
+        if day_high and day_high > price*1.003:breakout_candidates.append((day_high,"day high"))
+        if breakout_candidates:
+            breakout_level,breakout_source=min(breakout_candidates,key=lambda x:x[0])
+        else:
+            breakout_level=max(price,day_high or price)
+            breakout_source="current/day high"
     breakout_confirm_pct=_clamp(atr_pct*0.045,0.25,0.9)
     breakout_zone={
         "low":round(breakout_level*(1+breakout_confirm_pct/100),4),
@@ -1186,6 +1207,8 @@ def build_trade_plan(metrics, now):
 
     in_pull=pull_zone["low"] <= price <= pull_zone["high"]
     in_break=breakout_zone["low"] <= price <= breakout_zone["high"]
+    breakout_trigger_reached=bool(price >= breakout_zone["low"])
+    breakout_above_zone=bool(price > breakout_zone["high"])
     in_repeat_bounce=bool(
         repeat_bounce_zone
         and repeat_bounce_zone["low"] <= price <= repeat_bounce_zone["high"]
@@ -1202,8 +1225,6 @@ def build_trade_plan(metrics, now):
             or impulse_bounce
         )
     )
-    live_breakout_failed=bool(breakout_structure.get("failed_breakout"))
-    live_breakout_holding=bool(breakout_structure.get("breakout_holding"))
     breakout_confirm=(
         (pace is None or pace>=1.5)
         and (m5 is not None and m5>0)
@@ -1223,7 +1244,11 @@ def build_trade_plan(metrics, now):
     # alternative. A later-bounce scalp only becomes the headline plan after it
     # independently clears confirmation + in-zone + reward/risk gates.
     preferred="pullback"
-    if in_break and breakout_confirm and reversal_score<62:
+    # Once price actually reaches the advertised breakout confirmation zone,
+    # keep evaluating that same breakout reference until it either confirms or
+    # fails. Do not instantly replace it with a deeper pullback plan simply
+    # because the new print makes the stock look more extended.
+    if breakout_trigger_reached and not live_breakout_failed and reversal_score<78:
         preferred="breakout"
     elif in_pull:
         preferred="pullback"
@@ -1343,7 +1368,41 @@ def build_trade_plan(metrics, now):
             )
         else:
             status="WAIT"
-            if overextended:
+            if breakout_trigger_reached and not live_breakout_failed:
+                preferred="breakout"; chosen=breakout_plan
+                if in_break and not breakout_confirm:
+                    action="BREAKOUT TESTING — WAIT FOR HOLD"
+                    reasons.append(
+                        "Price has reached the previously identified breakout confirmation zone. "
+                        "Keep that trigger fixed while momentum/volume and hold evidence are evaluated; "
+                        "do not move the goalpost to the new day high."
+                    )
+                elif in_break and breakout_confirm:
+                    action="WAIT — BREAKOUT CONFIRMED, ENTRY GATES INCOMPLETE"
+                    reasons.append(
+                        "The breakout trigger is holding, but one or more setup-score/reward-risk gates "
+                        "are still below the threshold for an entry call."
+                    )
+                elif breakout_above_zone and breakout_confirm:
+                    action="BREAKOUT CONFIRMED — ABOVE ENTRY ZONE; WAIT FOR RETEST"
+                    reasons.append(
+                        "Price cleared the original breakout zone, but it is now above the modeled low-risk "
+                        "entry area. Do not chase; wait for a controlled hold/retest."
+                    )
+                else:
+                    action="BREAKOUT TESTING — WAIT FOR HOLD / RETEST"
+                    reasons.append(
+                        "Price moved through the original breakout area without enough confirmation to call "
+                        "an entry. Keep watching the same structural trigger for a hold or retest."
+                    )
+            elif live_breakout_failed and structural_reference_usable:
+                preferred="pullback"; chosen=pull_plan
+                action="WAIT FOR PULLBACK / RECLAIM — BREAKOUT FAILED"
+                reasons.append(
+                    "The previously identified structural breakout failed to hold. The plan changed for a "
+                    "specific reason: wait for support/reclaim rather than immediately chasing a higher trigger."
+                )
+            elif overextended:
                 preferred="pullback"; chosen=pull_plan
                 action="WAIT FOR REAL PULLBACK — price is extended"
                 if impulse_zone:
@@ -1451,6 +1510,10 @@ def build_trade_plan(metrics, now):
         "impulse_pullback":impulse,
         "bounce_sequence":sequence,
         "breakout_structure":breakout_structure,
+        "breakout_reference_level":round(breakout_level,4),
+        "breakout_reference_source":breakout_source,
+        "breakout_trigger_reached":bool(breakout_trigger_reached),
+        "breakout_reference_locked":bool(structural_reference_usable),
         "stair_step":stair,
         "run_exhaustion":exhaustion,
         "nearest_support":support_price,"nearest_support_quality":(nearest_support or {}).get("quality"),
