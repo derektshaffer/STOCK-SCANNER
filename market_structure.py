@@ -263,9 +263,11 @@ def extract_market_structure(
                 candidate_high = row["h"]
                 candidate_high_idx = i
 
+            prior_idx = int(swings[-1]["index"]) if swings else None
             if (
                 candidate_high_idx < i
-                and i - candidate_high_idx >= min_leg_bars
+                and prior_idx is not None
+                and candidate_high_idx - prior_idx >= min_leg_bars
                 and _pct_down(candidate_high, row["l"]) >= threshold
             ):
                 if append_pivot("HIGH", candidate_high_idx, candidate_high, i):
@@ -281,9 +283,11 @@ def extract_market_structure(
                 candidate_low = row["l"]
                 candidate_low_idx = i
 
+            prior_idx = int(swings[-1]["index"]) if swings else None
             if (
                 candidate_low_idx < i
-                and i - candidate_low_idx >= min_leg_bars
+                and prior_idx is not None
+                and candidate_low_idx - prior_idx >= min_leg_bars
                 and _pct_up(candidate_low, row["h"]) >= threshold
             ):
                 if append_pivot("LOW", candidate_low_idx, candidate_low, i):
