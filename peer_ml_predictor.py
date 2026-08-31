@@ -455,7 +455,12 @@ def _validate_and_predict(rows, current):
     # Keep the post-replay live holdout completely outside the historical
     # walk-forward gate. Otherwise the same future evidence could influence the
     # historical validation decision and then be reused as "live confirmation."
-    validation_rows = replay_rows if replay_rows else rows
+    #
+    # Historical replay produces multiple observations per ticker/day while the
+    # target spans 60 minutes. De-correlate overlapping future paths before
+    # validation so one ticker run cannot masquerade as many independent cases.
+    validation_rows_raw = replay_rows if replay_rows else rows
+    validation_rows = independent_confirmation_rows(validation_rows_raw)
     X_validation, y_validation = _matrix(validation_rows, np)
     validation_days = sorted({
         str(row.get("trading_date") or "")
@@ -563,7 +568,8 @@ def _validate_and_predict(rows, current):
         if historical_validated and live_confirmation_ready:
             # Train only on replay-era observations, then score the strictly
             # later live holdout exactly once as the production-integrity gate.
-            X_replay, y_replay = _matrix(replay_rows, np)
+            replay_effective_rows = independent_confirmation_rows(replay_rows)
+            X_replay, y_replay = _matrix(replay_effective_rows, np)
             X_live, y_live = _matrix(live_confirmation_rows, np)
             if (
                 len(set(y_replay.tolist())) >= 2
@@ -605,10 +611,11 @@ def _validate_and_predict(rows, current):
                 )
                 fully_validated = live_confirmation_passed
 
-    # Advisory predictions may use all information available up to now after
-    # validation is measured. They still cannot influence the trade plan unless
-    # the independent source-integrity gate above passes.
-    X, y = _matrix(rows, np)
+    # Advisory predictions use the same effective 60-minute evidence unit.
+    # Dense overlapping observations are descriptive context but must not
+    # dominate either validation or the served model fit.
+    fit_rows = independent_confirmation_rows(rows)
+    X, y = _matrix(fit_rows, np)
     final_model = xgb.train(
         _params(),
         xgb.DMatrix(X, label=y, feature_names=PEER_FEATURES),
@@ -654,6 +661,10 @@ def _validate_and_predict(rows, current):
             "historical_validated": historical_validated,
             "probability_pct": round(probability * 100.0, 1),
             "validation_samples": len(val_y),
+            "historical_validation_raw_samples": len(validation_rows_raw),
+            "historical_validation_effective_samples": len(validation_rows),
+            "effective_training_samples": len(fit_rows),
+            "effective_sample_gap_seconds": 60 * 60,
             "walk_forward_auc": round(auc, 3) if auc is not None else None,
             "walk_forward_brier": round(brier, 4),
             "baseline_brier": round(baseline_brier, 4),
