@@ -576,17 +576,11 @@ def run():
                 unsafe_allow_html=True,
             )
 
-            landing_symbol = st.text_input(
-                "Ticker",
-                key="analyzer_landing_ticker",
-                placeholder="Enter a ticker…",
-                label_visibility="collapsed",
-            ).upper().strip()
-
             def _start_landing_analysis():
-                symbol = str(
+                raw = str(
                     st.session_state.get("analyzer_landing_ticker") or ""
-                ).upper().strip()
+                ).strip()
+                symbol = raw.split(" — ", 1)[0].upper().strip()
                 if not symbol:
                     return
                 st.session_state["ticker"] = symbol
@@ -595,12 +589,46 @@ def run():
                 st.session_state.pop("ticker_picker", None)
                 st.session_state.pop("result", None)
 
-            st.button(
-                "Analyze",
-                type="primary",
-                key="analyzer_landing_analyze",
-                disabled=not bool(landing_symbol),
-                on_click=_start_landing_analysis,
+            # Seed the browser-side picker with useful instant suggestions.
+            # Streamlit filters these locally while the user types, and
+            # accept_new_options=True means any valid ticker can still be
+            # entered even when it is not already in the suggestion list.
+            landing_choices = []
+            for value in (st.session_state.get("saved_stocks") or []):
+                symbol = str(value or "").upper().strip()
+                if symbol and symbol not in landing_choices:
+                    landing_choices.append(symbol)
+            for symbol in (st.session_state.get("_analyzer_result_cache") or {}).keys():
+                symbol = str(symbol or "").upper().strip()
+                if symbol and symbol not in landing_choices:
+                    landing_choices.append(symbol)
+
+            try:
+                import json
+                latest_scan_path = Path("scan_logs/latest_scan.json")
+                if latest_scan_path.exists():
+                    payload = json.loads(
+                        latest_scan_path.read_text(encoding="utf-8")
+                    )
+                    for row in (payload.get("candidates") or [])[:30]:
+                        symbol = str((row or {}).get("symbol") or "").upper().strip()
+                        if symbol and symbol not in landing_choices:
+                            landing_choices.append(symbol)
+            except Exception:
+                pass
+
+            st.selectbox(
+                "Ticker",
+                options=landing_choices,
+                index=None,
+                key="analyzer_landing_ticker",
+                placeholder="Type a ticker, then press Enter…",
+                label_visibility="collapsed",
+                accept_new_options=True,
+                on_change=_start_landing_analysis,
+            )
+            st.caption(
+                "Suggestions filter as you type. Press Enter to analyze — no Analyze button needed."
             )
             _render_saved_stocks("landing")
             return
