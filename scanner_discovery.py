@@ -25,6 +25,12 @@ QUOTE_BATCH_SIZE = int(os.environ.get("SCANNER_DISCOVERY_QUOTE_BATCH_SIZE", "300
 REQUEST_DELAY_SECONDS = float(
     os.environ.get("SCANNER_DISCOVERY_REQUEST_DELAY_SECONDS", "0.35") or 0.35
 )
+VOLATILITY_RESCUE_SHARE = float(
+    os.environ.get("SCANNER_DISCOVERY_VOLATILITY_RESCUE_SHARE", "0.12") or 0.12
+)
+VOLATILITY_RESCUE_MIN_ABS_CHANGE_PCT = float(
+    os.environ.get("SCANNER_DISCOVERY_VOLATILITY_MIN_CHANGE_PCT", "12") or 12
+)
 
 
 def _num(value):
@@ -178,34 +184,65 @@ def _select_seed_symbols(quote_rows, target_size):
         if not 0.50 <= price <= 60.0:
             continue
 
+        change_pct = _num(row.get("change_percentage"))
+        if change_pct is None:
+            prev_close = _num(row.get("prevclose"))
+            if prev_close and prev_close > 0:
+                change_pct = (price / prev_close - 1.0) * 100.0
+
         eligible.append(
             {
                 "symbol": symbol,
                 "price": price,
                 "average_volume": avg_volume,
                 "average_dollar_volume": price * avg_volume,
+                "change_pct": change_pct,
+                "abs_change_pct": abs(change_pct) if change_pct is not None else 0.0,
             }
         )
 
+    # Reserve part of the daily universe for recent/current extreme movers.
+    # This prevents a suddenly explosive microcap from being invisible merely
+    # because its prior average dollar volume was not high enough for the
+    # liquidity-ranked core universe.
+    rescue_quota = max(1, int(round(target_size * VOLATILITY_RESCUE_SHARE)))
+    rescue = [
+        row for row in eligible
+        if row["abs_change_pct"] >= VOLATILITY_RESCUE_MIN_ABS_CHANGE_PCT
+    ]
+    rescue.sort(
+        key=lambda row: (
+            row["abs_change_pct"],
+            row["average_dollar_volume"],
+        ),
+        reverse=True,
+    )
+
+    selected = []
+    seen = set()
+    for row in rescue[:rescue_quota]:
+        seen.add(row["symbol"])
+        selected.append(row["symbol"])
+
     # Keep substantial coverage of low-price names instead of allowing
-    # mega-caps to dominate a simple dollar-volume sort.
+    # mega-caps to dominate a simple dollar-volume sort. Allocate the
+    # remaining capacity across the same price-band proportions.
     bands = (
         (0.50, 5.0, 0.40),
         (5.0, 20.0, 0.35),
         (20.0, 60.01, 0.25),
     )
-    selected = []
-    seen = set()
+    remaining = max(0, target_size - len(selected))
     for low, high, share in bands:
         band = [
             row for row in eligible
-            if low <= row["price"] < high
+            if low <= row["price"] < high and row["symbol"] not in seen
         ]
         band.sort(
             key=lambda row: row["average_dollar_volume"],
             reverse=True,
         )
-        quota = max(1, int(round(target_size * share)))
+        quota = max(1, int(round(remaining * share))) if remaining else 0
         for row in band[:quota]:
             symbol = row["symbol"]
             if symbol in seen:
