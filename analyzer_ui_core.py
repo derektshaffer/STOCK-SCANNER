@@ -696,13 +696,23 @@ _interactive_analysis = _manual_request or _ticker_changed
 # the mixed Scanner/Analyzer screen getting stuck. Delegate every deep refresh
 # (manual, ticker change, initial, or timed) to analyzer_bootstrap's existing
 # cancelable background worker and immediately rerun the lightweight shell.
-if _COMBINED_WORKSPACE and _needs_analysis:
+_background_state = st.session_state.get("_analyzer_bootstrap_launch_state") or {}
+_background_process = _background_state.get("process")
+_background_active = bool(
+    _background_process is not None
+    and _background_process.poll() is None
+)
+
+if _COMBINED_WORKSPACE and _needs_analysis and not _background_active:
     st.session_state["_analyzer_background_request_symbol"] = ticker
     st.session_state["_analyzer_loading"] = True
     st.session_state["_manual_analyze_requested"] = False
     st.rerun(scope="app")
 
-if _needs_analysis:
+# Standalone Analyzer retains the original synchronous behavior. The combined
+# workspace must never fall through to analyze() while a background refresh is
+# active, otherwise the session blocks again.
+if _needs_analysis and not _COMBINED_WORKSPACE:
     try:
         # Never render a separate spinner/status line. Interactive analyses use
         # the actual Analyze button's "Analyzing..." state; timed deep refreshes
