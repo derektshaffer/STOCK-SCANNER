@@ -14,7 +14,7 @@ from scanner_behavior import BEHAVIOR_FEATURE_VERSION
 from stair_step import stair_step_feature_values
 
 
-PEER_MODEL_VERSION = "analyzer-peer-v7-shared-market-structure"
+PEER_MODEL_VERSION = "analyzer-peer-v8-shared-break-structure"
 PEER_TARGET = ">= +3% at 60 minutes"
 PEER_FEATURES = [
     "day_pct",

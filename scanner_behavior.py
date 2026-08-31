@@ -11,10 +11,13 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 
 from multi_bounce import bounce_feature_values, detect_bounce_sequence
-from market_structure import impulse_pullback_context as shared_impulse_pullback_context
+from market_structure import (
+    breakout_behavior_context as shared_breakout_behavior_context,
+    impulse_pullback_context as shared_impulse_pullback_context,
+)
 from stair_step import detect_stair_step, stair_step_feature_values
 
-BEHAVIOR_FEATURE_VERSION = "scanner-behavior-v5-shared-market-structure"
+BEHAVIOR_FEATURE_VERSION = "scanner-behavior-v6-shared-break-structure"
 
 
 def _num(value):
@@ -237,55 +240,8 @@ def volume_acceleration_features(bars):
 
 
 def breakout_behavior_features(bars):
-    data = []
-    for bar in bars or []:
-        h = _num(bar.get("h"))
-        c = _num(bar.get("c"))
-        if h is None or c is None:
-            continue
-        data.append({"h": h, "c": c})
-    if len(data) < 8:
-        return {}
-
-    start = max(4, len(data) - 4)
-    event_level = None
-    event_index = None
-    for i in range(start, len(data)):
-        prior_start = max(0, i - 20)
-        prior = data[prior_start:i]
-        if len(prior) < 4:
-            continue
-        level = max(row["h"] for row in prior)
-        if data[i]["h"] > level:
-            event_level = level
-            event_index = i
-            break
-
-    if event_level is None:
-        prior = data[max(0, len(data) - 21):-1]
-        level = max((row["h"] for row in prior), default=None)
-        return {
-            "breakout_recent": 0.0,
-            "breakout_holding": 0.0,
-            "failed_breakout": 0.0,
-            "breakout_extension_pct": (
-                round((data[-1]["c"] / level - 1.0) * 100.0, 3)
-                if level
-                else None
-            ),
-        }
-
-    current = data[-1]["c"]
-    extension = (current / event_level - 1.0) * 100.0
-    holding = current >= event_level
-    failed = current < event_level
-    return {
-        "breakout_recent": 1.0,
-        "breakout_holding": 1.0 if holding else 0.0,
-        "failed_breakout": 1.0 if failed else 0.0,
-        "breakout_extension_pct": round(extension, 3),
-        "breakout_bars_since": float(len(data) - 1 - event_index),
-    }
+    """Canonical breakout/failure features from confirmed swing-high levels."""
+    return shared_breakout_behavior_context(bars)
 
 
 def intraday_behavior_features(

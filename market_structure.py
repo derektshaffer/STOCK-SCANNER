@@ -20,7 +20,7 @@ from datetime import datetime, timezone
 from statistics import median
 
 
-STRUCTURE_VERSION = "market-structure-v1-causal-swings"
+STRUCTURE_VERSION = "market-structure-v2-breaks-and-trend"
 
 
 def _num(value):
@@ -328,6 +328,327 @@ def extract_market_structure(
         "bar_spacing_minutes": round(spacing, 4),
         "min_leg_minutes": float(min_leg_minutes),
         "min_leg_bars": int(min_leg_bars),
+    }
+
+
+def _streak(values, comparison):
+    count = 0
+    for i in range(len(values) - 1, 0, -1):
+        if comparison(values[i], values[i - 1]):
+            count += 1
+        else:
+            break
+    return count
+
+
+def swing_trend_context(bars_or_structure):
+    """Canonical higher-high/lower-high and higher-low/lower-low structure."""
+    structure = (
+        bars_or_structure
+        if isinstance(bars_or_structure, dict)
+        and "confirmed_swings" in bars_or_structure
+        else extract_market_structure(bars_or_structure)
+    )
+    swings = structure.get("confirmed_swings") or []
+    highs = [s for s in swings if s.get("kind") == "HIGH"]
+    lows = [s for s in swings if s.get("kind") == "LOW"]
+    high_prices = [_num(s.get("price")) for s in highs]
+    low_prices = [_num(s.get("price")) for s in lows]
+    high_prices = [x for x in high_prices if x is not None]
+    low_prices = [x for x in low_prices if x is not None]
+
+    lower_highs = _streak(high_prices, lambda cur, prev: cur < prev * 0.997)
+    higher_highs = _streak(high_prices, lambda cur, prev: cur > prev * 1.003)
+    lower_lows = _streak(low_prices, lambda cur, prev: cur < prev * 0.997)
+    higher_lows = _streak(low_prices, lambda cur, prev: cur > prev * 1.003)
+
+    if lower_highs >= 1 and lower_lows >= 1:
+        state = "DOWNTREND STRUCTURE"
+    elif higher_highs >= 1 and higher_lows >= 1:
+        state = "UPTREND STRUCTURE"
+    elif lower_highs >= 1:
+        state = "LOWER-HIGH PRESSURE"
+    elif higher_lows >= 1:
+        state = "HIGHER-LOW SUPPORT"
+    else:
+        state = "MIXED / UNCONFIRMED"
+
+    return {
+        "structure_version": STRUCTURE_VERSION,
+        "state": state,
+        "confirmed_swing_count": len(swings),
+        "confirmed_high_count": len(highs),
+        "confirmed_low_count": len(lows),
+        "lower_high_streak": int(lower_highs),
+        "higher_high_streak": int(higher_highs),
+        "lower_low_streak": int(lower_lows),
+        "higher_low_streak": int(higher_lows),
+        "latest_high": highs[-1] if highs else None,
+        "latest_low": lows[-1] if lows else None,
+        "market_structure": structure,
+    }
+
+
+def _established_range_breaks(rows, noise_pct, break_buffer_pct):
+    """Causal breaks of tight ranges established entirely before the event bar."""
+    if len(rows) < 5:
+        return {"upside": [], "downside": []}
+
+    max_range_width = _clamp(noise_pct * 3.0, 1.0, 4.0)
+    touch_tolerance = _clamp(noise_pct * 0.35, 0.10, 0.60)
+    upside = []
+    downside = []
+
+    for j in range(4, len(rows)):
+        prior = rows[max(0, j - 12):j]
+        if len(prior) < 4:
+            continue
+        ceiling = max(row["h"] for row in prior)
+        floor = min(row["l"] for row in prior)
+        if floor <= 0:
+            continue
+        width_pct = (ceiling / floor - 1.0) * 100.0
+        if width_pct > max_range_width:
+            continue
+
+        ceiling_touches = sum(
+            1 for row in prior
+            if abs(row["h"] / ceiling - 1.0) * 100.0 <= touch_tolerance
+        )
+        floor_touches = sum(
+            1 for row in prior
+            if abs(row["l"] / floor - 1.0) * 100.0 <= touch_tolerance
+        )
+        row = rows[j]
+
+        if (
+            ceiling_touches >= 2
+            and row["h"] >= ceiling * (1.0 + break_buffer_pct / 100.0)
+        ):
+            upside.append(
+                {
+                    "level_kind": "RANGE_HIGH",
+                    "level_source": "established_range_ceiling",
+                    "level": round(ceiling, 6),
+                    "level_time": prior[-1].get("t"),
+                    "level_confirmed_time": prior[-1].get("t"),
+                    "range_start_time": prior[0].get("t"),
+                    "range_width_pct": round(width_pct, 3),
+                    "range_touches": int(ceiling_touches),
+                    "event_index": j,
+                    "event_source_index": int(row["source_index"]),
+                    "event_time": row.get("t"),
+                    "bars_since": int(len(rows) - 1 - j),
+                }
+            )
+
+        if (
+            floor_touches >= 2
+            and row["l"] <= floor * (1.0 - break_buffer_pct / 100.0)
+        ):
+            downside.append(
+                {
+                    "level_kind": "RANGE_LOW",
+                    "level_source": "established_range_floor",
+                    "level": round(floor, 6),
+                    "level_time": prior[-1].get("t"),
+                    "level_confirmed_time": prior[-1].get("t"),
+                    "range_start_time": prior[0].get("t"),
+                    "range_width_pct": round(width_pct, 3),
+                    "range_touches": int(floor_touches),
+                    "event_index": j,
+                    "event_source_index": int(row["source_index"]),
+                    "event_time": row.get("t"),
+                    "bars_since": int(len(rows) - 1 - j),
+                }
+            )
+
+    return {"upside": upside, "downside": downside}
+
+
+def break_of_structure_context(bars):
+    """Canonical upside/downside breaks of already-confirmed swing levels.
+
+    A level may only be broken after that swing was itself confirmed, so the
+    event is available point-in-time and cannot rely on a future pivot.
+    """
+    structure = extract_market_structure(bars)
+    rows = structure.get("rows") or []
+    swings = structure.get("confirmed_swings") or []
+    if len(rows) < 4:
+        return {
+            "status": "insufficient_data",
+            "structure_version": STRUCTURE_VERSION,
+            "upside": None,
+            "downside": None,
+            "market_structure": structure,
+        }
+
+    noise = _num(structure.get("local_noise_pct")) or 1.0
+    break_buffer_pct = _clamp(noise * 0.08, 0.05, 0.35)
+    hold_buffer_pct = _clamp(noise * 0.04, 0.03, 0.18)
+
+    def latest_break(kind):
+        events = []
+        for swing in swings:
+            if swing.get("kind") != kind:
+                continue
+            level = _num(swing.get("price"))
+            confirmed_idx = swing.get("confirmed_index")
+            if level is None or confirmed_idx is None:
+                continue
+            confirmed_idx = int(confirmed_idx)
+            for j in range(confirmed_idx + 1, len(rows)):
+                row = rows[j]
+                broke = (
+                    row["h"] >= level * (1.0 + break_buffer_pct / 100.0)
+                    if kind == "HIGH"
+                    else row["l"] <= level * (1.0 - break_buffer_pct / 100.0)
+                )
+                if broke:
+                    events.append(
+                        {
+                            "level_kind": kind,
+                            "level_source": (
+                                "confirmed_swing_high"
+                                if kind == "HIGH"
+                                else "confirmed_swing_low"
+                            ),
+                            "level": round(level, 6),
+                            "level_time": swing.get("time"),
+                            "level_confirmed_time": swing.get("confirmed_time"),
+                            "event_index": j,
+                            "event_source_index": int(rows[j]["source_index"]),
+                            "event_time": rows[j].get("t"),
+                            "bars_since": int(len(rows) - 1 - j),
+                        }
+                    )
+                    break
+        return max(events, key=lambda e: e["event_index"]) if events else None
+
+    upside = latest_break("HIGH")
+    downside = latest_break("LOW")
+
+    range_breaks = _established_range_breaks(
+        rows,
+        noise,
+        break_buffer_pct,
+    )
+    range_up = max(
+        range_breaks.get("upside") or [],
+        key=lambda e: e["event_index"],
+        default=None,
+    )
+    range_down = max(
+        range_breaks.get("downside") or [],
+        key=lambda e: e["event_index"],
+        default=None,
+    )
+    if range_up and (
+        upside is None or range_up["event_index"] >= upside["event_index"]
+    ):
+        upside = range_up
+    if range_down and (
+        downside is None or range_down["event_index"] >= downside["event_index"]
+    ):
+        downside = range_down
+
+    current = rows[-1]["c"]
+
+    if upside:
+        level = float(upside["level"])
+        upside["holding"] = bool(
+            current >= level * (1.0 - hold_buffer_pct / 100.0)
+        )
+        upside["failed"] = bool(
+            current < level * (1.0 - hold_buffer_pct / 100.0)
+        )
+        upside["extension_pct"] = round((current / level - 1.0) * 100.0, 3)
+        upside["recent"] = bool(upside["bars_since"] <= 4)
+
+    if downside:
+        level = float(downside["level"])
+        downside["holding"] = bool(
+            current <= level * (1.0 + hold_buffer_pct / 100.0)
+        )
+        downside["reclaimed"] = bool(
+            current > level * (1.0 + hold_buffer_pct / 100.0)
+        )
+        downside["extension_pct"] = round((current / level - 1.0) * 100.0, 3)
+        downside["recent"] = bool(downside["bars_since"] <= 4)
+
+    latest_highs = [s for s in swings if s.get("kind") == "HIGH"]
+    latest_lows = [s for s in swings if s.get("kind") == "LOW"]
+
+    return {
+        "status": "ok",
+        "structure_version": STRUCTURE_VERSION,
+        "break_buffer_pct": round(break_buffer_pct, 4),
+        "hold_buffer_pct": round(hold_buffer_pct, 4),
+        "upside": upside,
+        "downside": downside,
+        "reference_high": latest_highs[-1] if latest_highs else None,
+        "reference_low": latest_lows[-1] if latest_lows else None,
+        "market_structure": structure,
+    }
+
+
+def breakout_behavior_context(bars):
+    """Compatibility view for Scanner breakout features using shared levels."""
+    ctx = break_of_structure_context(bars)
+    rows = (ctx.get("market_structure") or {}).get("rows") or []
+    upside = ctx.get("upside") or {}
+    ref = ctx.get("reference_high") or {}
+    current = rows[-1]["c"] if rows else None
+    level = _num(upside.get("level"))
+    if level is None:
+        level = _num(ref.get("price"))
+
+    return {
+        "structure_version": STRUCTURE_VERSION,
+        "breakout_recent": 1.0 if upside.get("recent") else 0.0,
+        "breakout_holding": 1.0 if upside.get("holding") else 0.0,
+        "failed_breakout": 1.0 if upside.get("failed") else 0.0,
+        "breakout_extension_pct": (
+            round((current / level - 1.0) * 100.0, 3)
+            if current is not None and level
+            else None
+        ),
+        "breakout_bars_since": (
+            float(upside.get("bars_since"))
+            if upside.get("bars_since") is not None
+            else None
+        ),
+        "breakout_level": round(level, 6) if level is not None else None,
+        "breakout_level_time": (
+            upside.get("level_time") if upside else ref.get("time")
+        ),
+        "breakout_event_time": upside.get("event_time") if upside else None,
+        "market_structure": ctx.get("market_structure"),
+    }
+
+
+def structural_reversal_context(bars):
+    """Shared swing-trend and downside-break evidence for reversal consumers."""
+    structure = extract_market_structure(bars)
+    trend = swing_trend_context(structure)
+    breaks = break_of_structure_context(bars)
+    downside = breaks.get("downside") or {}
+    upside = breaks.get("upside") or {}
+    return {
+        "structure_version": STRUCTURE_VERSION,
+        "state": trend.get("state"),
+        "lower_high_streak": trend.get("lower_high_streak", 0),
+        "higher_high_streak": trend.get("higher_high_streak", 0),
+        "lower_low_streak": trend.get("lower_low_streak", 0),
+        "higher_low_streak": trend.get("higher_low_streak", 0),
+        "downside_break_recent": bool(downside.get("recent")),
+        "downside_break_holding": bool(downside.get("holding")),
+        "downside_break_level": downside.get("level"),
+        "upside_break_recent": bool(upside.get("recent")),
+        "upside_break_holding": bool(upside.get("holding")),
+        "failed_upside_break": bool(upside.get("failed")),
+        "market_structure": structure,
     }
 
 

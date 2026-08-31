@@ -113,7 +113,7 @@ def test_analyzer_prefers_tradier():
     result = sa.analyze("TEST")
     assert result["market_provider"] == "tradier", result
     assert result["live_feed"] == "TRADIER CONSOLIDATED", result
-    assert result["feature_version"] == "analyzer-features-v8-shared-market-structure", result
+    assert result["feature_version"] == "analyzer-features-v9-shared-break-structure", result
     assert abs(result["price"] - 10.10) < 1e-9, result
     assert result["bid"] == 10.09 and result["ask"] == 10.11, result
     assert str(result["volume_source"]).startswith("TRADIER"), result
@@ -1340,6 +1340,114 @@ def test_unconfirmed_rebound_is_labeled_developing_not_confirmed():
     assert ctx.get("phase") in {"BOUNCE DEVELOPING","PULLBACK FORMING"}, ctx
 
 
+def test_breakout_requires_previously_confirmed_swing_high():
+    from market_structure import breakout_behavior_context
+    from datetime import datetime, timedelta, timezone
+
+    start=datetime(2026,8,31,14,0,tzinfo=timezone.utc)
+    closes=(9.0,9.3,9.7,10.0,9.6,9.25,9.45,9.75,10.15,10.25)
+    bars=[]
+    for i,close in enumerate(closes):
+        bars.append({
+            "t":(start+timedelta(minutes=i)).isoformat(),
+            "o":close-0.03,"h":close+0.06,"l":close-0.06,"c":close,"v":1000+i*50,
+        })
+    ctx=breakout_behavior_context(bars)
+    assert ctx.get("breakout_recent") == 1.0, ctx
+    assert ctx.get("breakout_holding") == 1.0, ctx
+    assert ctx.get("failed_breakout") == 0.0, ctx
+    level_time=ctx.get("breakout_level_time")
+    event_time=ctx.get("breakout_event_time")
+    assert level_time and event_time and event_time > level_time, ctx
+
+
+def test_failed_breakout_uses_same_confirmed_level_not_new_raw_high():
+    from market_structure import breakout_behavior_context
+    from datetime import datetime, timedelta, timezone
+
+    start=datetime(2026,8,31,14,0,tzinfo=timezone.utc)
+    closes=(9.0,9.3,9.7,10.0,9.6,9.25,9.45,9.75,10.15,10.20,9.75,9.55)
+    bars=[]
+    for i,close in enumerate(closes):
+        bars.append({
+            "t":(start+timedelta(minutes=i)).isoformat(),
+            "o":close-0.03,"h":close+0.06,"l":close-0.06,"c":close,"v":1000+i*50,
+        })
+    ctx=breakout_behavior_context(bars)
+    assert ctx.get("breakout_recent") == 1.0, ctx
+    assert ctx.get("breakout_holding") == 0.0, ctx
+    assert ctx.get("failed_breakout") == 1.0, ctx
+
+
+def test_scanner_breakout_features_use_shared_confirmed_levels():
+    import scanner_behavior as behavior
+    from market_structure import STRUCTURE_VERSION
+    from datetime import datetime, timedelta, timezone
+
+    start=datetime(2026,8,31,14,0,tzinfo=timezone.utc)
+    closes=(9.0,9.3,9.7,10.0,9.6,9.25,9.45,9.75,10.15,10.25)
+    bars=[
+        {
+            "t":(start+timedelta(minutes=i)).isoformat(),
+            "o":close-0.03,"h":close+0.06,"l":close-0.06,"c":close,"v":1000,
+        }
+        for i,close in enumerate(closes)
+    ]
+    features=behavior.breakout_behavior_features(bars)
+    assert features.get("structure_version") == STRUCTURE_VERSION, features
+    assert features.get("breakout_recent") == 1.0, features
+
+
+def test_run_exhaustion_uses_confirmed_swing_reversal_structure():
+    from pathlib import Path
+
+    source=Path("stock_analyzer.py").read_text(encoding="utf-8")
+    assert "shared_structural_reversal_context(rows)" in source
+    assert 'structural.get("downside_break_holding")' in source
+    assert 'structural.get("failed_upside_break")' in source
+    assert 'highs=[r["h"] for r in recent6]' not in source
+
+
+def test_trade_plan_blocks_canonical_failed_breakout_confirmation():
+    import stock_analyzer as sa
+    from datetime import datetime, timezone
+
+    metrics={
+        "price":10.15,
+        "vwap":9.8,
+        "supports":[{"price":9.4,"quality_score":70,"quality":"STRONG"}],
+        "resistances":[{"price":10.0,"quality_score":80,"quality":"STRONG"}],
+        "atr_14":0.5,
+        "atr_14_pct":5.0,
+        "spread_pct":0.4,
+        "volume_pace":2.0,
+        "momentum_5m":1.5,
+        "momentum_15m":1.0,
+        "day_pct":15.0,
+        "vwap_extension_pct":3.5,
+        "score":82,
+        "historical_analogs":{"status":"insufficient_history"},
+        "historical_setup":{"status":"insufficient_history","intraday":{}},
+        "impulse_pullback":{"detected":False},
+        "bounce_sequence":{"detected":False,"completed_bounces":0},
+        "breakout_structure":{
+            "breakout_recent":1.0,
+            "breakout_holding":0.0,
+            "failed_breakout":1.0,
+        },
+        "stair_step":{"detected":False},
+        "run_exhaustion":{"score":30},
+        "liquidity":{"label":"HIGH","avg_dollar_volume":10_000_000},
+        "news":[],
+        "day_high":10.0,
+    }
+    plan=sa.build_trade_plan(metrics,datetime.now(timezone.utc))
+    assert not (
+        plan.get("status")=="ENTRY AVAILABLE"
+        and plan.get("preferred_plan")=="breakout"
+    ), plan
+
+
 def test_all_intraday_movement_feature_paths_use_shared_structure_engine():
     from pathlib import Path
 
@@ -1350,12 +1458,15 @@ def test_all_intraday_movement_feature_paths_use_shared_structure_engine():
     replay=Path("historical_scanner_replay.py").read_text(encoding="utf-8")
     ml=Path("ml_predictor.py").read_text(encoding="utf-8")
 
-    assert 'STRUCTURE_VERSION = "market-structure-v1-causal-swings"' in market
+    assert 'STRUCTURE_VERSION = "market-structure-v2-breaks-and-trend"' in market
     assert "return bounce_sequence_context(" in bounce
     assert "shared_impulse_pullback_context(" in analyzer
     assert "shared_impulse_pullback_context(" in behavior
     assert "shared_impulse_pullback_context(" in replay
     assert "shared_impulse_pullback_context(" in ml
+    assert "shared_breakout_behavior_context(" in behavior
+    assert "shared_breakout_behavior_context(" in analyzer
+    assert "shared_structural_reversal_context(" in analyzer
 
 
 def test_impulse_detector_measures_fraction_of_run():
@@ -1652,8 +1763,8 @@ def test_distinct_bounce_semantics_are_version_isolated_for_peer_ml():
     import peer_ml_predictor as peer
     import scanner_behavior as behavior
 
-    assert behavior.BEHAVIOR_FEATURE_VERSION == "scanner-behavior-v5-shared-market-structure"
-    assert peer.PEER_MODEL_VERSION == "analyzer-peer-v7-shared-market-structure"
+    assert behavior.BEHAVIOR_FEATURE_VERSION == "scanner-behavior-v6-shared-break-structure"
+    assert peer.PEER_MODEL_VERSION == "analyzer-peer-v8-shared-break-structure"
 
     rows=[
         {"symbol":"OLD","behavior_feature_version":"scanner-behavior-v2-completed-bars"},
@@ -4791,6 +4902,11 @@ if __name__ == "__main__":
         test_shared_structure_does_not_confirm_same_candle_reversal,
         test_impulse_and_bounce_consumers_share_identical_structure_version,
         test_unconfirmed_rebound_is_labeled_developing_not_confirmed,
+        test_breakout_requires_previously_confirmed_swing_high,
+        test_failed_breakout_uses_same_confirmed_level_not_new_raw_high,
+        test_scanner_breakout_features_use_shared_confirmed_levels,
+        test_run_exhaustion_uses_confirmed_swing_reversal_structure,
+        test_trade_plan_blocks_canonical_failed_breakout_confirmation,
         test_all_intraday_movement_feature_paths_use_shared_structure_engine,
         test_impulse_detector_measures_fraction_of_run,
         test_entry_readiness_penalizes_unconfirmed_shallow_retrace,
