@@ -46,6 +46,7 @@ def start_analyzer_process(
     alpaca_secret="",
     alpaca_live_feed="iex",
     tradier_token="",
+    thesis_namespace="",
     timeout_seconds=180,
 ):
     symbol=str(symbol or "").upper().strip()
@@ -65,6 +66,8 @@ def start_analyzer_process(
     # long-lived market-stream session or block the page on prediction-log
     # persistence. Those are handled by the persistent UI/background tracker.
     env["ANALYZER_BACKGROUND_WORKER"]="1"
+    if thesis_namespace:
+        env["ANALYZER_THESIS_NAMESPACE"]=str(thesis_namespace)
 
     result_path=_result_path()
     stdout_path=_log_path("out")
