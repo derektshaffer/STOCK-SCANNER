@@ -57,6 +57,13 @@ MIN_PEER_SYMBOLS = 8
 MIN_PEER_POSITIVES = 30
 MIN_PEER_NEGATIVES = 150
 MIN_VALIDATION_SAMPLES = 100
+# Replay uses a current listed/liquid universe, so a replay-trained peer model
+# is never allowed to become production-valid from replay evidence alone.
+# Require a genuinely later live holdout before the peer layer can affect the
+# Analyzer's headline ML edge.
+MIN_LIVE_CONFIRMATION_SAMPLES = 100
+MIN_LIVE_CONFIRMATION_DAYS = 5
+MIN_LIVE_CONFIRMATION_CLASS_COUNT = 15
 MAX_PEER_SAMPLES = 2400
 MAX_PER_SYMBOL = 180
 MAX_PER_SYMBOL_DAY = 12
@@ -304,6 +311,49 @@ def _params():
     }
 
 
+def _source_integrity_context(rows):
+    replay_rows = [
+        row for row in rows
+        if row.get("observation_source") == "historical_replay"
+    ]
+    live_rows = [
+        row for row in rows
+        if row.get("observation_source") != "historical_replay"
+    ]
+    replay_days = sorted({
+        str(row.get("trading_date") or "")
+        for row in replay_rows
+        if row.get("trading_date")
+    })
+    replay_end_day = replay_days[-1] if replay_days else None
+
+    # Only live observations strictly AFTER the replay period qualify as the
+    # independent confirmation set. Same-day live copies cannot confirm a
+    # replay model because that symbol/day may already exist in replay.
+    live_confirmation_rows = [
+        row for row in live_rows
+        if (
+            not replay_end_day
+            or (
+                row.get("trading_date")
+                and str(row["trading_date"]) > replay_end_day
+            )
+        )
+    ]
+    live_confirmation_days = sorted({
+        str(row.get("trading_date") or "")
+        for row in live_confirmation_rows
+        if row.get("trading_date")
+    })
+    return {
+        "replay_rows": replay_rows,
+        "live_rows": live_rows,
+        "replay_end_day": replay_end_day,
+        "live_confirmation_rows": live_confirmation_rows,
+        "live_confirmation_days": live_confirmation_days,
+    }
+
+
 def _validate_and_predict(rows, current):
     try:
         import numpy as np
@@ -366,12 +416,22 @@ def _validate_and_predict(rows, current):
     ):
         return base
 
-    X, y = _matrix(rows, np)
-    day_to_indices = defaultdict(list)
-    for i, row in enumerate(rows):
-        day_to_indices[str(row.get("trading_date") or "")].append(i)
+    source_context = _source_integrity_context(rows)
+    replay_rows = source_context["replay_rows"]
+    live_confirmation_rows = source_context["live_confirmation_rows"]
+    live_confirmation_days = source_context["live_confirmation_days"]
+    replay_end_day = source_context["replay_end_day"]
 
-    validation_days = [day for day in days if day]
+    # Keep the post-replay live holdout completely outside the historical
+    # walk-forward gate. Otherwise the same future evidence could influence the
+    # historical validation decision and then be reused as "live confirmation."
+    validation_rows = replay_rows if replay_rows else rows
+    X_validation, y_validation = _matrix(validation_rows, np)
+    validation_days = sorted({
+        str(row.get("trading_date") or "")
+        for row in validation_rows
+        if row.get("trading_date")
+    })
     fold_bounds = (
         (0.55, 0.70),
         (0.70, 0.85),
@@ -396,30 +456,30 @@ def _validate_and_predict(rows, current):
             continue
 
         train_idx = [
-            i for i, row in enumerate(rows)
+            i for i, row in enumerate(validation_rows)
             if row.get("trading_date") and row["trading_date"] <= train_cut
         ]
         val_idx = [
-            i for i, row in enumerate(rows)
+            i for i, row in enumerate(validation_rows)
             if row.get("trading_date")
             and train_cut < row["trading_date"] <= val_cut
         ]
         if len(train_idx) < 250 or len(val_idx) < 50:
             continue
 
-        ytr = y[train_idx]
-        yv = y[val_idx]
+        ytr = y_validation[train_idx]
+        yv = y_validation[val_idx]
         if len(set(ytr.tolist())) < 2 or len(set(yv.tolist())) < 2:
             continue
 
         model = xgb.train(
             _params(),
-            xgb.DMatrix(X[train_idx], label=ytr, feature_names=PEER_FEATURES),
+            xgb.DMatrix(X_validation[train_idx], label=ytr, feature_names=PEER_FEATURES),
             num_boost_round=120,
             verbose_eval=False,
         )
         probs = model.predict(
-            xgb.DMatrix(X[val_idx], feature_names=PEER_FEATURES)
+            xgb.DMatrix(X_validation[val_idx], feature_names=PEER_FEATURES)
         )
         train_rate = float(ytr.mean())
         val_probs.extend(float(p) for p in probs)
@@ -441,13 +501,83 @@ def _validate_and_predict(rows, current):
         for probability, actual in zip(baseline_probs, val_y)
     )
 
-    validated = bool(
+    historical_validated = bool(
         auc is not None
         and auc >= 0.56
         and brier < baseline_brier
         and len(val_y) >= MIN_VALIDATION_SAMPLES
     )
 
+    fully_validated = historical_validated
+    live_confirmation_ready = False
+    live_confirmation_passed = None
+    live_auc = None
+    live_brier = None
+    live_baseline_brier = None
+
+    if replay_rows:
+        live_positives = sum(
+            int(row.get("label") == 1)
+            for row in live_confirmation_rows
+        )
+        live_negatives = len(live_confirmation_rows) - live_positives
+        live_confirmation_ready = bool(
+            len(live_confirmation_rows) >= MIN_LIVE_CONFIRMATION_SAMPLES
+            and len(live_confirmation_days) >= MIN_LIVE_CONFIRMATION_DAYS
+            and live_positives >= MIN_LIVE_CONFIRMATION_CLASS_COUNT
+            and live_negatives >= MIN_LIVE_CONFIRMATION_CLASS_COUNT
+        )
+        fully_validated = False
+
+        if historical_validated and live_confirmation_ready:
+            # Train only on replay-era observations, then score the strictly
+            # later live holdout exactly once as the production-integrity gate.
+            X_replay, y_replay = _matrix(replay_rows, np)
+            X_live, y_live = _matrix(live_confirmation_rows, np)
+            if (
+                len(set(y_replay.tolist())) >= 2
+                and len(set(y_live.tolist())) >= 2
+            ):
+                replay_model = xgb.train(
+                    _params(),
+                    xgb.DMatrix(
+                        X_replay,
+                        label=y_replay,
+                        feature_names=PEER_FEATURES,
+                    ),
+                    num_boost_round=145,
+                    verbose_eval=False,
+                )
+                live_probs = replay_model.predict(
+                    xgb.DMatrix(
+                        X_live,
+                        feature_names=PEER_FEATURES,
+                    )
+                )
+                live_y_list = [int(value) for value in y_live.tolist()]
+                live_prob_list = [float(value) for value in live_probs]
+                live_auc = _auc(live_y_list, live_prob_list)
+                live_brier = mean(
+                    (probability - actual) ** 2
+                    for probability, actual
+                    in zip(live_prob_list, live_y_list)
+                )
+                replay_rate = float(y_replay.mean())
+                live_baseline_brier = mean(
+                    (replay_rate - actual) ** 2
+                    for actual in live_y_list
+                )
+                live_confirmation_passed = bool(
+                    live_auc is not None
+                    and live_auc >= 0.53
+                    and live_brier < live_baseline_brier
+                )
+                fully_validated = live_confirmation_passed
+
+    # Advisory predictions may use all information available up to now after
+    # validation is measured. They still cannot influence the trade plan unless
+    # the independent source-integrity gate above passes.
+    X, y = _matrix(rows, np)
     final_model = xgb.train(
         _params(),
         xgb.DMatrix(X, label=y, feature_names=PEER_FEATURES),
@@ -477,15 +607,43 @@ def _validate_and_predict(rows, current):
     )[:5]
     total_gain = sum(value for _, value in top) or 1.0
 
+    if not historical_validated:
+        validation_status = "advisory"
+    elif replay_rows and not live_confirmation_ready:
+        validation_status = "replay_validated_waiting_live"
+    elif replay_rows and not live_confirmation_passed:
+        validation_status = "failed_live_confirmation"
+    else:
+        validation_status = "validated"
+
     base.update(
         {
-            "status": "validated" if validated else "advisory",
-            "validated": validated,
+            "status": validation_status,
+            "validated": bool(fully_validated),
+            "historical_validated": historical_validated,
             "probability_pct": round(probability * 100.0, 1),
             "validation_samples": len(val_y),
             "walk_forward_auc": round(auc, 3) if auc is not None else None,
             "walk_forward_brier": round(brier, 4),
             "baseline_brier": round(baseline_brier, 4),
+            "replay_samples": len(replay_rows),
+            "replay_end_day": replay_end_day,
+            "replay_survivorship_limit": bool(replay_rows),
+            "live_confirmation_samples": len(live_confirmation_rows),
+            "live_confirmation_days": len(live_confirmation_days),
+            "live_confirmation_ready": live_confirmation_ready,
+            "live_confirmation_passed": live_confirmation_passed,
+            "live_confirmation_auc": (
+                round(live_auc, 3) if live_auc is not None else None
+            ),
+            "live_confirmation_brier": (
+                round(live_brier, 4) if live_brier is not None else None
+            ),
+            "live_confirmation_baseline_brier": (
+                round(live_baseline_brier, 4)
+                if live_baseline_brier is not None
+                else None
+            ),
             "top_features": [
                 {
                     "feature": name,
@@ -593,7 +751,10 @@ def predict_peer_ml(symbol, now, metrics, et):
         "Similarity uses price band, liquidity, day move, momentum, volume pace, VWAP extension, "
         "distance from the high, intraday range, time of day, impulse size, retracement depth, bounce recovery, "
         "multi-bounce count/decay, lower-high structure, pullback-volume behavior, and multi-session stair-step / plateau context. It is validated on whole trading "
-        "days and never replaces the stock's own same-ticker model."
+        "days and never replaces the stock's own same-ticker model. "
+        "Historical replay uses a current listed/liquid universe, so replay-only "
+        "peer validation remains advisory until a strictly later live holdout "
+        "also beats its probability baseline."
     )
 
     _CACHE[key] = {"stamp": stamp, "value": result}
