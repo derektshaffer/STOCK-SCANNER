@@ -372,6 +372,15 @@ def run_scanner():
         alpaca_live_feed=configured_live_feed(),
         tradier_token=get_tradier_token(),
         discovery_universe_size="1200",
+        learning_github_token=(
+            secret("ANALYZER_GITHUB_TOKEN")
+            or secret("GITHUB_TOKEN")
+        ),
+        learning_repository=(
+            secret("ANALYZER_GITHUB_REPO")
+            or "derektshaffer/STOCK-SCANNER"
+        ),
+        learning_branch="learning-journal",
         timeout_seconds=105,
     )
 
