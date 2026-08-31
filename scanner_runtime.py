@@ -453,6 +453,40 @@ def poll_scanner_process(state):
     }
 
 
+def cancel_scanner_process(state):
+    """Terminate an active async scanner process and release its shared lock."""
+    state = state or {}
+    process = state.get("process")
+    if process is not None and process.poll() is None:
+        try:
+            process.terminate()
+            process.wait(timeout=3)
+        except Exception:
+            try:
+                process.kill()
+                process.wait(timeout=3)
+            except Exception:
+                pass
+
+    stdout = _read_log(state.get("stdout_path"), 12000)
+    stderr = _read_log(state.get("stderr_path"), 6000)
+    _release_scan_lock(state.get("lock_token"))
+    _cleanup_logs(state)
+    return {
+        "done": True,
+        "ok": False,
+        "cancelled": True,
+        "busy": False,
+        "message": "Momentum scan cancelled.",
+        "runtime_seconds": round(
+            max(0.0, time.time() - float(state.get("started_at") or time.time())),
+            1,
+        ),
+        "stdout": stdout,
+        "stderr": stderr,
+    }
+
+
 def run_scanner_process(
     *,
     alpaca_key="",
