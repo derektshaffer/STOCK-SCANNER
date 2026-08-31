@@ -113,7 +113,7 @@ def test_analyzer_prefers_tradier():
     result = sa.analyze("TEST")
     assert result["market_provider"] == "tradier", result
     assert result["live_feed"] == "TRADIER CONSOLIDATED", result
-    assert result["feature_version"] == "analyzer-features-v6-sequence-regimes", result
+    assert result["feature_version"] == "analyzer-features-v7-balanced-bounces", result
     assert abs(result["price"] - 10.10) < 1e-9, result
     assert result["bid"] == 10.09 and result["ask"] == 10.11, result
     assert str(result["volume_source"]).startswith("TRADIER"), result
@@ -1445,12 +1445,85 @@ def test_multi_bounce_ignores_micro_wiggles_and_waits_for_distinct_second_swing(
     assert float(seq.get("min_recovery_fraction") or 0) >= 0.35, seq
 
 
+def test_multi_bounce_recognizes_dpro_large_rebound_and_smaller_later_bounce():
+    from multi_bounce import detect_bounce_sequence
+    from datetime import datetime, timedelta, timezone
+
+    bars=[]
+    # Build the dominant run into the 07:00 PT / 14:00 UTC peak.
+    start=datetime(2026,8,31,13,30,tzinfo=timezone.utc)
+    for i in range(30):
+        close=4.66 + (5.30-4.66)*(i/29.0)
+        bars.append({
+            "t":(start+timedelta(minutes=i)).isoformat(),
+            "o":close-0.01,
+            "h":close+0.02,
+            "l":close-0.02,
+            "c":close,
+            "v":1500+i*50,
+        })
+    bars.append({
+        "t":datetime(2026,8,31,14,0,tzinfo=timezone.utc).isoformat(),
+        "o":5.335,"h":5.335,"l":5.315,"c":5.315,"v":600,
+    })
+
+    def add(hh,mm,o,h,l,close,v=1500):
+        bars.append({
+            "t":datetime(2026,8,31,hh,mm,tzinfo=timezone.utc).isoformat(),
+            "o":o,"h":h,"l":l,"c":close,"v":v,
+        })
+
+    # First major pullback after the 07:00 PT peak bottoms around 07:10.
+    add(14,5,5.30,5.30,5.29,5.29)
+    add(14,6,5.275,5.28,5.24,5.24)
+    add(14,7,5.19,5.20,5.19,5.19)
+    add(14,8,5.17,5.18,5.13,5.13)
+    add(14,9,5.14,5.14,5.11,5.12)
+    add(14,10,5.16,5.16,5.105,5.11)
+
+    # The rebound builds gradually and peaks around 07:38 PT.
+    add(14,19,5.16,5.16,5.15,5.15)
+    add(14,22,5.17,5.17,5.17,5.17)
+    add(14,30,5.16,5.19,5.155,5.19)
+    add(14,31,5.215,5.215,5.20,5.20)
+    add(14,33,5.205,5.24,5.205,5.24)
+    add(14,35,5.24,5.32,5.24,5.32)
+    add(14,36,5.295,5.33,5.295,5.305)
+    add(14,37,5.34,5.34,5.33,5.33)
+    add(14,38,5.37,5.37,5.37,5.37)
+    add(14,42,5.28,5.28,5.275,5.275)
+
+    # Second pullback bottoms around 07:57 PT; the smaller second bounce peaks
+    # around 07:59-08:00 PT and then rolls over.
+    add(14,44,5.28,5.28,5.255,5.255)
+    add(14,48,5.235,5.26,5.22,5.22)
+    add(14,50,5.20,5.21,5.20,5.21)
+    add(14,53,5.21,5.21,5.185,5.185)
+    add(14,56,5.17,5.17,5.17,5.17)
+    add(14,57,5.16,5.16,5.155,5.155)
+    add(14,59,5.185,5.185,5.185,5.185)
+    add(15,0,5.20,5.25,5.20,5.24)
+    add(15,1,5.23,5.23,5.23,5.23)
+    add(15,2,5.215,5.215,5.215,5.215)
+    add(15,4,5.185,5.185,5.18,5.18)
+
+    seq=detect_bounce_sequence(bars,current_price=5.18,atr_pct=20)
+    assert seq.get("detected"), seq
+    completed=seq.get("bounces") or []
+    assert len(completed) >= 2, seq
+    assert str(completed[0].get("bounce_peak_time") or "").startswith("2026-08-31T14:38"), completed
+    assert str(completed[1].get("pullback_low_time") or "").startswith("2026-08-31T14:57"), completed
+    assert str(completed[1].get("bounce_peak_time") or "").startswith("2026-08-31T15:00"), completed
+    assert float(completed[1].get("recovery_fraction") or 0) >= 0.35, completed
+    assert float(seq.get("pullback_threshold_pct") or 99) <= 3.5, seq
+
+
 def test_distinct_bounce_semantics_are_version_isolated_for_peer_ml():
     import peer_ml_predictor as peer
     import scanner_behavior as behavior
 
-    assert behavior.BEHAVIOR_FEATURE_VERSION == "scanner-behavior-v3-distinct-swings"
-    assert peer.PEER_MODEL_VERSION == "analyzer-peer-v5-distinct-swing-bounces"
+    assert behavior.BEHAVIOR_FEATURE_VERSION == "scanner-behavior-v4-balanced-swings"
+    assert peer.PEER_MODEL_VERSION == "analyzer-peer-v6-balanced-swing-bounces"
 
     rows=[
         {"symbol":"OLD","behavior_feature_version":"scanner-behavior-v2-completed-bars"},
@@ -2927,7 +3000,9 @@ def test_monday_readiness_blocks_stale_scan_handoffs():
     source = Path("app.py").read_text(encoding="utf-8")
     assert "latest_scan_stale" in source
     assert "latest_scan_age > 4 * 60" in source
-    assert "disabled=latest_scan_stale" in source
+    # Stale snapshots still block starting a new Analyzer handoff, but an
+    # already-running analysis must keep its Cancel button available.
+    assert "disabled=bool(latest_scan_stale and not _this_running)" in source
     assert "old setup cannot be mistaken for a current one" in source
 
 
@@ -3098,6 +3173,51 @@ def test_legacy_analyzer_entrypoint_cannot_drift():
     assert "analyzer_app.py" in source
     assert "ALPACA_API_KEY" not in source
     assert "Single Stock Analyzer" not in source
+
+
+def test_combined_analyze_button_has_no_obvious_help_popup_and_can_cancel():
+    from pathlib import Path
+
+    source=Path("app.py").read_text(encoding="utf-8")
+    runtime=Path("analyzer_launch_runtime.py").read_text(encoding="utf-8")
+    worker=Path("analyzer_launch_worker.py").read_text(encoding="utf-8")
+
+    assert "Open this ticker in the live Stock Analyzer." not in source
+    assert 'f"Cancel {symbol}" if _this_running else f"Analyze {symbol}"' in source
+    assert "on_click=_toggle_analyzer_launch" in source
+    assert "_cancel_analyzer_launch()" in source
+    assert "start_analyzer_process(" in source
+    assert "poll_analyzer_process(state)" in source
+    assert "cancel_analyzer_process(state)" in source
+    assert "subprocess.Popen" in runtime
+    assert "process.terminate()" in runtime
+    assert "sa.analyze(symbol)" in worker
+
+
+def test_cancelable_analyzer_runtime_terminates_active_process():
+    import analyzer_launch_runtime as runtime
+
+    class FakeProcess:
+        def __init__(self):
+            self.terminated=False
+            self.waited=False
+        def poll(self):
+            return None if not self.terminated else 0
+        def terminate(self):
+            self.terminated=True
+        def wait(self,timeout=None):
+            self.waited=True
+            return 0
+        def kill(self):
+            self.terminated=True
+
+    process=FakeProcess()
+    state={"process":process,"symbol":"DPRO"}
+    result=runtime.cancel_analyzer_process(state)
+    assert process.terminated is True
+    assert process.waited is True
+    assert result.get("cancelled") is True
+    assert "DPRO" in str(result.get("message") or "")
 
 
 def test_scanner_ui_accepts_tradier_without_alpaca_credentials():
@@ -4543,6 +4663,7 @@ if __name__ == "__main__":
         test_full_spectrum_exposes_all_scenarios,
         test_multi_bounce_detector_tracks_decay_and_lower_highs,
         test_multi_bounce_ignores_micro_wiggles_and_waits_for_distinct_second_swing,
+        test_multi_bounce_recognizes_dpro_large_rebound_and_smaller_later_bounce,
         test_distinct_bounce_semantics_are_version_isolated_for_peer_ml,
         test_multi_bounce_full_spectrum_accepts_sequence_state,
         test_stair_step_detector_finds_higher_plateau_sequence,
@@ -4585,6 +4706,8 @@ if __name__ == "__main__":
         test_swing_research_calibration_excludes_wrong_context,
         test_scanner_visibly_marks_stale_snapshot,
         test_scanner_ui_accepts_tradier_without_alpaca_credentials,
+        test_combined_analyze_button_has_no_obvious_help_popup_and_can_cancel,
+        test_cancelable_analyzer_runtime_terminates_active_process,
         test_live_scanner_matches_scheduled_tradier_discovery,
         test_discovery_universe_reserves_extreme_mover_rescue_slot,
         test_live_mover_rescue_is_merged_without_duplicate_symbols,

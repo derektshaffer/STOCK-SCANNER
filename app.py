@@ -22,6 +22,11 @@ from scanner_runtime import (
     poll_scanner_process,
     start_scanner_process,
 )
+from analyzer_launch_runtime import (
+    cancel_analyzer_process,
+    poll_analyzer_process,
+    start_analyzer_process,
+)
 
 
 st.set_page_config(
@@ -226,6 +231,8 @@ if "last_auto_scan_started_at" not in st.session_state:
     st.session_state["last_auto_scan_started_at"] = 0.0
 if "scanner_trade_horizon" not in st.session_state:
     st.session_state["scanner_trade_horizon"] = "ALL"
+if "_analyzer_launch_state" not in st.session_state:
+    st.session_state["_analyzer_launch_state"] = None
 st.session_state["_combined_scanner_monitor_active"] = True
 
 def _workspace_market_status():
@@ -1007,34 +1014,75 @@ def _latest_scan_candidates():
             }
         )
     return out[:15]
-def _open_analyzer(symbol):
-    """Build the selected analysis first, then switch to Analyzer view."""
-    symbol = str(symbol or "").upper().strip()
+def _cancel_analyzer_launch():
+    state=st.session_state.get("_analyzer_launch_state")
+    if state:
+        result=cancel_analyzer_process(state)
+        st.session_state["_analyzer_cancel_notice"]=result.get("message")
+    st.session_state["_analyzer_launch_state"]=None
+
+
+def _toggle_analyzer_launch(symbol):
+    """Start analysis in the background; clicking the same button cancels it."""
+    symbol=str(symbol or "").upper().strip()
     if not symbol:
         return
 
-    st.session_state["ticker"] = symbol
-    st.session_state["ticker_search_request"] = symbol
-    st.session_state.pop("ticker_picker", None)
-    st.session_state.pop("result", None)
+    state=st.session_state.get("_analyzer_launch_state") or {}
+    active_process=state.get("process")
+    active=bool(active_process is not None and active_process.poll() is None)
+    active_symbol=str(state.get("symbol") or "").upper().strip()
 
-    # Streamlit runs button callbacks before the rest of the rerun. Do all of
-    # the expensive market/history/ML work here while the existing Scanner is
-    # still the page in the browser. Only after the result is ready do we flip
-    # app_view, so Analyzer renders already populated instead of progressively.
-    try:
-        from analyzer_bootstrap import prepare_analyzer_result
-
-        launch_error = prepare_analyzer_result(symbol)
-    except Exception as exc:
-        launch_error = str(exc)
-
-    if launch_error:
-        st.session_state["_analyzer_launch_error"] = launch_error
+    if active and active_symbol==symbol:
+        _cancel_analyzer_launch()
         return
 
-    st.session_state.pop("_analyzer_launch_error", None)
-    st.session_state["app_view"] = "Stock Analyzer"
+    # Only one expensive Analyzer launch at a time. Clicking a different
+    # ticker cancels the prior launch and immediately starts the new one.
+    if active:
+        cancel_analyzer_process(state)
+        st.session_state["_analyzer_launch_state"]=None
+
+    launch=start_analyzer_process(
+        symbol,
+        alpaca_key=_shell_secret("ALPACA_API_KEY"),
+        alpaca_secret=_shell_secret("ALPACA_SECRET_KEY"),
+        alpaca_live_feed=_shell_live_feed(),
+        tradier_token=_shell_tradier_token(),
+        timeout_seconds=180,
+    )
+    if not launch.get("started"):
+        st.session_state["_analyzer_launch_error"]=launch.get("message") or "Could not start Analyzer."
+        st.session_state["_analyzer_launch_state"]=None
+        return
+
+    st.session_state.pop("_analyzer_launch_error",None)
+    st.session_state.pop("_analyzer_cancel_notice",None)
+    st.session_state["_analyzer_launch_state"]=launch
+
+
+def _poll_analyzer_launch():
+    state=st.session_state.get("_analyzer_launch_state")
+    if not state:
+        return
+    outcome=poll_analyzer_process(state)
+    if not outcome.get("done"):
+        return
+
+    st.session_state["_analyzer_launch_state"]=None
+    if not outcome.get("ok"):
+        st.session_state["_analyzer_launch_error"]=outcome.get("message") or "Analyzer failed."
+        return
+
+    symbol=str(outcome.get("symbol") or "").upper().strip()
+    result=outcome.get("result")
+    st.session_state["ticker"]=symbol
+    st.session_state["ticker_search_request"]=symbol
+    st.session_state.pop("ticker_picker",None)
+    st.session_state["result"]=result
+    st.session_state.pop("_analyzer_launch_error",None)
+    st.session_state["app_view"]="Stock Analyzer"
+    st.rerun(scope="app")
 
 
 def _fmt_num(value, pattern, fallback="—"):
@@ -1122,6 +1170,17 @@ if view == "Momentum Scanner":
     launch_error = st.session_state.pop("_analyzer_launch_error", None)
     if launch_error:
         st.error(f"Could not analyze the selected ticker: {launch_error}")
+    cancel_notice = st.session_state.pop("_analyzer_cancel_notice", None)
+    if cancel_notice:
+        st.toast(cancel_notice, icon="✕")
+
+    _analyzer_poll_every = 1 if st.session_state.get("_analyzer_launch_state") else None
+
+    @st.fragment(run_every=_analyzer_poll_every)
+    def _analyzer_launch_monitor():
+        _poll_analyzer_launch()
+
+    _analyzer_launch_monitor()
 
     offhours_mode = not workspace_live
     offhours_candidates = (
@@ -1222,18 +1281,28 @@ if view == "Momentum Scanner":
                     unsafe_allow_html=True,
                 )
             with right:
+                _launch_state=st.session_state.get("_analyzer_launch_state") or {}
+                _launch_process=_launch_state.get("process")
+                _launch_active=bool(
+                    _launch_process is not None
+                    and _launch_process.poll() is None
+                )
+                _this_running=bool(
+                    _launch_active
+                    and str(_launch_state.get("symbol") or "").upper()==symbol
+                )
                 st.button(
-                    f"Analyze {symbol}",
+                    f"Cancel {symbol}" if _this_running else f"Analyze {symbol}",
                     key=f"combined_analyze_{idx}_{symbol}",
-                    type="primary",
+                    type="secondary" if _this_running else "primary",
                     use_container_width=True,
-                    disabled=latest_scan_stale,
+                    disabled=bool(latest_scan_stale and not _this_running),
                     help=(
                         "Waiting for a fresh scanner snapshot."
-                        if latest_scan_stale
-                        else "Open this ticker in the live Stock Analyzer."
+                        if latest_scan_stale and not _this_running
+                        else None
                     ),
-                    on_click=_open_analyzer,
+                    on_click=_toggle_analyzer_launch,
                     args=(symbol,),
                 )
     else:

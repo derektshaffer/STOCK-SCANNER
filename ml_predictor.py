@@ -1234,7 +1234,7 @@ def predict_ml(symbol, now, metrics, fetch_bars, et):
     result = {
         "status": "ok",
         "model_type": "XGBoost",
-        "version": "ml-v1.7-distinct-swing-bounces",
+        "version": "ml-v1.8-balanced-swing-bounces",
         "source": source,
         "history_source_consolidated": history_source_ok,
         "live_source_consolidated": live_source_ok,
