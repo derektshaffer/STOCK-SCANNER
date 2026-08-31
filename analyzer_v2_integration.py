@@ -1725,7 +1725,16 @@ def _full_spectrum_analysis(metrics, sec, market, catalyst, turnover):
     # 5) Validated ML continuation plus reversal model.
     ml=metrics.get("ml_prediction") or {}
     ml_edge=_num(ml.get("ml_edge_score"))
-    ml_score=cap(ml_edge if ml_edge is not None else 50.0)
+    validated_edge_count=int(ml.get("validated_edge_model_count") or 0)
+    # Defense in depth: full-spectrum scenario context may only consume the
+    # headline ML edge when it is explicitly backed by validated models.
+    # Old/cached/advisory payloads with a numeric edge but no validation badge
+    # are forced neutral so they cannot silently tilt scenario weights.
+    ml_score=cap(
+        ml_edge
+        if ml_edge is not None and validated_edge_count > 0
+        else 50.0
+    )
     reversal_model=(ml.get("models") or {}).get("reversal_30") or {}
     reversal_ml=_num(reversal_model.get("probability_pct"))
     reversal_ml_valid=bool(reversal_model.get("validated"))
@@ -1883,7 +1892,12 @@ def _full_spectrum_analysis(metrics, sec, market, catalyst, turnover):
         "multi_bounce_sequence":{"score":sequence_score,"stance":stance(sequence_score)},
         "multi_session_stair_step":{"score":stair_score,"stance":stance(stair_score)},
         "historical_behavior":{"score":history,"stance":stance(history)},
-        "validated_ml":{"score":ml_score,"stance":stance(ml_score)},
+        "validated_ml":{
+            "score":ml_score,
+            "stance":stance(ml_score),
+            "validated_model_count":validated_edge_count,
+            "production_influence":bool(validated_edge_count > 0),
+        },
         "catalyst":{"score":cat_score,"stance":stance(cat_score)},
         "market_sector":{"score":market_score,"stance":stance(market_score)},
         "execution_liquidity":{"score":execution,"stance":stance(execution)},
