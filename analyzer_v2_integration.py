@@ -1201,6 +1201,8 @@ def _finalize_trade_plan_contract(metrics, live_data_integrity=None):
     entry_mid = _num(selected.get("entry_mid"))
     stop = _num(selected.get("stop"))
     target1 = _num(selected.get("target1"))
+    target2 = _num(selected.get("target2"))
+    stretch = _num(selected.get("stretch_target"))
     if entry_mid is None and entry_low is not None and entry_high is not None:
         entry_mid = (entry_low + entry_high) / 2.0
         selected["entry_mid"] = round(entry_mid, 4)
@@ -1208,10 +1210,18 @@ def _finalize_trade_plan_contract(metrics, live_data_integrity=None):
     geometry_errors = []
     if entry_low is not None and entry_high is not None and entry_low > entry_high:
         geometry_errors.append("entry_low exceeds entry_high")
-    if entry_mid is not None and stop is not None and stop >= entry_mid:
-        geometry_errors.append("stop is not below entry")
-    if entry_mid is not None and target1 is not None and target1 <= entry_mid:
-        geometry_errors.append("Target 1 is not above entry")
+    # A long plan must remain valid anywhere inside the advertised entry zone,
+    # not only at its midpoint.
+    if entry_low is not None and stop is not None and stop >= entry_low:
+        geometry_errors.append("stop is not below the full entry zone")
+    if entry_high is not None and target1 is not None and target1 <= entry_high:
+        geometry_errors.append("Target 1 is not above the full entry zone")
+    if target2 is not None and target1 is not None and target2 <= target1:
+        geometry_errors.append("Target 2 is not above Target 1")
+    if stretch is not None:
+        floor = target2 if target2 is not None else target1
+        if floor is not None and stretch < floor:
+            geometry_errors.append("stretch target is below a prior target")
 
     computed_rr = None
     if (
