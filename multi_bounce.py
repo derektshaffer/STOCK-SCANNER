@@ -167,11 +167,15 @@ def detect_bounce_sequence(
     price = _num(current_price) or rows[-1]["c"]
     atrp = _num(atr_pct) or 8.0
 
-    # Price threshold alone is not enough on volatile small caps: one-minute
-    # candles can zig-zag by several percent inside a single larger pullback.
-    # Require distinct swing separation and meaningful recovery as well.
-    swing_pct = _clamp(atrp * 0.32, 1.8, 6.0)
-    swing_abs = max(impulse_high * swing_pct / 100.0, run_size * 0.045)
+    # Daily ATR should not directly dictate how large a *one-minute* swing
+    # must be. High-ATR small caps can form very real 2-4% intraday pullbacks
+    # and 1-2% rebound legs. Use a moderate pullback threshold, then require
+    # time separation + recovery of the actual pullback to distinguish a real
+    # bounce from micro-zigzags.
+    pullback_pct = _clamp(atrp * 0.20, 1.6, 3.5)
+    pullback_abs = max(impulse_high * pullback_pct / 100.0, run_size * 0.035)
+    rebound_start_pct = _clamp(pullback_pct * 0.45, 0.75, 1.8)
+    confirm_reversal_pct = _clamp(pullback_pct * 0.35, 0.65, 1.5)
     bar_minutes = _bar_spacing_minutes(rows)
     min_leg_minutes = max(2.0, bar_minutes)
     first_bounce_min_cycle_minutes = max(3.0, bar_minutes * 1.5)
@@ -193,17 +197,32 @@ def detect_bounce_sequence(
     prior_peak_price = impulse_high
     bounces = []
 
-    def enough_up(low_price, high_price):
+    def enough_pullback(high_price, low_price):
         return (
-            high_price - low_price >= swing_abs
-            or high_price >= low_price * (1.0 + swing_pct / 100.0)
+            high_price - low_price >= pullback_abs
+            or low_price <= high_price * (1.0 - pullback_pct / 100.0)
         )
 
-    def enough_down(high_price, low_price):
-        return (
-            high_price - low_price >= swing_abs
-            or low_price <= high_price * (1.0 - swing_pct / 100.0)
+    def rebound_has_started(low_price, high_price, prior_peak):
+        pullback_range = max(0.0, prior_peak - low_price)
+        rebound_move = max(0.0, high_price - low_price)
+        recovery = rebound_move / pullback_range if pullback_range > 0 else 0.0
+        return bool(
+            recovery >= 0.25
+            and (
+                high_price >= low_price * (1.0 + rebound_start_pct / 100.0)
+                or rebound_move >= run_size * 0.012
+            )
         )
+
+    def bounce_peak_reversed(peak_price, low_price, trough):
+        bounce_range = max(0.0, peak_price - trough)
+        reversal = max(0.0, peak_price - low_price)
+        required = max(
+            peak_price * confirm_reversal_pct / 100.0,
+            bounce_range * 0.30,
+        )
+        return reversal >= required
 
     for i in range(impulse_peak_idx + 1, len(rows)):
         row = rows[i]
@@ -217,11 +236,11 @@ def detect_bounce_sequence(
                 candidate_price is not None
                 and candidate_idx is not None
                 and candidate_idx - prior_peak_idx >= min_leg_bars
-                and enough_down(prior_peak_price, candidate_price)
+                and enough_pullback(prior_peak_price, candidate_price)
             )
             if (
                 pullback_is_distinct
-                and enough_up(candidate_price, row["h"])
+                and rebound_has_started(candidate_price, row["h"], prior_peak_price)
             ):
                 trough_price = candidate_price
                 trough_idx = candidate_idx
@@ -254,7 +273,7 @@ def detect_bounce_sequence(
                 candidate_price = row["h"]
                 candidate_idx = i
 
-            if candidate_price is not None and enough_down(candidate_price, row["l"]):
+            if candidate_price is not None and bounce_peak_reversed(candidate_price, row["l"], trough_price):
                 bounce_peak = candidate_price
                 bounce_peak_idx = candidate_idx
 
@@ -562,7 +581,10 @@ def detect_bounce_sequence(
         if ongoing_bounce_pct is not None
         else None,
         "sequence_health_score": round(health, 1),
-        "swing_threshold_pct": round(swing_pct, 2),
+        "swing_threshold_pct": round(pullback_pct, 2),
+        "pullback_threshold_pct": round(pullback_pct, 2),
+        "rebound_start_pct": round(rebound_start_pct, 2),
+        "confirm_reversal_pct": round(confirm_reversal_pct, 2),
         "bar_spacing_minutes": round(bar_minutes, 2),
         "min_leg_minutes": round(min_leg_minutes, 2),
         "first_bounce_min_cycle_minutes": round(first_bounce_min_cycle_minutes, 2),
