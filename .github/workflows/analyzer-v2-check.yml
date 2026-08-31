@@ -128,8 +128,18 @@ jobs:
           print("PEER_SYMBOLS=" + str(result.get("peer_symbols", 0)))
           print("PEER_PROBABILITY=" + str(result.get("probability_pct")))
           print("PEER_EDGE=" + str(result.get("peer_edge_score")))
-          assert int(result.get("source_observations") or 0) >= 1000
-          assert int(result.get("samples") or 0) > 0
+          print("PEER_BEHAVIOR_VERSION=" + str(result.get("behavior_feature_version")))
+          print("PEER_SOURCE_BEFORE_VERSION_FILTER=" + str(result.get("source_observations_before_behavior_filter", 0)))
+          compatible = int(result.get("source_observations") or 0)
+          before_filter = int(result.get("source_observations_before_behavior_filter") or 0)
+          if compatible == 0:
+              # Safe transition after a behavior-feature version bump: old
+              # bounce semantics must not be silently mixed with the new model.
+              assert before_filter >= 1000
+              assert result.get("status") == "collecting"
+              assert result.get("behavior_feature_version") == "scanner-behavior-v3-distinct-swings"
+          else:
+              assert int(result.get("samples") or 0) > 0
           PY
       - name: Smoke-test scanner outcome provider fallback
         env:
