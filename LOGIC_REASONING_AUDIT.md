@@ -25,8 +25,8 @@ The app must satisfy these invariants before the audit is considered green:
 
 ### CRITICAL / HIGH
 
-- **Final-entry contradiction:** Analyzer v2 could demote a raw ENTRY AVAILABLE plan to WAIT because of stale/missing data or weak evidence while leaving the older `entry_state=ENTRY AVAILABLE` and “ENTRY AVAILABLE NOW” instruction intact. This produced contradictory UI. **Fix committed; regression coverage being added.**
-- **Historical-policy contradiction:** `historical_integration.py` currently says same-ticker historical matches affect the actual setup score, rebuild the trade plan, shift pullback geometry, adjust plan confidence, and can demote breakout entries. Later Analyzer v2 code explicitly describes historical analogs as research-only. These two policies conflict. **Must be resolved before audit green.**
+- **Final-entry contradiction:** Analyzer v2 could demote a raw ENTRY AVAILABLE plan to WAIT because of stale/missing data or weak evidence while leaving the older `entry_state=ENTRY AVAILABLE` and “ENTRY AVAILABLE NOW” instruction intact. This produced contradictory UI. **Fixed and covered by final decision-contract regression.**
+- **Historical-policy contradiction:** `historical_integration.py` currently says same-ticker historical matches affect the actual setup score, rebuild the trade plan, shift pullback geometry, adjust plan confidence, and can demote breakout entries. Later Analyzer v2 code explicitly describes historical analogs as research-only. These two policies conflicted. **Same-ticker historical production influence has now been removed; continuing the sweep for any remaining historical leakage.**
 - **Plan continuity is not canonical:** The current trade plan is recomputed from the latest snapshot. Breakout/pullback family and geometry can still change between refreshes without a durable thesis state. **Must add a canonical continuity layer.**
 - **Layered plan mutation:** `stock_analyzer` builds the plan; historical integration rebuilds/mutates it; ML mutates confidence; Analyzer v2 can mutate status/action afterward. This is the architectural root of contradictory fields. **Need one final normalization/contract step.**
 
@@ -43,9 +43,9 @@ The app must satisfy these invariants before the audit is considered green:
 ### Phase 1 — Decision contract and contradictions
 - [x] Identify all modules that can mutate plan/action.
 - [x] Fix final safety-gate ENTRY AVAILABLE contradiction.
-- [ ] Add final trade-plan invariant normalizer.
-- [ ] Add geometry sanity checks.
-- [ ] Add cross-field consistency tests.
+- [x] Add final trade-plan invariant normalizer.
+- [x] Add geometry sanity checks.
+- [x] Add cross-field consistency tests.
 
 ### Phase 2 — Thesis continuity
 - [ ] Intraday persistent thesis: active plan, trigger, entry zone, stop, target, confidence history, explicit change reason.
@@ -56,11 +56,11 @@ The app must satisfy these invariants before the audit is considered green:
 ### Phase 3 — Pattern logic
 - [x] Causal confirmed pivots.
 - [x] Active-vs-confirmed bounce distinction.
-- [ ] Synthetic chart suite for bounce #1/#2/#3, failed breakout, reclaim, stair-step, reversal, chop.
+- [~] Synthetic chart suite for bounce #1/#2/#3, failed breakout, reclaim, stair-step, reversal, chop. USDE-like graph truth case added; broader matrix still in progress.
 - [ ] Append-future invariance tests for every production detector.
 
 ### Phase 4 — Historical / ML integrity
-- [ ] Remove or gate every unvalidated historical input from production action/geometry.
+- [~] Remove or gate every unvalidated historical input from production action/geometry. Same-ticker and stair-step historical live influence removed; continuing full sweep.
 - [ ] Verify point-in-time SEC/fundamental replay.
 - [ ] Verify scanner ML split/embargo/same-symbol correlation controls.
 - [ ] Verify same-ticker and peer ML cannot affect live action without validation gates.
@@ -98,3 +98,15 @@ Audit is green only when:
 - synthetic scenario tests and temporal-causality tests pass,
 - Scanner/Analyzer/action/entry fields are internally consistent,
 - plan changes expose an explicit machine-readable reason.
+
+
+## Graph-level truth cases added
+
+The audit now includes explicit tests built from the kind of visual mistake that exposed the USDE issue:
+
+- a large stair-step run with multiple obvious pullback/rebound cycles may not collapse into “Bounce #1 not reached”;
+- once a breakout trigger is reached, the Analyzer must keep evaluating the same structural breakout reference rather than instantly switching to a deeper pullback goal;
+- a final safety WAIT/DATA CHECK may never coexist with “ENTRY AVAILABLE NOW” language;
+- impossible long geometry (stop above entry or Target 1 below entry) is rejected automatically.
+
+These tests passed in the Analyzer validation workflow on the commit that introduced them.
