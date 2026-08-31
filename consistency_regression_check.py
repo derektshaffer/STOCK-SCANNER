@@ -5125,6 +5125,50 @@ def test_analyzer_outcome_horizon_rejects_late_gap_bars():
     assert sao._price_at_or_after(late_only, target) is None
 
 
+
+def test_durable_analyzer_outcomes_exclude_observation_candle():
+    import score_analyzer_outcomes as sao
+
+    created = datetime(2026, 8, 28, 15, 0, tzinfo=timezone.utc)
+    bars = [
+        {
+            "t": _iso(created),
+            "o": 10.0,
+            "h": 12.0,
+            "l": 8.0,
+            "c": 10.0,
+        },
+        {
+            "t": _iso(created + timedelta(minutes=5)),
+            "o": 10.0,
+            "h": 10.4,
+            "l": 9.8,
+            "c": 10.2,
+        },
+    ]
+    assert sao._first_touch(
+        bars,
+        target=11.0,
+        stop=9.0,
+        created=created,
+    ) is None
+
+    mfe, mae = sao._window_excursions(
+        bars,
+        created,
+        10.0,
+        15,
+    )
+    assert round(mfe, 3) == 4.0, (mfe, mae)
+    assert round(mae, 3) == -2.0, (mfe, mae)
+
+    source = __import__("pathlib").Path(
+        "score_analyzer_outcomes.py"
+    ).read_text(encoding="utf-8")
+    assert "dt is None or dt <= created" in source
+    assert "created < dt <= created + timedelta(minutes=60)" in source
+
+
 def test_live_confirmation_rows_do_not_double_count_overlapping_ticker_windows():
     import scanner_ml_ranker as sm
 
@@ -6923,6 +6967,7 @@ if __name__ == "__main__":
         test_scanner_outcome_metadata,
         test_scanner_outcome_horizon_rejects_late_gap_bars,
         test_analyzer_outcome_horizon_rejects_late_gap_bars,
+        test_durable_analyzer_outcomes_exclude_observation_candle,
         test_live_confirmation_rows_do_not_double_count_overlapping_ticker_windows,
         test_scanner_outcomes_expose_deduplicated_actionable_events,
         test_scanner_historical_returns_are_causal_and_timestamp_matched,
