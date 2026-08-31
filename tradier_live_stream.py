@@ -47,6 +47,16 @@ def _parse_iso(value):
         return None
 
 
+def _is_session_limit_error(value, code=None):
+    text = str(value or "").lower()
+    return bool(
+        code == 1007
+        or "too many session" in text
+        or "session already in use" in text
+        or ("session" in text and "limit" in text)
+    )
+
+
 def _create_session():
     if not TRADIER_TOKEN:
         raise RuntimeError("missing Tradier access token")
@@ -312,8 +322,8 @@ class _TradierStream:
             message = str(exc)
             with self.lock:
                 if self._current(generation):
-                    if "session" in message.lower() and "use" in message.lower():
-                        self.blocked_until = time.time() + 60
+                    if _is_session_limit_error(message):
+                        self.blocked_until = time.time() + 120
                         self.state["status"] = "session_limit"
                     else:
                         self.state["status"] = "error"
@@ -347,17 +357,34 @@ class _TradierStream:
             self._handle_message(generation, raw)
 
         def on_error(_wsapp, error):
+            message = str(error or "")
             with self.lock:
                 if self._current(generation):
-                    self.state["status"] = "error"
-                    self.state["error"] = str(error)[:220]
+                    if _is_session_limit_error(message):
+                        self.blocked_until = time.time() + 120
+                        self.state["status"] = "session_limit"
+                    else:
+                        self.state["status"] = "error"
+                    self.state["error"] = message[:220]
 
         def on_close(_wsapp, _code, _msg):
+            message = str(_msg or "")
             with self.lock:
                 if self._current(generation):
                     self.state["connected"] = False
                     self.state["authenticated"] = False
-                    if self.state.get("status") != "error":
+                    if _is_session_limit_error(message, _code):
+                        # Tradier may close an otherwise-created websocket with
+                        # code 1007 / "too many sessions requested". Treat that
+                        # as a provider session-limit state and cool down rather
+                        # than immediately opening another socket on the next
+                        # Streamlit rerun.
+                        self.blocked_until = time.time() + 120
+                        self.state["status"] = "session_limit"
+                        self.state["error"] = (
+                            f"Connection closed (code {_code}): {message}"
+                        )[:220]
+                    elif self.state.get("status") not in {"error", "session_limit"}:
                         self.state["status"] = "reconnecting"
 
         app = websocket.WebSocketApp(
@@ -403,9 +430,14 @@ class _TradierStream:
             if not isinstance(msg, dict):
                 continue
             if msg.get("error"):
+                message = str(msg.get("error"))
                 with self.lock:
-                    self.state["status"] = "error"
-                    self.state["error"] = str(msg.get("error"))[:220]
+                    if _is_session_limit_error(message):
+                        self.blocked_until = time.time() + 120
+                        self.state["status"] = "session_limit"
+                    else:
+                        self.state["status"] = "error"
+                    self.state["error"] = message[:220]
                 continue
 
             symbol = str(msg.get("symbol") or "").upper().strip()
