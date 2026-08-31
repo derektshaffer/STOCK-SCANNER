@@ -156,6 +156,9 @@ def test_scanner_ml_version_gate():
         base,
         observation_id="current",
         feature_version=sm.CURRENT_FEATURE_VERSION,
+        observation_source="live_scan",
+        market_provider="tradier",
+        live_feed="consolidated",
     )
     rows = sm._extract_observations({"observations": [legacy, current]})
     assert len(rows) == 1, rows
