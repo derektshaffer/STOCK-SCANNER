@@ -69,10 +69,18 @@ from analyzer_visuals import (
 AUTO_REFRESH_SECONDS = max(30, int(os.environ.get("ANALYZER_REFRESH_SECONDS", "60") or 60))
 
 
-def _render_visual_snapshot(label, spec, caption=None):
-    if not spec:
+def _render_visual_snapshot(label, spec_factory, caption=None, key=None):
+    preview = spec_factory(False) if callable(spec_factory) else spec_factory
+    if not preview:
         return
     with st.expander(label, expanded=False):
+        overlay = st.toggle(
+            "Close-line overlay",
+            value=False,
+            key=f"{key or label}_close_line",
+            help="Candlesticks are the primary chart. Turn this on to add a subtle close-price line over them.",
+        )
+        spec = spec_factory(overlay) if callable(spec_factory) else preview
         st.vega_lite_chart(spec=spec, use_container_width=True)
         if caption:
             st.caption(caption)
@@ -1064,8 +1072,9 @@ if not _position_enabled:
 
     _render_visual_snapshot(
         "📈 Trade plan visual · entry · stop · targets",
-        trade_plan_chart_spec(r),
-        "Uses the same live regular-session bars and the currently selected trade plan. The shaded band is the entry zone; dashed levels are stop, targets and VWAP.",
+        lambda overlay: trade_plan_chart_spec(r, line_overlay=overlay),
+        "Candlesticks use the same live regular-session bars as the Analyzer. The shaded band is the entry zone; dashed levels are stop, targets and VWAP.",
+        key="trade_plan_visual",
     )
 
     with st.expander("Trade plan details — pullback · repeat bounce · breakout"):
@@ -1219,8 +1228,9 @@ if _impulse.get("detected"):
     )
     _render_visual_snapshot(
         "📈 Impulse / pullback visual",
-        impulse_pullback_chart_spec(r),
-        "Shows the actual intraday price path, detected impulse low/high, the live pullback entry band, and reclaim confirmation when present.",
+        lambda overlay: impulse_pullback_chart_spec(r, line_overlay=overlay),
+        "Candlesticks show the actual intraday path, detected impulse low/high, the live pullback entry band, and reclaim confirmation when present.",
+        key="impulse_pullback_visual",
     )
 
     with st.expander("Impulse / pullback context", expanded=False):
@@ -1302,8 +1312,9 @@ if _sequence.get("detected"):
 
     _render_visual_snapshot(
         "📈 Multi-bounce visual · dips · confirmed bounces",
-        multi_bounce_chart_spec(r),
-        "Confirmed bounce peaks are marked with ✓. The next forming/developing bounce is shown separately so it is not mistaken for a confirmed rebound.",
+        lambda overlay: multi_bounce_chart_spec(r, line_overlay=overlay),
+        "Candlesticks show the actual 1-minute swings. Confirmed bounce peaks are marked ✓; lows and developing bounces are labeled separately.",
+        key="multi_bounce_visual",
     )
 
     with st.expander("Multi-bounce context", expanded=False):
@@ -1424,8 +1435,9 @@ if _stair.get("detected"):
     )
     _render_visual_snapshot(
         "📈 Stair-step visual · steps · plateau · reacceleration",
-        stair_step_chart_spec(r),
-        "Uses recent daily price history. Step markers show detected expansion legs; the plateau band shows the latest accepted level and the current reacceleration is called out when active.",
+        lambda overlay: stair_step_chart_spec(r, line_overlay=overlay),
+        "Daily candlesticks show the actual multi-session structure. Step markers show expansion legs; the plateau band shows the latest accepted level.",
+        key="stair_step_visual",
     )
 
     _steps=_stair.get("steps") or []
@@ -1565,10 +1577,16 @@ def level_table(rows):
     return pd.DataFrame(out,columns=columns)
 
 with st.expander("Support & resistance levels", expanded=False):
-    _sr_visual=support_resistance_chart_spec(r)
+    _sr_line=st.toggle(
+        "Close-line overlay",
+        value=False,
+        key="support_resistance_close_line",
+        help="Candlesticks are primary; enable this for a subtle close-price line.",
+    )
+    _sr_visual=support_resistance_chart_spec(r,line_overlay=_sr_line)
     if _sr_visual:
         st.vega_lite_chart(spec=_sr_visual, use_container_width=True)
-        st.caption("Horizontal levels are the same nearby support/resistance levels listed in the tables below.")
+        st.caption("Candlesticks show recent price action. Horizontal levels are the same nearby support/resistance levels listed below.")
     scol,rcol=st.columns(2)
     with scol:
         st.markdown('<div class="section">Support</div>',unsafe_allow_html=True)
