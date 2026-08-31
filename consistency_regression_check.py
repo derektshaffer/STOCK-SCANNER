@@ -5376,10 +5376,14 @@ def test_setup_horizon_tracker_is_display_continuity_only():
 
 
 def test_intraday_thesis_state_is_namespaced_per_browser_session():
-    import os
     import tempfile
     from pathlib import Path
     import strategy_thesis as thesis
+    from analyzer_runtime_context import (
+        get_analyzer_namespace,
+        reset_analyzer_namespace,
+        set_analyzer_namespace,
+    )
 
     now = datetime(2026, 8, 31, 14, 0, tzinfo=timezone.utc)
     plan = {
@@ -5401,17 +5405,22 @@ def test_intraday_thesis_state_is_namespaced_per_browser_session():
         },
     }
 
-    old = os.environ.get("ANALYZER_THESIS_NAMESPACE")
-    try:
-        with tempfile.TemporaryDirectory() as tmp:
-            path = Path(tmp) / "thesis.json"
-            os.environ["ANALYZER_THESIS_NAMESPACE"] = "session-a"
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "thesis.json"
+        token_a = set_analyzer_namespace("session-a")
+        try:
+            assert get_analyzer_namespace() == "session-a"
             thesis.prepare_intraday_thesis(
                 dict(plan, trade_plan=dict(plan["trade_plan"])),
                 now=now,
                 store_path=path,
             )
-            os.environ["ANALYZER_THESIS_NAMESPACE"] = "session-b"
+        finally:
+            reset_analyzer_namespace(token_a)
+
+        token_b = set_analyzer_namespace("session-b")
+        try:
+            assert get_analyzer_namespace() == "session-b"
             result = thesis.prepare_intraday_thesis(
                 dict(plan, trade_plan=dict(plan["trade_plan"])),
                 now=now,
@@ -5419,14 +5428,12 @@ def test_intraday_thesis_state_is_namespaced_per_browser_session():
             )
             assert result.get("status") == "NEW THESIS", result
             stored = thesis._load(path)
-            assert len(stored) == 2, stored
-            assert any(key.startswith("session-a:") for key in stored), stored
-            assert any(key.startswith("session-b:") for key in stored), stored
-    finally:
-        if old is None:
-            os.environ.pop("ANALYZER_THESIS_NAMESPACE", None)
-        else:
-            os.environ["ANALYZER_THESIS_NAMESPACE"] = old
+        finally:
+            reset_analyzer_namespace(token_b)
+
+        assert len(stored) == 2, stored
+        assert any(key.startswith("session-a:") for key in stored), stored
+        assert any(key.startswith("session-b:") for key in stored), stored
 
 
 def test_intraday_thesis_keeps_entry_geometry_stable_and_can_still_enter():
