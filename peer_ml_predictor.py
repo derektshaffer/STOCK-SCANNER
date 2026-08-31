@@ -10,10 +10,11 @@ from scanner_ml_ranker import (
     load_training_observations,
 )
 from multi_bounce import bounce_feature_values
+from scanner_behavior import BEHAVIOR_FEATURE_VERSION
 from stair_step import stair_step_feature_values
 
 
-PEER_MODEL_VERSION = "analyzer-peer-v4-sequence-regimes"
+PEER_MODEL_VERSION = "analyzer-peer-v5-distinct-swing-bounces"
 PEER_TARGET = ">= +3% at 60 minutes"
 PEER_FEATURES = [
     "day_pct",
@@ -718,6 +719,13 @@ def predict_peer_ml(symbol, now, metrics, et):
             source_meta = _TRAINING_CACHE["meta"] or {}
         else:
             rows, source_meta = load_training_observations()
+            rows = [
+                row for row in rows
+                if row.get("behavior_feature_version") == BEHAVIOR_FEATURE_VERSION
+            ]
+            source_meta = dict(source_meta or {})
+            source_meta["behavior_feature_version"] = BEHAVIOR_FEATURE_VERSION
+            source_meta["behavior_version_filtered_samples"] = len(rows)
             _TRAINING_CACHE.update(
                 {
                     "stamp": stamp,
@@ -738,6 +746,7 @@ def predict_peer_ml(symbol, now, metrics, et):
     result = _validate_and_predict(selected, current)
     result["source"] = "scanner historical replay + resolved live scanner outcomes"
     result["source_observations"] = len(rows)
+    result["behavior_feature_version"] = BEHAVIOR_FEATURE_VERSION
 
     probability = _num(result.get("probability_pct"))
     base_rate = _num(result.get("cohort_positive_rate_pct"))
