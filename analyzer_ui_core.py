@@ -1072,9 +1072,17 @@ if not _position_enabled:
     st.session_state[_plan_snapshot_key]=_current_plan_snapshot
 
     _seq_top=r.get("bounce_sequence") or {}
+    _impulse_top=r.get("impulse_pullback") or {}
     _completed_top=int(_seq_top.get("completed_bounces") or 0)
     _next_top=int(_seq_top.get("next_bounce_number") or (_completed_top+1))
     _leg_top=str(_seq_top.get("current_leg") or "").upper()
+    _developing_top=bool(_seq_top.get("developing_bounce"))
+    _developing_pct=_seq_top.get("developing_bounce_pct")
+    _impulse_phase_top=str(_impulse_top.get("phase") or "").upper()
+    if _completed_top == 0 and _impulse_phase_top=="BOUNCE DEVELOPING":
+        _developing_top=True
+        if _developing_pct is None:
+            _developing_pct=_impulse_top.get("bounce_recovery_pct")
     _bounce_cols=st.columns(3)
     for _idx,_col in enumerate(_bounce_cols, start=1):
         if _completed_top >= _idx:
@@ -1085,9 +1093,13 @@ if not _position_enabled:
                 else "completed swing rebound"
             )
             _bounce_cls="good"
-        elif _next_top == _idx and _leg_top=="BOUNCING":
+        elif _next_top == _idx and (_leg_top=="BOUNCING" or _developing_top):
             _bounce_value="… DEVELOPING"
-            _bounce_note="rebound underway; not confirmed yet"
+            _bounce_note=(
+                f"{float(_developing_pct):.1f}% rebound underway; awaiting formal swing confirmation"
+                if _developing_pct is not None
+                else "rebound underway; awaiting formal swing confirmation"
+            )
             _bounce_cls="warn"
         elif _next_top == _idx and "PULL" in _leg_top:
             _bounce_value="○ FORMING"
