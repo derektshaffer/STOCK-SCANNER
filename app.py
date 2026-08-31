@@ -64,6 +64,54 @@ st.markdown(
         padding-top: .35rem !important;
     }
 
+    .pullback-watch-banner {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        border: 2px solid #f6b83f;
+        border-left: 6px solid #ffd45c;
+        background: linear-gradient(
+            90deg,
+            rgba(124, 75, 8, .92) 0%,
+            rgba(83, 55, 12, .88) 52%,
+            rgba(50, 42, 24, .88) 100%
+        );
+        box-shadow:
+            0 0 0 1px rgba(255, 212, 92, .18),
+            0 0 18px rgba(246, 184, 63, .28);
+        border-radius: 12px;
+        padding: 10px 14px;
+        margin: 2px 0 6px;
+        color: #fff7dc;
+        line-height: 1.25;
+    }
+    .pullback-watch-icon {
+        flex: 0 0 auto;
+        font-size: 22px;
+        filter: drop-shadow(0 0 5px rgba(255, 212, 92, .45));
+    }
+    .pullback-watch-title {
+        color: #ffd45c;
+        font-weight: 950;
+        letter-spacing: .01em;
+    }
+    .pullback-watch-message {
+        color: #fff7dc;
+        font-weight: 750;
+    }
+    .pullback-watch-note {
+        color: #ffe6a3;
+        font-weight: 900;
+    }
+    .scanner-monitor-status {
+        color: #aebdcb;
+        font-size: 13px;
+        line-height: 28px;
+        min-height: 28px;
+        margin: 0;
+        white-space: nowrap;
+    }
+
     .combined-nav-wrap {
         border: 1px solid rgba(120,150,190,.28);
         background: rgba(17,27,46,.92);
@@ -658,10 +706,18 @@ def _workspace_scanner_monitor():
     if pullback_history:
         latest = pullback_history[-1]
         if time.time() - float(latest.get("detected_at") or 0) <= 600:
-            st.info(
-                "👀 **High-Score Pullback Watch:** "
-                + str(latest.get("message") or "")
-                + ". **This is an early heads-up, not an entry signal.**"
+            _pullback_message = html.escape(str(latest.get("message") or ""))
+            st.markdown(
+                '<div class="pullback-watch-banner">'
+                '<span class="pullback-watch-icon">🔔</span>'
+                '<div>'
+                '<span class="pullback-watch-title">HIGH-SCORE PULLBACK WATCH</span>'
+                '<span class="pullback-watch-message"> · '
+                + _pullback_message
+                + '</span>'
+                '<span class="pullback-watch-note"> · Early heads-up — not an entry signal.</span>'
+                '</div></div>',
+                unsafe_allow_html=True,
             )
 
     history = list(st.session_state.get("_momentum_alert_history") or [])
@@ -693,7 +749,7 @@ def _workspace_scanner_monitor():
                 0,
                 int(now_ts - float(state.get("started_at") or now_ts)),
             )
-            st.caption(
+            monitor_status = (
                 f"2-minute scanner RUNNING · {running_for}s elapsed"
                 + (
                     f" · previous runtime {float(runtime):.1f}s"
@@ -708,7 +764,7 @@ def _workspace_scanner_monitor():
                 or 0.0
             )
             remaining = max(0, int((last_started + 120.0) - now_ts))
-            st.caption(
+            monitor_status = (
                 f"2-minute scanner ON · next scan ~{remaining}s"
                 + (
                     f" · last runtime {float(runtime):.1f}s"
@@ -717,14 +773,27 @@ def _workspace_scanner_monitor():
                 )
             )
     elif not enabled:
-        st.caption("Background scanner paused because Auto Scan is OFF.")
-    elif not feed_available:
-        st.caption(
+        monitor_status = "Background scanner paused because Auto Scan is OFF."
+    else:
+        monitor_status = (
             "2-minute live momentum scan is paused because the live feed is closed. "
             "Completed-daily Swing / Longer-Term discovery remains available."
         )
 
-    _browser_alert_control(first_alert, first_alert_kind)
+    status_col, alerts_col = st.columns(
+        [5.2, 1.0],
+        gap="small",
+        vertical_alignment="center",
+    )
+    with status_col:
+        st.markdown(
+            '<div class="scanner-monitor-status">'
+            + html.escape(monitor_status)
+            + '</div>',
+            unsafe_allow_html=True,
+        )
+    with alerts_col:
+        _browser_alert_control(first_alert, first_alert_kind)
 
 
 _workspace_scanner_monitor()
