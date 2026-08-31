@@ -12,6 +12,7 @@ from live_market_stream import ensure_live_stream, get_live_overlay
 from float_data import get_public_float
 from swing_research_flags import evaluate_swing_research_flags
 from analyzer_context_cache import get_cached_context, set_cached_context
+from strategy_thesis import prepare_intraday_thesis, commit_intraday_thesis
 
 
 SEC_BASE = "https://data.sec.gov"
@@ -1933,6 +1934,14 @@ def install_v2_analysis(sa):
         metrics = base_analyze(symbol)
         now = datetime.now(timezone.utc)
 
+        # Apply the accepted intraday thesis before readiness/evidence scoring.
+        # This keeps entry geometry/plan family stable across refreshes while
+        # still allowing the current bars to change confidence and safety gates.
+        thesis_context = prepare_intraday_thesis(
+            metrics,
+            now=now,
+        )
+
         background_worker = (
             os.environ.get("ANALYZER_BACKGROUND_WORKER", "").strip() == "1"
         )
@@ -2067,7 +2076,13 @@ def install_v2_analysis(sa):
             metrics,
             live_data_integrity=live_data_integrity,
         )
+        commit_intraday_thesis(
+            metrics,
+            thesis_context,
+            now=now,
+        )
         plan = metrics.get("trade_plan") or {}
+        thesis_context = plan.get("thesis_continuity") or thesis_context
 
         metrics["decision_v2"] = {
             "version": "decision-v2.7-final-contract",
@@ -2089,6 +2104,7 @@ def install_v2_analysis(sa):
             "turnover_context": turnover,
             "live_data_integrity": live_data_integrity,
             "decision_contract": decision_contract,
+            "thesis_continuity": thesis_context,
             "timeframe_analysis": timeframe,
             "full_spectrum": full_spectrum,
             "sip_status": sip_status,
