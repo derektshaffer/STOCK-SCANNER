@@ -812,6 +812,25 @@ def test_analyzer_ui_preserves_historical_context_dependencies():
     assert hist_use > hist_assign, "Historical analogs variable is used before assignment"
 
 
+def test_analyzer_white_tables_are_collapsible():
+    from pathlib import Path
+
+    core = Path("analyzer_ui_core.py").read_text(encoding="utf-8")
+    historical = Path("historical_ui.py").read_text(encoding="utf-8")
+
+    required_core = [
+        'with st.expander("Momentum & liquidity", expanded=False):',
+        'with st.expander("Support & resistance levels", expanded=False):',
+        'with st.expander("Historical spike table", expanded=False):',
+    ]
+    missing_core = [item for item in required_core if item not in core]
+    assert not missing_core, f"Missing Analyzer collapsible tables: {missing_core}"
+    assert (
+        'with st.expander("Historical setup match table", expanded=False):'
+        in historical
+    ), "Historical setup match table is not collapsible"
+
+
 def test_analyzer_shared_button_styles_live_in_bootstrap():
     from pathlib import Path
 
@@ -3938,6 +3957,7 @@ if __name__ == "__main__":
         test_position_exit_profit_floor,
         test_position_live_overlay_recomputes_derived_fields,
         test_analyzer_ui_preserves_historical_context_dependencies,
+        test_analyzer_white_tables_are_collapsible,
         test_analyzer_shared_button_styles_live_in_bootstrap,
         test_scanner_aligned_volume_pace_matches_analyzer_baseline,
         test_scanner_action_avoids_chasing_extreme_mover,
