@@ -12,7 +12,9 @@ on:
       - "learning_system_regression_check.py"
       - "scanner_ml_ranker.py"
       - "score_outcomes.py"
+      - "score_opportunity_outcomes.py"
       - "stock_scanner.py"
+      - ".github/workflows/outcome-tracker.yml"
       - "LEARNING_SYSTEM_PLAN.md"
       - ".github/workflows/learning-system-audit.yml"
 
