@@ -1996,6 +1996,10 @@ def install_v2_analysis(sa):
             metrics,
             now=now,
             evidence_trusted=bool(live_data_integrity.get("ok")),
+            # Stage continuity updates in memory. They are committed only after
+            # the complete final decision exists, so a cancelled/timed-out
+            # Analyzer launch cannot advance or replace a thesis invisibly.
+            persist=False,
         )
 
         background_worker = (
