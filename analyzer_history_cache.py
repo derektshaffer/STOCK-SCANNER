@@ -138,6 +138,13 @@ def _filter_rows(rows, start, end):
     return out
 
 
+def filter_history_rows(rows, start, end):
+    """Return cached rows inside an explicit causal datetime window."""
+    start = start.astimezone(timezone.utc)
+    end = end.astimezone(timezone.utc)
+    return _filter_rows(rows, start, end)
+
+
 def load_deep_5m_history(
     symbol,
     *,
