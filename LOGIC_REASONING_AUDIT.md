@@ -90,6 +90,17 @@ The app must satisfy these invariants before the audit is considered green:
 - [ ] No duplicate deep-history, SEC, float, or stream work on normal Analyzer launch.
 - [x] Timeout/cancel paths cannot advance execution-thesis or setup-horizon state: continuity updates are staged transactionally and committed only after a complete Analyzer result.
 
+### Phase 9 — Learning-objective / opportunity integrity
+- [x] Add a separate specification audit that asks whether the learning target itself matches the desired behavior, not only whether the target is implemented correctly.
+- [x] Add a USDE-like synthetic truth case: a large favorable excursion followed by a weaker +60m endpoint must be surfaced as a label/objective contradiction.
+- [x] Keep current production Scanner ML explicitly regular-session gated while broader premarket/after-hours data is collected in shadow mode.
+- [x] Add shadow 4:00 AM–8:00 PM ET opportunity outcomes with +15/+30/+60/+120m returns, full-horizon MFE/MAE, +3/+5/+10/+20 threshold timing, and threshold-before-failure labels.
+- [x] Run the Learning Objective / Opportunity Audit nightly and on relevant code changes.
+- [ ] Persist important observations from the app's 2-minute scan stream so exact high-value states are not lost between slower durable collector runs.
+- [ ] Audit below-cutoff candidates / false negatives, not only the top durable rows.
+- [ ] Add score-bucket, session-specific, false-positive, and false-negative archetype analysis.
+- [ ] Add a hypothesis -> historical challenge -> live shadow confirmation -> controlled promotion/rollback loop. See `LEARNING_SYSTEM_PLAN.md`.
+
 ## Exit criteria
 
 Audit is green only when:
@@ -125,6 +136,12 @@ These tests passed in the Analyzer validation workflow on the commit that introd
 - Each final displayed decision records price, plan family, revision, action, entry state, confidence, entry readiness, evidence strength, and potential score.
 - Thesis state is namespaced per browser session so one user's/ticker-session state cannot bleed into another session.
 
+
+## Learning-objective finding added after the USDE review
+
+The earlier integrity audit concentrated on causal correctness, leakage, data freshness, semantic contradictions, and validation boundaries. It did not systematically challenge whether the **chosen learning objective** was broad enough. That allowed an internally correct but incomplete target — Scanner ML's >= +3% at +60 minutes — to coexist with underused path information and regular-session-only durable outcome scoring.
+
+A permanent Learning Objective / Opportunity Audit now runs separately. It looks for coverage gaps, collected-but-underused path information, live-vs-durable capture gaps, and empirical cases where a strong favorable excursion would be mislabeled by the endpoint target. New premarket/after-hours and richer path outcomes remain shadow-only until they pass the same integrity and live-confirmation standards required elsewhere.
 
 ## Additional integrity findings fixed during the audit
 
