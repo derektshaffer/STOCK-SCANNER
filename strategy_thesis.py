@@ -383,7 +383,8 @@ def prepare_intraday_thesis(
 
     def _stage_delete():
         if persist:
-            _stage_delete()
+            store.pop(key, None)
+            _save(store, store_path)
         else:
             metrics["_thesis_transaction"] = {
                 "action": "delete",
@@ -444,8 +445,7 @@ def prepare_intraday_thesis(
         if not evidence_trusted:
             # The old thesis may be objectively finished/invalid, but stale or
             # incomplete data cannot be used to anchor its replacement.
-            store.pop(key, None)
-            _save(store, store_path)
+            _stage_delete()
             context = {
                 "version": THESIS_VERSION,
                 "status": "THESIS ENDED / DATA CHECK",
@@ -621,8 +621,7 @@ def prepare_intraday_thesis(
     }
     plan["thesis_continuity"] = context
     metrics["trade_plan"] = plan
-    store[key] = state
-    _save(store, store_path)
+    _stage_upsert(state)
     return context
 
 
