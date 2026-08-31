@@ -1228,6 +1228,107 @@ def test_analyzer_ml_validation_requires_probability_skill():
     assert abs(float(bad["brier"]) - float(bad["baseline_brier"])) < 1e-12, bad
 
 
+def test_sequence_builder_is_cutoff_causal_and_append_invariant():
+    from sequence_features import (
+        SEQUENCE_BAR_FEATURES,
+        SEQUENCE_MAX_BARS,
+        build_causal_candle_sequence,
+    )
+
+    rows=[]
+    for i in range(20):
+        close=10.0+i*0.08
+        rows.append((
+            570+i*5,
+            {
+                "o":close-0.03,
+                "h":close+0.06,
+                "l":close-0.05,
+                "c":close,
+                "v":1000+i*50,
+            },
+        ))
+
+    prefix=build_causal_candle_sequence(rows[:12],11)
+    full_same_cutoff=build_causal_candle_sequence(rows,11)
+    assert prefix == full_same_cutoff, (prefix,full_same_cutoff)
+    assert len(prefix.get("sequence") or []) == SEQUENCE_MAX_BARS, prefix
+    assert len((prefix.get("sequence") or [])[-1]) == len(SEQUENCE_BAR_FEATURES), prefix
+
+
+def test_sequence_builder_padding_and_feature_names_are_label_free():
+    from sequence_features import (
+        SEQUENCE_BAR_FEATURES,
+        SEQUENCE_MAX_BARS,
+        build_causal_candle_sequence,
+        flat_feature_names,
+    )
+
+    rows=[
+        (570,{"o":10.0,"h":10.2,"l":9.9,"c":10.1,"v":1000}),
+        (575,{"o":10.1,"h":10.4,"l":10.0,"c":10.3,"v":1400}),
+        (580,{"o":10.3,"h":10.35,"l":10.1,"c":10.2,"v":900}),
+    ]
+    payload=build_causal_candle_sequence(rows,2)
+    sequence=payload.get("sequence") or []
+    assert payload.get("bars_available") == 3, payload
+    assert len(sequence) == SEQUENCE_MAX_BARS, payload
+    mask_index=list(SEQUENCE_BAR_FEATURES).index("mask")
+    assert sum(float(row[mask_index] or 0) for row in sequence) == 3.0
+    names=flat_feature_names()
+    assert len(names) == SEQUENCE_MAX_BARS*len(SEQUENCE_BAR_FEATURES)
+    forbidden=("future","label","outcome","target_60m","return_60m")
+    assert not any(any(token in name.lower() for token in forbidden) for name in names), names[:20]
+
+
+def test_sequence_walk_forward_folds_never_mix_trading_days():
+    import sequence_ml_research as seq
+
+    rows=[]
+    for day in range(1,17):
+        for j in range(2):
+            rows.append({
+                "session_date":f"2026-08-{day:02d}",
+                "label":(day+j)%2,
+            })
+    folds=seq.chronological_day_folds(rows)
+    assert len(folds) >= 3, folds
+    for fold in folds:
+        train_days={rows[i]["session_date"] for i in fold["train_indices"]}
+        val_days={rows[i]["session_date"] for i in fold["validation_indices"]}
+        assert train_days.isdisjoint(val_days), (train_days,val_days)
+        assert max(train_days) < min(val_days), (train_days,val_days)
+
+
+def test_sequence_research_is_shadow_only_and_backfill_integrated():
+    from pathlib import Path
+
+    research=Path("sequence_ml_research.py").read_text(encoding="utf-8")
+    replay=Path("historical_scanner_replay.py").read_text(encoding="utf-8")
+    workflow=Path(".github/workflows/historical-ml-backfill.yml").read_text(encoding="utf-8")
+
+    assert '"research_only":True' in research
+    assert '"production_enabled":False' in research
+    assert '"can_change_scanner_rank":False' in research
+    assert '"can_change_analyzer_trade_plan":False' in research
+    assert "build_causal_candle_sequence(" in replay
+    assert "sequence_idx=symbol_index.get(checkpoint_minute - 5, -1)" in replay
+    assert "sequence_replay_training.json.gz" in replay
+    assert "python sequence_ml_research.py" in workflow
+    assert "outcome_reports/sequence_ml_validation.json" in workflow
+
+
+def test_sequence_model_compares_structured_sequence_and_hybrid_same_rows():
+    from pathlib import Path
+
+    source=Path("sequence_ml_research.py").read_text(encoding="utf-8")
+    assert 'for key in ("structured","sequence","hybrid")' in source
+    assert 'key=="hybrid"' in source
+    assert '"hybrid_minus_structured_auc"' in source
+    assert '"hybrid_minus_structured_brier"' in source
+    assert '"split_unit":"whole_trading_day"' in source
+
+
 def test_shared_market_structure_is_causal_alternating_and_append_invariant():
     from market_structure import extract_market_structure
     from datetime import datetime, timedelta, timezone
@@ -5012,6 +5113,11 @@ if __name__ == "__main__":
         test_historical_analogs_cannot_change_live_plan_geometry_or_scores,
         test_advisory_model_percentages_are_explicit_and_neutral,
         test_analyzer_ml_validation_requires_probability_skill,
+        test_sequence_builder_is_cutoff_causal_and_append_invariant,
+        test_sequence_builder_padding_and_feature_names_are_label_free,
+        test_sequence_walk_forward_folds_never_mix_trading_days,
+        test_sequence_research_is_shadow_only_and_backfill_integrated,
+        test_sequence_model_compares_structured_sequence_and_hybrid_same_rows,
         test_shared_market_structure_is_causal_alternating_and_append_invariant,
         test_shared_structure_does_not_confirm_same_candle_reversal,
         test_impulse_and_bounce_consumers_share_identical_structure_version,
