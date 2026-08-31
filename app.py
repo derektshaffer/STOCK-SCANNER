@@ -1175,6 +1175,22 @@ def _toggle_analyzer_launch(symbol):
     # which made the Analyze button look frozen for tens of seconds.
     st.session_state.pop("_analyzer_launch_error",None)
     st.session_state.pop("_analyzer_cancel_notice",None)
+
+    # Reopening a ticker should feel instant. Reuse the last full analysis for
+    # this browser session while a fresh calculation runs in the background.
+    # The Analyzer still shows the refresh state, and live-data integrity/age
+    # gates prevent the cached plan from being treated as a fresh entry signal.
+    cached_entry=(st.session_state.get("_analyzer_result_cache") or {}).get(symbol) or {}
+    cached_result=cached_entry.get("result")
+    cached_at=float(cached_entry.get("cached_at") or 0.0)
+    if (
+        isinstance(cached_result,dict)
+        and cached_result
+        and cached_at
+        and time.time()-cached_at <= 900
+    ):
+        st.session_state["result"]=cached_result
+
     st.session_state["_analyzer_bootstrap_launch_state"]=launch
     st.session_state["_analyzer_launch_state"]=None
     st.session_state.pop("_analyzer_background_request_symbol",None)
