@@ -189,6 +189,46 @@ def _feature_dict(row, scan_time=None):
     }
 
 
+def _consolidated_observation_source(row, payload):
+    source = str(
+        row.get("observation_source")
+        or payload.get("source")
+        or "live_scan"
+    ).lower()
+
+    if source == "historical_replay":
+        markers = " ".join(
+            str(value or "")
+            for value in (
+                row.get("liquidity_source"),
+                row.get("live_intraday_source"),
+                (payload.get("replay") or {}).get("historical_feed"),
+                (payload.get("replay") or {}).get("intraday_source"),
+                payload.get("historical_feed"),
+            )
+        ).lower()
+        if "iex" in markers or "mixed" in markers:
+            return False
+        return (
+            "tradier" in markers
+            or "sip" in markers
+            or "consolidated" in markers
+        )
+
+    provider = str(row.get("market_provider") or "").lower()
+    feed = str(row.get("live_feed") or "").lower()
+    quote_source = str(row.get("live_quote_source") or "").lower()
+    combined = " ".join((provider, feed, quote_source))
+    if "iex" in combined or "mixed" in combined:
+        return False
+    return (
+        provider == "tradier"
+        or "tradier" in combined
+        or "sip" in combined
+        or "consolidated" in combined
+    )
+
+
 def _extract_observations(payload):
     if not isinstance(payload, dict):
         return []
@@ -196,6 +236,8 @@ def _extract_observations(payload):
     out = []
     for row in payload.get("observations") or []:
         if row.get("feature_version") != CURRENT_FEATURE_VERSION:
+            continue
+        if not _consolidated_observation_source(row, payload):
             continue
         return_60 = _num(row.get("return_60m_pct"))
         if return_60 is None:
@@ -385,6 +427,9 @@ def load_training_observations():
         "artifact_report_count": artifact_count,
         "observations_loaded": len(rows),
         "observation_source_counts": source_counts,
+        "training_data_requirement": (
+            "consolidated live + consolidated historical only"
+        ),
         "historical_replay_samples": source_counts.get("historical_replay", 0),
         "live_samples": sum(
             count
