@@ -5276,6 +5276,7 @@ def test_scanner_actions_fail_closed_on_data_integrity():
     now_et = datetime(2026, 8, 31, 10, 0, tzinfo=ET)
     fresh = {
         "live_quote_source": "tradier_consolidated",
+        "live_intraday_source": "tradier_consolidated",
         "latest_trade_time": _iso(now_et - timedelta(seconds=20)),
         "latest_quote_time": _iso(now_et - timedelta(seconds=10)),
         "price": 10.0,
@@ -5289,6 +5290,7 @@ def test_scanner_actions_fail_closed_on_data_integrity():
 
     iex = dict(fresh)
     iex["live_quote_source"] = "alpaca_iex"
+    iex["live_intraday_source"] = "alpaca_iex"
     ok, reasons = ss._scanner_data_integrity(iex, now_et)
     assert not ok
     assert any("not consolidated" in reason for reason in reasons)
@@ -5298,6 +5300,18 @@ def test_scanner_actions_fail_closed_on_data_integrity():
     ok, reasons = ss._scanner_data_integrity(stale, now_et)
     assert not ok
     assert any("stale" in reason for reason in reasons)
+
+    mixed = dict(fresh)
+    mixed["live_intraday_source"] = "alpaca_sip"
+    ok, reasons = ss._scanner_data_integrity(mixed, now_et)
+    assert not ok
+    assert any("different consolidated providers" in reason for reason in reasons)
+
+    missing_intraday_source = dict(fresh)
+    missing_intraday_source.pop("live_intraday_source")
+    ok, reasons = ss._scanner_data_integrity(missing_intraday_source, now_et)
+    assert not ok
+    assert any("intraday source is missing" in reason for reason in reasons)
 
 
 
@@ -5323,6 +5337,7 @@ def test_scanner_integrity_gate_overrides_any_review_cue_and_disables_alerts():
         "price": 10.0,
         "vwap": 9.8,
         "live_quote_source": "alpaca_iex",
+        "live_intraday_source": "alpaca_iex",
         "latest_trade_time": _iso(now_et - timedelta(seconds=10)),
         "latest_quote_time": _iso(now_et - timedelta(seconds=10)),
         "alert_ready": True,
