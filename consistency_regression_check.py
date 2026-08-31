@@ -5186,6 +5186,34 @@ def test_peer_ml_replay_requires_strictly_later_live_confirmation():
     assert '"replay_survivorship_limit": bool(replay_rows)' in source
 
 
+
+def test_peer_ml_replay_validation_uses_effective_nonoverlapping_samples():
+    from pathlib import Path
+    import peer_ml_predictor as peer
+
+    source = Path("peer_ml_predictor.py").read_text(encoding="utf-8")
+    assert "validation_rows_raw = replay_rows if replay_rows else rows" in source
+    assert "validation_rows = independent_confirmation_rows(validation_rows_raw)" in source
+    assert "replay_effective_rows = independent_confirmation_rows(replay_rows)" in source
+    assert "fit_rows = independent_confirmation_rows(rows)" in source
+    assert '"historical_validation_effective_samples"' in source
+    assert '"effective_training_samples"' in source
+
+    rows = [
+        {"symbol": "AAA", "timestamp": 10_000.0},
+        {"symbol": "AAA", "timestamp": 10_900.0},
+        {"symbol": "AAA", "timestamp": 13_600.0},
+        {"symbol": "BBB", "timestamp": 10_200.0},
+        {"symbol": "BBB", "timestamp": 12_000.0},
+    ]
+    selected = peer.independent_confirmation_rows(rows)
+    assert [(row["symbol"], row["timestamp"]) for row in selected] == [
+        ("AAA", 10_000.0),
+        ("BBB", 10_200.0),
+        ("AAA", 13_600.0),
+    ], selected
+
+
 def test_scanner_historical_validation_excludes_live_confirmation_pool():
     from pathlib import Path
 
@@ -6945,6 +6973,7 @@ if __name__ == "__main__":
         test_replay_requires_live_confirmation_before_full_badge,
         test_analyzer_ml_walk_forward_never_splits_one_trading_day,
         test_peer_ml_replay_requires_strictly_later_live_confirmation,
+        test_peer_ml_replay_validation_uses_effective_nonoverlapping_samples,
         test_scanner_historical_validation_excludes_live_confirmation_pool,
         test_scanner_replay_validation_decorrelates_overlapping_same_symbol_paths,
         test_scanner_replay_live_confirmation_gate_is_integrity_sized,
