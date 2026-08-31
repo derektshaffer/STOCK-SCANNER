@@ -404,6 +404,13 @@ def record_prediction(metrics, now=None):
         # predicted instead of only evaluating the generic Analyzer signal.
         "bounce_sequence_detected": bool(sequence.get("detected")),
         "bounce_count": int(sequence.get("completed_bounces") or 0),
+        "bounce_observed_count": int(
+            sequence.get("observed_bounces")
+            or sequence.get("completed_bounces")
+            or 0
+        ),
+        "bounce_developing": bool(sequence.get("developing_bounce")),
+        "bounce_developing_pct": _num(sequence.get("developing_bounce_pct")),
         "next_bounce_number": int(sequence.get("next_bounce_number") or 0),
         "bounce_current_leg": sequence.get("current_leg"),
         "bounce_sequence_state": sequence.get("sequence_state"),
