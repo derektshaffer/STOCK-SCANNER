@@ -4,7 +4,11 @@ from datetime import datetime, timedelta, timezone
 from statistics import median
 
 from multi_bounce import detect_bounce_sequence
-from market_structure import impulse_pullback_context as shared_impulse_pullback_context
+from market_structure import (
+    breakout_behavior_context as shared_breakout_behavior_context,
+    impulse_pullback_context as shared_impulse_pullback_context,
+    structural_reversal_context as shared_structural_reversal_context,
+)
 from stair_step import detect_stair_step
 from zoneinfo import ZoneInfo
 
@@ -37,8 +41,8 @@ USE_TRADIER_HISTORY = bool(
 )
 LIVE_MARKET_PROVIDER = "tradier" if USE_TRADIER else "alpaca"
 LIVE_MARKET_LABEL = "TRADIER CONSOLIDATED" if USE_TRADIER else LIVE_FEED.upper()
-ANALYZER_FEATURE_VERSION = "analyzer-features-v8-shared-market-structure"
-ANALYZER_ENGINE_VERSION = "trade-plan-v7-repeat-bounce-stair"
+ANALYZER_FEATURE_VERSION = "analyzer-features-v9-shared-break-structure"
+ANALYZER_ENGINE_VERSION = "trade-plan-v8-shared-break-structure"
 ET = ZoneInfo("America/New_York")
 
 CATALYST_RULES = [
@@ -234,10 +238,9 @@ def run_exhaustion_context(bs, current_price=None, vwap=None, atr_pct=None, impu
             rejection_count+=1
     avg_upper_wick=sum(upper_wicks[-8:])/max(1,len(upper_wicks[-8:]))
 
-    highs=[r["h"] for r in recent6]
-    lows=[r["l"] for r in recent6]
-    lower_highs=sum(1 for i in range(1,len(highs)) if highs[i] < highs[i-1]*0.999)
-    lower_lows=sum(1 for i in range(1,len(lows)) if lows[i] < lows[i-1]*0.999)
+    structural=shared_structural_reversal_context(rows)
+    lower_highs=int(structural.get("lower_high_streak") or 0)
+    lower_lows=int(structural.get("lower_low_streak") or 0)
     red_fraction=sum(1 for r in recent if r["c"]<r["o"])/max(1,len(recent))
 
     def ret(n):
@@ -284,9 +287,16 @@ def run_exhaustion_context(bs, current_price=None, vwap=None, atr_pct=None, impu
     if avg_upper_wick>=0.40:add(9,"large upper wicks show selling into strength")
     elif avg_upper_wick>=0.25:add(4,"upper-wick pressure is elevated")
 
-    if lower_highs>=3:add(9,"recent bars are forming lower highs")
-    elif lower_highs>=2:add(5,"early lower-high structure")
-    if lower_lows>=3:add(6,"recent bars are also making lower lows")
+    if lower_highs>=2:add(9,"confirmed swing highs are progressively lower")
+    elif lower_highs==1:add(5,"one confirmed lower-high transition")
+    if lower_lows>=2:add(7,"confirmed swing lows are progressively lower")
+    elif lower_lows==1:add(3,"one confirmed lower-low transition")
+    if structural.get("downside_break_holding"):
+        add(12,"price is holding below a previously confirmed swing low")
+    elif structural.get("downside_break_recent"):
+        add(6,"price recently broke a confirmed swing low")
+    if structural.get("failed_upside_break"):
+        add(7,"recent confirmed swing-high breakout failed to hold")
     if red_fraction>=0.625:add(6,"most recent bars are closing red")
 
     if mom3 is not None and mom6 is not None:
@@ -342,6 +352,8 @@ def run_exhaustion_context(bs, current_price=None, vwap=None, atr_pct=None, impu
         "vwap_extension_pct":round(vwap_ext,2) if vwap_ext is not None else None,
         "rejection_count":int(rejection_count),"avg_upper_wick_pct":round(avg_upper_wick*100.0,1),
         "lower_high_count":int(lower_highs),"lower_low_count":int(lower_lows),
+        "structural_reversal":structural,
+        "structure_version":structural.get("structure_version"),
         "red_bar_pct":round(red_fraction*100.0,1),
         "momentum_3bar_pct":round(mom3,2) if mom3 is not None else None,
         "momentum_6bar_pct":round(mom6,2) if mom6 is not None else None,
@@ -873,6 +885,7 @@ def build_trade_plan(metrics, now):
     sequence=metrics.get("bounce_sequence") or {}
     stair=metrics.get("stair_step") or {}
     exhaustion=metrics.get("run_exhaustion") or {}
+    breakout_structure=metrics.get("breakout_structure") or {}
     reversal_score=fnum(exhaustion.get("score")) or 0.0
     sequence_health=fnum(sequence.get("sequence_health_score"))
     sequence_decay=fnum(sequence.get("bounce_decay_ratio"))
@@ -1189,7 +1202,13 @@ def build_trade_plan(metrics, now):
             or impulse_bounce
         )
     )
-    breakout_confirm=(pace is None or pace>=1.5) and (m5 is not None and m5>0)
+    live_breakout_failed=bool(breakout_structure.get("failed_breakout"))
+    live_breakout_holding=bool(breakout_structure.get("breakout_holding"))
+    breakout_confirm=(
+        (pace is None or pace>=1.5)
+        and (m5 is not None and m5>0)
+        and not live_breakout_failed
+    )
     severe_risk=(spread is not None and spread>7) or liquidity.get("label")=="LOW" and (spread is not None and spread>4.5)
     below_vwap_weak=(vwap is not None and price<vwap and (m5 or 0)<0 and (m15 or 0)<0)
     current_retrace=fnum(impulse.get("current_retracement_pct"))
@@ -1314,7 +1333,14 @@ def build_trade_plan(metrics, now):
             status="ENTRY AVAILABLE"
             preferred="breakout"; chosen=breakout_plan
             action="ENTRY AVAILABLE — confirmed breakout zone"
-            reasons.append("Price is through the breakout trigger with acceptable momentum/volume confirmation.")
+            reasons.append(
+                "Price is through the breakout trigger with acceptable momentum/volume confirmation."
+                + (
+                    " A previously confirmed swing-high break is also holding."
+                    if live_breakout_holding
+                    else ""
+                )
+            )
         else:
             status="WAIT"
             if overextended:
@@ -1424,6 +1450,7 @@ def build_trade_plan(metrics, now):
         "pullback":pull_plan,"breakout":breakout_plan,"repeat_bounce":repeat_bounce_plan,"selected":chosen,
         "impulse_pullback":impulse,
         "bounce_sequence":sequence,
+        "breakout_structure":breakout_structure,
         "stair_step":stair,
         "run_exhaustion":exhaustion,
         "nearest_support":support_price,"nearest_support_quality":(nearest_support or {}).get("quality"),
@@ -1679,6 +1706,7 @@ def analyze(symbol):
     )
     impulse=impulse_pullback_context(intraday,price,atr14_pct)
     sequence=detect_bounce_sequence(intraday,current_price=price,atr_pct=atr14_pct)
+    breakout_structure=shared_breakout_behavior_context(intraday)
     exhaustion=run_exhaustion_context(intraday,price,vwap,atr14_pct,impulse,sequence)
     metrics={
         "engine_version":ANALYZER_ENGINE_VERSION,
