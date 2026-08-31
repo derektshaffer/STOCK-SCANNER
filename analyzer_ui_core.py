@@ -1318,9 +1318,19 @@ if _sequence.get("detected"):
     )
 
     with st.expander("Multi-bounce context", expanded=False):
+        _cycle_min=_sequence.get("min_cycle_minutes")
+        _recovery_min=_sequence.get("min_recovery_fraction")
         st.caption(
-            "Repeat-bounce opportunity and full-run continuation are intentionally separate. "
-            "A second or third bounce can still offer a short-duration opportunity even when the larger run is weakening."
+            "A confirmed bounce is now a distinct swing, not every one-minute zig-zag. "
+            + (
+                f"On the current bars, confirmed peaks must be separated by about {_cycle_min:.0f}+ minutes and "
+                if _cycle_min is not None else ""
+            )
+            + (
+                f"the rebound must recover at least {float(_recovery_min)*100:.0f}% of its preceding pullback. "
+                if _recovery_min is not None else ""
+            )
+            + "Repeat-bounce opportunity and full-run continuation remain separate."
         )
 
     _post2 = _hist_intr.get("post_second_bounce_drop5_rate_pct")
@@ -1360,7 +1370,9 @@ if _sequence.get("detected"):
             for _b in _bounce_rows:
                 _show_rows.append({
                     "Bounce": f'#{int(_b.get("number") or 0)}',
+                    "Low time": _b.get("pullback_low_time") or "—",
                     "Dip low": _b.get("pullback_low"),
+                    "Peak time": _b.get("bounce_peak_time") or "—",
                     "Bounce peak": _b.get("bounce_peak"),
                     "Bounce %": _b.get("bounce_pct"),
                     "Recovery vs prior peak %": _b.get("recovery_to_prior_peak_pct"),
