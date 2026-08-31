@@ -5190,14 +5190,64 @@ def test_scanner_historical_validation_excludes_live_confirmation_pool():
     from pathlib import Path
 
     source = Path("scanner_ml_ranker.py").read_text(encoding="utf-8")
-    assert "validation_rows = replay_rows if replay_rows else rows" in source
+    assert "validation_rows_raw = replay_rows if replay_rows else rows" in source
+    assert "validation_rows = independent_confirmation_rows(validation_rows_raw)" in source
     assert "for i, row in enumerate(validation_rows)" in source
+    assert "fit_rows = independent_confirmation_rows(rows)" in source
+    assert '"historical_validation_raw_samples"' in source
+    assert '"historical_validation_min_gap_seconds"' in source
+    assert '"effective_training_samples"' in source
     assert '"historical_validation_source"' in source
     assert '"historical_replay" if replay_rows else "live_only"' in source
     # The later live holdout must remain a distinct pool.
     assert "live_confirmation_rows_raw = [" in source
     assert "independent_confirmation_rows(" in source
     assert "row[\"trading_date\"] > replay_end_day" in source
+
+
+
+def test_scanner_replay_validation_decorrelates_overlapping_same_symbol_paths():
+    import scanner_ml_ranker as sm
+
+    rows = [
+        {
+            "symbol": "AAA",
+            "timestamp": 10_000.0,
+            "trading_date": "2026-08-20",
+            "observation_source": "historical_replay",
+        },
+        {
+            "symbol": "AAA",
+            "timestamp": 10_600.0,
+            "trading_date": "2026-08-20",
+            "observation_source": "historical_replay",
+        },
+        {
+            "symbol": "AAA",
+            "timestamp": 12_400.0,
+            "trading_date": "2026-08-20",
+            "observation_source": "historical_replay",
+        },
+        {
+            "symbol": "AAA",
+            "timestamp": 13_600.0,
+            "trading_date": "2026-08-20",
+            "observation_source": "historical_replay",
+        },
+        {
+            "symbol": "BBB",
+            "timestamp": 10_300.0,
+            "trading_date": "2026-08-20",
+            "observation_source": "historical_replay",
+        },
+    ]
+    selected = sm.independent_confirmation_rows(rows)
+    assert [(row["symbol"], row["timestamp"]) for row in selected] == [
+        ("AAA", 10_000.0),
+        ("BBB", 10_300.0),
+        ("AAA", 13_600.0),
+    ], selected
+    assert sm.LIVE_CONFIRMATION_MIN_GAP_SECONDS >= 60 * 60
 
 
 def test_scanner_replay_live_confirmation_gate_is_integrity_sized():
@@ -6896,6 +6946,7 @@ if __name__ == "__main__":
         test_analyzer_ml_walk_forward_never_splits_one_trading_day,
         test_peer_ml_replay_requires_strictly_later_live_confirmation,
         test_scanner_historical_validation_excludes_live_confirmation_pool,
+        test_scanner_replay_validation_decorrelates_overlapping_same_symbol_paths,
         test_scanner_replay_live_confirmation_gate_is_integrity_sized,
         test_validation_workflow_runs_before_merge_on_pull_requests,
         test_prediction_tracker_uses_first_post_horizon_bar_with_three_minute_cap,
