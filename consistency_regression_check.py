@@ -858,7 +858,7 @@ def test_analyzer_page_leads_with_actionable_decision_hierarchy():
     assert v2 > snapshot, "Decision-v2 explanations should follow the primary plan"
     assert impulse > v2, "Pattern engines should remain below decision-level information"
 
-    assert "Priority order: trust the data" in core
+    assert "The action tells you whether the entry is ready now" in core
     assert "Research-only context; these completed historical matches are not included" in historical
     assert "Live 33–50% impulse zone" in core
 
