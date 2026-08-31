@@ -113,7 +113,7 @@ def test_analyzer_prefers_tradier():
     result = sa.analyze("TEST")
     assert result["market_provider"] == "tradier", result
     assert result["live_feed"] == "TRADIER CONSOLIDATED", result
-    assert result["feature_version"] == "analyzer-features-v8-shared-market-structure", result
+    assert result["feature_version"] == "analyzer-features-v9-shared-break-structure", result
     assert abs(result["price"] - 10.10) < 1e-9, result
     assert result["bid"] == 10.09 and result["ask"] == 10.11, result
     assert str(result["volume_source"]).startswith("TRADIER"), result
@@ -1350,7 +1350,7 @@ def test_all_intraday_movement_feature_paths_use_shared_structure_engine():
     replay=Path("historical_scanner_replay.py").read_text(encoding="utf-8")
     ml=Path("ml_predictor.py").read_text(encoding="utf-8")
 
-    assert 'STRUCTURE_VERSION = "market-structure-v1-causal-swings"' in market
+    assert 'STRUCTURE_VERSION = "market-structure-v2-breaks-and-trend"' in market
     assert "return bounce_sequence_context(" in bounce
     assert "shared_impulse_pullback_context(" in analyzer
     assert "shared_impulse_pullback_context(" in behavior
@@ -1652,8 +1652,8 @@ def test_distinct_bounce_semantics_are_version_isolated_for_peer_ml():
     import peer_ml_predictor as peer
     import scanner_behavior as behavior
 
-    assert behavior.BEHAVIOR_FEATURE_VERSION == "scanner-behavior-v5-shared-market-structure"
-    assert peer.PEER_MODEL_VERSION == "analyzer-peer-v7-shared-market-structure"
+    assert behavior.BEHAVIOR_FEATURE_VERSION == "scanner-behavior-v6-shared-break-structure"
+    assert peer.PEER_MODEL_VERSION == "analyzer-peer-v8-shared-break-structure"
 
     rows=[
         {"symbol":"OLD","behavior_feature_version":"scanner-behavior-v2-completed-bars"},
