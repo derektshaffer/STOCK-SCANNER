@@ -366,6 +366,19 @@ def record_prediction(metrics, now=None, defer_remote=False):
         # influence production decisions.
         "timeframe_score_version": timeframe.get("version"),
         "timeframe_best_fit": timeframe.get("best_fit"),
+        "timeframe_raw_best_fit": timeframe.get("raw_best_fit") or timeframe.get("best_fit"),
+        "timeframe_stable_best_fit": timeframe.get("stable_best_fit") or timeframe.get("best_fit"),
+        "timeframe_continuity_version": (timeframe.get("continuity") or {}).get("version"),
+        "timeframe_continuity_status": (timeframe.get("continuity") or {}).get("status"),
+        "timeframe_continuity_revision": int(
+            (timeframe.get("continuity") or {}).get("revision") or 0
+        ),
+        "timeframe_continuity_change_reason": (
+            timeframe.get("continuity") or {}
+        ).get("change_reason"),
+        "timeframe_continuity_production_influence": bool(
+            (timeframe.get("continuity") or {}).get("production_influence")
+        ),
         "timeframe_intraday_score": _num((timeframe.get("scores") or {}).get("intraday")),
         "timeframe_swing_score": _num((timeframe.get("scores") or {}).get("swing")),
         "timeframe_long_term_score": _num((timeframe.get("scores") or {}).get("long_term")),
