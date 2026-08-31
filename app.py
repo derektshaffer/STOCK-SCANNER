@@ -426,7 +426,7 @@ def _browser_alert_control(alert_row=None, alert_kind="actionable"):
             if (hasNotifications && p.Notification.permission === 'granted') {{
               try {{
                 new p.Notification(
-                  'Momentum Alert · ' + alertPayload.symbol,
+                  alertPayload.title + ' · ' + alertPayload.symbol,
                   {{body: alertPayload.body}}
                 );
               }} catch (_) {{}}
