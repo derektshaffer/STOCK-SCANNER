@@ -346,6 +346,7 @@ def prepare_intraday_thesis(
     store_path=None,
     replacement_confirmations=DEFAULT_REPLACEMENT_CONFIRMATIONS,
     expiry_minutes=DEFAULT_EXPIRY_MINUTES,
+    evidence_trusted=True,
 ):
     """Apply intraday plan continuity before readiness/evidence scoring."""
     metrics = metrics or {}
@@ -376,16 +377,21 @@ def prepare_intraday_thesis(
     # engine has at least a valid watch/entry plan before creating session
     # geometry that later refreshes must respect.
     if (
-        (not isinstance(state, dict) or state.get("session_key") != key)
-        and raw_status == "NO TRADE"
-    ):
+        not isinstance(state, dict)
+        or state.get("session_key") != key
+    ) and (raw_status == "NO TRADE" or not evidence_trusted):
+        reason = (
+            "live data/evidence is not trusted; no thesis anchored"
+            if not evidence_trusted
+            else "current setup is NO TRADE; nothing anchored"
+        )
         context = {
             "version": THESIS_VERSION,
             "status": "NO ACTIVE THESIS",
             "active_family": None,
             "proposed_family": proposed,
             "held": False,
-            "change_reason": "current setup is NO TRADE; nothing anchored",
+            "change_reason": reason,
         }
         plan["thesis_continuity"] = context
         metrics["trade_plan"] = plan
@@ -419,6 +425,25 @@ def prepare_intraday_thesis(
     terminal = _terminal_reason(state, metrics, plan, now, expiry_minutes)
     if terminal:
         prior_state = state
+        if not evidence_trusted:
+            # The old thesis may be objectively finished/invalid, but stale or
+            # incomplete data cannot be used to anchor its replacement.
+            store.pop(key, None)
+            _save(store, store_path)
+            context = {
+                "version": THESIS_VERSION,
+                "status": "THESIS ENDED / DATA CHECK",
+                "active_family": None,
+                "previous_family": active or None,
+                "proposed_family": proposed,
+                "held": False,
+                "revision": int(prior_state.get("revision") or 1),
+                "change_reason": terminal + "; replacement withheld until data is trusted",
+            }
+            plan["thesis_continuity"] = context
+            metrics["trade_plan"] = plan
+            return context
+
         state = _new_state(
             symbol,
             now,
@@ -445,6 +470,34 @@ def prepare_intraday_thesis(
         return context
 
     if active in VALID_FAMILIES and proposed != active:
+        if not evidence_trusted:
+            state["pending_family"] = None
+            state["pending_count"] = 0
+            state["last_updated"] = now.isoformat()
+            _overlay_anchor(plan, state, metrics, conservative=True)
+            reason = (
+                f"new {proposed.replace('_', ' ')} proposal ignored while live "
+                f"data/evidence is not trusted; holding prior {active.replace('_', ' ')} thesis"
+            )
+            context = {
+                "version": THESIS_VERSION,
+                "status": "HOLDING PRIOR THESIS / DATA CHECK",
+                "active_family": active,
+                "proposed_family": proposed,
+                "held": True,
+                "pending_count": 0,
+                "required_confirmations": int(replacement_confirmations),
+                "revision": int(state.get("revision") or 1),
+                "anchored_at": state.get("anchored_at"),
+                "change_reason": reason,
+            }
+            plan["plan_selection_note"] = reason
+            plan["thesis_continuity"] = context
+            metrics["trade_plan"] = plan
+            store[key] = state
+            _save(store, store_path)
+            return context
+
         # A rejected alternate family cannot accumulate evidence toward
         # replacing an accepted thesis. Preserve the active family but keep
         # the current NO TRADE veto intact.
