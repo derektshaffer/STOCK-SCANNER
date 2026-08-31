@@ -19,6 +19,7 @@ CACHE_DIR = Path(
     or "scan_cache"
 )
 CACHE_PATH = CACHE_DIR / "tradier_discovery_universe.json"
+CACHE_SCHEMA_VERSION = 2
 
 TARGET_SIZE = int(os.environ.get("SCANNER_DISCOVERY_UNIVERSE_SIZE", "1200") or 1200)
 QUOTE_BATCH_SIZE = int(os.environ.get("SCANNER_DISCOVERY_QUOTE_BATCH_SIZE", "300") or 300)
@@ -160,6 +161,8 @@ def _cached_symbols(market_date):
         return None
     if payload.get("market_date") != market_date:
         return None
+    if int(payload.get("schema_version") or 0) != CACHE_SCHEMA_VERSION:
+        return None
     symbols = [
         str(symbol).upper().strip()
         for symbol in payload.get("symbols") or []
@@ -297,6 +300,7 @@ def get_or_build_discovery_universe(token, likely_common_stock):
 
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     payload = {
+        "schema_version": CACHE_SCHEMA_VERSION,
         "market_date": market_date,
         "generated_at_et": datetime.now(ET).isoformat(),
         "source": "nasdaqtrader_public_directory_plus_tradier_quotes",
