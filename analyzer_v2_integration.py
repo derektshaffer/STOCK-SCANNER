@@ -1338,12 +1338,27 @@ def _analyzer_live_data_integrity(metrics):
         or ""
     ).lower()
     feed = str(metrics.get("live_feed") or "").lower()
-    consolidated = (
-        provider == "tradier"
-        or "tradier" in feed
-        or "sip" in feed
-        or "consolidated" in feed
+
+    feed_is_iex = "iex" in feed
+    feed_is_tradier = "tradier" in feed
+    feed_is_sip = "sip" in feed or (
+        "consolidated" in feed and not feed_is_tradier
     )
+    provider_feed_mismatch = bool(
+        (provider == "tradier" and not feed_is_tradier)
+        or (provider == "alpaca" and feed_is_tradier)
+    )
+    consolidated = bool(
+        not feed_is_iex
+        and not provider_feed_mismatch
+        and (
+            (provider == "tradier" and feed_is_tradier)
+            or (provider == "alpaca" and feed_is_sip)
+            or (not provider and (feed_is_tradier or feed_is_sip))
+        )
+    )
+    if provider_feed_mismatch:
+        reasons.append("live provider and feed metadata disagree")
     if not consolidated:
         reasons.append("live market data is not consolidated")
 
