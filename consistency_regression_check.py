@@ -4037,18 +4037,100 @@ def test_analyzer_entries_fail_closed_on_data_integrity():
 
 
 def test_historical_analogs_cannot_change_live_plan_geometry_or_scores():
-    import analyzer_v2_integration as v2
+    import copy
+    import stock_analyzer as sa
 
-    stock_source = __import__("pathlib").Path("stock_analyzer.py").read_text(
-        encoding="utf-8"
-    )
+    base = {
+        "price": 10.0,
+        "vwap": 9.8,
+        "vwap_extension_pct": 2.04,
+        "day_pct": 20.0,
+        "momentum_5m": 1.2,
+        "momentum_15m": 2.0,
+        "volume_pace": 2.5,
+        "spread_pct": 0.4,
+        "score": 82.0,
+        "atr_14": 0.8,
+        "atr_14_pct": 8.0,
+        "supports": [
+            {"price": 9.2, "quality_score": 70, "quality": "STRONG", "side": "support"}
+        ],
+        "resistances": [
+            {"price": 11.0, "quality_score": 75, "quality": "STRONG", "side": "resistance"}
+        ],
+        "impulse_pullback": {
+            "detected": True,
+            "impulse_low": 8.0,
+            "impulse_high": 12.0,
+            "impulse_move_pct": 50.0,
+            "current_retracement_pct": 50.0,
+            "bounce_recovery_pct": 10.0,
+            "bounce_confirmed": True,
+        },
+        "bounce_sequence": {"detected": False, "completed_bounces": 0},
+        "stair_step": {"detected": False},
+        "run_exhaustion": {"score": 35.0},
+        "liquidity": {"label": "HIGH", "avg_dollar_volume": 15_000_000},
+        "news": [],
+    }
+
+    bullish_history = copy.deepcopy(base)
+    bullish_history["historical_analogs"] = {
+        "status": "ok",
+        "samples": [{"d1": 100.0}, {"d1": 80.0}],
+    }
+    bullish_history["historical_setup"] = {
+        "status": "ok",
+        "sample_count": 100,
+        "next_day_up_pct": 99.0,
+        "median_mfe_1d": 150.0,
+        "median_mfe_3d": 250.0,
+        "intraday": {
+            "median_impulse_retracement_pct": 25.0,
+            "second_bounce_rate_pct": 99.0,
+            "post_second_bounce_drop5_rate_pct": 1.0,
+        },
+    }
+
+    bearish_history = copy.deepcopy(base)
+    bearish_history["historical_analogs"] = {
+        "status": "ok",
+        "samples": [{"d1": -80.0}, {"d1": -90.0}],
+    }
+    bearish_history["historical_setup"] = {
+        "status": "ok",
+        "sample_count": 100,
+        "next_day_up_pct": 1.0,
+        "median_mfe_1d": 1.0,
+        "median_mfe_3d": 1.0,
+        "intraday": {
+            "median_impulse_retracement_pct": 62.0,
+            "second_bounce_rate_pct": 1.0,
+            "post_second_bounce_drop5_rate_pct": 99.0,
+        },
+    }
+
+    a = sa.build_trade_plan(bullish_history, datetime.now(timezone.utc))
+    b = sa.build_trade_plan(bearish_history, datetime.now(timezone.utc))
+
+    for key in ("preferred_plan", "status", "action", "confidence"):
+        assert a.get(key) == b.get(key), (key, a.get(key), b.get(key))
+
+    for family in ("pullback", "breakout", "selected"):
+        pa = a.get(family) or {}
+        pb = b.get(family) or {}
+        for key in (
+            "entry_low", "entry_high", "entry_mid", "stop",
+            "target1", "target2", "stretch_target", "risk_reward",
+        ):
+            assert pa.get(key) == pb.get(key), (family, key, pa.get(key), pb.get(key))
+
+    assert a.get("historical_research_only") is True
+    assert b.get("historical_research_only") is True
+
     v2_source = __import__("pathlib").Path("analyzer_v2_integration.py").read_text(
         encoding="utf-8"
     )
-
-    assert "Historical excursion statistics are research-only" in stock_source
-    assert "Historical analog sample size/direction is research-only" in stock_source
-    assert '"historical_research_only":True' in stock_source
     assert "history_points = 0.0" in v2_source
     assert "Historical bounce occurrence rates are reference context only" in v2_source
     assert "Historical behavior is displayed separately as research-only" in v2_source
