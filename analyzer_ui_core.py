@@ -680,6 +680,18 @@ _manual_request = bool(st.session_state.get("_manual_analyze_requested"))
 _needs_analysis = _manual_request or _initial_analysis or _ticker_changed or _refresh_due
 _interactive_analysis = _manual_request or _ticker_changed
 
+# In the combined workspace, NEVER execute the expensive deep Analyzer
+# calculation inside this UI fragment. Doing so leaves the old Scanner DOM
+# visible while Streamlit waits on network/history/ML work, which looks like
+# the mixed Scanner/Analyzer screen getting stuck. Delegate every deep refresh
+# (manual, ticker change, initial, or timed) to analyzer_bootstrap's existing
+# cancelable background worker and immediately rerun the lightweight shell.
+if _COMBINED_WORKSPACE and _needs_analysis:
+    st.session_state["_analyzer_background_request_symbol"] = ticker
+    st.session_state["_analyzer_loading"] = True
+    st.session_state["_manual_analyze_requested"] = False
+    st.rerun(scope="app")
+
 if _needs_analysis:
     try:
         # Never render a separate spinner/status line. Interactive analyses use
