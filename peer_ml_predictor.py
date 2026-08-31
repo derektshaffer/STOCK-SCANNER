@@ -143,6 +143,13 @@ def _current_features(metrics, now_et):
     }
 
 
+def _matching_behavior_rows(rows):
+    return [
+        row for row in (rows or [])
+        if row.get("behavior_feature_version") == BEHAVIOR_FEATURE_VERSION
+    ]
+
+
 def _scaled_abs(a, b, scale):
     a = _num(a)
     b = _num(b)
@@ -719,10 +726,7 @@ def predict_peer_ml(symbol, now, metrics, et):
             source_meta = _TRAINING_CACHE["meta"] or {}
         else:
             rows, source_meta = load_training_observations()
-            rows = [
-                row for row in rows
-                if row.get("behavior_feature_version") == BEHAVIOR_FEATURE_VERSION
-            ]
+            rows = _matching_behavior_rows(rows)
             source_meta = dict(source_meta or {})
             source_meta["behavior_feature_version"] = BEHAVIOR_FEATURE_VERSION
             source_meta["behavior_version_filtered_samples"] = len(rows)
