@@ -1113,20 +1113,34 @@ def _latest_scan_candidates():
         )
     return out[:15]
 def _cancel_analyzer_launch():
-    state=st.session_state.get("_analyzer_launch_state")
+    # Scanner -> Analyzer launches now hand off directly to the Analyzer page,
+    # so the active process normally lives under the Analyzer bootstrap key.
+    # Keep the legacy key as a fallback so an older browser session can still
+    # cancel cleanly after a deploy.
+    state=(
+        st.session_state.get("_analyzer_bootstrap_launch_state")
+        or st.session_state.get("_analyzer_launch_state")
+    )
     if state:
         result=cancel_analyzer_process(state)
         st.session_state["_analyzer_cancel_notice"]=result.get("message")
+    st.session_state["_analyzer_bootstrap_launch_state"]=None
     st.session_state["_analyzer_launch_state"]=None
+    st.session_state["_analyzer_loading"]=False
+    st.session_state.pop("_analyzer_background_request_symbol",None)
 
 
 def _toggle_analyzer_launch(symbol):
-    """Start analysis in the background; clicking the same button cancels it."""
+    """Open Analyzer immediately, then finish the deep analysis in background."""
     symbol=str(symbol or "").upper().strip()
     if not symbol:
         return
 
-    state=st.session_state.get("_analyzer_launch_state") or {}
+    state=(
+        st.session_state.get("_analyzer_bootstrap_launch_state")
+        or st.session_state.get("_analyzer_launch_state")
+        or {}
+    )
     active_process=state.get("process")
     active=bool(active_process is not None and active_process.poll() is None)
     active_symbol=str(state.get("symbol") or "").upper().strip()
@@ -1139,6 +1153,7 @@ def _toggle_analyzer_launch(symbol):
     # ticker cancels the prior launch and immediately starts the new one.
     if active:
         cancel_analyzer_process(state)
+        st.session_state["_analyzer_bootstrap_launch_state"]=None
         st.session_state["_analyzer_launch_state"]=None
 
     launch=start_analyzer_process(
@@ -1151,12 +1166,22 @@ def _toggle_analyzer_launch(symbol):
     )
     if not launch.get("started"):
         st.session_state["_analyzer_launch_error"]=launch.get("message") or "Could not start Analyzer."
+        st.session_state["_analyzer_bootstrap_launch_state"]=None
         st.session_state["_analyzer_launch_state"]=None
         return
 
+    # IMPORTANT: switch views now, not after analyze() finishes. The previous
+    # flow deliberately left the user on Scanner until the worker completed,
+    # which made the Analyze button look frozen for tens of seconds.
     st.session_state.pop("_analyzer_launch_error",None)
     st.session_state.pop("_analyzer_cancel_notice",None)
-    st.session_state["_analyzer_launch_state"]=launch
+    st.session_state["_analyzer_bootstrap_launch_state"]=launch
+    st.session_state["_analyzer_launch_state"]=None
+    st.session_state["ticker"]=symbol
+    st.session_state["ticker_search_request"]=symbol
+    st.session_state["_analyzer_loading"]=True
+    st.session_state.pop("ticker_picker",None)
+    st.session_state["app_view"]="Stock Analyzer"
 
 
 def _poll_analyzer_launch():
@@ -1379,7 +1404,11 @@ if view == "Momentum Scanner":
                     unsafe_allow_html=True,
                 )
             with right:
-                _launch_state=st.session_state.get("_analyzer_launch_state") or {}
+                _launch_state=(
+                    st.session_state.get("_analyzer_bootstrap_launch_state")
+                    or st.session_state.get("_analyzer_launch_state")
+                    or {}
+                )
                 _launch_process=_launch_state.get("process")
                 _launch_active=bool(
                     _launch_process is not None
