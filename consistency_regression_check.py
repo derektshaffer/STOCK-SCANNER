@@ -500,6 +500,25 @@ def test_scanner_trade_quality_path_is_causal_and_conservative():
     assert result.get("target_before_stop") is False, result
 
 
+
+def test_tradier_too_many_sessions_enters_cooldown_instead_of_reconnect_loop():
+    import tradier_live_stream as tls
+    from pathlib import Path
+
+    assert tls._is_session_limit_error(
+        "Connection closed (code 1007): too many sessions requested",
+        1007,
+    )
+    assert tls._is_session_limit_error("Tradier market stream session already in use")
+    assert not tls._is_session_limit_error("temporary network timeout")
+
+    source = Path("tradier_live_stream.py").read_text(encoding="utf-8")
+    assert "self.blocked_until = time.time() + 120" in source
+    assert 'self.state["status"] = "session_limit"' in source
+    assert "_is_session_limit_error(message, _code)" in source
+    assert 'elif self.state.get("status") not in {"error", "session_limit"}' in source
+
+
 def test_stream_seed_rejects_non_tradier_metrics():
     import tradier_live_stream as tls
 
@@ -5788,6 +5807,7 @@ if __name__ == "__main__":
         test_streamlit_version_is_pinned_for_ui_stability,
         test_historical_trade_quality_path_is_conservative,
         test_scanner_trade_quality_path_is_causal_and_conservative,
+        test_tradier_too_many_sessions_enters_cooldown_instead_of_reconnect_loop,
         test_stream_seed_rejects_non_tradier_metrics,
         test_stream_vwap_ignores_cvol_as_denominator,
         test_stream_reports_trade_and_quote_freshness,
