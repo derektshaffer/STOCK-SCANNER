@@ -1,0 +1,42 @@
+name: Learning Objective Opportunity Audit
+
+on:
+  schedule:
+    # Run after the nightly outcome tracker has had time to write its reports.
+    - cron: '5 2 * * 2-6'
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "learning_system_audit.py"
+      - "learning_system_regression_check.py"
+      - "scanner_ml_ranker.py"
+      - "score_outcomes.py"
+      - "stock_scanner.py"
+      - "LEARNING_SYSTEM_PLAN.md"
+      - ".github/workflows/learning-system-audit.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Compile learning audit
+        run: python -m py_compile learning_system_audit.py learning_system_regression_check.py
+      - name: Run synthetic learning regressions
+        run: python learning_system_regression_check.py
+      - name: Run learning objective and opportunity audit
+        run: python learning_system_audit.py
+      - name: Preserve learning audit
+        uses: actions/upload-artifact@v4
+        with:
+          name: learning-audit-${{ github.run_id }}-${{ github.run_attempt }}
+          path: learning_audits/*
+          if-no-files-found: error
+          retention-days: 90
