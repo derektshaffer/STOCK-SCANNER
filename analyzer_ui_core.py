@@ -859,7 +859,22 @@ if not _position_enabled:
         or "Use the displayed entry zone only after the current action confirms."
     )
     _timeframe_top=(_v2_top.get("timeframe_analysis") or {})
-    _best_fit_top=str(_timeframe_top.get("best_fit") or "MIXED")
+    _raw_best_fit_top=str(
+        _timeframe_top.get("raw_best_fit")
+        or _timeframe_top.get("best_fit")
+        or "MIXED"
+    )
+    _best_fit_top=str(
+        _timeframe_top.get("stable_best_fit")
+        or _raw_best_fit_top
+    )
+    _horizon_continuity=(_timeframe_top.get("continuity") or {})
+    _horizon_status=str(
+        _horizon_continuity.get("status") or "HORIZON INITIALIZING"
+    )
+    _horizon_reason=str(
+        _horizon_continuity.get("change_reason") or ""
+    )
     _thesis_top=(
         plan.get("thesis_continuity")
         or _v2_top.get("thesis_continuity")
@@ -918,15 +933,23 @@ if not _position_enabled:
         "good",
     )
     st.info(
-        f"**Strategy thesis · {_best_fit_top} · "
-        f"{str(plan.get('preferred_plan') or 'watch').replace('_',' ').upper()} · "
+        f"**Setup horizon · {_best_fit_top} · {_horizon_status}**  \\n"
+        f"**Execution plan · {str(plan.get('preferred_plan') or 'watch').replace('_',' ').upper()} · "
         f"{_top_entry_state} · {_thesis_status}** — {_top_entry_instruction}"
-        + (f"  \\n**Why the thesis changed/held:** {_thesis_reason}" if _thesis_reason else "")
+        + (
+            f"  \\n**Why the execution thesis changed/held:** {_thesis_reason}"
+            if _thesis_reason else ""
+        )
+        + (
+            f"  \\n**Why the setup horizon changed/held:** {_horizon_reason}"
+            if _horizon_reason else ""
+        )
     )
     st.caption(
-        "The action tells you whether the entry is ready now; NEXT ENTRY tells you the "
-        "actual price window and condition that would make it actionable. The thesis should "
-        "evolve with evidence rather than reset on every refresh."
+        "Setup horizon describes whether the stock currently fits an intraday, swing, "
+        "or longer-term opportunity. Execution plan is the shorter-term entry/stop/target "
+        "logic. They are tracked separately so one noisy candle cannot silently rewrite the "
+        "longer-horizon thesis."
     )
 
 # Dynamic decision-support trade plan. Position mode replaces the visible
