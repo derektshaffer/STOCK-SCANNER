@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 from statistics import median
 
 from multi_bounce import detect_bounce_sequence
+from market_structure import impulse_pullback_context as shared_impulse_pullback_context
 from stair_step import detect_stair_step
 from zoneinfo import ZoneInfo
 
@@ -36,7 +37,7 @@ USE_TRADIER_HISTORY = bool(
 )
 LIVE_MARKET_PROVIDER = "tradier" if USE_TRADIER else "alpaca"
 LIVE_MARKET_LABEL = "TRADIER CONSOLIDATED" if USE_TRADIER else LIVE_FEED.upper()
-ANALYZER_FEATURE_VERSION = "analyzer-features-v7-balanced-bounces"
+ANALYZER_FEATURE_VERSION = "analyzer-features-v8-shared-market-structure"
 ANALYZER_ENGINE_VERSION = "trade-plan-v7-repeat-bounce-stair"
 ET = ZoneInfo("America/New_York")
 
@@ -188,111 +189,12 @@ def _regular_session_bar(b):
 
 
 def impulse_pullback_context(bs, current_price=None, atr_pct=None):
-    """Describe the strongest recent impulse -> pullback -> bounce structure.
-
-    The detector searches for a meaningful low-to-later-high impulse, measures
-    how much of THAT move has been retraced, and tracks whether price has begun
-    recovering from the deepest pullback. Retracement is therefore expressed as
-    a percentage of the preceding impulse, not simply percent below the day high.
-    """
-    rows=[]
-    for b in bs or []:
-        h=fnum(b.get("h")); l=fnum(b.get("l")); close=fnum(b.get("c")); vol=fnum(b.get("v")) or 0.0
-        if h is None or l is None or close is None or h <= 0 or l <= 0:
-            continue
-        rows.append({"h":h,"l":l,"c":close,"v":vol,"t":b.get("t")})
-    if len(rows) < 8:
-        return {"status":"insufficient_data","detected":False}
-
-    price=fnum(current_price) or rows[-1]["c"]
-    min_impulse=max(7.0, min(18.0, (fnum(atr_pct) or 8.0)*0.75))
-    candidates=[]
-    n=len(rows)
-    # Local impulses are more useful than always anchoring at the session low.
-    # Search up to roughly two hours behind each peak for the lowest prior low.
-    for peak_idx in range(5,n-1):
-        start=max(0,peak_idx-120)
-        low_idx=min(range(start,peak_idx), key=lambda i: rows[i]["l"])
-        low=rows[low_idx]["l"]; peak=rows[peak_idx]["h"]
-        if peak <= low:
-            continue
-        move_pct=(peak/low-1.0)*100.0
-        duration=peak_idx-low_idx
-        if move_pct < min_impulse or duration < 3:
-            continue
-        after=rows[peak_idx+1:]
-        if not after:
-            continue
-        post_rel=min(range(len(after)), key=lambda i: after[i]["l"])
-        trough_idx=peak_idx+1+post_rel
-        trough=rows[trough_idx]["l"]
-        run=peak-low
-        max_retrace=(peak-trough)/run*100.0
-        current_retrace=(peak-price)/run*100.0
-        recovery=max_retrace-current_retrace
-        # Favor large, recent impulses that have actually begun a pullback.
-        age=n-1-peak_idx
-        recency=max(0.35,1.0-age/max(30.0,n*0.9))
-        shape=1.0 if 12 <= max_retrace <= 72 else 0.72
-        score=move_pct*recency*shape
-        candidates.append((score,low_idx,peak_idx,trough_idx,low,peak,trough,move_pct,max_retrace,current_retrace,recovery))
-
-    if not candidates:
-        return {"status":"no_clear_impulse","detected":False}
-
-    _,low_idx,peak_idx,trough_idx,low,peak,trough,move_pct,max_retrace,current_retrace,recovery=max(candidates,key=lambda x:x[0])
-    run=peak-low
-
-    impulse_vols=[rows[i]["v"] for i in range(low_idx,peak_idx+1) if rows[i]["v"]>0]
-    pull_vols=[rows[i]["v"] for i in range(peak_idx+1,trough_idx+1) if rows[i]["v"]>0]
-    impulse_avg=sum(impulse_vols)/len(impulse_vols) if impulse_vols else None
-    pull_avg=sum(pull_vols)/len(pull_vols) if pull_vols else None
-    vol_ratio=(pull_avg/impulse_avg) if impulse_avg and pull_avg is not None else None
-
-    levels={}
-    for label,frac in (("25%",0.25),("33%",1/3),("38.2%",0.382),("50%",0.50),("61.8%",0.618)):
-        levels[label]=round(peak-run*frac,4)
-
-    # A bounce needs actual recovery off the deepest pullback, not merely a
-    # touch of a retracement level while price is still falling.
-    bounce_confirmed=bool(
-        20 <= max_retrace <= 68
-        and recovery >= 6.0
-        and price > trough*1.01
+    """Canonical impulse/pullback view from the shared market-structure engine."""
+    return shared_impulse_pullback_context(
+        bs,
+        current_price=current_price,
+        atr_pct=atr_pct,
     )
-    if max_retrace > 78 and current_retrace > 62:
-        phase="DEEP / POSSIBLE FAILURE"
-    elif bounce_confirmed:
-        phase="BOUNCE CONFIRMED"
-    elif current_retrace < 20:
-        phase="STILL EXTENDED"
-    elif current_retrace <= 62:
-        phase="PULLBACK FORMING"
-    else:
-        phase="DEEP PULLBACK"
-
-    return {
-        "status":"ok",
-        "detected":True,
-        "phase":phase,
-        "impulse_low":round(low,4),
-        "impulse_high":round(peak,4),
-        "impulse_move_pct":round(move_pct,2),
-        "impulse_duration_bars":int(peak_idx-low_idx),
-        "peak_bars_ago":int(len(rows)-1-peak_idx),
-        "pullback_low":round(trough,4),
-        "current_retracement_pct":round(current_retrace,2),
-        "max_retracement_pct":round(max_retrace,2),
-        "bounce_recovery_pct":round(recovery,2),
-        "bounce_confirmed":bounce_confirmed,
-        "pullback_volume_ratio":round(vol_ratio,3) if vol_ratio is not None else None,
-        "pullback_volume_contracting":bool(vol_ratio is not None and vol_ratio < 0.85),
-        "levels":levels,
-        "default_zone_low":levels["50%"],
-        "default_zone_high":levels["33%"],
-        "run_size":round(run,4),
-    }
-
 
 def run_exhaustion_context(bs, current_price=None, vwap=None, atr_pct=None, impulse=None, sequence=None):
     """Estimate whether a momentum run is stalling or transitioning into reversal."""
