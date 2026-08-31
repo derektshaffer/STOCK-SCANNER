@@ -35,17 +35,21 @@ def _bars(result, kind):
 
 def _config():
     return {
-        "view": {"stroke": None},
+        "background": "#08111f",
+        "view": {
+            "fill": "#08111f",
+            "stroke": "#18314a",
+        },
         "axis": {
-            "labelColor": "#91a7c2",
-            "titleColor": "#91a7c2",
-            "gridColor": "#18314a",
+            "labelColor": "#b8c9dc",
+            "titleColor": "#dcecff",
+            "gridColor": "#28435d",
             "domainColor": "#31516f",
             "tickColor": "#31516f",
         },
         "legend": {
-            "labelColor": "#c9d8e8",
-            "titleColor": "#c9d8e8",
+            "labelColor": "#dcecff",
+            "titleColor": "#dcecff",
         },
     }
 
@@ -55,8 +59,8 @@ def _price_line_layer(bars, *, x_type="temporal"):
         "data": {"values": bars},
         "mark": {
             "type": "line",
-            "strokeWidth": 2,
-            "color": "#dcecff",
+            "strokeWidth": 3,
+            "color": "#f2f8ff",
             "tooltip": True,
         },
         "encoding": {
@@ -106,7 +110,7 @@ def _horizontal_level_layers(levels):
     return [
         {
             "data": {"values": levels},
-            "mark": {"type": "rule", "strokeDash": [5, 4], "strokeWidth": 1.4},
+            "mark": {"type": "rule", "strokeDash": [5, 4], "strokeWidth": 1.8},
             "encoding": {
                 "y": {"field": "price", "type": "quantitative"},
                 "color": {
@@ -165,7 +169,7 @@ def trade_plan_chart_spec(result):
                         {"t": last_t, "low": entry_low, "high": entry_high},
                     ]
                 },
-                "mark": {"type": "area", "opacity": 0.14, "color": "#ffd166"},
+                "mark": {"type": "area", "opacity": 0.22, "color": "#b8872f"},
                 "encoding": {
                     "x": {"field": "t", "type": "temporal"},
                     "y": {
@@ -267,7 +271,7 @@ def multi_bounce_chart_spec(result):
         layers.extend([
             {
                 "data": {"values": markers},
-                "mark": {"type": "point", "filled": True, "size": 90},
+                "mark": {"type": "point", "filled": True, "size": 120},
                 "encoding": {
                     "x": {"field": "t", "type": "temporal"},
                     "y": {"field": "price", "type": "quantitative"},
@@ -302,7 +306,7 @@ def multi_bounce_chart_spec(result):
                     "dy": -12,
                     "fontSize": 11,
                     "fontWeight": "bold",
-                    "color": "#eaf4ff",
+                    "color": "#f2f8ff",
                 },
                 "encoding": {
                     "x": {"field": "t", "type": "temporal"},
@@ -338,7 +342,7 @@ def stair_step_chart_spec(result):
         layers.extend([
             {
                 "data": {"values": steps},
-                "mark": {"type": "point", "filled": True, "size": 105, "color": "#50fa9b"},
+                "mark": {"type": "point", "filled": True, "size": 130, "color": "#57f287"},
                 "encoding": {
                     "x": {"field": "t", "type": "temporal"},
                     "y": {"field": "price", "type": "quantitative"},
@@ -378,7 +382,7 @@ def stair_step_chart_spec(result):
                     {"t": end_t, "low": center - half, "high": center + half},
                 ]
             },
-            "mark": {"type": "area", "opacity": 0.12, "color": "#8be9fd"},
+            "mark": {"type": "area", "opacity": 0.18, "color": "#1e6f8c"},
             "encoding": {
                 "x": {"field": "t", "type": "temporal"},
                 "y": {
@@ -454,7 +458,7 @@ def impulse_pullback_chart_spec(result):
         layers.extend([
             {
                 "data": {"values": markers},
-                "mark": {"type": "point", "filled": True, "size": 90, "color": "#8be9fd"},
+                "mark": {"type": "point", "filled": True, "size": 115, "color": "#8be9fd"},
                 "encoding": {
                     "x": {"field": "t", "type": "temporal"},
                     "y": {"field": "price", "type": "quantitative"},
@@ -467,7 +471,7 @@ def impulse_pullback_chart_spec(result):
                     "dy": -12,
                     "fontSize": 10,
                     "fontWeight": "bold",
-                    "color": "#dcecff",
+                    "color": "#f2f8ff",
                 },
                 "encoding": {
                     "x": {"field": "t", "type": "temporal"},
@@ -487,7 +491,7 @@ def impulse_pullback_chart_spec(result):
                     {"t": bars[-1]["t"], "low": entry_low, "high": entry_high},
                 ]
             },
-            "mark": {"type": "area", "opacity": 0.14, "color": "#ffd166"},
+            "mark": {"type": "area", "opacity": 0.22, "color": "#b8872f"},
             "encoding": {
                 "x": {"field": "t", "type": "temporal"},
                 "y": {
@@ -512,7 +516,7 @@ def impulse_pullback_chart_spec(result):
                 "dy": -14,
                 "fontSize": 11,
                 "fontWeight": "bold",
-                "color": "#50fa9b",
+                "color": "#57f287",
             },
             "encoding": {
                 "x": {"field": "t", "type": "temporal"},

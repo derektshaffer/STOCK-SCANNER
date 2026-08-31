@@ -1608,6 +1608,27 @@ def test_analyzer_visual_specs_show_real_pattern_markers():
     assert "VWAP" in trade_text
 
 
+def test_analyzer_visuals_use_dark_high_contrast_theme():
+    import analyzer_visuals as av
+
+    config=av._config()
+    assert config.get("background") == "#08111f", config
+    view=config.get("view") or {}
+    assert view.get("fill") == "#08111f", view
+    axis=config.get("axis") or {}
+    assert axis.get("labelColor") == "#b8c9dc", axis
+    assert axis.get("titleColor") == "#dcecff", axis
+    assert axis.get("gridColor") == "#28435d", axis
+
+    layer=av._price_line_layer([
+        {"t":"2026-08-31T14:30:00Z","c":10.0,"h":10.1,"l":9.9},
+        {"t":"2026-08-31T14:31:00Z","c":10.2,"h":10.3,"l":10.0},
+    ])
+    mark=layer.get("mark") or {}
+    assert float(mark.get("strokeWidth") or 0) >= 3
+    assert mark.get("color") == "#f2f8ff"
+
+
 def test_analyzer_visual_snapshots_are_collapsible_and_contextual():
     from pathlib import Path
 
@@ -4386,6 +4407,7 @@ if __name__ == "__main__":
         test_analyzer_bounce_progress_and_plan_change_are_explicit,
         test_analyzer_exposes_same_evidence_bars_for_visual_snapshots,
         test_analyzer_visual_specs_show_real_pattern_markers,
+        test_analyzer_visuals_use_dark_high_contrast_theme,
         test_analyzer_visual_snapshots_are_collapsible_and_contextual,
         test_analyzer_long_context_text_is_collapsible,
         test_dedicated_repeat_bounce_trade_plan_uses_latest_dip,
