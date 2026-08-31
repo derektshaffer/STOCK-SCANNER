@@ -33,7 +33,7 @@ from scanner_behavior import (
     multi_session_behavior_features,
 )
 
-REPLAY_VERSION = "historical-scanner-replay-v4.6-shared-market-structure"
+REPLAY_VERSION = "historical-scanner-replay-v4.7-shared-break-structure"
 ET = ZoneInfo("America/New_York")
 
 DEFAULT_TRADING_DAYS = int(os.environ.get("REPLAY_TRADING_DAYS", "20") or 20)
