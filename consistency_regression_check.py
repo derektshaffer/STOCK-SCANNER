@@ -333,6 +333,14 @@ def test_scanner_enrichment_pool_is_not_display_watchlist_truncated():
     assert ss.NEWS_TOP == ss.REGULAR_ENRICH_POOL_MAX
 
 
+def test_scanner_snapshot_preserves_action_data_integrity_for_watch_alerts():
+    from pathlib import Path
+
+    source = Path("stock_scanner.py").read_text(encoding="utf-8")
+    assert '"action_data_integrity_ok": bool(c.get("action_data_integrity_ok"))' in source
+    assert '"action_data_integrity_reasons": c.get("action_data_integrity_reasons") or []' in source
+
+
 def test_scanner_latest_snapshot_write_is_atomic():
     from pathlib import Path
 
@@ -3264,6 +3272,74 @@ def test_actionable_momentum_alert_requires_existing_strong_scanner_state():
         assert ma.is_actionable_momentum_alert(row) is False, (field, row)
 
 
+def test_high_score_pullback_watch_requires_strong_score_and_trusted_data():
+    import momentum_alerts as ma
+
+    base = {
+        "symbol": "WETO",
+        "setup_grade": "A",
+        "scanner_action": "WAIT PULLBACK",
+        "passed_base_filters": True,
+        "action_data_integrity_ok": True,
+        "score": 94,
+        "timeframe_best_fit": "INTRADAY",
+        "volume_pace": 38.4,
+    }
+    assert ma.PULLBACK_WATCH_MIN_SCORE == 90.0
+    assert ma.is_high_score_pullback_watch(base) is True
+    assert "wait for pullback confirmation" in ma.pullback_watch_message(base)
+
+    for field, value in (
+        ("score", 89.9),
+        ("scanner_action", "ANALYZE NOW"),
+        ("passed_base_filters", False),
+        ("action_data_integrity_ok", False),
+        ("setup_grade", "C"),
+    ):
+        row = dict(base)
+        row[field] = value
+        assert ma.is_high_score_pullback_watch(row) is False, (field, row)
+
+
+def test_high_score_pullback_watch_alert_is_state_deduplicated():
+    import momentum_alerts as ma
+
+    watch = {
+        "candidates": [
+            {
+                "symbol": "WETO",
+                "setup_grade": "A",
+                "scanner_action": "WAIT PULLBACK",
+                "passed_base_filters": True,
+                "action_data_integrity_ok": True,
+                "score": 94,
+            }
+        ]
+    }
+    ready = {
+        "candidates": [
+            {
+                "symbol": "WETO",
+                "setup_grade": "A",
+                "scanner_action": "ANALYZE NOW",
+                "passed_base_filters": True,
+                "action_data_integrity_ok": True,
+                "score": 94,
+            }
+        ]
+    }
+
+    first, keys = ma.newly_high_score_pullback(watch, [])
+    assert [row["symbol"] for row in first] == ["WETO"], first
+    repeated, keys = ma.newly_high_score_pullback(watch, keys)
+    assert repeated == [], repeated
+    left, keys = ma.newly_high_score_pullback(ready, keys)
+    assert left == [], left
+    assert keys == set(), keys
+    reentered, keys = ma.newly_high_score_pullback(watch, keys)
+    assert [row["symbol"] for row in reentered] == ["WETO"], reentered
+
+
 def test_momentum_alert_only_fires_when_symbol_newly_enters_ready_state():
     import momentum_alerts as ma
 
@@ -3315,6 +3391,9 @@ def test_momentum_alert_ui_has_in_app_and_optional_browser_notifications():
 
     source = Path("app.py").read_text(encoding="utf-8")
     assert "ACTIONABLE MOMENTUM ALERT" in source
+    assert "PULLBACK WATCH" in source
+    assert "High-Score Pullback Watch" in source
+    assert "This is an early heads-up, not an entry signal." in source
     assert "Review it in Analyzer before deciding whether to trade." in source
     assert "Enable browser alerts" in source
     assert "Notification.requestPermission" in source
@@ -3958,6 +4037,7 @@ if __name__ == "__main__":
         test_scanner_outcomes_expose_deduplicated_actionable_events,
         test_scanner_historical_returns_are_causal_and_timestamp_matched,
         test_scanner_enrichment_pool_is_not_display_watchlist_truncated,
+        test_scanner_snapshot_preserves_action_data_integrity_for_watch_alerts,
         test_scanner_latest_snapshot_write_is_atomic,
         test_scanner_and_analyzer_use_midpoint_spread_formula,
         test_offhours_outcomes_include_two_day_horizon,
@@ -4059,6 +4139,8 @@ if __name__ == "__main__":
         test_monday_readiness_blocks_stale_scan_handoffs,
         test_live_scanner_uses_two_minute_cadence,
         test_actionable_momentum_alert_requires_existing_strong_scanner_state,
+        test_high_score_pullback_watch_requires_strong_score_and_trusted_data,
+        test_high_score_pullback_watch_alert_is_state_deduplicated,
         test_momentum_alert_only_fires_when_symbol_newly_enters_ready_state,
         test_combined_app_keeps_one_async_scanner_loop_across_views,
         test_momentum_alert_ui_has_in_app_and_optional_browser_notifications,
