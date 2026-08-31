@@ -905,9 +905,15 @@ def _walk_forward_fit(rows, label, current_features):
     auc = validation["auc"]
     brier_skill = validation["brier_skill"]
 
+    # Fit the served model on the same de-correlated evidence unit used
+    # for validation so repeated overlapping windows cannot dominate learning.
     final_model = xgb.train(
         _model_params(),
-        xgb.DMatrix(X, label=y, feature_names=FEATURES),
+        xgb.DMatrix(
+            X_effective,
+            label=y_effective,
+            feature_names=FEATURES,
+        ),
         num_boost_round=130,
         verbose_eval=False,
     )
