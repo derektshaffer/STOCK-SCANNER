@@ -3,6 +3,7 @@ import json
 import os
 import runpy
 import time
+import uuid
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -1156,12 +1157,17 @@ def _toggle_analyzer_launch(symbol):
         st.session_state["_analyzer_bootstrap_launch_state"]=None
         st.session_state["_analyzer_launch_state"]=None
 
+    thesis_namespace=st.session_state.setdefault(
+        "_analyzer_thesis_namespace",
+        uuid.uuid4().hex,
+    )
     launch=start_analyzer_process(
         symbol,
         alpaca_key=_shell_secret("ALPACA_API_KEY"),
         alpaca_secret=_shell_secret("ALPACA_SECRET_KEY"),
         alpaca_live_feed=_shell_live_feed(),
         tradier_token=_shell_tradier_token(),
+        thesis_namespace=thesis_namespace,
         timeout_seconds=180,
     )
     if not launch.get("started"):
