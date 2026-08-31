@@ -29,7 +29,7 @@ DEFAULT_REPLACEMENT_CONFIRMATIONS = max(
 )
 DEFAULT_EXPIRY_MINUTES = max(
     30,
-    int(os.environ.get("ANALYZER_INTRADAY_THESIS_EXPIRY_MINUTES", "90") or 90),
+    int(os.environ.get("ANALYZER_INTRADAY_THESIS_EXPIRY_MINUTES", "360") or 360),
 )
 THESIS_PATH = Path(
     os.environ.get(
