@@ -25,7 +25,7 @@ from timeframe_targets import (
 
 DATA_PATH = Path("timeframe_replay/timeframe_historical_replay.json")
 DEFAULT_REPORT_PATH = Path("timeframe_replay/timeframe_ml_validation.json")
-MODEL_VERSION = "swing-timeframe-ml-v3-market-regime-shadow"
+MODEL_VERSION = "swing-timeframe-ml-v4-confirmed-multisession-shadow"
 TARGET_FIELD = "swing_target_before_stop_5d"
 
 BASE_FEATURES = [
@@ -54,7 +54,10 @@ BASE_FEATURES = [
     "stair_higher_plateau_count",
     "stair_structure_score",
     "stair_reaccelerating",
+    "stair_reacceleration_developing",
     "stair_breakdown",
+    "stair_breakdown_confirmed",
+    "stair_breakdown_developing",
     "historical_bias_score",
     "historical_next_day_up_pct",
     "historical_sample_count",
@@ -133,7 +136,10 @@ def _feature_dict(row):
         ),
         "stair_structure_score": _num(stair.get("stair_structure_score")),
         "stair_reaccelerating": _num(stair.get("stair_reaccelerating")),
+        "stair_reacceleration_developing": _num(stair.get("stair_reacceleration_developing")),
         "stair_breakdown": _num(stair.get("stair_breakdown")),
+        "stair_breakdown_confirmed": _num(stair.get("stair_breakdown_confirmed")),
+        "stair_breakdown_developing": _num(stair.get("stair_breakdown_developing")),
         "historical_bias_score": _num(historical.get("bias_score")),
         "historical_next_day_up_pct": _num(historical.get("next_day_up_pct")),
         "historical_sample_count": _num(historical.get("sample_count")),
