@@ -12,7 +12,12 @@ os.environ.setdefault("GITHUB_REPOSITORY", "example/repo")
 os.environ.setdefault("GH_TOKEN", "synthetic-token")
 os.environ.setdefault("TRADIER_TOKEN", "synthetic-token")
 
-from learning_system_audit import audit_observations, audit_source_contracts
+from learning_system_audit import (
+    audit_observations,
+    audit_source_contracts,
+    build_hypotheses,
+    load_outcome_observations,
+)
 from scanner_ml_ranker import _production_regular_session
 import score_outcomes as so
 import score_opportunity_outcomes as soo
@@ -130,6 +135,55 @@ def test_source_contract_audit_finds_specification_gaps():
         ids = {row["id"] for row in findings}
         assert "live_vs_durable_cadence_gap" not in ids, findings
         assert "high_frequency_live_journal" in ids, findings
+
+
+def test_hypothesis_generation_excludes_historical_replay():
+    import json
+
+    with tempfile.TemporaryDirectory() as tmp:
+        report_dir = Path(tmp)
+        (report_dir / "outcomes_historical_replay.json").write_text(
+            json.dumps(
+                {
+                    "source": "historical_scanner_replay",
+                    "observations": [
+                        {
+                            "observation_source": "historical_replay",
+                            "scan_time_et": "2026-08-01T10:00:00-04:00",
+                            "symbol": "REPLAY",
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        (report_dir / "outcomes_2026-08-31.json").write_text(
+            json.dumps(
+                {
+                    "source": "live_scanner",
+                    "observations": [
+                        {
+                            "observation_source": "live_scan",
+                            "scan_time_et": "2026-08-31T10:00:00-04:00",
+                            "symbol": "LIVE",
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        rows, reports = load_outcome_observations(report_dir)
+        assert reports == 1, (reports, rows)
+        assert [row["symbol"] for row in rows] == ["LIVE"], rows
+
+        empirical = audit_observations(rows)
+        assert empirical["evidence_start_date"] == "2026-08-31", empirical
+        assert empirical["evidence_end_date"] == "2026-08-31", empirical
+
+        hypotheses = build_hypotheses([], empirical)
+        for hypothesis in hypotheses:
+            window = hypothesis.get("evidence_window") or {}
+            assert window.get("historical_replay_used_to_generate") is False
 
 
 def test_production_scanner_ml_is_regular_session_gated():
@@ -317,6 +371,7 @@ def main():
     test_usde_like_endpoint_contradiction()
     test_shadow_research_fields_are_audited_too()
     test_source_contract_audit_finds_specification_gaps()
+    test_hypothesis_generation_excludes_historical_replay()
     test_production_scanner_ml_is_regular_session_gated()
     test_opportunity_path_keeps_full_mfe_and_order()
     test_live_journal_keeps_strongest_state_and_controls()
