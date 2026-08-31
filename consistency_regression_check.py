@@ -5235,6 +5235,235 @@ def test_advisory_model_percentages_are_explicit_and_neutral():
 
 
 
+def test_intraday_thesis_keeps_entry_geometry_stable_and_can_still_enter():
+    import tempfile
+    from pathlib import Path
+    import strategy_thesis as thesis
+
+    now = datetime(2026, 8, 31, 14, 0, tzinfo=timezone.utc)
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "thesis.json"
+        first = {
+            "symbol": "TEST",
+            "price": 8.90,
+            "trade_plan": {
+                "status": "WAIT",
+                "action": "WAIT FOR BREAKOUT CONFIRMATION",
+                "preferred_plan": "breakout",
+                "breakout_reference_level": 9.0,
+                "breakout_reference_locked": True,
+                "breakout": {
+                    "entry_low": 9.00,
+                    "entry_high": 9.10,
+                    "stop": 8.70,
+                    "target1": 9.80,
+                    "target2": 10.20,
+                    "risk_reward": 2.0,
+                },
+                "selected": {
+                    "entry_low": 9.00,
+                    "entry_high": 9.10,
+                    "stop": 8.70,
+                    "target1": 9.80,
+                    "target2": 10.20,
+                    "risk_reward": 2.0,
+                },
+            },
+        }
+        context = thesis.prepare_intraday_thesis(
+            first, now=now, store_path=path
+        )
+        assert context.get("status") == "NEW THESIS", context
+
+        second = {
+            "symbol": "TEST",
+            "price": 9.05,
+            "trade_plan": {
+                "status": "ENTRY AVAILABLE",
+                "action": "ENTRY AVAILABLE — confirmed breakout zone",
+                "preferred_plan": "breakout",
+                "breakout_reference_level": 9.50,
+                "breakout_reference_locked": True,
+                "breakout": {
+                    "entry_low": 9.50,
+                    "entry_high": 9.60,
+                    "stop": 9.20,
+                    "target1": 10.30,
+                    "target2": 10.70,
+                    "risk_reward": 2.0,
+                },
+                "selected": {
+                    "entry_low": 9.50,
+                    "entry_high": 9.60,
+                    "stop": 9.20,
+                    "target1": 10.30,
+                    "target2": 10.70,
+                    "risk_reward": 2.0,
+                },
+            },
+        }
+        context = thesis.prepare_intraday_thesis(
+            second,
+            now=now + timedelta(minutes=5),
+            store_path=path,
+        )
+        plan = second["trade_plan"]
+        assert context.get("status") == "THESIS STABLE", context
+        assert plan.get("preferred_plan") == "breakout", plan
+        assert plan["selected"]["entry_low"] == 9.00, plan
+        assert plan["selected"]["entry_high"] == 9.10, plan
+        assert plan.get("breakout_reference_level") == 9.0, plan
+        assert plan.get("status") == "ENTRY AVAILABLE", plan
+        assert "9.00" in str(plan.get("entry_instruction") or ""), plan
+
+
+def test_intraday_thesis_requires_persistent_replacement_before_family_switch():
+    import tempfile
+    from pathlib import Path
+    import copy
+    import strategy_thesis as thesis
+
+    now = datetime(2026, 8, 31, 14, 0, tzinfo=timezone.utc)
+    breakout = {
+        "symbol": "TEST",
+        "price": 8.95,
+        "trade_plan": {
+            "status": "WAIT",
+            "preferred_plan": "breakout",
+            "breakout_reference_level": 9.0,
+            "breakout_reference_locked": True,
+            "breakout_structure": {"failed_breakout": False},
+            "breakout": {
+                "entry_low": 9.00, "entry_high": 9.10, "stop": 8.70,
+                "target1": 9.80, "target2": 10.20, "risk_reward": 2.0,
+            },
+            "selected": {
+                "entry_low": 9.00, "entry_high": 9.10, "stop": 8.70,
+                "target1": 9.80, "target2": 10.20, "risk_reward": 2.0,
+            },
+        },
+    }
+    pullback = {
+        "symbol": "TEST",
+        "price": 9.05,
+        "trade_plan": {
+            "status": "WAIT",
+            "preferred_plan": "pullback",
+            "breakout_structure": {"failed_breakout": False},
+            "pullback": {
+                "entry_low": 8.35, "entry_high": 8.55, "stop": 8.10,
+                "target1": 9.30, "target2": 9.70, "risk_reward": 2.0,
+            },
+            "selected": {
+                "entry_low": 8.35, "entry_high": 8.55, "stop": 8.10,
+                "target1": 9.30, "target2": 9.70, "risk_reward": 2.0,
+            },
+        },
+    }
+
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "thesis.json"
+        thesis.prepare_intraday_thesis(breakout, now=now, store_path=path)
+
+        p1 = copy.deepcopy(pullback)
+        c1 = thesis.prepare_intraday_thesis(
+            p1,
+            now=now + timedelta(minutes=5),
+            store_path=path,
+            replacement_confirmations=3,
+        )
+        assert c1.get("status") == "HOLDING PRIOR THESIS", c1
+        assert p1["trade_plan"]["preferred_plan"] == "breakout", p1
+        assert p1["trade_plan"]["selected"]["entry_low"] == 9.00, p1
+
+        p2 = copy.deepcopy(pullback)
+        c2 = thesis.prepare_intraday_thesis(
+            p2,
+            now=now + timedelta(minutes=10),
+            store_path=path,
+            replacement_confirmations=3,
+        )
+        assert c2.get("status") == "HOLDING PRIOR THESIS", c2
+        assert c2.get("pending_count") == 2, c2
+
+        p3 = copy.deepcopy(pullback)
+        c3 = thesis.prepare_intraday_thesis(
+            p3,
+            now=now + timedelta(minutes=15),
+            store_path=path,
+            replacement_confirmations=3,
+        )
+        assert c3.get("status") == "REPLAN ACCEPTED", c3
+        assert p3["trade_plan"]["preferred_plan"] == "pullback", p3
+        assert "persisted across 3" in str(c3.get("change_reason") or ""), c3
+
+
+def test_intraday_thesis_replans_immediately_on_invalidation():
+    import tempfile
+    from pathlib import Path
+    import strategy_thesis as thesis
+
+    now = datetime(2026, 8, 31, 14, 0, tzinfo=timezone.utc)
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "thesis.json"
+        first = {
+            "symbol": "TEST",
+            "price": 8.95,
+            "trade_plan": {
+                "status": "WAIT",
+                "preferred_plan": "breakout",
+                "breakout_reference_level": 9.0,
+                "breakout_reference_locked": True,
+                "breakout_structure": {"failed_breakout": False},
+                "breakout": {
+                    "entry_low": 9.00, "entry_high": 9.10, "stop": 8.70,
+                    "target1": 9.80, "target2": 10.20,
+                },
+                "selected": {
+                    "entry_low": 9.00, "entry_high": 9.10, "stop": 8.70,
+                    "target1": 9.80, "target2": 10.20,
+                },
+            },
+        }
+        thesis.prepare_intraday_thesis(first, now=now, store_path=path)
+
+        invalidated = {
+            "symbol": "TEST",
+            "price": 8.60,
+            "trade_plan": {
+                "status": "WAIT",
+                "preferred_plan": "pullback",
+                "breakout_structure": {"failed_breakout": True},
+                "pullback": {
+                    "entry_low": 8.35, "entry_high": 8.50, "stop": 8.10,
+                    "target1": 9.20, "target2": 9.60,
+                },
+                "selected": {
+                    "entry_low": 8.35, "entry_high": 8.50, "stop": 8.10,
+                    "target1": 9.20, "target2": 9.60,
+                },
+            },
+        }
+        context = thesis.prepare_intraday_thesis(
+            invalidated,
+            now=now + timedelta(minutes=5),
+            store_path=path,
+            replacement_confirmations=3,
+        )
+        assert context.get("status") == "REPLAN ACCEPTED", context
+        assert invalidated["trade_plan"]["preferred_plan"] == "pullback", invalidated
+        assert "invalidated" in str(context.get("change_reason") or "").lower(), context
+
+
+def test_analyzer_ui_exposes_thesis_continuity_reason():
+    from pathlib import Path
+
+    source = Path("analyzer_ui_core.py").read_text(encoding="utf-8")
+    assert "_thesis_status" in source
+    assert "_thesis_reason" in source
+    assert "Why the thesis changed/held" in source
+
+
 def test_visual_truth_usde_like_run_counts_obvious_rebounds():
     """Graph-level truth case modeled after the visible USDE stair-step run."""
     from market_structure import bounce_sequence_context
@@ -5585,6 +5814,10 @@ if __name__ == "__main__":
         test_two_minute_runtime_health_flags_tight_and_overrun_scans,
         test_momentum_alert_can_realert_only_after_leaving_ready_state,
         test_analyzer_live_test_status_exposes_tracking_health,
+        test_intraday_thesis_keeps_entry_geometry_stable_and_can_still_enter,
+        test_intraday_thesis_requires_persistent_replacement_before_family_switch,
+        test_intraday_thesis_replans_immediately_on_invalidation,
+        test_analyzer_ui_exposes_thesis_continuity_reason,
         test_visual_truth_usde_like_run_counts_obvious_rebounds,
         test_visual_truth_breakout_plan_keeps_same_goalpost_after_touch,
         test_final_decision_contract_cannot_show_entry_when_safety_gate_waits,
