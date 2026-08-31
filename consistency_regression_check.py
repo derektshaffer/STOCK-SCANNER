@@ -5618,6 +5618,37 @@ def test_setup_horizon_tracker_is_display_continuity_only():
     assert "one noisy candle cannot silently rewrite" in ui
 
 
+
+def test_cancelled_analyzer_cannot_persist_setup_horizon_state():
+    import tempfile
+    from pathlib import Path
+    import timeframe_thesis as tt
+
+    now = datetime(2026, 8, 31, 14, 0, tzinfo=timezone.utc)
+    timeframe = {
+        "best_fit": "SWING",
+        "scores": {"intraday": 58.0, "swing": 74.0, "long_term": 67.0},
+    }
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "timeframe.json"
+        context = tt.track_timeframe_thesis(
+            "TEST",
+            timeframe,
+            now=now,
+            store_path=path,
+            persist=False,
+        )
+        assert context.get("status") == "NEW HORIZON THESIS", context
+        assert context.get("_transaction", {}).get("action") == "upsert", context
+        # Simulated cancellation: no commit means no durable horizon change.
+        assert tt._load(path) == {}, tt._load(path)
+
+        assert tt.commit_timeframe_thesis(context, store_path=path)
+        assert "_transaction" not in context, context
+        stored = tt._load(path)
+        assert stored.get("TEST", {}).get("active_fit") == "SWING", stored
+
+
 def test_intraday_thesis_state_is_namespaced_per_browser_session():
     import tempfile
     from pathlib import Path
@@ -6834,6 +6865,7 @@ if __name__ == "__main__":
         test_setup_horizon_continuity_holds_one_noisy_fit_change,
         test_setup_horizon_changes_only_after_persistent_or_decisive_evidence,
         test_setup_horizon_tracker_is_display_continuity_only,
+        test_cancelled_analyzer_cannot_persist_setup_horizon_state,
         test_intraday_thesis_state_is_namespaced_per_browser_session,
         test_intraday_thesis_keeps_entry_geometry_stable_and_can_still_enter,
         test_cancelled_analyzer_cannot_persist_a_staged_new_thesis,
