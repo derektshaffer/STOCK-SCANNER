@@ -2206,6 +2206,16 @@ def test_analyzer_visual_specs_show_real_pattern_markers():
 
     for spec in (trade,bounce,stair,impulse,sr):
         assert spec and spec.get("layer"), spec
+        params = spec.get("params") or []
+        names = {str(row.get("name") or "") for row in params}
+        assert {"date_zoom", "price_zoom"} <= names, params
+        date_zoom = next(row for row in params if row.get("name") == "date_zoom")
+        price_zoom = next(row for row in params if row.get("name") == "price_zoom")
+        assert date_zoom.get("bind") == "scales", date_zoom
+        assert price_zoom.get("bind") == "scales", price_zoom
+        assert (date_zoom.get("select") or {}).get("encodings") == ["x"], date_zoom
+        assert (price_zoom.get("select") or {}).get("encodings") == ["y"], price_zoom
+        assert "event.altKey" in str((price_zoom.get("select") or {}).get("zoom")), price_zoom
 
     bounce_text=str(bounce)
     assert "Bounce #1 ✓" in bounce_text
@@ -2264,6 +2274,9 @@ def test_analyzer_visual_snapshots_are_collapsible_and_contextual():
     assert "support_resistance_chart_spec(r,line_overlay=_sr_line)" in source
     assert "Close-line overlay" in source
     assert "Candlesticks are the primary chart" in source
+    assert "scroll/pinch = zoom date range" in source
+    assert "Option/Alt + scroll/pinch = expand/compress price scale" in source
+    assert "double-click = reset" in source
 
 
 def test_analyzer_long_context_text_is_collapsible():
