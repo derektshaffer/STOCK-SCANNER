@@ -1451,6 +1451,86 @@ def test_stair_step_detector_finds_higher_plateau_sequence():
     assert features.get("stair_structure_score") is not None, features
 
 
+def test_low_rr_repeat_bounce_cannot_replace_primary_plan():
+    import stock_analyzer as sa
+
+    metrics={
+        "price":8.10,
+        "vwap":8.00,
+        "vwap_extension_pct":1.25,
+        "day_pct":12.0,
+        "momentum_5m":0.8,
+        "momentum_15m":0.5,
+        "volume_pace":2.0,
+        "spread_pct":0.5,
+        "score":88.0,
+        "atr_14":0.81,
+        "atr_14_pct":10.0,
+        "supports":[{"price":7.85,"quality_score":70,"quality":"STRONG","side":"support"}],
+        "resistances":[{"price":10.0,"quality_score":70,"quality":"STRONG","side":"resistance"}],
+        "historical_analogs":{"status":"insufficient_history","samples":[]},
+        "historical_setup":{"status":"ok","sample_count":20,"intraday":{}},
+        "impulse_pullback":{"detected":False},
+        "bounce_sequence":{
+            "detected":True,
+            "completed_bounces":1,
+            "next_bounce_number":2,
+            "current_leg":"BOUNCING",
+            "current_dip_low":8.0,
+            "reference_peak":10.0,
+            "latest_bounce_pct":2.0,
+            "sequence_health_score":60.0,
+            "bounce_decay_ratio":0.40,
+            "lower_high_streak":1,
+        },
+        "stair_step":{"detected":False},
+        "run_exhaustion":{"score":45.0},
+        "liquidity":{"label":"HIGH","avg_dollar_volume":10_000_000},
+        "news":[],
+    }
+
+    plan=sa.build_trade_plan(metrics,datetime.now(timezone.utc))
+    rb=plan.get("repeat_bounce") or {}
+    assert rb, plan
+    assert float(rb.get("risk_reward") or 0) < 1.25, rb
+    assert plan.get("preferred_plan") != "repeat_bounce", plan
+    assert plan.get("selected_plan_role") == "primary", plan
+    assert "WATCH ONLY" in str(plan.get("repeat_bounce_status") or ""), plan
+    assert "secondary" in str(plan.get("plan_selection_note") or "").lower(), plan
+
+
+def test_analyzer_bounce_progress_and_plan_change_are_explicit():
+    from pathlib import Path
+
+    source=Path("analyzer_ui_core.py").read_text(encoding="utf-8")
+    assert 'f"BOUNCE #{_idx}"' in source
+    assert '"✓ CONFIRMED"' in source
+    assert '"… DEVELOPING"' in source
+    assert '"○ FORMING"' in source
+    assert "PLAN CHANGED:" in source
+    assert "PRIMARY PLAN ·" in source
+    assert "ACTIVE ALTERNATIVE · BOUNCE #" in source
+
+
+def test_analyzer_long_context_text_is_collapsible():
+    from pathlib import Path
+
+    core=Path("analyzer_ui_core.py").read_text(encoding="utf-8")
+    ml=Path("ml_ui.py").read_text(encoding="utf-8")
+
+    for text in (
+        'with st.expander("Impulse / pullback context", expanded=False):',
+        'with st.expander("Multi-bounce context", expanded=False):',
+        'with st.expander("Support / resistance timing note", expanded=False):',
+        'with st.expander("Historical analog context", expanded=False):',
+        'f"Scenario context · dominant: {_dominant or \'—\'}"',
+    ):
+        assert text in core, text
+
+    assert 'with st.expander("ML sequence context", expanded=False):' in ml
+    assert 'with st.expander("Peer cohort context", expanded=False):' in ml
+
+
 def test_dedicated_repeat_bounce_trade_plan_uses_latest_dip():
     import stock_analyzer as sa
 
@@ -4105,6 +4185,9 @@ if __name__ == "__main__":
         test_scanner_behavior_detects_reclaim_acceleration_and_breakout,
         test_scanner_behavior_detects_failed_breakout,
         test_scanner_behavior_fields_survive_scan_logging,
+        test_low_rr_repeat_bounce_cannot_replace_primary_plan,
+        test_analyzer_bounce_progress_and_plan_change_are_explicit,
+        test_analyzer_long_context_text_is_collapsible,
         test_dedicated_repeat_bounce_trade_plan_uses_latest_dip,
         test_prediction_tracker_records_sequence_regime_fields,
         test_sec_fundamental_snapshot_extracts_comparable_periods,
