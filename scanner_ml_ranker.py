@@ -232,6 +232,37 @@ def _consolidated_observation_source(row, payload):
     )
 
 
+def _production_regular_session(row, payload):
+    """Keep the existing production Scanner ML target regular-session only.
+
+    Historical replay is regular-session by construction. Live outcome reports
+    now carry session_phase explicitly; older reports are inferred from their
+    ET-offset scan timestamp so future shadow extended-session collection cannot
+    silently leak into the current production model.
+    """
+    source = str(
+        row.get("observation_source")
+        or payload.get("source")
+        or "live_scan"
+    ).lower()
+    if source == "historical_replay":
+        return True
+
+    phase = str(
+        row.get("session_phase")
+        or payload.get("session_phase")
+        or ""
+    ).lower().strip()
+    if phase:
+        return phase == "regular"
+
+    dt = _parse_dt(row.get("scan_time_et"))
+    if dt is None:
+        return False
+    minutes = dt.hour * 60 + dt.minute
+    return 9 * 60 + 30 <= minutes < 16 * 60
+
+
 def _extract_observations(payload):
     if not isinstance(payload, dict):
         return []
@@ -239,6 +270,8 @@ def _extract_observations(payload):
     out = []
     for row in payload.get("observations") or []:
         if row.get("feature_version") != CURRENT_FEATURE_VERSION:
+            continue
+        if not _production_regular_session(row, payload):
             continue
         if not _consolidated_observation_source(row, payload):
             continue
@@ -278,6 +311,11 @@ def _extract_observations(payload):
                     row.get("observation_source")
                     or payload.get("source")
                     or "live_scan"
+                ),
+                "session_phase": (
+                    row.get("session_phase")
+                    or payload.get("session_phase")
+                    or "regular"
                 ),
                 "behavior_feature_version": (
                     row.get("behavior_feature_version")
