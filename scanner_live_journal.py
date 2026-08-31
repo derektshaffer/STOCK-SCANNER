@@ -126,6 +126,10 @@ def _compact_row(candidate, rank, now_et, role):
         if candidate.get("scanner_action")
         else [],
         "timeframe_best_fit": candidate.get("timeframe_best_fit"),
+        "feature_version": candidate.get("feature_version"),
+        "behavior_feature_version": candidate.get("behavior_feature_version"),
+        "live_quote_source": candidate.get("live_quote_source"),
+        "live_intraday_source": candidate.get("live_intraday_source"),
         "momentum_5m": _num(candidate.get("momentum_5m")),
         "momentum_15m": _num(candidate.get("momentum_15m")),
         "volume_pace": _num(candidate.get("volume_pace")),
