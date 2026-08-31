@@ -15,7 +15,7 @@ REMOTE_SYNC_SECONDS = max(
     300,
     int(os.environ.get("SCANNER_LIVE_JOURNAL_SYNC_SECONDS", "1800") or 1800),
 )
-MAX_DAILY_ROWS = 1100
+MAX_DAILY_ROWS = 750
 LOCAL_DIR = Path(
     os.environ.get("SCANNER_LIVE_JOURNAL_DIR", "scanner_live_journal").strip()
     or "scanner_live_journal"
@@ -172,12 +172,12 @@ def select_observations(rows, now_et):
             selected[symbol] = row
 
     # Core live candidates.
-    for rank, candidate in indexed[:8]:
+    for rank, candidate in indexed[:6]:
         add(rank, candidate, "top")
 
     # High-value/actionable rows slightly deeper in the ranking.
     extras = 0
-    for rank, candidate in indexed[8:40]:
+    for rank, candidate in indexed[6:35]:
         score = _num(candidate.get("opportunity_score"))
         if score is None:
             score = _num(candidate.get("score"))
@@ -185,12 +185,12 @@ def select_observations(rows, now_et):
         if actionable or (score is not None and score >= 75.0):
             add(rank, candidate, "actionable" if actionable else "high_score")
             extras += 1
-            if extras >= 4:
+            if extras >= 3:
                 break
 
     # Deterministic below-cutoff controls for missed-winner / false-negative
     # research. These never influence production ranking.
-    for control_rank in (30, 50, 80):
+    for control_rank in (30, 60):
         if len(indexed) >= control_rank:
             rank, candidate = indexed[control_rank - 1]
             add(rank, candidate, "control")
