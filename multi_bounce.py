@@ -126,7 +126,33 @@ def _find_impulse(rows, atr_pct=None, min_impulse_pct=None):
 
     if not candidates:
         return None
-    return max(candidates, key=lambda item: item[0])[1:]
+
+    best=max(candidates,key=lambda item:item[0])
+    _,best_low_idx,best_peak_idx,best_low,best_peak,best_move_pct=best
+
+    # A later rebound can make a *marginal* new high after a real pullback.
+    # Do not let that erase the earlier impulse peak and all bounce history.
+    # If an earlier candidate captured at least 90% of the eventual move,
+    # the later high is within 2% of it, and price pulled back meaningfully
+    # between the two peaks, anchor the initial impulse to that earlier peak.
+    anchor_pullback_pct=_clamp(atrp*0.18,1.8,3.5)
+    for candidate in sorted(candidates,key=lambda item:item[2]):
+        _,low_idx,peak_idx,low,peak,move_pct=candidate
+        if peak_idx >= best_peak_idx:
+            break
+        if move_pct < best_move_pct*0.90:
+            continue
+        if best_peak > peak*1.02:
+            continue
+        between=rows[peak_idx+1:best_peak_idx+1]
+        if not between:
+            continue
+        interim_low=min(row["l"] for row in between)
+        drawdown_pct=(peak/interim_low-1.0)*100.0 if interim_low>0 else 0.0
+        if drawdown_pct >= anchor_pullback_pct:
+            return candidate[1:]
+
+    return best[1:]
 
 
 def detect_bounce_sequence(
