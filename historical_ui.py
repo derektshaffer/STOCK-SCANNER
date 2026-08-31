@@ -197,7 +197,8 @@ def render_historical_setup(st, pd, result, card, pp):
                     "breakout_failed",
                 ] if c in matches.columns
             ]
-            st.dataframe(matches[show], width="stretch", hide_index=True)
+            with st.expander("Historical setup match table", expanded=False):
+                st.dataframe(matches[show], width="stretch", hide_index=True)
 
         st.caption(
             "Included in the setup score and trade-plan confidence. Similarity uses today's move size, "
