@@ -573,17 +573,36 @@ with st.container(key="analyzer_controls"):
             st.session_state.get("ticker","SDOT") or "SDOT"
         ).upper().strip()
         if _COMBINED_WORKSPACE:
-            # Do not block Analyzer page switches on Alpaca's full active-asset
-            # directory. The picker accepts typed tickers directly; seed it
-            # with the current and saved symbols so the control is useful
-            # immediately. Standalone Analyzer keeps full company autocomplete.
+            # Load the full active-equity directory here too. Streamlit's
+            # selectbox filters these options in the browser as the user types,
+            # so typing "nvd" can immediately surface "NVDA — NVIDIA..." rather
+            # than only showing the free-form "Add: nvd" fallback.
+            full_choices = load_active_us_equities()
+
             saved_symbols = [
                 str(value).upper().strip()
                 for value in (st.session_state.get("saved_stocks") or [])
                 if str(value).strip()
             ]
+
+            def _choice_for_symbol(symbol):
+                symbol = str(symbol or "").upper().strip()
+                if not symbol:
+                    return ""
+                for choice in full_choices:
+                    if _ticker_from_choice(choice) == symbol:
+                        return choice
+                return symbol
+
+            preferred = [
+                _choice_for_symbol(current_symbol),
+                *[_choice_for_symbol(symbol) for symbol in saved_symbols],
+            ]
             asset_choices = list(
-                dict.fromkeys([current_symbol] + saved_symbols)
+                dict.fromkeys(
+                    [choice for choice in preferred if choice]
+                    + list(full_choices)
+                )
             )
         else:
             asset_choices=load_active_us_equities()
