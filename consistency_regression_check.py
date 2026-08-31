@@ -1826,6 +1826,75 @@ def test_full_spectrum_exposes_all_scenarios():
 
 
 
+
+def test_ml_cannot_boost_live_scores_until_complete_production_gate_passes():
+    import copy
+    import analyzer_v2_integration as v2
+
+    base = {
+        "price": 10.0,
+        "day_pct": 12.0,
+        "vwap_position": "ABOVE",
+        "from_high_pct": 2.0,
+        "trade_age_seconds": 10.0,
+        "live_feed": "TRADIER CONSOLIDATED",
+        "market_provider": "tradier",
+        "impulse_pullback": {},
+        "historical_setup": {},
+    }
+    sec = {"status": "unavailable", "dilution_risk": "NONE FOUND"}
+    market = {"label": "UNKNOWN", "sector_move_pct": None}
+    catalyst = {"score": 0.0, "article_count": 0}
+
+    advisory = copy.deepcopy(base)
+    advisory["ml_prediction"] = {
+        "status": "ok",
+        "gate_passed": False,
+        "production_source_ok": True,
+        "validated_edge_model_count": 3,
+        "ml_edge_score": 90.0,
+        "models": {},
+    }
+    neutral = copy.deepcopy(base)
+    neutral["ml_prediction"] = {
+        "status": "ok",
+        "gate_passed": False,
+        "production_source_ok": True,
+        "validated_edge_model_count": 0,
+        "ml_edge_score": None,
+        "models": {},
+    }
+
+    p1 = v2._potential_score(advisory, sec, market, catalyst)
+    p2 = v2._potential_score(neutral, sec, market, catalyst)
+    assert p1[0] == p2[0], (p1, p2)
+    assert p1[2]["validated_ml"] == 0.0, p1
+
+    e1 = v2._evidence_strength(advisory, sec, market, catalyst)
+    e2 = v2._evidence_strength(neutral, sec, market, catalyst)
+    assert e1[0] == e2[0], (e1, e2)
+    assert any("advisory" in str(reason).lower() for reason in e1[1]), e1
+
+    eligible = copy.deepcopy(base)
+    eligible["ml_prediction"] = {
+        "status": "ok",
+        "gate_passed": True,
+        "production_source_ok": True,
+        "validated_edge_model_count": 3,
+        "ml_edge_score": 90.0,
+        "models": {},
+    }
+    ctx = v2._production_ml_context(eligible)
+    assert ctx.get("eligible") is True, ctx
+    assert ctx.get("edge") == 90.0, ctx
+    assert v2._potential_score(eligible, sec, market, catalyst)[0] > p2[0]
+    assert v2._evidence_strength(eligible, sec, market, catalyst)[0] > e2[0]
+
+    bad_source = copy.deepcopy(eligible)
+    bad_source["ml_prediction"]["production_source_ok"] = False
+    assert v2._production_ml_context(bad_source).get("eligible") is False
+
+
 def test_full_spectrum_ignores_unvalidated_ml_edge():
     import copy
     import analyzer_v2_integration as v2
@@ -6827,6 +6896,7 @@ if __name__ == "__main__":
         test_entry_readiness_penalizes_unconfirmed_shallow_retrace,
         test_run_exhaustion_flags_rejected_mature_run,
         test_full_spectrum_exposes_all_scenarios,
+        test_ml_cannot_boost_live_scores_until_complete_production_gate_passes,
         test_full_spectrum_ignores_unvalidated_ml_edge,
         test_multi_bounce_detector_tracks_decay_and_lower_highs,
         test_multi_bounce_ignores_micro_wiggles_and_waits_for_distinct_second_swing,
