@@ -5390,6 +5390,12 @@ def test_analyzer_entries_fail_closed_on_data_integrity():
     }
     assert v2._analyzer_live_data_integrity(good)["ok"] is True
 
+    sip = dict(good)
+    sip["market_provider"] = "alpaca"
+    sip["live_provider"] = "alpaca"
+    sip["live_feed"] = "SIP"
+    assert v2._analyzer_live_data_integrity(sip)["ok"] is True
+
     weak = dict(good)
     weak["live_feed"] = "IEX"
     weak["market_provider"] = "alpaca"
@@ -5398,6 +5404,26 @@ def test_analyzer_entries_fail_closed_on_data_integrity():
     assert result["ok"] is False
     assert result["consolidated"] is False
     assert any("stale" in reason for reason in result["reasons"])
+
+    mismatch = dict(good)
+    mismatch["market_provider"] = "tradier"
+    mismatch["live_feed"] = "IEX"
+    result = v2._analyzer_live_data_integrity(mismatch)
+    assert result["ok"] is False
+    assert result["consolidated"] is False
+    assert any("metadata disagree" in reason for reason in result["reasons"])
+
+    missing_momentum = dict(good)
+    missing_momentum["momentum_5m"] = None
+    result = v2._analyzer_live_data_integrity(missing_momentum)
+    assert result["ok"] is False
+    assert any("5-minute momentum is missing" in reason for reason in result["reasons"])
+
+    stale_quote = dict(good)
+    stale_quote["quote_age_seconds"] = 500
+    result = v2._analyzer_live_data_integrity(stale_quote)
+    assert result["ok"] is False
+    assert any("quote is stale" in reason for reason in result["reasons"])
 
 
 def test_historical_analogs_cannot_change_live_plan_geometry_or_scores():
