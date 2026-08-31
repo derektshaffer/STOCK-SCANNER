@@ -1,6 +1,7 @@
 from pathlib import Path
 import os
 import runpy
+import threading
 
 import pandas as pd
 import streamlit as st
@@ -34,6 +35,30 @@ def _preload_secrets():
         value = secrets.get(key)
         if value is not None and str(value).strip():
             os.environ[key] = str(value).strip()
+
+
+def _start_async_prediction_sync():
+    existing=st.session_state.get("_prediction_sync_thread")
+    if existing is not None and getattr(existing,"is_alive",lambda:False)():
+        return
+    try:
+        from prediction_tracker import sync_predictions_remote
+    except Exception:
+        return
+
+    def _run_sync():
+        try:
+            sync_predictions_remote(force=True)
+        except Exception:
+            pass
+
+    thread=threading.Thread(
+        target=_run_sync,
+        daemon=True,
+        name="analyzer-prediction-sync",
+    )
+    st.session_state["_prediction_sync_thread"]=thread
+    thread.start()
 
 
 def _combined_workspace():
@@ -670,6 +695,7 @@ def run():
                         "result": outcome.get("result"),
                         "cached_at": __import__("time").time(),
                     }
+                    _start_async_prediction_sync()
                     st.session_state["ticker"] = symbol
                     st.session_state["ticker_search_request"] = symbol
                     st.session_state["_analyzer_loading"] = False
