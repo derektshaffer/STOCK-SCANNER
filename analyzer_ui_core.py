@@ -58,8 +58,24 @@ from stock_analyzer import analyze
 from analyzer_v2_ui import render_v2_decision
 from position_exit import build_position_exit_plan, merge_live_position_metrics
 from live_market_stream import get_live_overlay
+from analyzer_visuals import (
+    impulse_pullback_chart_spec,
+    multi_bounce_chart_spec,
+    stair_step_chart_spec,
+    support_resistance_chart_spec,
+    trade_plan_chart_spec,
+)
 
 AUTO_REFRESH_SECONDS = max(30, int(os.environ.get("ANALYZER_REFRESH_SECONDS", "60") or 60))
+
+
+def _render_visual_snapshot(label, spec, caption=None):
+    if not spec:
+        return
+    with st.expander(label, expanded=False):
+        st.vega_lite_chart(spec=spec, use_container_width=True)
+        if caption:
+            st.caption(caption)
 
 def _result_age_seconds(result):
     if not result or not result.get("as_of"):
@@ -1046,6 +1062,12 @@ if not _position_enabled:
     card(tp[5],"REWARD / RISK",rr(selected.get("risk_reward")),"to Target 1","good" if (selected.get("risk_reward") or 0)>=1.5 else "warn")
     card(tp[6],"PLAN CONFIDENCE",f'{plan.get("confidence","—")} / 100',plan.get("confidence_label") or "","good" if (plan.get("confidence") or 0)>=75 else "warn")
 
+    _render_visual_snapshot(
+        "📈 Trade plan visual · entry · stop · targets",
+        trade_plan_chart_spec(r),
+        "Uses the same live regular-session bars and the currently selected trade plan. The shaded band is the entry zone; dashed levels are stop, targets and VWAP.",
+    )
+
     with st.expander("Trade plan details — pullback · repeat bounce · breakout"):
         st.caption(plan.get("plan_selection_note") or "")
         pc1,pc2=st.columns(2)
@@ -1195,6 +1217,12 @@ if _impulse.get("detected"):
         "contracting vs impulse" if _impulse.get("pullback_volume_contracting") else "not clearly contracting",
         "good" if _impulse.get("pullback_volume_contracting") else "warn",
     )
+    _render_visual_snapshot(
+        "📈 Impulse / pullback visual",
+        impulse_pullback_chart_spec(r),
+        "Shows the actual intraday price path, detected impulse low/high, the live pullback entry band, and reclaim confirmation when present.",
+    )
+
     with st.expander("Impulse / pullback context", expanded=False):
         st.caption(
             "The analyzer measures the pullback as a fraction of the preceding impulse. "
@@ -1270,6 +1298,12 @@ if _sequence.get("detected"):
         str(_sequence.get("sequence_state") or "—"),
         "good" if (_seq_health or 0)>=68 else "bad" if _seq_health is not None and _seq_health<42 else "warn",
         "A structural score for the multi-bounce sequence using bounce size, bounce decay, volume decay, lower highs, higher lows, and the current leg. It is not a probability of profit.",
+    )
+
+    _render_visual_snapshot(
+        "📈 Multi-bounce visual · dips · confirmed bounces",
+        multi_bounce_chart_spec(r),
+        "Confirmed bounce peaks are marked with ✓. The next forming/developing bounce is shown separately so it is not mistaken for a confirmed rebound.",
     )
 
     with st.expander("Multi-bounce context", expanded=False):
@@ -1388,6 +1422,12 @@ if _stair.get("detected"):
         "good" if _stair.get("reaccelerating") else "bad" if _stair.get("breakdown") else "warn",
         "Whether price has started another meaningful expansion leg after the higher plateau.",
     )
+    _render_visual_snapshot(
+        "📈 Stair-step visual · steps · plateau · reacceleration",
+        stair_step_chart_spec(r),
+        "Uses recent daily price history. Step markers show detected expansion legs; the plateau band shows the latest accepted level and the current reacceleration is called out when active.",
+    )
+
     _steps=_stair.get("steps") or []
     if _steps:
         with st.expander("Stair-step details"):
@@ -1525,6 +1565,10 @@ def level_table(rows):
     return pd.DataFrame(out,columns=columns)
 
 with st.expander("Support & resistance levels", expanded=False):
+    _sr_visual=support_resistance_chart_spec(r)
+    if _sr_visual:
+        st.vega_lite_chart(spec=_sr_visual, use_container_width=True)
+        st.caption("Horizontal levels are the same nearby support/resistance levels listed in the tables below.")
     scol,rcol=st.columns(2)
     with scol:
         st.markdown('<div class="section">Support</div>',unsafe_allow_html=True)
