@@ -27,6 +27,7 @@ from zoneinfo import ZoneInfo
 from tradier_live import get_history_bars, get_timesales_bars, post_quotes
 from multi_bounce import bounce_feature_values, detect_bounce_sequence
 from market_structure import impulse_pullback_context as shared_impulse_pullback_context
+from market_regime import BENCHMARKS, market_regime_features
 from stair_step import detect_stair_step, stair_step_feature_values
 from scanner_behavior import (
     BEHAVIOR_FEATURE_VERSION,
@@ -40,7 +41,7 @@ from sequence_features import (
     build_causal_candle_sequence,
 )
 
-REPLAY_VERSION = "historical-scanner-replay-v4.8-confirmed-multisession"
+REPLAY_VERSION = "historical-scanner-replay-v4.9-opportunity-challenge"
 ET = ZoneInfo("America/New_York")
 
 DEFAULT_TRADING_DAYS = int(os.environ.get("REPLAY_TRADING_DAYS", "20") or 20)
@@ -866,6 +867,139 @@ def _future_trade_quality(
     }
 
 
+def _future_opportunity_path(
+    rows,
+    idx,
+    entry_price,
+    *,
+    minutes=60,
+    thresholds=(3.0, 5.0, 10.0, 20.0),
+    failure_stop_pct=3.0,
+):
+    """Full future path for research-only learning-objective challenges.
+
+    Unlike _future_trade_quality, this does not stop at the first 1%/-0.75%
+    barrier. It preserves the complete 60-minute path so a large interim winner
+    cannot be hidden by a weaker endpoint. Same-bar threshold/stop ordering is
+    conservative: the failure stop wins ties.
+    """
+    result = {
+        "opportunity_horizon_60m_complete": False,
+        "opportunity_mfe_60m_pct": None,
+        "opportunity_mae_60m_pct": None,
+        "opportunity_time_to_peak_60m": None,
+        "opportunity_failure_stop_pct": float(failure_stop_pct),
+        "opportunity_failure_stop_60m_hit": False,
+        "opportunity_failure_stop_60m_time": None,
+        "opportunity_bars_seen_60m": 0,
+    }
+    for threshold in thresholds:
+        key = str(int(threshold))
+        result[f"opportunity_up_{key}_60m_hit"] = False
+        result[f"opportunity_up_{key}_60m_time"] = None
+        result[f"opportunity_up_{key}_60m_before_stop"] = None
+
+    if idx < 0 or idx >= len(rows) or not entry_price:
+        return result
+
+    start_minute = rows[idx][0]
+    end_minute = start_minute + minutes
+    entry_price = float(entry_price)
+    mfe = 0.0
+    mae = 0.0
+    peak_minute = None
+    stop_minute = None
+    threshold_minutes = {float(value): None for value in thresholds}
+    last_minute = None
+
+    for minute, bar in rows[idx + 1 :]:
+        if minute > end_minute:
+            break
+        high = _num(bar.get("h"))
+        low = _num(bar.get("l"))
+        if high is None or low is None:
+            continue
+        last_minute = minute
+        result["opportunity_bars_seen_60m"] += 1
+
+        high_ret = (high / entry_price - 1.0) * 100.0
+        low_ret = (low / entry_price - 1.0) * 100.0
+        if high_ret > mfe:
+            mfe = high_ret
+            peak_minute = minute
+        if low_ret < mae:
+            mae = low_ret
+
+        if stop_minute is None and low_ret <= -float(failure_stop_pct):
+            stop_minute = minute
+
+        for threshold in thresholds:
+            threshold = float(threshold)
+            if (
+                threshold_minutes[threshold] is None
+                and high_ret >= threshold
+            ):
+                threshold_minutes[threshold] = minute
+
+    if result["opportunity_bars_seen_60m"] == 0:
+        return result
+
+    result["opportunity_horizon_60m_complete"] = bool(
+        last_minute is not None and last_minute >= end_minute
+    )
+    result["opportunity_mfe_60m_pct"] = round(mfe, 4)
+    result["opportunity_mae_60m_pct"] = round(mae, 4)
+    if peak_minute is not None:
+        result["opportunity_time_to_peak_60m"] = round(
+            max(0.0, peak_minute - start_minute),
+            2,
+        )
+    if stop_minute is not None:
+        result["opportunity_failure_stop_60m_hit"] = True
+        result["opportunity_failure_stop_60m_time"] = round(
+            max(0.0, stop_minute - start_minute),
+            2,
+        )
+
+    for threshold in thresholds:
+        threshold = float(threshold)
+        key = str(int(threshold))
+        hit_minute = threshold_minutes[threshold]
+        if hit_minute is None:
+            continue
+        result[f"opportunity_up_{key}_60m_hit"] = True
+        result[f"opportunity_up_{key}_60m_time"] = round(
+            max(0.0, hit_minute - start_minute),
+            2,
+        )
+        if stop_minute is None:
+            result[f"opportunity_up_{key}_60m_before_stop"] = True
+        else:
+            result[f"opportunity_up_{key}_60m_before_stop"] = (
+                hit_minute < stop_minute
+            )
+
+    return result
+
+
+def _benchmark_regimes(benchmark_bars, replay_dates):
+    """Causal regime map using only completed benchmark days before replay_day."""
+    regimes = {}
+    for replay_day in replay_dates:
+        histories = {}
+        for symbol in BENCHMARKS:
+            histories[symbol] = [
+                bar
+                for bar in (benchmark_bars.get(symbol) or [])
+                if (
+                    _bar_date_et(bar) is not None
+                    and _bar_date_et(bar) < replay_day
+                )
+            ]
+        regimes[replay_day] = market_regime_features(histories)
+    return regimes
+
+
 def _action_outcome_stats(rows):
     rows = list(rows or [])
     decisive = [
@@ -1026,6 +1160,7 @@ def build_replay_observations(
     replay_dates,
     daily_universes,
     daily_metrics,
+    daily_regimes,
     *,
     candidates_per_scan,
     scan_step_minutes,
@@ -1110,11 +1245,18 @@ def build_replay_observations(
                     minute: i
                     for i, (minute, _bar) in enumerate(symbol_rows)
                 }
+                replay_idx = symbol_index.get(checkpoint_minute - 5, -1)
                 quality = _future_trade_quality(
                     symbol_rows,
-                    symbol_index.get(checkpoint_minute - 5, -1),
+                    replay_idx,
                     entry_price,
                 )
+                opportunity_path = _future_opportunity_path(
+                    symbol_rows,
+                    replay_idx,
+                    entry_price,
+                )
+                regime = daily_regimes.get(replay_day) or {}
 
                 action_row = dict(snap)
                 action_row["news_bonus"] = 0.0
@@ -1157,6 +1299,13 @@ def build_replay_observations(
                 observations.append(
                     {
                         **quality,
+                        **opportunity_path,
+                        "regime_label": regime.get("regime_label"),
+                        "regime_score": regime.get("regime_score"),
+                        "spy_return_5d_pct": regime.get("spy_return_5d_pct"),
+                        "spy_return_20d_pct": regime.get("spy_return_20d_pct"),
+                        "spy_realized_vol_20d_pct": regime.get("spy_realized_vol_20d_pct"),
+                        "iwm_minus_spy_20d_pct": regime.get("iwm_minus_spy_20d_pct"),
                         "observation_id": observation_id,
                         "observation_source": "historical_replay",
                         "replay_version": REPLAY_VERSION,
@@ -1344,6 +1493,14 @@ def main():
         daily_end,
     )
     daily_index = _daily_index(daily_bars)
+
+    benchmark_start = now_et - timedelta(days=420)
+    benchmark_bars = _fetch_tradier_daily_history(
+        list(BENCHMARKS),
+        token,
+        benchmark_start,
+        daily_end,
+    )
     replay_dates = replay_trading_dates(
         daily_index,
         trading_days,
@@ -1351,6 +1508,8 @@ def main():
     )
     if len(replay_dates) < 3:
         raise RuntimeError("Insufficient historical trading dates for replay.")
+
+    daily_regimes = _benchmark_regimes(benchmark_bars, replay_dates)
 
     daily_universes = {}
     daily_metrics = {}
@@ -1427,6 +1586,7 @@ def main():
         replay_dates,
         daily_universes,
         daily_metrics,
+        daily_regimes,
         candidates_per_scan=candidates_per_scan,
         scan_step_minutes=scan_step,
     )
