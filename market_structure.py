@@ -1118,6 +1118,38 @@ def bounce_sequence_context(
             )
             current_leg_move_pct = current_pullback_pct
 
+    # A rebound can be visually and economically meaningful before the later
+    # reversal bars needed to confirm a formal LOW->HIGH swing exist. Preserve
+    # that as *developing* evidence without incrementing completed_bounces.
+    # This keeps causal/ML confirmation strict while preventing the UI from
+    # saying "not reached" during an obvious rebound already underway.
+    developing_bounce = False
+    developing_bounce_pct = None
+    developing_recovery_fraction = None
+    developing_dip_low = None
+    if post_peak_rows:
+        dip_rel = min(range(len(post_peak_rows)), key=lambda j: post_peak_rows[j]["l"])
+        dip_idx = prior_peak_idx + 1 + dip_rel
+        dip_low = post_peak_rows[dip_rel]["l"]
+        after_dip = rows[dip_idx:]
+        if after_dip and dip_low > 0 and prior_peak_price > dip_low:
+            rebound_high = max(row["h"] for row in after_dip)
+            developing_bounce_pct = _pct_up(dip_low, rebound_high)
+            pullback_range = prior_peak_price - dip_low
+            developing_recovery_fraction = (
+                (rebound_high - dip_low) / pullback_range
+                if pullback_range > 0
+                else None
+            )
+            structure_threshold = _num(structure.get("swing_threshold_pct")) or 1.0
+            min_developing_rebound = max(0.75, structure_threshold * 0.70)
+            developing_bounce = bool(
+                dip_idx < len(rows) - 1
+                and developing_bounce_pct >= min_developing_rebound
+                and (developing_recovery_fraction or 0.0) >= 0.25
+            )
+            developing_dip_low = dip_low
+
     bounce1 = _num(bounces[0].get("bounce_pct")) if len(bounces) >= 1 else None
     bounce2 = _num(bounces[1].get("bounce_pct")) if len(bounces) >= 2 else None
     bounce3 = _num(bounces[2].get("bounce_pct")) if len(bounces) >= 3 else None
@@ -1204,6 +1236,22 @@ def bounce_sequence_context(
         "completed_bounces": len(bounces),
         "next_bounce_number": len(bounces) + 1,
         "current_leg": current_leg,
+        "developing_bounce": bool(developing_bounce),
+        "developing_bounce_pct": (
+            round(developing_bounce_pct, 2)
+            if developing_bounce_pct is not None
+            else None
+        ),
+        "developing_bounce_recovery_fraction": (
+            round(developing_recovery_fraction, 3)
+            if developing_recovery_fraction is not None
+            else None
+        ),
+        "developing_bounce_dip_low": (
+            round(developing_dip_low, 4)
+            if developing_dip_low is not None
+            else None
+        ),
         "current_leg_move_pct": (
             round(current_leg_move_pct, 2)
             if current_leg_move_pct is not None
