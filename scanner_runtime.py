@@ -45,6 +45,9 @@ def _build_env(
     alpaca_live_feed="iex",
     tradier_token="",
     discovery_universe_size="1200",
+    learning_github_token="",
+    learning_repository="",
+    learning_branch="learning-journal",
 ):
     alpaca_key = str(alpaca_key or "").strip()
     alpaca_secret = str(alpaca_secret or "").strip()
@@ -70,6 +73,21 @@ def _build_env(
         env["TRADIER_ACCESS_TOKEN"] = tradier_token
         env["SCANNER_TRADIER_DISCOVERY"] = "1"
         env["SCANNER_DISCOVERY_UNIVERSE_SIZE"] = str(discovery_universe_size)
+
+    learning_github_token = str(learning_github_token or "").strip()
+    learning_repository = str(learning_repository or "").strip()
+    learning_branch = str(learning_branch or "learning-journal").strip() or "learning-journal"
+    if learning_github_token:
+        env["SCANNER_LIVE_JOURNAL_ENABLED"] = "1"
+        env["SCANNER_LEARNING_GITHUB_TOKEN"] = learning_github_token
+        env["SCANNER_LEARNING_GITHUB_REPO"] = (
+            learning_repository or "derektshaffer/STOCK-SCANNER"
+        )
+        env["SCANNER_LEARNING_GITHUB_BRANCH"] = learning_branch
+    else:
+        env.pop("SCANNER_LIVE_JOURNAL_ENABLED", None)
+        env.pop("SCANNER_LEARNING_GITHUB_TOKEN", None)
+
     return env
 
 
@@ -267,6 +285,9 @@ def start_scanner_process(
     alpaca_live_feed="iex",
     tradier_token="",
     discovery_universe_size="1200",
+    learning_github_token="",
+    learning_repository="",
+    learning_branch="learning-journal",
     timeout_seconds=180,
     command=None,
     require_scan_file=True,
@@ -278,6 +299,9 @@ def start_scanner_process(
         alpaca_live_feed=alpaca_live_feed,
         tradier_token=tradier_token,
         discovery_universe_size=discovery_universe_size,
+        learning_github_token=learning_github_token,
+        learning_repository=learning_repository,
+        learning_branch=learning_branch,
     )
     if env is None:
         return _provider_error()
@@ -494,6 +518,9 @@ def run_scanner_process(
     alpaca_live_feed="iex",
     tradier_token="",
     discovery_universe_size="1200",
+    learning_github_token="",
+    learning_repository="",
+    learning_branch="learning-journal",
     timeout_seconds=180,
 ):
     """Blocking wrapper retained for manual and standalone Scanner use."""
@@ -503,6 +530,9 @@ def run_scanner_process(
         alpaca_live_feed=alpaca_live_feed,
         tradier_token=tradier_token,
         discovery_universe_size=discovery_universe_size,
+        learning_github_token=learning_github_token,
+        learning_repository=learning_repository,
+        learning_branch=learning_branch,
     )
     if env is None:
         return _provider_error()
