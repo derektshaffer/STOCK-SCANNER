@@ -954,15 +954,57 @@ def bounce_sequence_context(
     peak_idx = impulse["peak_idx"]
     impulse_high = impulse["peak_price"]
     impulse_low = impulse["low_price"]
+    impulse_low_idx = int(impulse["low_idx"])
     run_size = impulse_high - impulse_low
+
+    # A bounce is a pullback -> rebound cycle *inside* a momentum run, not only
+    # something that happens after the final/highest point of the dominant
+    # impulse. The old detector started at peak_idx, so a stock could visibly
+    # pull back from 8.90 to 8.50 and rebound to 9.10 while the whole 7->9.10
+    # advance was still classified as one dominant impulse; Bounce #1 stayed
+    # "not reached". Start the bounce sequence at the first meaningful,
+    # causally-confirmed HIGH after the impulse low, then consume LOW->HIGH
+    # cycles from there. Keep the dominant impulse peak unchanged for the
+    # impulse model and ML feature compatibility.
+    all_swings = structure.get("confirmed_swings") or []
+    min_anchor_rise_pct = max(
+        2.0,
+        float(structure.get("swing_threshold_pct") or 1.0) * 1.5,
+        min(8.0, float(impulse.get("move_pct") or 0.0) * 0.20),
+    )
+    anchor_high = None
+    for swing in all_swings:
+        idx = int(swing.get("index") or -1)
+        price_value = _num(swing.get("price"))
+        if (
+            swing.get("kind") == "HIGH"
+            and idx > impulse_low_idx
+            and idx <= peak_idx
+            and price_value is not None
+            and _pct_up(impulse_low, price_value) >= min_anchor_rise_pct
+        ):
+            anchor_high = swing
+            break
+
+    sequence_anchor_idx = (
+        int(anchor_high.get("index"))
+        if anchor_high is not None
+        else peak_idx
+    )
+    sequence_anchor_price = (
+        _num(anchor_high.get("price"))
+        if anchor_high is not None
+        else impulse_high
+    ) or impulse_high
+
     swings = [
-        swing for swing in (structure.get("confirmed_swings") or [])
-        if int(swing.get("index") or -1) > peak_idx
+        swing for swing in all_swings
+        if int(swing.get("index") or -1) > sequence_anchor_idx
     ]
 
     bounces = []
-    prior_peak_idx = peak_idx
-    prior_peak_price = impulse_high
+    prior_peak_idx = sequence_anchor_idx
+    prior_peak_price = sequence_anchor_price
     i = 0
     while i < len(swings) - 1:
         low_swing = swings[i]
@@ -1231,6 +1273,10 @@ def bounce_sequence_context(
         "impulse_peak_index": int(peak_idx),
         "impulse_peak_time": rows[peak_idx].get("t"),
         "impulse_move_pct": round(impulse["move_pct"], 2),
+        "sequence_anchor_peak": round(sequence_anchor_price, 4),
+        "sequence_anchor_peak_index": int(sequence_anchor_idx),
+        "sequence_anchor_peak_time": rows[sequence_anchor_idx].get("t"),
+        "sequence_anchor_min_rise_pct": round(min_anchor_rise_pct, 2),
         "reference_peak": round(prior_peak_price, 4),
         "reference_peak_index": int(prior_peak_idx),
         "completed_bounces": len(bounces),
