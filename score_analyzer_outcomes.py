@@ -29,6 +29,7 @@ OUT_DIR = Path(os.environ.get("ANALYZER_OUTCOME_DIR", "analyzer_outcomes"))
 ANALYZER_FEATURE_VERSION = "analyzer-features-v6-sequence-regimes"
 DECISION_SCORE_VERSION = "decision-v2.6-sequence-regimes"
 TIMEFRAME_SCORE_VERSION = "timeframe-fit-v1"
+OUTCOME_MAX_BAR_DELAY_SECONDS = 180
 
 
 def _headers():
@@ -148,7 +149,11 @@ def _bar_dt(bar):
     return _parse_dt(bar.get("t"))
 
 
-def _price_at_or_after(bars, target, tolerance_minutes=5):
+def _price_at_or_after(
+    bars,
+    target,
+    tolerance_seconds=OUTCOME_MAX_BAR_DELAY_SECONDS,
+):
     best = None
     best_delta = None
     for bar in bars:
@@ -160,7 +165,7 @@ def _price_at_or_after(bars, target, tolerance_minutes=5):
         if best_delta is None or delta < best_delta:
             best = close
             best_delta = delta
-    if best_delta is None or best_delta > tolerance_minutes * 60:
+    if best_delta is None or best_delta > tolerance_seconds:
         return None
     return best
 
