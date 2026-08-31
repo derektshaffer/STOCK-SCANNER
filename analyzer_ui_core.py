@@ -85,7 +85,8 @@ def _render_visual_snapshot(label, spec_factory, caption=None, key=None):
         st.caption(
             "Chart controls: scroll/pinch = zoom date range · "
             "⌥ Option/Alt + scroll/pinch = expand/compress price scale · "
-            "drag = pan · double-click = reset."
+            "drag = pan dates · ⌥ Option/Alt + drag = pan price · "
+            "double-click = reset."
         )
         if caption:
             st.caption(caption)
@@ -1693,7 +1694,8 @@ with st.expander("Support & resistance levels", expanded=False):
         st.caption(
             "Chart controls: scroll/pinch = zoom date range · "
             "⌥ Option/Alt + scroll/pinch = expand/compress price scale · "
-            "drag = pan · double-click = reset."
+            "drag = pan dates · ⌥ Option/Alt + drag = pan price · "
+            "double-click = reset."
         )
         st.caption("Candlesticks show recent price action. Horizontal levels are the same nearby support/resistance levels listed below.")
     scol,rcol=st.columns(2)
