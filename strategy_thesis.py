@@ -12,6 +12,7 @@ production state-machine / UI-consistency layer, not a predictive feature.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import tempfile
@@ -58,8 +59,21 @@ def _parse_dt(value):
         return None
 
 
+def _state_path(path=None):
+    if path is not None:
+        return Path(path)
+    namespace = (
+        os.environ.get("ANALYZER_THESIS_NAMESPACE", "").strip()
+        or "standalone"
+    )
+    digest = hashlib.sha256(namespace.encode("utf-8")).hexdigest()[:16]
+    return THESIS_PATH.with_name(
+        f"{THESIS_PATH.stem}-{digest}{THESIS_PATH.suffix}"
+    )
+
+
 def _load(path=None):
-    target = Path(path or THESIS_PATH)
+    target = _state_path(path)
     try:
         payload = json.loads(target.read_text(encoding="utf-8"))
         return payload if isinstance(payload, dict) else {}
@@ -68,7 +82,7 @@ def _load(path=None):
 
 
 def _save(payload, path=None):
-    target = Path(path or THESIS_PATH)
+    target = _state_path(path)
     try:
         target.parent.mkdir(parents=True, exist_ok=True)
         tmp = target.with_suffix(target.suffix + ".tmp")
