@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import base64
 import csv
 import json
+import urllib.parse
 from bisect import bisect_left
 from collections import Counter
 from datetime import datetime, time, timedelta
@@ -70,6 +72,98 @@ def load_active_session_scans(target_date, artifacts):
 
     all_scans.sort(key=lambda row: row.get("scan_time_et") or "")
     return all_scans
+
+
+def load_live_journal_scans(target_date):
+    """Load high-frequency app observations from the isolated learning branch."""
+    remote_path = f"scanner_live_journal/live_{target_date.isoformat()}.json"
+    encoded = "/".join(
+        urllib.parse.quote(part, safe="") for part in remote_path.split("/")
+    )
+    url = (
+        f"{so.GITHUB_API}/repos/{so.REPOSITORY}/contents/{encoded}?"
+        + urllib.parse.urlencode({"ref": "learning-journal"})
+    )
+    try:
+        payload = so.request_json(url, so.github_headers())
+    except Exception as exc:
+        print(f"WARN live learning journal unavailable: {exc}")
+        return []
+
+    raw = payload.get("content")
+    if payload.get("encoding") != "base64" or not raw:
+        return []
+    try:
+        rows = json.loads(
+            base64.b64decode("".join(str(raw).split())).decode("utf-8")
+        )
+    except Exception as exc:
+        print(f"WARN live learning journal decode failed: {exc}")
+        return []
+    if not isinstance(rows, list):
+        return []
+
+    scans = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        observed_at = (
+            row.get("best_observed_at_et")
+            or row.get("last_observed_at_et")
+            or row.get("first_observed_at_et")
+        )
+        scan_time = so.parse_iso(observed_at)
+        if scan_time is None:
+            continue
+        scan_time = scan_time.astimezone(so.ET)
+        if scan_time.date() != target_date:
+            continue
+        phase = _session_phase({}, scan_time)
+        if phase not in {"premarket", "regular", "afterhours"}:
+            continue
+
+        quote_source = str(row.get("live_quote_source") or "").lower()
+        intraday_source = str(row.get("live_intraday_source") or "").lower()
+        sources = quote_source + " " + intraday_source
+        if "tradier" in sources:
+            provider = "tradier"
+            feed = "consolidated"
+        elif "sip" in sources:
+            provider = "alpaca"
+            feed = "sip"
+        else:
+            provider = "unknown"
+            feed = "unknown"
+
+        candidate = dict(row)
+        candidate["rank"] = (
+            row.get("rank_best")
+            if row.get("rank_best") is not None
+            else row.get("rank")
+        )
+        scans.append(
+            {
+                "scan_id": "live-journal:" + str(row.get("bucket_key") or observed_at),
+                "scan_time_et": scan_time.isoformat(),
+                "session_phase": phase,
+                "mode": (
+                    "regular_market_session"
+                    if phase == "regular"
+                    else "extended_market_session"
+                ),
+                "feature_version": row.get("feature_version"),
+                "behavior_feature_version": row.get("behavior_feature_version"),
+                "observation_source": "live_app_journal",
+                "data": {
+                    "live_provider": provider,
+                    "live_feed": feed,
+                },
+                "candidates": [candidate],
+            }
+        )
+
+    scans.sort(key=lambda item: item.get("scan_time_et") or "")
+    return scans
 
 
 def opportunity_path_metrics(
@@ -213,14 +307,31 @@ def build_research_observations(scans, target_date, bars_index):
                 "scan_time_et": scan_time.isoformat(),
                 "session_phase": phase,
                 "mode": scan.get("mode"),
-                "feature_version": scan.get("feature_version"),
+                "observation_source": (
+                    scan.get("observation_source")
+                    or "durable_scan_artifact"
+                ),
+                "sample_role": candidate.get("sample_role"),
+                "journal_first_observed_at_et": candidate.get("first_observed_at_et"),
+                "journal_last_observed_at_et": candidate.get("last_observed_at_et"),
+                "journal_actions_seen": candidate.get("actions_seen"),
+                "feature_version": (
+                    scan.get("feature_version")
+                    or candidate.get("feature_version")
+                ),
                 "behavior_feature_version": (
                     candidate.get("behavior_feature_version")
                     or scan.get("behavior_feature_version")
                 ),
                 "market_provider": scan_data.get("live_provider"),
                 "live_feed": scan_data.get("live_feed"),
-                "rank": candidate.get("rank"),
+                "live_quote_source": candidate.get("live_quote_source"),
+                "live_intraday_source": candidate.get("live_intraday_source"),
+                "rank": (
+                    candidate.get("rank_best")
+                    if candidate.get("rank_best") is not None
+                    else candidate.get("rank")
+                ),
                 "symbol": symbol,
                 "entry_price": float(entry_price),
                 "score": candidate.get("score"),
@@ -426,7 +537,16 @@ def main():
     now_et = datetime.now(so.ET)
     target_date = so.resolve_target_date(now_et)
     artifacts = so.list_scan_artifacts(target_date)
-    scans = load_active_session_scans(target_date, artifacts)
+    artifact_scans = load_active_session_scans(target_date, artifacts)
+    journal_scans = load_live_journal_scans(target_date)
+    scans = sorted(
+        artifact_scans + journal_scans,
+        key=lambda row: row.get("scan_time_et") or "",
+    )
+    print(
+        "Shadow input snapshots | "
+        f"artifact={len(artifact_scans)} | live_journal={len(journal_scans)}"
+    )
 
     if not scans:
         print("No active-session Scanner artifacts were found.")
