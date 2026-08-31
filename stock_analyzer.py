@@ -502,7 +502,7 @@ def _tradier_regular_session_bars(symbol, now):
     return _filter_session_bars(raw, now)
 
 
-def support_resistance_touch_bars(symbol, now, live_session_bars=None):
+def support_resistance_touch_bars(symbol, now, live_session_bars=None, daily_bars=None):
     """Return regular-session intraday bars used to timestamp level tests.
 
     Recent bars use 1-minute data for precise timestamps. Older bars use 5-minute
@@ -511,23 +511,20 @@ def support_resistance_touch_bars(symbol, now, live_session_bars=None):
     Delayed consolidated SIP is preferred when available, and today's live feed
     fills the most recent delayed-SIP gap.
     """
-    recent_start = now - timedelta(days=10)
-    older_start = now - timedelta(days=70)
-
+    # Only recent intraday data needs minute-level precision. For older
+    # support/resistance recency buckets, completed daily bars are sufficient
+    # and avoid downloading ~70 days of 5-minute candles on every Analyzer load.
+    recent_start = now - timedelta(days=7)
     recent, recent_src = try_sip_delayed_bars(
-        symbol, "1Min", recent_start, now, 10000
-    )
-    older, older_src = try_sip_delayed_bars(
-        symbol, "5Min", older_start, recent_start, 10000
+        symbol, "5Min", recent_start, now, 10000
     )
     live = list(live_session_bars or [])
+    older_daily = list(daily_bars or [])
 
     merged = {}
-    # Older 5-minute bars are inserted first. More precise 1-minute/live bars
-    # replace them when timestamps overlap.
     for precision, source, collection in (
-        (5, older_src, older),
-        (1, recent_src, recent),
+        (1440, "consolidated daily", older_daily),
+        (5, recent_src, recent),
         (1, LIVE_MARKET_LABEL, live),
     ):
         for b in collection:
@@ -617,19 +614,27 @@ def annotate_level_touches(levels, intraday_bars, now, tolerance_pct=0.75):
             level["touch_source"] = None
     return levels
 
-def avg_daily_volume(symbol, now):
-    bs,src=try_sip_delayed_bars(symbol,"1Day",now-timedelta(days=50),now,50)
+def avg_daily_volume(symbol, now, daily_bars=None, source=None):
+    if daily_bars is None:
+        bs,src=try_sip_delayed_bars(symbol,"1Day",now-timedelta(days=50),now,50)
+    else:
+        bs=list(daily_bars or [])
+        src=source or "shared daily history"
     today=now.astimezone(ET).date().isoformat()
     vals=[fnum(b.get("v")) for b in bs if str(b.get("t",""))[:10]!=today and fnum(b.get("v"))]
     vals=vals[-20:]
     return (sum(vals)/len(vals) if vals else None),src
 
-def historical_spikes(symbol, now, current_day_pct, threshold=None):
+def historical_spikes(symbol, now, current_day_pct, threshold=None, daily_bars=None, source=None):
     # Daily analogs: compare the current move with the same ticker's prior
     # large up days. In addition to close-to-close outcomes, record maximum
     # favorable/adverse excursion from the spike-day close. Those excursion
     # stats are useful for realistic target/stop context in the trade planner.
-    bs,src=try_sip_delayed_bars(symbol,"1Day",now-timedelta(days=450),now,450)
+    if daily_bars is None:
+        bs,src=try_sip_delayed_bars(symbol,"1Day",now-timedelta(days=450),now,450)
+    else:
+        bs=list(daily_bars or [])
+        src=source or "shared daily history"
     if len(bs)<8:return {"status":"insufficient_history","feed":src,"samples":[]}
     rows=[]
     closes=[fnum(b.get("c")) for b in bs]
@@ -1767,7 +1772,15 @@ def analyze(symbol):
             return pct(price,c) if c else None
         return None
 
-    avgvol,volsrc=avg_daily_volume(symbol,now)
+    # Fetch one consolidated daily history and reuse it for average volume,
+    # ATR/support-resistance, same-ticker daily analogs and slower timeframe
+    # context. The previous path made several overlapping daily API requests.
+    daily_full,daysrc=try_sip_delayed_bars(
+        symbol,"1Day",now-timedelta(days=600),now,420
+    )
+    avgvol,volsrc=avg_daily_volume(
+        symbol,now,daily_bars=daily_full,source=daysrc
+    )
     session_phase=market_session_phase(now_et)
     session_volume=sum((fnum(x.get("v")) or 0) for x in intraday)
     if live_provider=="tradier":
@@ -1799,10 +1812,12 @@ def analyze(symbol):
     trade_age=_market_age_seconds(trade_ts,now)
     quote_age=_market_age_seconds(quote_ts,now)
 
-    daily,daysrc=try_sip_delayed_bars(symbol,"1Day",now-timedelta(days=180),now,180)
+    daily=list(daily_full or [])
     supports,resist=pivot_levels(daily,price)
     try:
-        touch_bars=support_resistance_touch_bars(symbol,now,intraday)
+        touch_bars=support_resistance_touch_bars(
+            symbol,now,intraday,daily_bars=daily
+        )
         supports=annotate_level_touches(supports,touch_bars,now)
         resist=annotate_level_touches(resist,touch_bars,now)
     except Exception:
@@ -1812,7 +1827,9 @@ def analyze(symbol):
     supports=score_level_quality(supports,vwap,now)
     resist=score_level_quality(resist,vwap,now)
     atr14,atr14_pct=atr_from_daily(daily,now,14)
-    hist=historical_spikes(symbol,now,day_pct)
+    hist=historical_spikes(
+        symbol,now,day_pct,daily_bars=daily,source=daysrc
+    )
     arts=[]
     try: arts=catalyst_summary(news(symbol,now),now)
     except Exception: pass
@@ -1884,6 +1901,7 @@ def analyze(symbol):
         "bounce_sequence":sequence,
         "stair_step":stair,
         "run_exhaustion":exhaustion,
+        "daily_context_bars":_chart_bars(daily,320),
         "chart_data":{
             "intraday":_chart_bars(intraday,420),
             "daily":_chart_bars(
