@@ -27,8 +27,8 @@ The app must satisfy these invariants before the audit is considered green:
 
 - **Final-entry contradiction:** Analyzer v2 could demote a raw ENTRY AVAILABLE plan to WAIT because of stale/missing data or weak evidence while leaving the older `entry_state=ENTRY AVAILABLE` and “ENTRY AVAILABLE NOW” instruction intact. This produced contradictory UI. **Fixed and covered by final decision-contract regression.**
 - **Historical-policy contradiction:** `historical_integration.py` currently says same-ticker historical matches affect the actual setup score, rebuild the trade plan, shift pullback geometry, adjust plan confidence, and can demote breakout entries. Later Analyzer v2 code explicitly describes historical analogs as research-only. These two policies conflicted. **Same-ticker historical production influence has now been removed; continuing the sweep for any remaining historical leakage.**
-- **Plan continuity is not canonical:** The current trade plan is recomputed from the latest snapshot. Breakout/pullback family and geometry can still change between refreshes without a durable thesis state. **Must add a canonical continuity layer.**
-- **Layered plan mutation:** `stock_analyzer` builds the plan; historical integration rebuilds/mutates it; ML mutates confidence; Analyzer v2 can mutate status/action afterward. This is the architectural root of contradictory fields. **Need one final normalization/contract step.**
+- **Plan continuity was not canonical:** The current trade plan was recomputed from the latest snapshot. **Intraday continuity is now implemented with a persistent session thesis, anchored geometry, explicit invalidation/completion/expiry events, three-observation replacement confirmation, and transition/history logging. Swing/longer-term continuity remains open.**
+- **Layered plan mutation:** `stock_analyzer` builds the plan and enrichment layers can refine it. **A final decision contract now normalizes status/entry language and geometry after all layers; historical analog mutation has been removed. Continued audit is checking for remaining pre-contract semantic drift.**
 
 ### HIGH / MEDIUM
 
@@ -48,10 +48,10 @@ The app must satisfy these invariants before the audit is considered green:
 - [x] Add cross-field consistency tests.
 
 ### Phase 2 — Thesis continuity
-- [ ] Intraday persistent thesis: active plan, trigger, entry zone, stop, target, confidence history, explicit change reason.
+- [x] Intraday persistent thesis: active plan, trigger, anchored entry/stop/targets, confidence/readiness history, transition log, explicit change reason.
 - [ ] Swing persistent thesis over trading days.
 - [ ] Longer-term thesis over weeks/months.
-- [ ] Require invalidation/completion/persistent replacement evidence before a family switch.
+- [x] Require invalidation/completion/expiry or three consecutive replacement proposals before an intraday family switch.
 
 ### Phase 3 — Pattern logic
 - [x] Causal confirmed pivots.
@@ -75,7 +75,7 @@ The app must satisfy these invariants before the audit is considered green:
 ### Phase 6 — Data/provider integrity
 - [ ] Freshness/fallback matrix: Tradier, SIP, IEX, extended hours, stale quote, missing momentum.
 - [ ] No mixed-provider timestamp or volume denominator errors.
-- [ ] Streaming session failures cannot create fake freshness.
+- [~] Streaming session failures cannot create fake freshness. Tradier code-1007 / too-many-sessions now enters a 120-second session-limit cooldown instead of a reconnect loop; freshness/fallback matrix still in progress.
 
 ### Phase 7 — Outcome learning
 - [ ] Ensure logged prediction contains the exact displayed plan and final gate state.
@@ -84,7 +84,7 @@ The app must satisfy these invariants before the audit is considered green:
 - [ ] Verify repeated intraday samples are de-correlated for validation.
 
 ### Phase 8 — Performance / state safety
-- [ ] Cached results visibly retain age and cannot be promoted as fresh.
+- [~] Cached results retain their original market-data age and final live-data gate blocks stale entries; explicit cache-age UI audit still in progress.
 - [ ] Background work cannot block Scanner cadence.
 - [ ] No duplicate deep-history, SEC, float, or stream work on normal Analyzer launch.
 - [ ] Timeout/cancel paths leave no stale locks or stale plan state.
@@ -110,3 +110,15 @@ The audit now includes explicit tests built from the kind of visual mistake that
 - impossible long geometry (stop above entry or Target 1 below entry) is rejected automatically.
 
 These tests passed in the Analyzer validation workflow on the commit that introduced them.
+
+
+## Intraday thesis continuity now implemented
+
+- One accepted intraday thesis is held per ticker, trading session, and browser-session namespace.
+- Entry zone, stop, targets, and structural breakout reference are anchored rather than silently recalculated underneath the user.
+- A different plan family is held as a proposal until it persists across three analyses.
+- Immediate replanning is allowed for explicit invalidation, Target 1 completion, failed breakout, expiry, or final-contract geometry failure.
+- Stop/target touches are replayed from bars between Analyzer refreshes so a transient event is not forgotten just because the current quote moved back.
+- Same-bar stop/target ambiguity is scored stop-first conservatively.
+- Each final displayed decision records price, plan family, revision, action, entry state, confidence, entry readiness, evidence strength, and potential score.
+- Thesis state is namespaced per browser session so one user's/ticker-session state cannot bleed into another session.
