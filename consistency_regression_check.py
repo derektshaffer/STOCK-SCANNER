@@ -113,7 +113,7 @@ def test_analyzer_prefers_tradier():
     result = sa.analyze("TEST")
     assert result["market_provider"] == "tradier", result
     assert result["live_feed"] == "TRADIER CONSOLIDATED", result
-    assert result["feature_version"] == "analyzer-features-v9-shared-break-structure", result
+    assert result["feature_version"] == "analyzer-features-v10-confirmed-multisession", result
     assert abs(result["price"] - 10.10) < 1e-9, result
     assert result["bid"] == 10.09 and result["ask"] == 10.11, result
     assert str(result["volume_source"]).startswith("TRADIER"), result
@@ -1763,8 +1763,8 @@ def test_distinct_bounce_semantics_are_version_isolated_for_peer_ml():
     import peer_ml_predictor as peer
     import scanner_behavior as behavior
 
-    assert behavior.BEHAVIOR_FEATURE_VERSION == "scanner-behavior-v6-shared-break-structure"
-    assert peer.PEER_MODEL_VERSION == "analyzer-peer-v8-shared-break-structure"
+    assert behavior.BEHAVIOR_FEATURE_VERSION == "scanner-behavior-v7-confirmed-multisession"
+    assert peer.PEER_MODEL_VERSION == "analyzer-peer-v9-confirmed-multisession"
 
     rows=[
         {"symbol":"OLD","behavior_feature_version":"scanner-behavior-v2-completed-bars"},
