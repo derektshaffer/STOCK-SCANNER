@@ -1177,6 +1177,7 @@ def _toggle_analyzer_launch(symbol):
     st.session_state.pop("_analyzer_cancel_notice",None)
     st.session_state["_analyzer_bootstrap_launch_state"]=launch
     st.session_state["_analyzer_launch_state"]=None
+    st.session_state.pop("_analyzer_background_request_symbol",None)
     st.session_state["ticker"]=symbol
     st.session_state["ticker_search_request"]=symbol
     st.session_state["_analyzer_loading"]=True
