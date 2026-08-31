@@ -2,6 +2,7 @@ from datetime import datetime, timedelta, timezone
 
 from ml_predictor import predict_ml
 from peer_ml_predictor import predict_peer_ml
+from analyzer_history_cache import load_deep_5m_history, filter_history_rows
 
 
 def _num(value):
@@ -104,34 +105,18 @@ def _expanded_history_fetch(sa, symbol, timeframe, start, end, limit=10000):
         return sa.try_sip_delayed_bars(symbol, timeframe, start, end, limit)
 
     expanded_start = min(start, end - timedelta(days=365))
-    cursor = expanded_start
-    step = timedelta(days=40)
-    merged = {}
-    sources = []
-
-    while cursor < end:
-        chunk_end = min(end, cursor + step)
-        try:
-            chunk, source = sa.try_sip_delayed_bars(
-                symbol,
-                timeframe,
-                cursor,
-                chunk_end,
-                10000,
-            )
-        except Exception:
-            chunk, source = [], "unavailable"
-
-        if source and source not in sources:
-            sources.append(source)
-        for bar in chunk or []:
-            ts = str(bar.get("t") or "")
-            if ts:
-                merged[ts] = bar
-        cursor = chunk_end
-
-    rows = [merged[k] for k in sorted(merged)]
-    return rows, " + ".join(sources) if sources else "unavailable"
+    # Standardize on the same 540-day cache used by historical pattern
+    # matching so ML does not redownload an overlapping year of 5-minute bars.
+    rows, source = load_deep_5m_history(
+        symbol,
+        end=end,
+        days=540,
+        step_days=45,
+        fetch_bars=lambda sym, tf, chunk_start, chunk_end, chunk_limit: sa.try_sip_delayed_bars(
+            sym, tf, chunk_start, chunk_end, chunk_limit
+        ),
+    )
+    return filter_history_rows(rows, expanded_start, end), source
 
 
 def install_ml_analysis(sa):
