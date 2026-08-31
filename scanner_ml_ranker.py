@@ -158,7 +158,10 @@ def _feature_dict(row, scan_time=None):
         "stair_higher_plateau_count": _num(row.get("stair_higher_plateau_count")),
         "stair_structure_score": _num(row.get("stair_structure_score")),
         "stair_reaccelerating": _num(row.get("stair_reaccelerating")),
+        "stair_reacceleration_developing": _num(row.get("stair_reacceleration_developing")),
         "stair_breakdown": _num(row.get("stair_breakdown")),
+        "stair_breakdown_confirmed": _num(row.get("stair_breakdown_confirmed")),
+        "stair_breakdown_developing": _num(row.get("stair_breakdown_developing")),
         "above_vwap": 1.0 if bool(row.get("above_vwap")) else 0.0,
         "log_liquidity": (
             math.log1p(max(0.0, liquidity)) if liquidity is not None else None
