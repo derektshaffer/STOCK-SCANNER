@@ -964,13 +964,13 @@ if not _position_enabled:
                 st.write(f'**Expected bounce:** {pp(rb.get("expected_bounce_pct"))}')
                 st.write(f'**Reward/risk to T1:** {rr(rb.get("risk_reward"))}')
                 if rb.get("historical_bounce_rate_pct") is not None:
-                    st.write(f'**Historical occurrence rate:** {float(rb.get("historical_bounce_rate_pct")):.1f}%')
+                    st.write(f'**Historical occurrence rate (research-only):** {float(rb.get("historical_bounce_rate_pct")):.1f}%')
             st.caption(rb.get("confirmation") or "")
 
         histctx=plan.get("historical") or {}
         cat=plan.get("catalyst") or {}
         liq=plan.get("liquidity") or {}
-        st.markdown("#### Inputs affecting the plan")
+        st.markdown("#### Live plan inputs + research context")
         ddf=pd.DataFrame([{
             "ATR 14":money(plan.get("atr")),
             "ATR %":pp(plan.get("atr_pct")),
@@ -988,7 +988,10 @@ if not _position_enabled:
             "Catalyst bias":cat.get("label") or "NEUTRAL",
         }])
         st.dataframe(ddf,width="stretch",hide_index=True)
-        st.caption(plan.get("method_note") or "")
+        st.caption(
+            "Historical columns in this table are research-only and do not alter "
+            "the live plan. " + str(plan.get("method_note") or "")
+        )
 
 
 _impulse = r.get("impulse_pullback") or {}
@@ -1394,13 +1397,17 @@ with rcol:
 st.caption("Last touch = most recent regular-session test of the level. Recent tests use 1-minute bars; older tests use 5-minute bars as a fallback. Times are Eastern (ET).")
 
 h=r.get("historical_analogs") or {}
-st.markdown('<div class="section">Historical spike analogs</div>',unsafe_allow_html=True)
+st.markdown('<div class="section">Historical spike analogs <span style="font-size:12px;color:#91a7c2">research-only</span></div>',unsafe_allow_html=True)
 if h.get("status")=="ok":
     sm=h.get("summary") or {}; hc=st.columns(4)
     for col,n in zip(hc,(1,2,3,5)):
         x=sm.get(f"d{n}") or {}
         card(col,f"+{n} DAY",f'{x.get("up_pct") if x.get("up_pct") is not None else "—"}% higher',f'Median {pp(x.get("median"))} · n={x.get("n",0)}')
-    st.caption(f'Closest {h.get("sample_count",0)} same-ticker spikes, threshold ≥ {h.get("threshold_pct")}% · source: {h.get("feed")}')
+    st.caption(
+        f'Closest {h.get("sample_count",0)} same-ticker spikes, threshold ≥ '
+        f'{h.get("threshold_pct")}% · source: {h.get("feed")} · research-only; '
+        'these completed-day analogs do not change the live entry/target/confidence.'
+    )
     sdf=pd.DataFrame(h.get("samples") or [])
     if not sdf.empty:
         show=[c for c in ["date","spike_pct","d1","d2","d3","d5"] if c in sdf.columns]
