@@ -2076,11 +2076,6 @@ def install_v2_analysis(sa):
             metrics,
             live_data_integrity=live_data_integrity,
         )
-        commit_intraday_thesis(
-            metrics,
-            thesis_context,
-            now=now,
-        )
         plan = metrics.get("trade_plan") or {}
         thesis_context = plan.get("thesis_continuity") or thesis_context
 
@@ -2111,6 +2106,16 @@ def install_v2_analysis(sa):
             "live_stream_status": stream_status,
             "live_overlay": live_overlay,
         }
+        # Commit after the complete decision object exists so the thesis history
+        # records the exact readiness/evidence/potential values shown to users.
+        commit_intraday_thesis(
+            metrics,
+            thesis_context,
+            now=now,
+        )
+        plan = metrics.get("trade_plan") or {}
+        thesis_context = plan.get("thesis_continuity") or thesis_context
+        metrics["decision_v2"]["thesis_continuity"] = thesis_context
 
         if background_worker:
             # Preserve the live training sample, but keep GitHub sync and
