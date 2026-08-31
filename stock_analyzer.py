@@ -119,6 +119,21 @@ def is_regular(now_et):
     m=now_et.hour*60+now_et.minute
     return now_et.weekday()<5 and 570<=m<960
 
+
+def _chart_bars(rows, limit):
+    """Compact OHLCV payload for UI-only visual snapshots."""
+    out=[]
+    for row in (rows or [])[-int(limit):]:
+        if not isinstance(row,dict):
+            continue
+        rec={"t":row.get("t") or row.get("date")}
+        for key in ("o","h","l","c","v"):
+            val=fnum(row.get(key))
+            rec[key]=round(val,4) if val is not None else None
+        if rec.get("t") and rec.get("c") is not None:
+            out.append(rec)
+    return out
+
 def session_fraction(now_et):
     m=now_et.hour*60+now_et.minute
     return min(1,max(1/390,(m-570)/390))
@@ -1812,6 +1827,20 @@ def analyze(symbol):
         "bounce_sequence":sequence,
         "stair_step":stair,
         "run_exhaustion":exhaustion,
+        "chart_data":{
+            "intraday":_chart_bars(intraday,420),
+            "daily":_chart_bars(
+                list(daily or []) + [{
+                    "t":now_et.date().isoformat(),
+                    "o":current_open or price,
+                    "h":high,
+                    "l":low,
+                    "c":price,
+                    "v":today_volume,
+                }],
+                90,
+            ),
+        },
         "liquidity":liquidity,
         "supports":supports,
         "resistances":resist,
