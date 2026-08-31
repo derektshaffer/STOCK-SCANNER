@@ -730,7 +730,14 @@ def _validation_and_model(rows):
     # completely separate from the later live confirmation pool. Otherwise a
     # live row could help earn the first validation badge and then be reused as
     # supposedly independent confirmation.
-    validation_rows = replay_rows if replay_rows else rows
+    #
+    # Replay snapshots are produced much more frequently than the 60-minute
+    # target horizon. Consecutive observations for the same ticker therefore
+    # share most of the same future price path and are not independent evidence.
+    # Validate on one effective observation per ticker per target horizon, just
+    # like the later live-confirmation gate.
+    validation_rows_raw = replay_rows if replay_rows else rows
+    validation_rows = independent_confirmation_rows(validation_rows_raw)
     validation_samples = len(validation_rows)
     validation_positives = sum(row["label"] for row in validation_rows)
     validation_negatives = validation_samples - validation_positives
@@ -748,7 +755,9 @@ def _validation_and_model(rows):
             "historical_validation_source": (
                 "historical_replay" if replay_rows else "live_only"
             ),
+            "historical_validation_raw_samples": len(validation_rows_raw),
             "historical_validation_samples": validation_samples,
+            "historical_validation_min_gap_seconds": LIVE_CONFIRMATION_MIN_GAP_SECONDS,
             "historical_validation_unique_scans": len(validation_scans),
             "historical_validation_trading_days": len(validation_days),
             "historical_validation_positives": validation_positives,
@@ -765,10 +774,14 @@ def _validation_and_model(rows):
     ):
         return None, base_meta
 
-    # Final/advisory fitting may use every resolved observation available at
-    # prediction time, but validation itself stays source-isolated.
-    X, y = _matrix(rows, np)
+    # Fit the served model on the same de-correlated evidence unit used for
+    # integrity validation. Dense 10-minute replay snapshots must not dominate
+    # learning when the target itself spans 60 minutes.
+    fit_rows = independent_confirmation_rows(rows)
+    X, y = _matrix(fit_rows, np)
     validation_X, validation_y = _matrix(validation_rows, np)
+    base_meta["effective_training_samples"] = len(fit_rows)
+    base_meta["effective_training_min_gap_seconds"] = LIVE_CONFIRMATION_MIN_GAP_SECONDS
 
     # Validate on whole trading days, not intraday timestamps. The target uses
     # the price 60 minutes after each observation, so an intraday cutoff can
