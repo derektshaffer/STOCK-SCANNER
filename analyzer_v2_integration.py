@@ -1684,14 +1684,9 @@ def _full_spectrum_analysis(metrics, sec, market, catalyst, turnover):
     )
 
     stair_base=stair_score
+    # Completed historical stair-step outcomes are research-only until
+    # independently validated. Do not let them alter the live scenario score.
     stair_history=hist.get("stair_step_history") or {}
-    if int(stair_history.get("event_count") or 0)>=3:
-        historical_stair_hit5=_num(stair_history.get("next3d_hit5_rate_pct"))
-        historical_stair_fail5=_num(stair_history.get("next3d_failure5_rate_pct"))
-        if historical_stair_hit5 is not None:
-            stair_base+=(historical_stair_hit5-50.0)*0.20
-        if historical_stair_fail5 is not None:
-            stair_base-=max(0.0,historical_stair_fail5-35.0)*0.15
     if stair.get("reaccelerating"):stair_base+=14
     elif stair.get("state")=="HIGHER PLATEAU / COILING":stair_base+=8
     if stair.get("volume_cooled"):stair_base+=4
@@ -1766,6 +1761,10 @@ def _full_spectrum_analysis(metrics, sec, market, catalyst, turnover):
         "dominant_scenario":dominant,
         "scenarios":scenarios,
         "scenario_note":"Relative evidence weights, not calibrated probabilities.",
+        "historical_research_context":{
+            "production_influence":False,
+            "stair_step_history":stair_history,
+        },
         "coverage":{"available":available,"not_currently_available":unavailable},
     }
 
