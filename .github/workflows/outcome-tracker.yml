@@ -49,6 +49,18 @@ jobs:
           OUTCOME_MARKET_PROVIDER: "tradier"
         run: python score_outcomes.py
 
+      - name: Score shadow opportunity outcomes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          OUTCOME_DATE: ${{ inputs.date }}
+          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+          TRADIER_ACCESS_TOKEN: ${{ secrets.TRADIER_ACCESS_TOKEN }}
+          TRADIER_TOKEN: ${{ secrets.TRADIER_TOKEN }}
+          OUTCOME_MARKET_PROVIDER: "tradier"
+        run: python score_opportunity_outcomes.py
+
       - name: Score Analyzer outcomes
         env:
           OUTCOME_DATE: ${{ inputs.date }}
@@ -71,6 +83,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add outcome_reports/*.json outcome_reports/*.md 2>/dev/null || true
+          git add opportunity_reports/*.json opportunity_reports/*.md 2>/dev/null || true
           git add analyzer_outcomes/*.json 2>/dev/null || true
           git add offhours_outcomes/*.json offhours_outcomes/*.md 2>/dev/null || true
           if git diff --cached --quiet; then
@@ -88,6 +101,7 @@ jobs:
           name: outcome-report-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             outcome_reports/*
+            opportunity_reports/*
             analyzer_outcomes/*
             offhours_outcomes/*
           if-no-files-found: warn
