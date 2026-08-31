@@ -10,6 +10,7 @@ scanner ML loader discovers it automatically.
 
 from __future__ import annotations
 
+import gzip
 import json
 import math
 import os
@@ -31,6 +32,12 @@ from scanner_behavior import (
     BEHAVIOR_FEATURE_VERSION,
     intraday_behavior_features,
     multi_session_behavior_features,
+)
+from sequence_features import (
+    SEQUENCE_BAR_FEATURES,
+    SEQUENCE_INPUT_VERSION,
+    SEQUENCE_MAX_BARS,
+    build_causal_candle_sequence,
 )
 
 REPLAY_VERSION = "historical-scanner-replay-v4.8-confirmed-multisession"
@@ -55,6 +62,12 @@ OUTPUT_PATH = Path(
     os.environ.get(
         "REPLAY_OUTPUT_PATH",
         "outcome_reports/outcomes_historical_replay.json",
+    )
+)
+SEQUENCE_OUTPUT_PATH = Path(
+    os.environ.get(
+        "REPLAY_SEQUENCE_OUTPUT_PATH",
+        "outcome_reports/sequence_replay_training.json.gz",
     )
 )
 
@@ -1018,6 +1031,7 @@ def build_replay_observations(
     scan_step_minutes,
 ):
     observations = []
+    sequence_records = []
     checkpoint_minutes = list(
         range(10 * 60 + 5, 15 * 60 + 1, max(5, scan_step_minutes))
     )
@@ -1118,13 +1132,32 @@ def build_replay_observations(
                     use_behavior=False,
                 )
 
+                observation_id=(
+                    f"replay:{replay_day.isoformat()}:"
+                    f"{checkpoint:%H%M}:{snap['symbol']}"
+                )
+                sequence_idx=symbol_index.get(checkpoint_minute - 5, -1)
+                sequence_payload=build_causal_candle_sequence(
+                    symbol_rows,
+                    sequence_idx,
+                    max_bars=SEQUENCE_MAX_BARS,
+                )
+                if sequence_payload:
+                    sequence_records.append(
+                        {
+                            "observation_id":observation_id,
+                            "session_date":replay_day.isoformat(),
+                            "scan_time_et":checkpoint.isoformat(),
+                            "symbol":snap["symbol"],
+                            "bars_available":sequence_payload.get("bars_available"),
+                            "sequence":sequence_payload.get("sequence"),
+                        }
+                    )
+
                 observations.append(
                     {
                         **quality,
-                        "observation_id": (
-                            f"replay:{replay_day.isoformat()}:"
-                            f"{checkpoint:%H%M}:{snap['symbol']}"
-                        ),
+                        "observation_id": observation_id,
                         "observation_source": "historical_replay",
                         "replay_version": REPLAY_VERSION,
                         "feature_version": ss.SCANNER_FEATURE_VERSION,
@@ -1254,7 +1287,7 @@ def build_replay_observations(
             f"Replay day {day_index}/{len(replay_dates)} "
             f"{replay_day}: cumulative observations={len(observations)}"
         )
-    return observations
+    return observations, sequence_records
 
 
 def main():
@@ -1387,7 +1420,7 @@ def main():
     )
     intraday = group_intraday(intraday_bars)
 
-    observations = build_replay_observations(
+    observations, sequence_records = build_replay_observations(
         ss,
         daily_index,
         intraday,
@@ -1471,6 +1504,30 @@ def main():
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     OUTPUT_PATH.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     print(f"Wrote replay dataset: {OUTPUT_PATH}")
+
+    sequence_artifact={
+        "schema_version":1,
+        "sequence_version":SEQUENCE_INPUT_VERSION,
+        "source":"historical_scanner_replay",
+        "generated_at_utc":datetime.now(timezone.utc).isoformat(),
+        "bar_resolution":"5Min",
+        "max_bars":SEQUENCE_MAX_BARS,
+        "bar_feature_names":list(SEQUENCE_BAR_FEATURES),
+        "observations":len(sequence_records),
+        "records":sequence_records,
+        "integrity":{
+            "causal_cutoff":"every sequence ends at the matching replay decision candle",
+            "future_bars_in_sequence":False,
+            "labels_stored_separately":True,
+        },
+    }
+    SEQUENCE_OUTPUT_PATH.parent.mkdir(parents=True,exist_ok=True)
+    with gzip.open(SEQUENCE_OUTPUT_PATH,"wt",encoding="utf-8") as handle:
+        json.dump(sequence_artifact,handle,separators=(",",":"))
+    print(
+        f"Wrote sequence research dataset: {SEQUENCE_OUTPUT_PATH} "
+        f"records={len(sequence_records)}"
+    )
     print(
         f"Observations={len(observations)} scans={unique_scans} "
         f"positive={positives} negative={negatives} "
