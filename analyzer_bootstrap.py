@@ -519,6 +519,30 @@ def run():
             or "SDOT"
         ).upper().strip()
         existing_result = st.session_state.get("result")
+
+        # Saved-stock/search launches can bypass app.py's scanner button path.
+        # Give them the same per-session warm-result behavior.
+        cached_entry=(
+            (st.session_state.get("_analyzer_result_cache") or {})
+            .get(requested_ticker)
+            or {}
+        )
+        cached_result=cached_entry.get("result")
+        cached_at=float(cached_entry.get("cached_at") or 0.0)
+        if (
+            isinstance(cached_result,dict)
+            and cached_result
+            and cached_at
+            and __import__("time").time()-cached_at <= 900
+            and (
+                not isinstance(existing_result,dict)
+                or str(existing_result.get("symbol") or "").upper().strip()
+                != requested_ticker
+            )
+        ):
+            existing_result=cached_result
+            st.session_state["result"]=cached_result
+
         existing_symbol = str(
             (existing_result or {}).get("symbol") or ""
         ).upper().strip() if isinstance(existing_result, dict) else ""
@@ -641,6 +665,11 @@ def run():
                         outcome.get("symbol") or requested_ticker
                     ).upper().strip()
                     st.session_state["result"] = outcome.get("result")
+                    cache=st.session_state.setdefault("_analyzer_result_cache",{})
+                    cache[symbol]={
+                        "result": outcome.get("result"),
+                        "cached_at": __import__("time").time(),
+                    }
                     st.session_state["ticker"] = symbol
                     st.session_state["ticker_search_request"] = symbol
                     st.session_state["_analyzer_loading"] = False
