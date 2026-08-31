@@ -16,6 +16,7 @@ from learning_system_audit import audit_observations, audit_source_contracts
 from scanner_ml_ranker import _production_regular_session
 import score_outcomes as so
 import score_opportunity_outcomes as soo
+import scanner_live_journal as slj
 
 
 def test_usde_like_endpoint_contradiction():
@@ -111,6 +112,25 @@ def test_source_contract_audit_finds_specification_gaps():
         assert "extended_session_outcomes_excluded" not in ids, findings
         assert "extended_session_shadow_capture" in ids, findings
 
+        # Once the live journal is wired through scanner_runtime + stock_scanner,
+        # the audit must stop claiming the 2-minute states are completely lost.
+        (root / "scanner_live_journal.py").write_text(
+            'BUCKET_MINUTES = 15\n'
+            'BRANCH = "learning-journal"\n'
+            'def capture_live_scan(rows, now_et): pass\n',
+            encoding="utf-8",
+        )
+        (root / "scanner_runtime.py").write_text(
+            'FLAG = "SCANNER_LIVE_JOURNAL_ENABLED"\n',
+            encoding="utf-8",
+        )
+        with (root / "stock_scanner.py").open("a", encoding="utf-8") as handle:
+            handle.write("\ncapture_live_scan(rows, now_et)\n")
+        findings = audit_source_contracts(root)
+        ids = {row["id"] for row in findings}
+        assert "live_vs_durable_cadence_gap" not in ids, findings
+        assert "high_frequency_live_journal" in ids, findings
+
 
 def test_production_scanner_ml_is_regular_session_gated():
     assert _production_regular_session(
@@ -181,6 +201,72 @@ def test_opportunity_path_keeps_full_mfe_and_order():
     assert result["up_20_hit"] is False, result
 
 
+def test_live_journal_keeps_strongest_state_and_controls():
+    et = ZoneInfo("America/New_York")
+    now = datetime(2026, 8, 31, 15, 2, tzinfo=et)
+
+    rows = []
+    for index in range(1, 101):
+        rows.append(
+            {
+                "symbol": f"T{index:03d}",
+                "price": 10.0 + index / 100.0,
+                "score": 80.0 if index == 12 else 60.0 - index / 10.0,
+                "opportunity_score": 82.0 if index == 12 else 60.0 - index / 10.0,
+                "scanner_action": "ANALYZE NOW" if index == 12 else "WATCH",
+                "scanner_action_tier": "ready" if index == 12 else "watch",
+            }
+        )
+
+    selected = slj.select_observations(rows, now)
+    symbols = {row["symbol"] for row in selected}
+    assert "T001" in symbols, selected
+    assert "T012" in symbols, selected
+    assert "T030" in symbols, selected
+    assert "T060" in symbols, selected
+
+    first = {
+        "bucket_key": "2026-08-31T15:00:00-04:00:TEST",
+        "bucket_start_et": "2026-08-31T15:00:00-04:00",
+        "symbol": "TEST",
+        "sample_role": "top",
+        "first_observed_at_et": "2026-08-31T15:02:00-04:00",
+        "last_observed_at_et": "2026-08-31T15:02:00-04:00",
+        "best_observed_at_et": "2026-08-31T15:02:00-04:00",
+        "rank": 5,
+        "rank_best": 5,
+        "rank_worst": 5,
+        "score": 72.0,
+        "opportunity_score": 74.0,
+        "scanner_action": "WATCH",
+        "scanner_action_tier": "watch",
+        "actions_seen": ["WATCH"],
+    }
+    later = dict(first)
+    later.update(
+        {
+            "last_observed_at_et": "2026-08-31T15:08:00-04:00",
+            "rank": 2,
+            "rank_best": 2,
+            "rank_worst": 2,
+            "score": 86.0,
+            "opportunity_score": 90.0,
+            "scanner_action": "ANALYZE NOW",
+            "scanner_action_tier": "ready",
+            "actions_seen": ["ANALYZE NOW"],
+        }
+    )
+    merged = slj._merge_groups([first], [later])
+    assert len(merged) == 1, merged
+    row = merged[0]
+    assert row["scanner_action"] == "ANALYZE NOW", row
+    assert row["rank_best"] == 2, row
+    assert row["rank_worst"] == 5, row
+    assert row["actions_seen"] == ["WATCH", "ANALYZE NOW"], row
+    assert row["first_observed_at_et"].endswith("15:02:00-04:00"), row
+    assert row["last_observed_at_et"].endswith("15:08:00-04:00"), row
+
+
 def test_extended_provider_uses_all_sessions():
     et = ZoneInfo("America/New_York")
     start = datetime.combine(date(2026, 8, 31), time(16, 0), tzinfo=et)
@@ -233,6 +319,7 @@ def main():
     test_source_contract_audit_finds_specification_gaps()
     test_production_scanner_ml_is_regular_session_gated()
     test_opportunity_path_keeps_full_mfe_and_order()
+    test_live_journal_keeps_strongest_state_and_controls()
     test_extended_provider_uses_all_sessions()
     print("LEARNING_SYSTEM_REGRESSIONS=passed")
 
