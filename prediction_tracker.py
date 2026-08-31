@@ -306,6 +306,7 @@ def record_prediction(metrics, now=None, defer_remote=False):
     stair = metrics.get("stair_step") or {}
     repeat_plan = plan.get("repeat_bounce") or {}
     thesis = plan.get("thesis_continuity") or v2.get("thesis_continuity") or {}
+    decision_contract = plan.get("decision_contract") or v2.get("decision_contract") or {}
     models = ml.get("models") or {}
     scenarios = (v2.get("full_spectrum") or {}).get("scenarios") or {}
     timeframe = v2.get("timeframe_analysis") or {}
@@ -348,7 +349,19 @@ def record_prediction(metrics, now=None, defer_remote=False):
         "plan_confidence": _num(plan.get("confidence")),
         "plan_status": plan.get("status"),
         "plan_action": plan.get("action"),
+        "plan_entry_state": plan.get("entry_state"),
+        "plan_entry_instruction": plan.get("entry_instruction"),
         "preferred_plan": plan.get("preferred_plan"),
+        "decision_contract_version": decision_contract.get("version"),
+        "decision_contract_ok": decision_contract.get("ok"),
+        "decision_contract_status": decision_contract.get("status"),
+        "decision_contract_entry_state": decision_contract.get("entry_state"),
+        "decision_contract_geometry_errors": list(
+            decision_contract.get("geometry_errors") or []
+        ),
+        "decision_contract_corrections": list(
+            decision_contract.get("corrections") or []
+        ),
         "thesis_version": thesis.get("version"),
         "thesis_status": thesis.get("status"),
         "thesis_active_family": thesis.get("active_family"),
