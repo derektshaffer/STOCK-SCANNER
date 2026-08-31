@@ -25,7 +25,7 @@ THESIS_VERSION = "intraday-thesis-v1"
 VALID_FAMILIES = {"breakout", "pullback", "repeat_bounce"}
 DEFAULT_REPLACEMENT_CONFIRMATIONS = max(
     2,
-    int(os.environ.get("ANALYZER_THESIS_REPLACEMENT_CONFIRMATIONS", "2") or 2),
+    int(os.environ.get("ANALYZER_THESIS_REPLACEMENT_CONFIRMATIONS", "3") or 3),
 )
 DEFAULT_EXPIRY_MINUTES = max(
     30,
