@@ -726,8 +726,9 @@ def predict_peer_ml(symbol, now, metrics, et):
             source_meta = _TRAINING_CACHE["meta"] or {}
         else:
             rows, source_meta = load_training_observations()
-            rows = _matching_behavior_rows(rows)
             source_meta = dict(source_meta or {})
+            source_meta["pre_behavior_filter_samples"] = len(rows)
+            rows = _matching_behavior_rows(rows)
             source_meta["behavior_feature_version"] = BEHAVIOR_FEATURE_VERSION
             source_meta["behavior_version_filtered_samples"] = len(rows)
             _TRAINING_CACHE.update(
@@ -750,6 +751,9 @@ def predict_peer_ml(symbol, now, metrics, et):
     result = _validate_and_predict(selected, current)
     result["source"] = "scanner historical replay + resolved live scanner outcomes"
     result["source_observations"] = len(rows)
+    result["source_observations_before_behavior_filter"] = int(
+        (source_meta or {}).get("pre_behavior_filter_samples") or len(rows)
+    )
     result["behavior_feature_version"] = BEHAVIOR_FEATURE_VERSION
 
     probability = _num(result.get("probability_pct"))
