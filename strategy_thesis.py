@@ -135,10 +135,48 @@ def _new_state(symbol, now, plan, reason, revision=1):
 
 
 def _terminal_reason(state, metrics, plan, now, expiry_minutes):
+    invalidated_reason = str(state.get("invalidated_reason") or "").strip()
+    if invalidated_reason:
+        return invalidated_reason
+
     price = _num(metrics.get("price"))
     geometry = state.get("geometry") or {}
     stop = _num(geometry.get("stop"))
     target1 = _num(geometry.get("target1"))
+    anchored = _parse_dt(state.get("anchored_at"))
+
+    # Do not rely only on the current quote. A target or stop can be touched
+    # between Analyzer refreshes and then reverse before the next snapshot.
+    # Replay the bars after the thesis anchor in time order. If both barriers
+    # are inside one OHLC bar, fail conservatively to the stop because the true
+    # intrabar order is unknowable.
+    intraday = ((metrics.get("chart_data") or {}).get("intraday") or [])
+    ordered = []
+    for bar in intraday:
+        dt = _parse_dt(bar.get("t") or bar.get("timestamp"))
+        if dt is None:
+            continue
+        if anchored is not None and dt < anchored:
+            continue
+        ordered.append((dt, bar))
+    ordered.sort(key=lambda item: item[0])
+    for _dt, bar in ordered:
+        high = _num(bar.get("h") or bar.get("high"))
+        low = _num(bar.get("l") or bar.get("low"))
+        stop_hit = bool(stop is not None and low is not None and low <= stop)
+        target_hit = bool(
+            target1 is not None and high is not None and high >= target1
+        )
+        if stop_hit and target_hit:
+            return (
+                "prior thesis invalidated: stop and Target 1 were both inside "
+                "the same bar; scored stop-first conservatively"
+            )
+        if stop_hit:
+            return "prior thesis invalidated: stop/invalidation level reached"
+        if target_hit:
+            return "prior thesis objective reached: Target 1 reached"
+
     if price is not None and stop is not None and price <= stop:
         return "prior thesis invalidated: stop/invalidation level reached"
     if price is not None and target1 is not None and price >= target1:
@@ -149,7 +187,6 @@ def _terminal_reason(state, metrics, plan, now, expiry_minutes):
     if family == "breakout" and bool(breakout.get("failed_breakout")):
         return "prior breakout thesis invalidated: breakout failed to hold"
 
-    anchored = _parse_dt(state.get("anchored_at"))
     if anchored is not None:
         age_minutes = max(
             0.0,
@@ -449,6 +486,18 @@ def commit_intraday_thesis(metrics, context, *, now=None, store_path=None):
     state["entry_state"] = plan.get("entry_state")
     state["action"] = plan.get("action")
     state["confidence"] = _num(plan.get("confidence"))
+    contract = plan.get("decision_contract") or {}
+    if contract and not bool(contract.get("ok", True)):
+        state["invalidated_reason"] = (
+            "prior thesis invalidated: final decision contract rejected its geometry"
+        )
+    elif "invalid plan geometry" in str(plan.get("action") or "").lower():
+        state["invalidated_reason"] = (
+            "prior thesis invalidated: final decision contract rejected its geometry"
+        )
+    else:
+        state.pop("invalidated_reason", None)
+
     state["entry_available_seen"] = bool(
         state.get("entry_available_seen")
         or str(plan.get("status") or "").upper() == "ENTRY AVAILABLE"
