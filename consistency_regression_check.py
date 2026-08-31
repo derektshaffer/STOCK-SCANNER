@@ -5455,6 +5455,104 @@ def test_intraday_thesis_replans_immediately_on_invalidation():
         assert "invalidated" in str(context.get("change_reason") or "").lower(), context
 
 
+def test_intraday_thesis_detects_barrier_hits_between_refreshes_conservatively():
+    import tempfile
+    from pathlib import Path
+    import strategy_thesis as thesis
+
+    now = datetime(2026, 8, 31, 14, 0, tzinfo=timezone.utc)
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "thesis.json"
+        first = {
+            "symbol": "TEST",
+            "price": 9.00,
+            "trade_plan": {
+                "status": "WAIT",
+                "preferred_plan": "breakout",
+                "breakout_reference_level": 9.0,
+                "breakout_reference_locked": True,
+                "breakout_structure": {"failed_breakout": False},
+                "breakout": {
+                    "entry_low": 9.00, "entry_high": 9.10, "stop": 8.70,
+                    "target1": 9.80, "target2": 10.20,
+                },
+                "selected": {
+                    "entry_low": 9.00, "entry_high": 9.10, "stop": 8.70,
+                    "target1": 9.80, "target2": 10.20,
+                },
+            },
+        }
+        thesis.prepare_intraday_thesis(first, now=now, store_path=path)
+
+        # Current quote has returned to 9.20, but a later bar touched Target 1.
+        target_seen = {
+            "symbol": "TEST",
+            "price": 9.20,
+            "chart_data": {
+                "intraday": [{
+                    "t": _iso(now + timedelta(minutes=1)),
+                    "o": 9.10, "h": 9.85, "l": 9.05, "c": 9.20,
+                }]
+            },
+            "trade_plan": {
+                "status": "WAIT",
+                "preferred_plan": "pullback",
+                "breakout_structure": {"failed_breakout": False},
+                "pullback": {
+                    "entry_low": 8.60, "entry_high": 8.80, "stop": 8.30,
+                    "target1": 9.50,
+                },
+                "selected": {
+                    "entry_low": 8.60, "entry_high": 8.80, "stop": 8.30,
+                    "target1": 9.50,
+                },
+            },
+        }
+        context = thesis.prepare_intraday_thesis(
+            target_seen,
+            now=now + timedelta(minutes=2),
+            store_path=path,
+            replacement_confirmations=3,
+        )
+        assert context.get("status") == "REPLAN ACCEPTED", context
+        assert "Target 1 reached" in str(context.get("change_reason") or ""), context
+
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "thesis.json"
+        thesis.prepare_intraday_thesis(first, now=now, store_path=path)
+        ambiguous = {
+            "symbol": "TEST",
+            "price": 9.20,
+            "chart_data": {
+                "intraday": [{
+                    "t": _iso(now + timedelta(minutes=1)),
+                    "o": 9.10, "h": 9.85, "l": 8.65, "c": 9.20,
+                }]
+            },
+            "trade_plan": {
+                "status": "WAIT",
+                "preferred_plan": "pullback",
+                "breakout_structure": {"failed_breakout": False},
+                "pullback": {
+                    "entry_low": 8.60, "entry_high": 8.80, "stop": 8.30,
+                    "target1": 9.50,
+                },
+                "selected": {
+                    "entry_low": 8.60, "entry_high": 8.80, "stop": 8.30,
+                    "target1": 9.50,
+                },
+            },
+        }
+        context = thesis.prepare_intraday_thesis(
+            ambiguous,
+            now=now + timedelta(minutes=2),
+            store_path=path,
+            replacement_confirmations=3,
+        )
+        assert context.get("status") == "REPLAN ACCEPTED", context
+        assert "stop-first conservatively" in str(context.get("change_reason") or ""), context
+
+
 def test_analyzer_ui_exposes_thesis_continuity_reason():
     from pathlib import Path
 
@@ -5817,6 +5915,7 @@ if __name__ == "__main__":
         test_intraday_thesis_keeps_entry_geometry_stable_and_can_still_enter,
         test_intraday_thesis_requires_persistent_replacement_before_family_switch,
         test_intraday_thesis_replans_immediately_on_invalidation,
+        test_intraday_thesis_detects_barrier_hits_between_refreshes_conservatively,
         test_analyzer_ui_exposes_thesis_continuity_reason,
         test_visual_truth_usde_like_run_counts_obvious_rebounds,
         test_visual_truth_breakout_plan_keeps_same_goalpost_after_touch,
