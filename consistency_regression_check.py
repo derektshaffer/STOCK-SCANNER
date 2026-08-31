@@ -1825,6 +1825,68 @@ def test_full_spectrum_exposes_all_scenarios():
     assert 99.0 <= total <= 101.0, fs
 
 
+
+def test_full_spectrum_ignores_unvalidated_ml_edge():
+    import copy
+    import analyzer_v2_integration as v2
+
+    base = {
+        "price":10.0,
+        "day_pct":25.0,
+        "vwap_position":"ABOVE",
+        "vwap_extension_pct":4.0,
+        "momentum_5m":0.8,
+        "momentum_15m":1.5,
+        "momentum_30m":2.0,
+        "volume_pace":1.8,
+        "from_high_pct":3.0,
+        "spread_pct":0.8,
+        "score":70.0,
+        "liquidity":{"label":"HIGH"},
+        "impulse_pullback":{
+            "detected":True,
+            "current_retracement_pct":35.0,
+            "max_retracement_pct":40.0,
+            "bounce_recovery_pct":6.0,
+            "bounce_confirmed":True,
+            "pullback_volume_ratio":0.8,
+        },
+        "run_exhaustion":{"score":30.0},
+        "historical_setup":{"status":"ok","sample_count":12},
+        "market_provider":"tradier",
+        "live_feed":"TRADIER CONSOLIDATED",
+    }
+
+    advisory = copy.deepcopy(base)
+    advisory["ml_prediction"] = {
+        "status":"ok",
+        "ml_edge_score":92.0,
+        "validated_edge_model_count":0,
+        "models":{},
+    }
+    neutral = copy.deepcopy(base)
+    neutral["ml_prediction"] = {
+        "status":"ok",
+        "ml_edge_score":None,
+        "validated_edge_model_count":0,
+        "models":{},
+    }
+
+    args = (
+        {"status":"ok","dilution_risk":"NONE FOUND"},
+        {"label":"MIXED","broad_market_avg_pct":0.0,"sector_move_pct":0.0},
+        {"score":0.0},
+        {"float_turnover":0.5},
+    )
+    a = v2._full_spectrum_analysis(advisory, *args)
+    b = v2._full_spectrum_analysis(neutral, *args)
+
+    assert a["categories"]["validated_ml"]["score"] == 50.0, a
+    assert a["categories"]["validated_ml"]["production_influence"] is False, a
+    assert a["categories"]["validated_ml"]["validated_model_count"] == 0, a
+    assert a["scenarios"] == b["scenarios"], (a, b)
+
+
 def test_multi_bounce_detector_tracks_decay_and_lower_highs():
     from multi_bounce import detect_bounce_sequence, bounce_feature_values
 
@@ -6382,6 +6444,7 @@ if __name__ == "__main__":
         test_entry_readiness_penalizes_unconfirmed_shallow_retrace,
         test_run_exhaustion_flags_rejected_mature_run,
         test_full_spectrum_exposes_all_scenarios,
+        test_full_spectrum_ignores_unvalidated_ml_edge,
         test_multi_bounce_detector_tracks_decay_and_lower_highs,
         test_multi_bounce_ignores_micro_wiggles_and_waits_for_distinct_second_swing,
         test_multi_bounce_recognizes_dpro_large_rebound_and_smaller_later_bounce,
