@@ -36,18 +36,18 @@ A change is not marked complete here until the code exists, a regression/smoke c
 ### Phase 1 — Protect production while broadening research collection
 - [x] Explicitly gate current Scanner ML training to regular-session observations.
 - [x] Add session identity to new Scanner outcome rows.
-- [ ] Collect premarket and after-hours Scanner observations into the durable outcome dataset in **shadow-only** fields.
-- [ ] Record research outcomes through the full supported 4:00 AM–8:00 PM ET session without changing the current production target.
-- [ ] Verify extended-hours market-data source and timestamp integrity with synthetic/provider smoke tests.
+- [x] Collect premarket and after-hours Scanner observations into the durable outcome dataset in **shadow-only** fields.
+- [x] Record research outcomes through the full supported 4:00 AM–8:00 PM ET session without changing the current production target.
+- [x] Verify extended-hours market-data source and timestamp integrity with synthetic/provider smoke tests.
 
 **Definition of done:** extended-hours examples are saved and measurable, while the current production model remains behaviorally unchanged.
 
 ### Phase 2 — Replace the one-number outcome with an outcome vector
-- [ ] Preserve +15m / +30m / +60m and add +120m where data coverage permits.
-- [ ] Add full-horizon MFE and MAE.
-- [ ] Add +3% / +5% / +10% / +20% threshold-hit labels and time-to-hit.
-- [ ] Add time-to-peak and peak return.
-- [ ] Add target-before-stop / threshold-before-failure path labels.
+- [x] Preserve +15m / +30m / +60m and add +120m where data coverage permits.
+- [x] Add full-horizon MFE and MAE.
+- [x] Add +3% / +5% / +10% / +20% threshold-hit labels and time-to-hit.
+- [x] Add time-to-peak and peak return.
+- [x] Add target-before-stop / threshold-before-failure path labels.
 - [ ] Add session-transition outcomes (regular → after-hours, premarket → regular).
 - [ ] Add next-session continuation where appropriate.
 
@@ -63,7 +63,7 @@ A change is not marked complete here until the code exists, a regression/smoke c
 
 ### Phase 4 — Opportunity audit / “what did we miss?”
 - [ ] Automatically identify high-ranked winners, high-ranked failures, and low-ranked explosive winners.
-- [ ] Detect label contradictions such as large MFE but failed endpoint label.
+- [x] Detect label contradictions such as large MFE but failed endpoint label.
 - [ ] Compare score buckets and action states against later outcome distributions.
 - [ ] Compare premarket, regular, and after-hours behavior separately.
 - [ ] Detect data/features that are collected but never used by any research model.
@@ -115,6 +115,18 @@ A change is not marked complete here until the code exists, a regression/smoke c
 3. The visible app scans more frequently than the durable learning collector.
 4. MFE/MAE are already measured in some paths but are not the primary Scanner ML objective.
 5. The prior integrity audit did not systematically challenge whether the target/objective itself matched the desired behavior.
+
+## Progress log
+
+### 2026-08-31 — Learning-loop foundation
+- Added `learning_system_audit.py`: source/specification checks plus empirical endpoint-vs-path contradiction detection.
+- Added `learning_system_regression_check.py`, including a synthetic USDE-like case where MFE is very large even though the +60m endpoint target would label the observation negative.
+- Added nightly/push Learning Objective Opportunity Audit workflow and included the learning regressions in the main integrity CI gate.
+- Added `score_opportunity_outcomes.py`, a **shadow-only** 4:00 AM–8:00 PM ET outcome collector covering premarket, regular session, and after-hours.
+- Shadow outcomes now preserve +15m/+30m/+60m/+120m returns, full-horizon MFE/MAE, +3/+5/+10/+20 threshold hits and time-to-hit, time-to-peak/trough, and threshold-before-3%-failure ordering.
+- Current production Scanner ML was explicitly gated to regular-session observations so the broader shadow dataset cannot silently change live ranking.
+- New production outcome rows now record `session_phase`.
+- The nightly outcome workflow now writes durable shadow opportunity reports; the learning audit reads them separately from production outcomes.
 
 ## Rule for updating this file
 
