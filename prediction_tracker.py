@@ -486,21 +486,29 @@ def _bar_dt(bar):
     return _parse_dt(bar.get("t"))
 
 
-def _closest_close(bars, target_dt, tolerance_minutes=12):
-    best = None
+OUTCOME_MAX_BAR_DELAY_SECONDS = 180
+
+
+def _first_close_at_or_after(
+    bars,
+    target_dt,
+    tolerance_seconds=OUTCOME_MAX_BAR_DELAY_SECONDS,
+):
+    """Return the first close at/after the horizon, never a pre-horizon bar."""
+    best_close = None
     best_delta = None
     for bar in bars:
         dt = _bar_dt(bar)
         close = _num(bar.get("c"))
-        if dt is None or close is None:
+        if dt is None or close is None or dt < target_dt:
             continue
-        delta = abs((dt - target_dt).total_seconds())
+        delta = (dt - target_dt).total_seconds()
         if best_delta is None or delta < best_delta:
             best_delta = delta
-            best = close
-    if best_delta is None or best_delta > tolerance_minutes * 60:
+            best_close = close
+    if best_delta is None or best_delta > tolerance_seconds:
         return None
-    return best
+    return best_close
 
 
 def _first_touch(bars, target, stop):
@@ -655,7 +663,10 @@ def resolve_symbol_predictions(sa, symbol, now=None, current_metrics=None):
             key = f"return_{mins}m_pct"
             if key in outcomes or safe_end < created + timedelta(minutes=mins):
                 continue
-            close = _closest_close(future, created + timedelta(minutes=mins))
+            close = _first_close_at_or_after(
+                future,
+                created + timedelta(minutes=mins),
+            )
             if close is not None:
                 outcomes[key] = round((close / price - 1.0) * 100.0, 3)
                 if mins == 60:
