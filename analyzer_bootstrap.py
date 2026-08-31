@@ -507,16 +507,6 @@ def run():
     if combined:
         _cleanup_combined_browser_helpers()
 
-        @st.fragment(run_every="2s")
-        def _render_saved_stock_toolbar():
-            # This fragment follows ticker_search_request/result changes made
-            # inside the Analyzer fragment, so Save/Remove always refers to the
-            # stock the user is actually analyzing.
-            with st.container(key="saved_stocks_top"):
-                _render_saved_stocks("toolbar")
-
-        _render_saved_stock_toolbar()
-
         # Never run a fresh Analyzer calculation inside the full-app render.
         # A deep analysis can take long enough to block Streamlit's session,
         # which freezes BOTH workspace tabs and prevents the 2-minute scanner
@@ -709,7 +699,13 @@ def run():
 
             st.expander = _expander_with_analysis_slot
             try:
-                ns = runpy.run_path(str(target), run_name="__main__")
+                ns = runpy.run_path(
+                    str(target),
+                    run_name="__main__",
+                    init_globals={
+                        "_render_combined_saved_stocks": _render_saved_stocks,
+                    },
+                )
             finally:
                 st.expander = original_expander
 
