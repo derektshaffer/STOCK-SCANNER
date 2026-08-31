@@ -599,7 +599,10 @@ def _window_excursions(bars, created, price, minutes):
     window = []
     for bar in bars:
         dt = _bar_dt(bar)
-        if dt is None or dt < created or dt > end:
+        # Outcomes must begin strictly AFTER the prediction observation.
+        # Including a bar stamped exactly at the signal time can leak that
+        # bar's pre-signal high/low into first-touch and MFE/MAE labels.
+        if dt is None or dt <= created or dt > end:
             continue
         window.append(bar)
     highs = [_num(b.get("h")) for b in window]
@@ -719,7 +722,11 @@ def resolve_symbol_predictions(sa, symbol, now=None, current_metrics=None):
         if created is None or price is None:
             continue
         outcomes = row.setdefault("outcomes", {})
-        future = [b for b in bars if (_bar_dt(b) or created) >= created]
+        future = []
+        for bar in bars:
+            bar_dt = _bar_dt(bar)
+            if bar_dt is not None and bar_dt > created:
+                future.append(bar)
 
         for mins in (15, 30, 60):
             key = f"return_{mins}m_pct"
