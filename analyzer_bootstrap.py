@@ -638,7 +638,20 @@ def run():
                 )
 
             _render_combined_analysis_loader()
-            return
+
+            # If this is a refresh of the stock already on screen, keep the
+            # complete Analyzer page rendered from the last good result while
+            # the background worker calculates the replacement. This avoids
+            # the half-Analyzer / stale-Scanner transition screen and makes
+            # the Analyze button feel immediate. Only wait on a loader-only
+            # page when there is no correct existing result for this ticker.
+            can_render_existing = bool(
+                isinstance(existing_result, dict)
+                and existing_result
+                and existing_symbol == requested_ticker
+            )
+            if not can_render_existing:
+                return
 
     import stock_analyzer as sa
     from historical_integration import install_historical_analysis
