@@ -1125,6 +1125,31 @@ def test_replay_requires_live_confirmation_before_full_badge():
     assert sm.MIN_LIVE_CONFIRMATION_CLASS_COUNT >= 5
 
 
+def test_analyzer_ml_walk_forward_never_splits_one_trading_day():
+    import ml_predictor as ml
+
+    rows = []
+    for day_index in range(12):
+        day = f"2026-08-{day_index + 10:02d}"
+        for sample_index in range(8):
+            rows.append(
+                {
+                    "trading_date": day,
+                    "timestamp": float(day_index * 100 + sample_index),
+                }
+            )
+
+    folds = ml._walk_forward_day_splits(rows)
+    assert folds, folds
+    for train_idx, val_idx, train_cut, val_cut in folds:
+        train_days = {rows[i]["trading_date"] for i in train_idx}
+        val_days = {rows[i]["trading_date"] for i in val_idx}
+        assert train_days.isdisjoint(val_days), (train_days, val_days)
+        assert max(train_days) == train_cut
+        assert max(train_days) < min(val_days)
+        assert max(val_days) == val_cut
+
+
 def test_analyzer_ml_validation_requires_probability_skill():
     import ml_predictor as ml
 
@@ -3663,6 +3688,7 @@ if __name__ == "__main__":
         test_historical_replay_universe_uses_prior_days_only,
         test_historical_replay_source_survives_ml_extraction,
         test_replay_requires_live_confirmation_before_full_badge,
+        test_analyzer_ml_walk_forward_never_splits_one_trading_day,
         test_peer_ml_replay_requires_strictly_later_live_confirmation,
         test_scanner_replay_live_confirmation_gate_is_integrity_sized,
         test_validation_workflow_runs_before_merge_on_pull_requests,
