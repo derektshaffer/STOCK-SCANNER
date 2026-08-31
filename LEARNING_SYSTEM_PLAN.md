@@ -54,30 +54,30 @@ A change is not marked complete here until the code exists, a regression/smoke c
 **Definition of done:** a stock that rises +20% and later gives some back cannot be reduced to a misleading single 60-minute endpoint label.
 
 ### Phase 3 — Durable high-frequency learning observations
-- [ ] Preserve important observations from the app's 2-minute scan stream instead of relying only on the slower durable GitHub collector.
-- [ ] Deduplicate highly correlated same-symbol observations without deleting meaningful state transitions.
-- [ ] Persist rank/action/score changes and major pattern transitions.
-- [ ] Add rate/race protection so multiple browser sessions cannot corrupt the journal.
+- [x] Preserve important observations from the app's 2-minute scan stream instead of relying only on the slower durable GitHub collector.
+- [x] Deduplicate highly correlated same-symbol observations without deleting meaningful state transitions.
+- [~] Persist rank/action/score changes and major pattern transitions. Current journal preserves first/last/best observation time, best/worst rank, strongest state, and actions seen; full transition history is still open.
+- [x] Add rate/race protection so multiple browser sessions cannot corrupt the journal. The Scanner's shared process lock, bounded journal, isolated learning branch, conflict retries, and periodic merge/sync are in place.
 
 **Definition of done:** a high-quality discovery seen in the live app cannot disappear from the learning history merely because it occurred between durable collector runs.
 
 ### Phase 4 — Opportunity audit / “what did we miss?”
-- [ ] Automatically identify high-ranked winners, high-ranked failures, and low-ranked explosive winners.
+- [x] Automatically identify high-ranked winners, high-ranked failures, and low-ranked explosive winners.
 - [x] Detect label contradictions such as large MFE but failed endpoint label.
-- [ ] Compare score buckets and action states against later outcome distributions.
-- [ ] Compare premarket, regular, and after-hours behavior separately.
+- [~] Compare score buckets and action states against later outcome distributions. Score/rank buckets are implemented; action-state grouping is still open.
+- [x] Compare premarket, regular, and after-hours behavior separately.
 - [ ] Detect data/features that are collected but never used by any research model.
-- [ ] Detect filters that systematically remove later winners.
-- [ ] Track false-positive and false-negative archetypes.
+- [~] Detect filters that systematically remove later winners. Failed-filter counts are now retained for low-rank/control explosive winners; broader denominator-aware filter analysis is still open.
+- [~] Track false-positive and false-negative archetypes. High-rank failures and low-rank/control explosive winners are explicit archetypes; broader clustering/classification is still open.
 
 **Definition of done:** the system can surface “we found this, but our learning target failed to credit it” and “we missed this class of winners” without a human first noticing it on a chart.
 
 ### Phase 5 — Hypothesis engine
-- [ ] Convert repeated empirical gaps into explicit candidate hypotheses.
-- [ ] Require a minimum sample count / cross-symbol support before a hypothesis is testable.
-- [ ] Record the exact evidence that generated each hypothesis.
-- [ ] Keep AI-generated hypotheses separate from production rules.
-- [ ] Reject hypotheses that merely restate hindsight outcomes.
+- [x] Convert repeated empirical gaps into explicit candidate hypotheses.
+- [x] Require a minimum sample count / cross-symbol support before a hypothesis is testable.
+- [x] Record the exact evidence that generated each hypothesis.
+- [x] Keep AI-generated hypotheses separate from production rules; generated candidates carry `production_influence=false`.
+- [~] Reject hypotheses that merely restate hindsight outcomes. Minimum-sample/cross-symbol gates are in place, but the decisive out-of-sample rejection step belongs to Phase 6 and is still open.
 
 **Example:** “Late-session high volume acceleration + VWAP retention + higher-plateau structure may predict after-hours continuation.”
 
@@ -110,11 +110,11 @@ A change is not marked complete here until the code exists, a regression/smoke c
 
 ## Current known gaps this plan must close
 
-1. Current Scanner ML primary target is **>= +3% at 60 minutes**.
-2. Current durable Scanner outcome scoring is centered on the regular session.
-3. The visible app scans more frequently than the durable learning collector.
-4. MFE/MAE are already measured in some paths but are not the primary Scanner ML objective.
-5. The prior integrity audit did not systematically challenge whether the target/objective itself matched the desired behavior.
+1. Current production Scanner ML primary target is **>= +3% at 60 minutes**; richer path targets are still shadow-only.
+2. Current production Scanner ML remains regular-session gated by design; the new shadow outcome path covers premarket, regular session, and after-hours separately.
+3. The visible app scans more frequently than the slower durable Actions collector; the new high-frequency journal now captures bounded 15-minute symbol states from the live stream, but runtime sync health still needs accumulated evidence.
+4. MFE/MAE and +3/+5/+10/+20 path labels are now collected in shadow research, but they are not yet validated production objectives.
+5. The prior integrity audit did not systematically challenge whether the target/objective itself matched the desired behavior; the new Learning Objective / Opportunity Audit now does.
 
 ## Progress log
 
@@ -127,6 +127,15 @@ A change is not marked complete here until the code exists, a regression/smoke c
 - Current production Scanner ML was explicitly gated to regular-session observations so the broader shadow dataset cannot silently change live ranking.
 - New production outcome rows now record `session_phase`.
 - The nightly outcome workflow now writes durable shadow opportunity reports; the learning audit reads them separately from production outcomes.
+
+### 2026-08-31 — High-frequency capture + guarded hypothesis layer
+- Added `scanner_live_journal.py`: every enabled live app scan is inspected, then a bounded 15-minute-per-symbol journal keeps the strongest/actionable state plus deterministic below-cutoff controls.
+- The journal records first/last/best observation time, best/worst rank, actions seen, score/opportunity score, key momentum/volume/VWAP/structure features, source/version metadata, and compact filter/flag context.
+- Live journal data syncs to the isolated `learning-journal` branch rather than writing noisy high-frequency commits into production `main`.
+- `score_opportunity_outcomes.py` now imports the high-frequency journal into nightly shadow outcome resolution.
+- The opportunity audit now compares market sessions, score buckets, rank buckets, high-rank winners/failures, low-rank explosive misses, and failed-filter counts.
+- The hypothesis layer now requires minimum sample counts and cross-symbol evidence before emitting path-target, session-calibration, missed-explosive, or score-monotonicity candidates.
+- No hypothesis from this layer can affect production ranking or Analyzer trade decisions.
 
 ## Rule for updating this file
 
