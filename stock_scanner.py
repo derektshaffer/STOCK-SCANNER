@@ -2581,6 +2581,8 @@ def candidate_log_record(c, rank):
         "scanner_action": c.get("scanner_action"),
         "scanner_action_tier": c.get("scanner_action_tier"),
         "scanner_action_reason": c.get("scanner_action_reason"),
+        "action_data_integrity_ok": bool(c.get("action_data_integrity_ok")),
+        "action_data_integrity_reasons": c.get("action_data_integrity_reasons") or [],
         "timeframe_fit_version": c.get("timeframe_fit_version"),
         "timeframe_best_fit": c.get("timeframe_best_fit"),
         "timeframe_primary_fit": c.get("timeframe_primary_fit"),
