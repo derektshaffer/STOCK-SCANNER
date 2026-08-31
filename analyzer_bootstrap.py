@@ -1,7 +1,9 @@
 from pathlib import Path
+import json
 import os
 import runpy
 import threading
+import urllib.request
 import uuid
 
 import pandas as pd
@@ -38,6 +40,55 @@ def _preload_secrets():
         value = secrets.get(key)
         if value is not None and str(value).strip():
             os.environ[key] = str(value).strip()
+
+
+@st.cache_data(ttl=21600, show_spinner=False)
+def _load_active_us_equity_choices():
+    """Return active US equities for instant browser-side ticker filtering."""
+    key = os.environ.get("ALPACA_API_KEY", "").strip()
+    secret = os.environ.get("ALPACA_SECRET_KEY", "").strip()
+    if not key or not secret:
+        return []
+
+    headers = {
+        "APCA-API-KEY-ID": key,
+        "APCA-API-SECRET-KEY": secret,
+        "Accept": "application/json",
+        "User-Agent": "single-stock-analyzer/1.0",
+    }
+    endpoints = [
+        "https://paper-api.alpaca.markets/v2/assets?status=active&asset_class=us_equity",
+        "https://api.alpaca.markets/v2/assets?status=active&asset_class=us_equity",
+    ]
+
+    assets = None
+    for url in endpoints:
+        try:
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req, timeout=20) as resp:
+                payload = json.loads(resp.read().decode("utf-8"))
+            if isinstance(payload, list) and payload:
+                assets = payload
+                break
+        except Exception:
+            continue
+
+    if not isinstance(assets, list):
+        return []
+
+    choices = []
+    seen = set()
+    for asset in assets:
+        symbol = str(asset.get("symbol") or "").upper().strip()
+        name = str(asset.get("name") or "").strip()
+        status = str(asset.get("status") or "").lower()
+        if not symbol or symbol in seen or status not in ("", "active"):
+            continue
+        seen.add(symbol)
+        choices.append(f"{symbol} — {name}" if name else symbol)
+
+    choices.sort(key=lambda x: x.split(" — ", 1)[0])
+    return choices
 
 
 def _start_async_prediction_sync():
@@ -589,33 +640,41 @@ def run():
                 st.session_state.pop("ticker_picker", None)
                 st.session_state.pop("result", None)
 
-            # Seed the browser-side picker with useful instant suggestions.
-            # Streamlit filters these locally while the user types, and
-            # accept_new_options=True means any valid ticker can still be
-            # entered even when it is not already in the suggestion list.
+            # Load the full active-equity directory once (cached), then let
+            # Streamlit filter it locally as the user types. Saved/recent names
+            # are kept at the front for convenience.
+            full_choices = _load_active_us_equity_choices()
             landing_choices = []
+
+            def _choice_for_symbol(symbol):
+                symbol = str(symbol or "").upper().strip()
+                if not symbol:
+                    return ""
+                for choice in full_choices:
+                    if choice.split(" — ", 1)[0].upper().strip() == symbol:
+                        return choice
+                return symbol
+
+            preferred_symbols = []
             for value in (st.session_state.get("saved_stocks") or []):
                 symbol = str(value or "").upper().strip()
-                if symbol and symbol not in landing_choices:
-                    landing_choices.append(symbol)
+                if symbol and symbol not in preferred_symbols:
+                    preferred_symbols.append(symbol)
             for symbol in (st.session_state.get("_analyzer_result_cache") or {}).keys():
                 symbol = str(symbol or "").upper().strip()
-                if symbol and symbol not in landing_choices:
-                    landing_choices.append(symbol)
+                if symbol and symbol not in preferred_symbols:
+                    preferred_symbols.append(symbol)
 
-            try:
-                import json
-                latest_scan_path = Path("scan_logs/latest_scan.json")
-                if latest_scan_path.exists():
-                    payload = json.loads(
-                        latest_scan_path.read_text(encoding="utf-8")
-                    )
-                    for row in (payload.get("candidates") or [])[:30]:
-                        symbol = str((row or {}).get("symbol") or "").upper().strip()
-                        if symbol and symbol not in landing_choices:
-                            landing_choices.append(symbol)
-            except Exception:
-                pass
+            landing_choices.extend(
+                choice
+                for choice in (
+                    _choice_for_symbol(symbol)
+                    for symbol in preferred_symbols
+                )
+                if choice
+            )
+            landing_choices.extend(full_choices)
+            landing_choices = list(dict.fromkeys(landing_choices))
 
             st.selectbox(
                 "Ticker",
