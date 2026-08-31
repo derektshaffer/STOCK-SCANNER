@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 from statistics import median
 
 from multi_bounce import bounce_feature_values, detect_bounce_sequence
+from market_structure import impulse_pullback_context as shared_impulse_pullback_context
 from stair_step import detect_stair_step, stair_step_feature_values
 
 FEATURES = [
@@ -139,82 +140,38 @@ def _atr_pct(daily, i, periods=14):
     return atr / pc * 100.0 if atr and pc else None
 
 
-def _impulse_features(bars, idx):
-    """Impulse/retracement features using bars no later than idx."""
-    if idx < 6:
+def _impulse_features(bars, idx, atr_pct=None):
+    """Shared-structure impulse features using bars no later than idx."""
+    if idx<6:
         return {
-            "impulse_move_pct": None,
-            "impulse_retracement_pct": None,
-            "impulse_max_retracement_pct": None,
-            "impulse_bounce_recovery_pct": None,
-            "pullback_volume_ratio": None,
+            "impulse_move_pct":None,
+            "impulse_retracement_pct":None,
+            "impulse_max_retracement_pct":None,
+            "impulse_bounce_recovery_pct":None,
+            "pullback_volume_ratio":None,
         }
-    rows=[]
-    for b in bars[:idx+1]:
-        h=_fnum(b.get("h")); l=_fnum(b.get("l")); cc=_fnum(b.get("c")); v=_fnum(b.get("v")) or 0.0
-        if h is None or l is None or cc is None or h<=0 or l<=0:
-            continue
-        rows.append({"h":h,"l":l,"c":cc,"v":v})
-    if len(rows)<7:
+    upto=bars[:idx+1]
+    current=_fnum((upto[-1] or {}).get("c"))
+    ctx=shared_impulse_pullback_context(
+        upto,
+        current_price=current,
+        atr_pct=atr_pct,
+    )
+    if not ctx.get("detected"):
         return {
-            "impulse_move_pct": None,
-            "impulse_retracement_pct": None,
-            "impulse_max_retracement_pct": None,
-            "impulse_bounce_recovery_pct": None,
-            "pullback_volume_ratio": None,
+            "impulse_move_pct":None,
+            "impulse_retracement_pct":None,
+            "impulse_max_retracement_pct":None,
+            "impulse_bounce_recovery_pct":None,
+            "pullback_volume_ratio":None,
         }
-
-    current=rows[-1]["c"]
-    candidates=[]
-    n=len(rows)
-    for peak_idx in range(4,n-1):
-        start=max(0,peak_idx-24)
-        low_idx=min(range(start,peak_idx),key=lambda i:rows[i]["l"])
-        low=rows[low_idx]["l"]; peak=rows[peak_idx]["h"]
-        if peak<=low:
-            continue
-        move=(peak/low-1)*100.0
-        if move<6:
-            continue
-        after=rows[peak_idx+1:]
-        if not after:
-            continue
-        trough_rel=min(range(len(after)),key=lambda i:after[i]["l"])
-        trough_idx=peak_idx+1+trough_rel
-        trough=rows[trough_idx]["l"]
-        run=peak-low
-        max_retrace=(peak-trough)/run*100.0
-        current_retrace=(peak-current)/run*100.0
-        recovery=max_retrace-current_retrace
-        age=n-1-peak_idx
-        recency=max(.35,1.0-age/max(12.0,n*.8))
-        score=move*recency*(1.0 if 15<=max_retrace<=75 else .75)
-        candidates.append((score,low_idx,peak_idx,trough_idx,move,max_retrace,current_retrace,recovery))
-
-    if not candidates:
-        return {
-            "impulse_move_pct": None,
-            "impulse_retracement_pct": None,
-            "impulse_max_retracement_pct": None,
-            "impulse_bounce_recovery_pct": None,
-            "pullback_volume_ratio": None,
-        }
-
-    _,low_idx,peak_idx,trough_idx,move,max_retrace,current_retrace,recovery=max(candidates,key=lambda x:x[0])
-    iv=[rows[i]["v"] for i in range(low_idx,peak_idx+1) if rows[i]["v"]>0]
-    pv=[rows[i]["v"] for i in range(peak_idx+1,trough_idx+1) if rows[i]["v"]>0]
-    iva=sum(iv)/len(iv) if iv else None
-    pva=sum(pv)/len(pv) if pv else None
-    volume_ratio=pva/iva if iva and pva is not None else None
-
     return {
-        "impulse_move_pct": move,
-        "impulse_retracement_pct": current_retrace,
-        "impulse_max_retracement_pct": max_retrace,
-        "impulse_bounce_recovery_pct": recovery,
-        "pullback_volume_ratio": volume_ratio,
+        "impulse_move_pct":_fnum(ctx.get("impulse_move_pct")),
+        "impulse_retracement_pct":_fnum(ctx.get("current_retracement_pct")),
+        "impulse_max_retracement_pct":_fnum(ctx.get("max_retracement_pct")),
+        "impulse_bounce_recovery_pct":_fnum(ctx.get("bounce_recovery_pct")),
+        "pullback_volume_ratio":_fnum(ctx.get("pullback_volume_ratio")),
     }
-
 
 def _feature_row(day, prev_close, avg20_vol, atr_pct, idx, prior_daily=None):
     bars = day["bars"]
@@ -260,7 +217,7 @@ def _feature_row(day, prev_close, avg20_vol, atr_pct, idx, prior_daily=None):
     rng = session_high - session_low
     close_location = (price - session_low) / rng if rng > 0 else 0.5
     range_pct = rng / price * 100.0 if price else None
-    impulse = _impulse_features(bars, idx)
+    impulse = _impulse_features(bars, idx, atr_pct=atr_pct)
     sequence = detect_bounce_sequence(
         upto,
         current_price=price,
@@ -1234,7 +1191,7 @@ def predict_ml(symbol, now, metrics, fetch_bars, et):
     result = {
         "status": "ok",
         "model_type": "XGBoost",
-        "version": "ml-v1.8-balanced-swing-bounces",
+        "version": "ml-v1.9-shared-market-structure",
         "source": source,
         "history_source_consolidated": history_source_ok,
         "live_source_consolidated": live_source_ok,
