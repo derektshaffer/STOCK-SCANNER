@@ -50,6 +50,10 @@ permissions:
   contents: write
   actions: read
 
+concurrency:
+  group: historical-ml-backfill-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   backfill:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, 'Run historical ML backfill') || contains(github.event.head_commit.message, 'Run historical timeframe backfill') || contains(github.event.head_commit.message, 'Run timeframe ML validation') || contains(github.event.head_commit.message, 'Run Swing feature research')
