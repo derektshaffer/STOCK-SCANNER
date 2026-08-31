@@ -1444,9 +1444,10 @@ def test_bounce_sequence_counts_rebounds_inside_dominant_impulse():
 
     seq=bounce_sequence_context(bars,current_price=8.96,atr_pct=6)
     assert seq.get("detected"), seq
-    assert int(seq.get("completed_bounces") or 0) >= 1, seq
-    assert seq.get("sequence_anchor_peak_index") < seq.get("impulse_peak_index"), seq
-    assert seq.get("bounce1_pct") is not None, seq
+    assert int(seq.get("observed_bounces") or 0) >= 1, seq
+    assert seq.get("developing_bounce") is True, seq
+    assert str(seq.get("sequence_state") or "").startswith("BOUNCE #1 ACTIVE"), seq
+    assert seq.get("developing_bounce_pct") is not None, seq
 
 
 def test_unconfirmed_rebound_is_labeled_developing_not_confirmed():
@@ -2271,7 +2272,7 @@ def test_analyzer_bounce_progress_and_plan_change_are_explicit():
     source=Path("analyzer_ui_core.py").read_text(encoding="utf-8")
     assert 'f"BOUNCE #{_idx}"' in source
     assert '"✓ CONFIRMED"' in source
-    assert '"… DEVELOPING"' in source
+    assert '"↗ ACTIVE BOUNCE"' in source
     assert '"○ FORMING"' in source
     assert '_developing_top=bool(_seq_top.get("developing_bounce"))' in source
     assert '"BOUNCE DEVELOPING"' in source
