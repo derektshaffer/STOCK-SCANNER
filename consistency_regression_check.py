@@ -6103,6 +6103,65 @@ def test_final_decision_contract_cannot_show_entry_when_safety_gate_waits():
 
 
 
+
+def test_final_decision_contract_blocks_incomplete_entry_available_geometry():
+    import analyzer_v2_integration as v2
+
+    metrics = {
+        "price": 9.05,
+        "trade_plan": {
+            "status": "ENTRY AVAILABLE",
+            "entry_state": "ENTRY AVAILABLE",
+            "selected": {
+                "entry_low": 9.00,
+                "entry_high": 9.10,
+                "stop": None,
+                "target1": 9.80,
+            },
+        },
+    }
+    contract = v2._finalize_trade_plan_contract(
+        metrics,
+        live_data_integrity={"ok": True},
+    )
+    plan = metrics["trade_plan"]
+    assert contract.get("ok") is False, contract
+    assert plan.get("status") == "NO TRADE", plan
+    assert plan.get("entry_state") == "NO ENTRY", plan
+    assert any("stop is missing" in x for x in contract.get("geometry_errors") or []), contract
+
+
+def test_final_decision_contract_blocks_entry_when_price_left_the_zone():
+    import analyzer_v2_integration as v2
+
+    metrics = {
+        "price": 9.30,
+        "trade_plan": {
+            "status": "ENTRY AVAILABLE",
+            "action": "ENTRY AVAILABLE — confirmed breakout zone",
+            "entry_state": "ENTRY AVAILABLE",
+            "selected": {
+                "entry_low": 9.00,
+                "entry_high": 9.10,
+                "stop": 8.70,
+                "target1": 9.80,
+            },
+        },
+    }
+    contract = v2._finalize_trade_plan_contract(
+        metrics,
+        live_data_integrity={"ok": True},
+    )
+    plan = metrics["trade_plan"]
+    assert contract.get("ok") is True, contract
+    assert plan.get("status") == "WAIT", plan
+    assert plan.get("entry_state") == "WAIT FOR ENTRY ZONE", plan
+    assert "NO ENTRY SIGNAL" in str(plan.get("entry_instruction") or ""), plan
+    assert any(
+        "outside entry zone" in x for x in contract.get("corrections") or []
+    ), contract
+
+
 def test_final_decision_contract_requires_safe_geometry_across_full_entry_zone():
     import analyzer_v2_integration as v2
 
@@ -6413,6 +6472,8 @@ if __name__ == "__main__":
         test_visual_truth_usde_like_run_counts_obvious_rebounds,
         test_visual_truth_breakout_plan_keeps_same_goalpost_after_touch,
         test_final_decision_contract_cannot_show_entry_when_safety_gate_waits,
+        test_final_decision_contract_blocks_incomplete_entry_available_geometry,
+        test_final_decision_contract_blocks_entry_when_price_left_the_zone,
         test_final_decision_contract_requires_safe_geometry_across_full_entry_zone,
         test_final_decision_contract_rejects_impossible_long_geometry,
     ]
