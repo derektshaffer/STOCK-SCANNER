@@ -87,92 +87,50 @@ def install_historical_analysis(sa):
         if isinstance(hist, dict):
             hist["setup_patterns"] = setup
 
-        # Historical setup matching affects the actual setup score.
-        new_score = old_score
-        score_reasons = list(metrics.get("score_reasons") or [])
-        if setup.get("status") == "ok" and int(setup.get("sample_count") or 0) >= 5:
-            bias = _num(setup.get("bias_score"))
-            if bias is not None:
-                new_score += _clamp(bias * 0.35, -7, 7)
-                if bias >= 6:
-                    score_reasons.append("bullish same-ticker setup history")
-                elif bias <= -6:
-                    score_reasons.append("bearish same-ticker setup history")
-
-            failure = _num(setup.get("breakout_failure_pct"))
-            follow = _num(setup.get("breakout_follow_through_pct"))
-            if failure is not None and failure >= 65 and (follow is None or follow < 45):
-                new_score -= 3
-                score_reasons.append("historical breakout failure risk")
-
-        new_score = round(_clamp(new_score, 0, 100), 1)
-        metrics["score"] = new_score
-        metrics["historical_score_adjustment"] = round(new_score - old_score, 1)
-        metrics["score_reasons"] = score_reasons
-
-        day_pct = _num(metrics.get("day_pct")) or 0
-        vwap_ext = _num(metrics.get("vwap_extension_pct")) or 0
-        chase = max(0, day_pct - 25) * 0.16 + max(0, vwap_ext - 5) * 0.5
-        metrics["grade"] = "A" if new_score >= 78 else "B" if new_score >= 65 else "C" if new_score >= 52 else "REJECT"
-        metrics["entry_quality"] = "FAVORABLE" if new_score >= 72 and chase < 10 else "WAIT / CONFIRM" if new_score >= 55 else "POOR / HIGH RISK"
-
-        # Rebuild the trade plan now that same-ticker pullback history is
-        # available. build_trade_plan can use the stock's historical median
-        # impulse retracement to shift the preferred pullback zone rather than
-        # assuming every ticker should retrace exactly the same amount.
-        try:
-            metrics["trade_plan"] = sa.build_trade_plan(metrics, now)
-        except Exception:
-            pass
+        # Integrity-first policy: completed historical analogs are research
+        # context only until their live predictive value is independently
+        # validated. They must not change today's production score, grade,
+        # entry geometry, plan family, confidence, or action.
+        metrics["historical_score_adjustment"] = 0.0
+        metrics["historical_production_influence"] = False
+        metrics["historical_policy"] = "research_only_until_validated"
 
         plan = metrics.get("trade_plan") or {}
         if plan:
             plan["historical_setup"] = setup
-            confidence = float(plan.get("confidence") or old_score)
-            confidence += new_score - old_score
+            plan["historical_production_influence"] = False
+            plan["historical_policy"] = "research_only_until_validated"
 
+            research_notes = []
+            hist_retrace = _num(
+                (setup.get("intraday") or {}).get(
+                    "median_impulse_retracement_pct"
+                )
+            )
+            if hist_retrace is not None:
+                research_notes.append(
+                    f"Research only: same-ticker impulse history had a median "
+                    f"retracement near {hist_retrace:.0f}% before later bounce attempts."
+                )
+            if setup.get("bias_label") in {"BULLISH", "BEARISH"}:
+                research_notes.append(
+                    "Research only: completed historical setup matches currently "
+                    f"lean {str(setup.get('bias_label')).lower()}."
+                )
             failure = _num(setup.get("breakout_failure_pct"))
             follow = _num(setup.get("breakout_follow_through_pct"))
-            elevated_breakout_risk = (
+            if (
                 setup.get("status") == "ok"
                 and int(setup.get("breakout_test_count") or 0) >= 3
                 and failure is not None
                 and failure >= 60
                 and (follow is None or follow <= 45)
-            )
-            if elevated_breakout_risk:
-                confidence -= 5
-
-            confidence = int(round(_clamp(confidence, 0, 95)))
-            plan["confidence"] = confidence
-            plan["confidence_label"] = "HIGH" if confidence >= 75 else "MODERATE" if confidence >= 58 else "LOW"
-
-            reasons = list(plan.get("reasons") or [])
-            hist_retrace = _num((setup.get("intraday") or {}).get("median_impulse_retracement_pct"))
-            if hist_retrace is not None:
-                reasons.insert(
-                    0,
-                    f"Same-ticker impulse history favors roughly a {hist_retrace:.0f}% retracement before the next bounce attempt."
+            ):
+                research_notes.append(
+                    "Research only: prior matched sessions had an elevated "
+                    "breakout-failure rate."
                 )
-            if setup.get("bias_label") == "BULLISH":
-                reasons.insert(0, "Same-ticker historical setup matches lean bullish.")
-            elif setup.get("bias_label") == "BEARISH":
-                reasons.insert(0, "Same-ticker historical setup matches lean bearish, so confirmation matters more.")
-            if elevated_breakout_risk:
-                reasons.append("Historical breakout-failure rate is elevated; prefer a hold/retest over a quick poke above resistance.")
-                if plan.get("status") == "ENTRY AVAILABLE" and plan.get("preferred_plan") == "breakout":
-                    plan["status"] = "WAIT"
-                    plan["action"] = "WAIT FOR BREAKOUT TO HOLD — history shows frequent failures"
-            plan["reasons"] = reasons
-
-            plan["method_note"] = (
-                "Rule-based long momentum decision support using VWAP, support/resistance, ATR, "
-                "momentum, volume pace, spread/liquidity, same-ticker spike analogs plus setup-"
-                "matched gap/run-vs-fade behavior, breakout failure/follow-through, VWAP reclaim "
-                "tendencies, impulse retracement, dedicated Bounce #2/#3+ scalp geometry, historical "
-                "late-bounce falloff, multi-session stair-step / plateau behavior, time-of-day behavior "
-                "and catalyst context. Targets are scenarios, not guarantees."
-            )
+            plan["historical_research_notes"] = research_notes[:4]
             metrics["trade_plan"] = plan
 
         return metrics
