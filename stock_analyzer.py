@@ -1876,6 +1876,7 @@ def analyze(symbol):
         "trade_age_seconds":round(trade_age,2) if trade_age is not None else None,
         "quote_age_seconds":round(quote_age,2) if quote_age is not None else None,
         "price":round(price,4),
+        "session_open":round(current_open,4) if current_open is not None else None,
         "prev_close":prev_close,
         "day_pct":round(day_pct,2) if day_pct is not None else None,
         "bid":bid,
