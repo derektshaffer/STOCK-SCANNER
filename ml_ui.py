@@ -2,7 +2,22 @@ def _pct_value(model):
     if not model or model.get("status") != "ok":
         return "—"
     p = model.get("probability_pct")
-    return f"{p:.0f}%" if p is not None else "—"
+    if p is None:
+        return "—"
+    prefix = "" if model.get("validated") else "ADVISORY · "
+    return f"{prefix}{p:.0f}%"
+
+
+def _probability_class(model, *, high=60, low=None, risk=False):
+    """Advisory model percentages are intentionally visually neutral."""
+    if not model or not model.get("validated"):
+        return ""
+    p = model.get("probability_pct")
+    if p is None:
+        return ""
+    if risk:
+        return "bad" if p >= high else "good" if low is not None and p <= low else "warn"
+    return "good" if p >= high else "bad" if low is not None and p <= low else "warn"
 
 
 def _validation_note(model):
@@ -109,7 +124,7 @@ def render_ml_prediction(st, pd, result, card):
         "TARGET 1 BEFORE STOP",
         _pct_value(target),
         target_note,
-        "good" if (target.get("probability_pct") or 0) >= 65 else "warn",
+        _probability_class(target, high=65),
         "Estimated probability that the analyzer's first upside target is reached before its stop during the same trading session.",
     )
     card(
@@ -117,7 +132,7 @@ def render_ml_prediction(st, pd, result, card):
         "30M HIGHER",
         _pct_value(m30),
         _validation_note(m30),
-        "good" if (m30.get("probability_pct") or 0) >= 60 else "warn",
+        _probability_class(m30, high=60),
         "Estimated probability that the stock price will be higher than it is now 30 minutes from the current snapshot.",
     )
     card(
@@ -125,7 +140,7 @@ def render_ml_prediction(st, pd, result, card):
         "60M HIGHER",
         _pct_value(m60),
         _validation_note(m60),
-        "good" if (m60.get("probability_pct") or 0) >= 60 else "warn",
+        _probability_class(m60, high=60),
         "Estimated probability that the stock price will be higher than it is now 60 minutes from the current snapshot.",
     )
     card(
@@ -133,7 +148,7 @@ def render_ml_prediction(st, pd, result, card):
         "BREAKOUT HOLD",
         _pct_value(breakout) if ml.get("breakout_relevant") else "N/A",
         _validation_note(breakout) if ml.get("breakout_relevant") else "not near breakout trigger",
-        "good" if (breakout.get("probability_pct") or 0) >= 60 else "warn",
+        _probability_class(breakout, high=60),
         "When price is near a breakout level, this estimates whether the breakout will hold rather than quickly fail back below resistance.",
     )
     card(
@@ -141,7 +156,7 @@ def render_ml_prediction(st, pd, result, card):
         "30M REVERSAL RISK",
         _pct_value(reversal),
         _validation_note(reversal),
-        "bad" if (reversal.get("probability_pct") or 0) >= 60 else "good" if reversal.get("probability_pct") is not None and (reversal.get("probability_pct") or 0) <= 40 else "warn",
+        _probability_class(reversal, high=60, low=40, risk=True),
         "Estimated chance that a meaningful downside reversal occurs before another continuation push during the next 30 minutes.",
     )
     card(
@@ -159,7 +174,7 @@ def render_ml_prediction(st, pd, result, card):
         "NEXT BOUNCE / 30M",
         _pct_value(repeat_bounce) if ml.get("bounce_relevant") else "N/A",
         _validation_note(repeat_bounce) if ml.get("bounce_relevant") else "needs at least one completed bounce",
-        "good" if (repeat_bounce.get("probability_pct") or 0) >= 60 else "bad" if repeat_bounce.get("probability_pct") is not None and (repeat_bounce.get("probability_pct") or 0) <= 40 else "warn",
+        _probability_class(repeat_bounce, high=60, low=40),
         "After at least one prior bounce, estimates whether another quick rebound threshold is hit before an equal-sized breakdown threshold during the next 30 minutes.",
     )
     card(
@@ -167,7 +182,7 @@ def render_ml_prediction(st, pd, result, card):
         "NEW HIGH / 60M",
         _pct_value(new_high) if ml.get("bounce_relevant") else "N/A",
         _validation_note(new_high) if ml.get("bounce_relevant") else "needs a multi-leg sequence",
-        "good" if (new_high.get("probability_pct") or 0) >= 60 else "bad" if new_high.get("probability_pct") is not None and (new_high.get("probability_pct") or 0) <= 40 else "warn",
+        _probability_class(new_high, high=60, low=40),
         "After at least one bounce, estimates whether price reaches a fresh session high before an adaptive downside failure threshold during the next 60 minutes.",
     )
     card(
@@ -175,7 +190,7 @@ def render_ml_prediction(st, pd, result, card):
         "POST-BOUNCE FAILURE / 60M",
         _pct_value(post_failure) if ml.get("mature_bounce_relevant") else "N/A",
         _validation_note(post_failure) if ml.get("mature_bounce_relevant") else "needs at least two completed bounces",
-        "bad" if (post_failure.get("probability_pct") or 0) >= 60 else "good" if post_failure.get("probability_pct") is not None and (post_failure.get("probability_pct") or 0) <= 40 else "warn",
+        _probability_class(post_failure, high=60, low=40, risk=True),
         "After two or more completed bounces, estimates whether a material falloff occurs before another smaller rescue push during the next 60 minutes.",
     )
     card(
@@ -183,7 +198,7 @@ def render_ml_prediction(st, pd, result, card):
         "STAIR REACCEL / 60M",
         _pct_value(stair_reaccel) if ml.get("stair_relevant") else "N/A",
         _validation_note(stair_reaccel) if ml.get("stair_relevant") else "needs a multi-session step / plateau",
-        "good" if (stair_reaccel.get("probability_pct") or 0) >= 60 else "bad" if stair_reaccel.get("probability_pct") is not None and (stair_reaccel.get("probability_pct") or 0) <= 40 else "warn",
+        _probability_class(stair_reaccel, high=60, low=40),
         "When a multi-session stair-step or higher plateau exists, estimates whether another expansion leg happens before the accepted higher level breaks down.",
     )
     st.caption(
@@ -204,9 +219,15 @@ def render_ml_prediction(st, pd, result, card):
     card(
         peer_cols[0],
         "SIMILAR-TICKER +3% / 60M",
-        f"{float(peer_probability):.1f}%" if peer_probability is not None else "—",
+        (
+            f"{float(peer_probability):.1f}%"
+            if peer_validated and peer_probability is not None
+            else f"ADVISORY · {float(peer_probability):.1f}%"
+            if peer_probability is not None
+            else "—"
+        ),
         peer_note,
-        "good" if peer_validated and (peer_edge or 50) >= 58 else "warn",
+        "good" if peer_validated and (peer_edge or 50) >= 58 else "",
         "Among historically similar setups from other tickers, the percentage that gained at least 3% over the following 60 minutes.",
     )
     card(

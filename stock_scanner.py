@@ -356,8 +356,23 @@ def parse_timestamp(value):
     if not value:
         return None
     try:
-        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
-    except ValueError:
+        text = str(value).strip()
+        try:
+            numeric = float(text)
+            if numeric > 10_000_000_000:
+                numeric /= 1000.0
+            if numeric > 1_000_000_000:
+                return datetime.fromtimestamp(
+                    numeric,
+                    tz=timezone.utc,
+                )
+        except (TypeError, ValueError, OverflowError):
+            pass
+        dt = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
+    except (ValueError, TypeError):
         return None
 
 
@@ -1079,6 +1094,68 @@ def scanner_action_signal(c, now_et=None, *, use_behavior=False):
     }
 
 
+MAX_ACTIONABLE_MARKET_DATA_AGE_SECONDS = 120
+
+
+def _scanner_data_integrity(c, now_et):
+    reasons = []
+    source = str(c.get("live_quote_source") or "").lower()
+    consolidated = (
+        "tradier" in source
+        or ("alpaca_sip" in source)
+        or "consolidated" in source
+    )
+    if not consolidated:
+        reasons.append("live quote source is not consolidated")
+
+    now_utc = now_et.astimezone(timezone.utc)
+    for label, key in (
+        ("trade", "latest_trade_time"),
+        ("quote", "latest_quote_time"),
+    ):
+        dt = parse_timestamp(c.get(key))
+        if dt is None:
+            reasons.append(f"latest {label} timestamp is missing")
+            continue
+        age = max(
+            0.0,
+            (now_utc - dt.astimezone(timezone.utc)).total_seconds(),
+        )
+        c[f"{label}_age_seconds"] = round(age, 2)
+        if age > MAX_ACTIONABLE_MARKET_DATA_AGE_SECONDS:
+            reasons.append(f"latest {label} is stale ({age:.0f}s old)")
+
+    for key, label in (
+        ("price", "price"),
+        ("vwap", "VWAP"),
+        ("momentum_5m", "5-minute momentum"),
+        ("momentum_15m", "15-minute momentum"),
+        ("spread_pct", "live spread"),
+    ):
+        if c.get(key) is None:
+            reasons.append(f"{label} is missing")
+
+    return not reasons, reasons
+
+
+def apply_scanner_data_integrity_gate(rows, now_et):
+    for c in rows:
+        ok, reasons = _scanner_data_integrity(c, now_et)
+        c["action_data_integrity_ok"] = ok
+        c["action_data_integrity_reasons"] = reasons
+        if ok:
+            continue
+        c["scanner_action"] = "DATA CHECK"
+        c["scanner_action_tier"] = "BLOCKED"
+        c["scanner_action_reason"] = (
+            "Do not use this row as an actionable cue: "
+            + "; ".join(reasons[:4])
+            + "."
+        )
+        c["alert_ready"] = False
+        c["alert_tier"] = None
+
+
 def assign_scanner_actions(rows, now_et):
     for c in rows:
         action = scanner_action_signal(c, now_et)
@@ -1272,6 +1349,8 @@ def analyze_snapshot(symbol, tradier_quote=None, alpaca_snapshot=None):
     live_quote_source = f"alpaca_{LIVE_FEED}"
     liquidity_source = "iex_estimate"
     quote_avg_volume = None
+    latest_trade_time = trade.get("t")
+    latest_quote_time = quote.get("t")
 
     if tradier_quote:
         def tnum(name):
@@ -1290,6 +1369,16 @@ def analyze_snapshot(symbol, tradier_quote=None, alpaca_snapshot=None):
         quote_avg_volume = tnum("average_volume") or None
         live_quote_source = "tradier_consolidated"
         liquidity_source = "tradier_consolidated"
+        latest_trade_time = (
+            tradier_quote.get("trade_date")
+            or tradier_quote.get("timestamp")
+        )
+        latest_quote_time = (
+            tradier_quote.get("ask_date")
+            or tradier_quote.get("bid_date")
+            or tradier_quote.get("timestamp")
+            or latest_trade_time
+        )
 
     daily_ts = daily.get("t")
     session_date = None
@@ -1343,6 +1432,16 @@ def analyze_snapshot(symbol, tradier_quote=None, alpaca_snapshot=None):
         "liquidity_source": liquidity_source,
         "liquidity_dollar_volume": round(liquidity_dollar_volume, 2),
         "live_quote_source": live_quote_source,
+        "latest_trade_time": (
+            parse_timestamp(latest_trade_time).isoformat()
+            if parse_timestamp(latest_trade_time) is not None
+            else None
+        ),
+        "latest_quote_time": (
+            parse_timestamp(latest_quote_time).isoformat()
+            if parse_timestamp(latest_quote_time) is not None
+            else None
+        ),
         "session_date": session_date,
         "spread_pct": round(spread_pct, 3) if spread_pct is not None else None,
         "intraday_range_pct": round(intraday_range_pct, 2)
@@ -3214,6 +3313,7 @@ def main():
     # is still calculated/logged for research, but replay validation must improve
     # before behavior-specific overrides are allowed to change production ACTION.
     assign_scanner_actions(rows, now_et)
+    apply_scanner_data_integrity_gate(rows, now_et)
 
     if attach_timeframe_fit is not None:
         for row in rows:

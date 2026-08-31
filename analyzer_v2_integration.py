@@ -705,14 +705,10 @@ def _potential_score(metrics, sec, market, catalyst):
 
     hist = metrics.get("historical_setup") or {}
     if hist.get("status") == "ok":
-        bias = _num(hist.get("bias_score")) or 0.0
-        n = int(hist.get("sample_count") or 0)
-        weight = min(1.0, n / 20.0)
-        history_points = _clamp(bias * 0.8 * weight, -8.0, 8.0)
-        if bias >= 5:
-            reasons.append("bullish same-ticker analogs")
-        elif bias <= -5:
-            reasons.append("bearish same-ticker analogs")
+        # Completed historical analogs remain visible in the research section,
+        # but they are not allowed to change the live upside score.
+        history_points = 0.0
+        reasons.append("historical analogs shown as research-only context")
 
     ml = metrics.get("ml_prediction") or {}
     edge = _num(ml.get("ml_edge_score"))
@@ -1037,13 +1033,9 @@ def _timeframe_analysis(sa, symbol, metrics, sec, market, catalyst, potential, r
     )
 
     hist = metrics.get("historical_setup") or {}
+    # Completed-day analogs are research-only. Timeframe fit must not inherit
+    # a historical directional lean into its live score.
     history_score = 50.0
-    if hist.get("status") == "ok":
-        history_score += (_num(hist.get("bias_score")) or 0.0) * 1.6
-        next_day = _num(hist.get("next_day_up_pct"))
-        if next_day is not None:
-            history_score += (next_day - 50.0) * 0.15
-    history_score = _clamp(history_score)
 
     stair_score = _num((metrics.get("stair_step") or {}).get("structure_score"))
     if stair_score is None:
@@ -1149,6 +1141,54 @@ def _timeframe_analysis(sa, symbol, metrics, sec, market, catalyst, potential, r
             "The longer-term read uses reported SEC fundamentals and price trend, "
             "but it does not yet include valuation or analyst estimates."
         ),
+    }
+
+
+MAX_ACTIONABLE_MARKET_DATA_AGE_SECONDS = 120
+
+
+def _analyzer_live_data_integrity(metrics):
+    reasons = []
+    provider = str(
+        metrics.get("market_provider")
+        or metrics.get("live_provider")
+        or ""
+    ).lower()
+    feed = str(metrics.get("live_feed") or "").lower()
+    consolidated = (
+        provider == "tradier"
+        or "tradier" in feed
+        or "sip" in feed
+        or "consolidated" in feed
+    )
+    if not consolidated:
+        reasons.append("live market data is not consolidated")
+
+    for label, key in (
+        ("trade", "trade_age_seconds"),
+        ("quote", "quote_age_seconds"),
+    ):
+        age = _num(metrics.get(key))
+        if age is None:
+            reasons.append(f"latest {label} freshness is unknown")
+        elif age > MAX_ACTIONABLE_MARKET_DATA_AGE_SECONDS:
+            reasons.append(f"latest {label} is stale ({age:.0f}s old)")
+
+    for key, label in (
+        ("price", "price"),
+        ("vwap", "VWAP"),
+        ("momentum_5m", "5-minute momentum"),
+        ("momentum_15m", "15-minute momentum"),
+        ("spread_pct", "live spread"),
+    ):
+        if _num(metrics.get(key)) is None:
+            reasons.append(f"{label} is missing")
+
+    return {
+        "ok": not reasons,
+        "reasons": reasons,
+        "consolidated": consolidated,
+        "max_age_seconds": MAX_ACTIONABLE_MARKET_DATA_AGE_SECONDS,
     }
 
 
@@ -1317,10 +1357,8 @@ def _entry_readiness(metrics):
         number=int(rb.get("bounce_number") or 0)
         if status=="ENTRY AVAILABLE":
             repeat_points+=7.0
-        hist_rate=_num(rb.get("historical_bounce_rate_pct"))
-        if hist_rate is not None:
-            if hist_rate>=65:repeat_points+=4.0
-            elif hist_rate<35:repeat_points-=4.0
+        # Historical bounce occurrence rates are reference context only.
+        # Live entry readiness uses the current sequence, trigger and execution.
         if number>=3:
             repeat_points-=2.0  # later bounces deserve a small maturity penalty
         if int(sequence.get("lower_high_streak") or 0)>=2:
@@ -1365,14 +1403,14 @@ def _evidence_strength(metrics, sec, market, catalyst):
 
     hist = metrics.get("historical_setup") or {}
     n = int(hist.get("sample_count") or 0)
-    hist_points = min(32.0, n * 1.3)
-    score += hist_points
-    if n >= 25:
-        reasons.append("high historical analog sample")
-    elif n >= 15:
-        reasons.append("moderate historical analog sample")
+    # Historical analog coverage is informative research context, not live
+    # evidence strength. It must not help an entry clear the safety gate.
+    if n:
+        reasons.append(
+            f"{n} historical analog(s) available · research-only"
+        )
     else:
-        reasons.append("limited historical analog sample")
+        reasons.append("historical analog research context unavailable")
 
     ml = metrics.get("ml_prediction") or {}
     validated = int(ml.get("validated_edge_model_count") or 0)
@@ -1495,30 +1533,11 @@ def _full_spectrum_analysis(metrics, sec, market, catalyst, turnover):
         stair_score=45.0 if not stair.get("detected") else 50.0
     stair_score=cap(stair_score)
 
-    # 4) Historical behavior.
+    # 4) Historical behavior is displayed separately as research-only.
+    # Keep a neutral placeholder so the full-spectrum score shape remains
+    # stable without allowing completed analogs to change live decisions.
     hist=metrics.get("historical_setup") or {}
     history=50.0
-    if hist.get("status")=="ok":
-        history += (_num(hist.get("bias_score")) or 0.0)*1.8
-        fail=_num(hist.get("breakout_failure_pct"))
-        follow=_num(hist.get("breakout_follow_through_pct"))
-        if fail is not None and follow is not None:
-            history += (follow-fail)*0.16
-        bounce=_num(hist.get("impulse_bounce_5pct_rate"))
-        if bounce is not None:
-            history += (bounce-50.0)*0.12
-        second_bounce_rate=_num(hist.get("second_bounce_rate_pct"))
-        if second_bounce_rate is not None:
-            history += (second_bounce_rate-50.0)*0.08
-        stair_hist=hist.get("stair_step_history") or {}
-        if stair.get("detected") and int(stair_hist.get("event_count") or 0)>=3:
-            stair_hit5=_num(stair_hist.get("next3d_hit5_rate_pct"))
-            stair_fail5=_num(stair_hist.get("next3d_failure5_rate_pct"))
-            if stair_hit5 is not None:
-                history += (stair_hit5-50.0)*0.08
-            if stair_fail5 is not None:
-                history -= max(0.0,stair_fail5-35.0)*0.06
-    history=cap(history)
 
     # 5) Validated ML continuation plus reversal model.
     ml=metrics.get("ml_prediction") or {}
@@ -1574,27 +1593,15 @@ def _full_spectrum_analysis(metrics, sec, market, catalyst, turnover):
     elif dilution=="NONE FOUND":fundamental+=5
     fundamental=cap(fundamental)
 
-    # 10) Reversal risk combines live tape/structure with historical failure and
-    # a validated ML reversal probability when one exists.
+    # 10) Reversal risk uses causal live structure plus validated ML only.
+    # Historical failure rates remain research-only and cannot raise/lower this
+    # safety score.
     live_ex=metrics.get("run_exhaustion") or {}
     live_rev=_num(live_ex.get("score"))
     reversal_parts=[]
     if live_rev is not None:reversal_parts.append((live_rev,0.50))
-    fail=_num(hist.get("breakout_failure_pct"))
-    fade=_num(hist.get("gap_fade_pct"))
-    hist_rev=None
-    vals=[x for x in (fail,fade) if x is not None]
-    if vals:hist_rev=sum(vals)/len(vals)
-    if hist_rev is not None:reversal_parts.append((hist_rev,0.12))
     if reversal_ml is not None and reversal_ml_valid:reversal_parts.append((reversal_ml,0.14))
     completed_for_failure=int(sequence.get("completed_bounces") or 0)
-    historical_post_bounce=None
-    if completed_for_failure>=3:
-        historical_post_bounce=_num(hist.get("post_third_bounce_drop5_rate_pct"))
-    elif completed_for_failure>=2:
-        historical_post_bounce=_num(hist.get("post_second_bounce_drop5_rate_pct"))
-    if historical_post_bounce is not None:
-        reversal_parts.append((historical_post_bounce,0.12))
     if completed_for_failure>=2 and post_failure_valid and post_failure_ml is not None:
         reversal_parts.append((post_failure_ml,0.20))
     if reversal_parts:
@@ -1622,18 +1629,10 @@ def _full_spectrum_analysis(metrics, sec, market, catalyst, turnover):
         if retrace is not None and 25<=retrace<=62:bounce_base+=18
         if impulse.get("bounce_confirmed"):bounce_base+=14
         elif retrace is not None and 25<=retrace<=62:bounce_base-=4
-        hist_bounce=_num(hist.get("impulse_bounce_5pct_rate"))
-        if hist_bounce is not None:bounce_base+=(hist_bounce-50)*0.20
         if pvr is not None and pvr<0.85:bounce_base+=6
 
     completed_bounces=int(sequence.get("completed_bounces") or 0)
     if completed_bounces>=1:
-        hist_second=_num(hist.get("second_bounce_rate_pct"))
-        hist_third=_num(hist.get("third_bounce_rate_pct"))
-        if completed_bounces==1 and hist_second is not None:
-            bounce_base+=(hist_second-50)*0.28
-        elif completed_bounces>=2 and hist_third is not None:
-            bounce_base+=(hist_third-50)*0.24
         if repeat_bounce_valid and repeat_bounce_ml is not None:
             bounce_base+=(repeat_bounce_ml-50)*0.45
         decay=_num(sequence.get("bounce_decay_ratio"))
@@ -1804,6 +1803,7 @@ def install_v2_analysis(sa):
         market = _market_context(sa, sec.get("sector_etf"))
         catalyst = _catalyst_strength(metrics.get("news") or [])
         turnover = _turnover_context(metrics, sec, float_context)
+        live_data_integrity = _analyzer_live_data_integrity(metrics)
 
         potential, potential_reasons, potential_components = _potential_score(
             metrics, sec, market, catalyst
@@ -1836,6 +1836,13 @@ def install_v2_analysis(sa):
         plan = metrics.get("trade_plan") or {}
         if str(plan.get("status") or "") == "ENTRY AVAILABLE":
             safety_reasons = []
+            if not live_data_integrity.get("ok"):
+                safety_reasons.append(
+                    "live-data integrity check failed: "
+                    + "; ".join(
+                        (live_data_integrity.get("reasons") or [])[:3]
+                    )
+                )
             if readiness < 60:
                 safety_reasons.append("entry readiness is below 60/100")
             if evidence < 50:
@@ -1887,6 +1894,7 @@ def install_v2_analysis(sa):
             "fundamental_context": sec,
             "float_context": float_context,
             "turnover_context": turnover,
+            "live_data_integrity": live_data_integrity,
             "timeframe_analysis": timeframe,
             "full_spectrum": full_spectrum,
             "sip_status": sip_status,

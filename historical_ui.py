@@ -1,7 +1,12 @@
 def render_historical_setup(st, pd, result, card, pp):
     setup = result.get("historical_setup") or (result.get("historical_analogs") or {}).get("setup_patterns") or {}
 
-    st.markdown('<div class="section">Historical setup match</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section">Historical setup match <span style="font-size:12px;color:#91a7c2">research-only</span></div>', unsafe_allow_html=True)
+    st.caption(
+        "Historical analogs are reference research only. They do not change the "
+        "live Setup Score, entry zone, targets, stop, preferred plan, action, "
+        "Entry Readiness, Upside Potential, or plan confidence."
+    )
     if setup.get("status") == "ok":
         intr = setup.get("intraday") or {}
         cols = st.columns(6)

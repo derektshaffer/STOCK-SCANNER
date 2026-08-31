@@ -931,8 +931,10 @@ def build_trade_plan(metrics, now):
     """Rule-based long momentum trade plan.
 
     This deliberately returns WAIT/NO TRADE when structure or reward/risk is
-    poor. It combines current price action with S/R, VWAP, ATR, historical
-    analog excursion data, liquidity, volume, momentum and catalyst context.
+    poor. Live entry geometry uses only current/causal market structure,
+    liquidity, volume, momentum and catalyst context. Completed-day historical
+    analogs remain visible research context and do not alter entries, targets,
+    stops, preferred plan, or confidence.
     """
     price=fnum(metrics.get("price"))
     if not price:return {"status":"NO TRADE","action":"NO TRADE — no current price"}
@@ -964,17 +966,18 @@ def build_trade_plan(metrics, now):
         reversal_score=max(reversal_score, 74.0)
     hist_setup=metrics.get("historical_setup") or {}
     hist_intraday=hist_setup.get("intraday") or {}
+    # Completed-day historical analogs are research-only. Preserve their
+    # values for display, but never let them raise live reversal risk or change
+    # today's action.
     historical_post_bounce_drop5=None
     completed_for_history=int(sequence.get("completed_bounces") or 0)
-    if completed_for_history>=3:
-        historical_post_bounce_drop5=fnum(hist_intraday.get("post_third_bounce_drop5_rate_pct"))
-    elif completed_for_history>=2:
-        historical_post_bounce_drop5=fnum(hist_intraday.get("post_second_bounce_drop5_rate_pct"))
-    if historical_post_bounce_drop5 is not None:
-        if historical_post_bounce_drop5>=70:
-            reversal_score=max(reversal_score,72.0)
-        elif historical_post_bounce_drop5>=55:
-            reversal_score=max(reversal_score,64.0)
+    historical_post_bounce_drop5_reference=(
+        fnum(hist_intraday.get("post_third_bounce_drop5_rate_pct"))
+        if completed_for_history>=3
+        else fnum(hist_intraday.get("post_second_bounce_drop5_rate_pct"))
+        if completed_for_history>=2
+        else None
+    )
     catalyst=_catalyst_bias(metrics.get("news") or [])
     liquidity=metrics.get("liquidity") or {}
 
@@ -989,15 +992,14 @@ def build_trade_plan(metrics, now):
     impulse_low=fnum(impulse.get("impulse_low"))
     impulse_high=fnum(impulse.get("impulse_high"))
     impulse_run=(impulse_high-impulse_low) if impulse_low and impulse_high and impulse_high>impulse_low else None
-    hist_retrace=fnum(hist_intraday.get("median_impulse_retracement_pct"))
+    hist_retrace_reference=fnum(
+        hist_intraday.get("median_impulse_retracement_pct")
+    )
 
+    # Fixed causal geometry: completed historical analogs may be displayed,
+    # but cannot move today's pullback zone.
     retrace_shallow=33.0
     retrace_deep=50.0
-    if hist_retrace is not None and 25 <= hist_retrace <= 62:
-        # Let the stock's own historical behavior shift the preferred zone,
-        # while keeping it inside a sensible first-pullback envelope.
-        retrace_shallow=max(25.0,hist_retrace-8.0)
-        retrace_deep=min(62.0,hist_retrace+8.0)
 
     impulse_zone=None
     if impulse_detected and impulse_run and (fnum(impulse.get("impulse_move_pct")) or 0)>=8:
@@ -1005,11 +1007,7 @@ def build_trade_plan(metrics, now):
         iz_low=impulse_high-impulse_run*(retrace_deep/100.0)
         impulse_zone={"low":round(min(iz_low,iz_high),4),"high":round(max(iz_low,iz_high),4)}
         pull_anchor=(impulse_zone["low"]+impulse_zone["high"])/2
-        pull_source=(
-            f"historical {retrace_shallow:.0f}–{retrace_deep:.0f}% impulse retracement"
-            if hist_retrace is not None
-            else "33–50% impulse retracement"
-        )
+        pull_source="33–50% impulse retracement"
 
         confluence=[]
         if vwap and impulse_zone["low"]*0.97 <= vwap <= impulse_zone["high"]*1.03:
@@ -1089,10 +1087,10 @@ def build_trade_plan(metrics, now):
         if breakout:
             # The broken level is no longer a target; look for the next one.
             tech=[x for x in tech if x > breakout_level*(1.004)]
-        hist_mfe1=fnum(hist.get("median_mfe_1d"))
-        hist_mfe3=fnum(hist.get("median_mfe_3d"))
-        hist1=price*(1+hist_mfe1/100) if hist_mfe1 and hist_mfe1>0 else None
-        hist3=price*(1+hist_mfe3/100) if hist_mfe3 and hist_mfe3>0 else None
+        # Historical excursion statistics are research-only and do not set
+        # live targets.
+        hist1=None
+        hist3=None
         atr1=entry+atr*0.75
         atr2=entry+atr*1.25
         atr3=entry+atr*1.75
@@ -1187,20 +1185,19 @@ def build_trade_plan(metrics, now):
         }
         rb_stop=round(current_dip*(1-_clamp(atr_pct*0.13,0.9,2.8)/100.0),4)
 
+        # Historical occurrence rates remain visible for research, but live
+        # bounce geometry comes only from the current sequence + volatility.
         if next_bounce_number==2:
-            expected_bounce=fnum(hist_intraday.get("median_bounce2_pct"))
             historical_rate=fnum(hist_intraday.get("second_bounce_rate_pct"))
-        elif next_bounce_number==3:
-            expected_bounce=fnum(hist_intraday.get("median_bounce3_pct"))
+        elif next_bounce_number>=3:
             historical_rate=fnum(hist_intraday.get("third_bounce_rate_pct"))
         else:
-            expected_bounce=None
-            historical_rate=fnum(hist_intraday.get("third_bounce_rate_pct"))
+            historical_rate=None
+        expected_bounce=None
 
         previous_bounce_size=fnum(sequence.get("latest_bounce_pct"))
-        historical_decay=fnum(hist_intraday.get("median_bounce2_vs_bounce1_ratio"))
         live_decay=fnum(sequence.get("bounce_decay_ratio"))
-        decay_guess=historical_decay if historical_decay is not None else live_decay
+        decay_guess=live_decay
         if expected_bounce is None and previous_bounce_size:
             decay_guess=_clamp(decay_guess if decay_guess is not None else 0.68,0.40,0.92)
             expected_bounce=previous_bounce_size*decay_guess
@@ -1324,8 +1321,8 @@ def build_trade_plan(metrics, now):
     elif liquidity.get("label")=="LOW":confidence-=8
     if pace is not None and pace>=2:confidence+=5
     if spread is not None and spread>5:confidence-=8
-    if hist.get("sample_count",0)>=6:confidence+=4
-    if (hist.get("next_day_up_pct") or 0)>=65:confidence+=4
+    # Historical analog sample size/direction is research-only and cannot
+    # increase live plan confidence.
     if catalyst.get("label")=="POSITIVE":confidence+=4
     elif catalyst.get("label")=="NEGATIVE":confidence-=6
     if overextended:confidence-=10
@@ -1335,8 +1332,6 @@ def build_trade_plan(metrics, now):
     elif stair.get("breakdown"):
         confidence-=10
     if repeat_bounce_plan and preferred=="repeat_bounce":
-        hist_rate=fnum(repeat_bounce_plan.get("historical_bounce_rate_pct"))
-        if hist_rate is not None and hist_rate>=60:confidence+=4
         if sequence_health is not None and sequence_health<35:confidence-=8
     confidence=int(round(_clamp(confidence,0,95)))
 
@@ -1374,10 +1369,16 @@ def build_trade_plan(metrics, now):
         )
         if reversal_score>=62:
             reasons.append("Overall run-exhaustion risk is elevated, so treat this as a shorter-duration bounce setup rather than a fresh continuation thesis.")
-        if historical_post_bounce_drop5 is not None and historical_post_bounce_drop5>=55:
+        if (
+            historical_post_bounce_drop5_reference is not None
+            and historical_post_bounce_drop5_reference>=55
+        ):
             reasons.append(
-                f"On comparable same-ticker sessions, a ≥5% falloff after this mature bounce stage occurred about "
-                f"{historical_post_bounce_drop5:.0f}% of the time; keep the later-bounce stop tight."
+                "Research-only historical context: comparable same-ticker "
+                f"sessions showed a ≥5% falloff about "
+                f"{historical_post_bounce_drop5_reference:.0f}% of the time. "
+                "This statistic does not alter the live stop, target, entry, "
+                "confidence, or action."
             )
     elif repeat_bounce_plan and str(sequence.get("current_leg") or "").upper().startswith("PULL"):
         status="WAIT"
@@ -1466,7 +1467,9 @@ def build_trade_plan(metrics, now):
         "atr":round(atr,4),"atr_pct":round(atr_pct,2),
         "reasons":reasons,
         "updated":now.astimezone(ET).isoformat(),
-        "method_note":"Rule-based long momentum decision support using impulse/retracement, dedicated later-bounce scalp geometry, multi-session stair-step structure, confirmation, VWAP, support/resistance, ATR, momentum, volume pace, spread/liquidity, same-ticker historical behavior and catalyst context. Pullback zones are not automatic entries; targets are scenarios, not guarantees.",
+        "historical_research_only":True,
+        "historical_research_note":"Completed-day same-ticker analogs are displayed for research only and do not alter live entry zones, targets, stops, preferred plan, action, or confidence.",
+        "method_note":"Rule-based long momentum decision support using causal live impulse/retracement, dedicated later-bounce geometry, multi-session stair-step structure, confirmation, VWAP, support/resistance, ATR, momentum, volume pace, spread/liquidity and catalyst context. Completed historical analogs are research-only. Pullback zones are not automatic entries; targets are scenarios, not guarantees.",
     }
 
 def score_setup(metrics):

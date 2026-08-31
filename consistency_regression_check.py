@@ -156,6 +156,9 @@ def test_scanner_ml_version_gate():
         base,
         observation_id="current",
         feature_version=sm.CURRENT_FEATURE_VERSION,
+        observation_source="live_scan",
+        market_provider="tradier",
+        live_feed="consolidated",
     )
     rows = sm._extract_observations({"observations": [legacy, current]})
     assert len(rows) == 1, rows
@@ -1108,6 +1111,8 @@ def test_historical_replay_source_survives_ml_extraction():
                 "momentum_5m": 1.0,
                 "momentum_15m": 2.0,
                 "volume_pace": 2.5,
+                "liquidity_source": "historical_tradier_replay",
+                "live_intraday_source": "tradier_historical_5min_open",
             }
         ],
     }
@@ -3676,6 +3681,198 @@ def test_offhours_workflow_runs_after_close_and_commits_separate_snapshot():
     assert "git push origin HEAD:main" in source
 
 
+def test_prediction_tracker_uses_first_post_horizon_bar_with_three_minute_cap():
+    import prediction_tracker as pt
+
+    target = datetime(2026, 8, 28, 15, 0, tzinfo=timezone.utc)
+    bars = [
+        {"t": "2026-08-28T14:59:00Z", "c": 9.9},
+        {"t": "2026-08-28T15:03:00Z", "c": 10.3},
+        {"t": "2026-08-28T15:04:00Z", "c": 10.4},
+    ]
+    assert pt.OUTCOME_MAX_BAR_DELAY_SECONDS == 180
+    assert pt._first_close_at_or_after(bars, target) == 10.3
+    assert pt._first_close_at_or_after(
+        [{"t": "2026-08-28T14:59:00Z", "c": 9.9}],
+        target,
+    ) is None
+    assert pt._first_close_at_or_after(
+        [{"t": "2026-08-28T15:04:00Z", "c": 10.4}],
+        target,
+    ) is None
+
+
+def test_same_ticker_ml_uses_clock_horizons_and_effective_samples():
+    import ml_predictor as mp
+
+    current = datetime(2026, 8, 28, 10, 0, tzinfo=ET)
+    bars = [
+        {"t": _iso(current + timedelta(minutes=29)), "c": 10.1},
+        {"t": _iso(current + timedelta(minutes=30)), "c": 10.2},
+        {"t": _iso(current + timedelta(minutes=31)), "c": 10.3},
+        {"t": _iso(current + timedelta(minutes=60)), "c": 10.5},
+    ]
+    assert mp._close_at_clock_horizon(bars, current, ET, 30) == 10.2
+    assert mp._close_at_clock_horizon(bars, current, ET, 60) == 10.5
+
+    rows = [
+        {"timestamp": 1000.0, "trading_date": "2026-08-28"},
+        {"timestamp": 2000.0, "trading_date": "2026-08-28"},
+        {"timestamp": 4600.0, "trading_date": "2026-08-28"},
+        {"timestamp": 1000.0, "trading_date": "2026-08-29"},
+    ]
+    selected = mp._decorrelate_effective_rows(rows)
+    assert [(r["trading_date"], r["timestamp"]) for r in selected] == [
+        ("2026-08-28", 1000.0),
+        ("2026-08-29", 1000.0),
+        ("2026-08-28", 4600.0),
+    ], selected
+    assert mp.ML_EFFECTIVE_SAMPLE_GAP_SECONDS >= 60 * 60
+
+
+def test_same_ticker_ml_requires_consolidated_live_and_history_for_validation():
+    import ml_predictor as mp
+
+    assert mp._consolidated_source("TRADIER CONSOLIDATED HISTORICAL")
+    assert mp._consolidated_source("alpaca_sip_5min")
+    assert not mp._consolidated_source("alpaca_iex")
+    assert not mp._consolidated_source("mixed_iex_sip")
+
+    assert mp._consolidated_live_metrics({
+        "market_provider": "tradier",
+        "live_feed": "TRADIER CONSOLIDATED",
+    })
+    assert not mp._consolidated_live_metrics({
+        "market_provider": "alpaca",
+        "live_feed": "IEX",
+    })
+
+
+def test_scanner_ml_excludes_non_consolidated_observations():
+    import scanner_ml_ranker as sm
+
+    payload = {"source": "live_scan"}
+    assert sm._consolidated_observation_source(
+        {
+            "observation_source": "live_scan",
+            "market_provider": "tradier",
+            "live_feed": "consolidated",
+        },
+        payload,
+    )
+    assert not sm._consolidated_observation_source(
+        {
+            "observation_source": "live_scan",
+            "market_provider": "alpaca",
+            "live_feed": "iex",
+        },
+        payload,
+    )
+    assert sm._consolidated_observation_source(
+        {
+            "observation_source": "historical_replay",
+            "liquidity_source": "historical_tradier_replay",
+            "live_intraday_source": "tradier_historical_5min_open",
+        },
+        {"source": "historical_replay"},
+    )
+
+
+def test_scanner_actions_fail_closed_on_data_integrity():
+    import stock_scanner as ss
+
+    now_et = datetime(2026, 8, 31, 10, 0, tzinfo=ET)
+    fresh = {
+        "live_quote_source": "tradier_consolidated",
+        "latest_trade_time": _iso(now_et - timedelta(seconds=20)),
+        "latest_quote_time": _iso(now_et - timedelta(seconds=10)),
+        "price": 10.0,
+        "vwap": 9.9,
+        "momentum_5m": 1.0,
+        "momentum_15m": 2.0,
+        "spread_pct": 0.4,
+    }
+    ok, reasons = ss._scanner_data_integrity(fresh, now_et)
+    assert ok, reasons
+
+    iex = dict(fresh)
+    iex["live_quote_source"] = "alpaca_iex"
+    ok, reasons = ss._scanner_data_integrity(iex, now_et)
+    assert not ok
+    assert any("not consolidated" in reason for reason in reasons)
+
+    stale = dict(fresh)
+    stale["latest_trade_time"] = _iso(now_et - timedelta(minutes=5))
+    ok, reasons = ss._scanner_data_integrity(stale, now_et)
+    assert not ok
+    assert any("stale" in reason for reason in reasons)
+
+
+def test_analyzer_entries_fail_closed_on_data_integrity():
+    import analyzer_v2_integration as v2
+
+    good = {
+        "market_provider": "tradier",
+        "live_feed": "TRADIER CONSOLIDATED",
+        "trade_age_seconds": 20,
+        "quote_age_seconds": 10,
+        "price": 10.0,
+        "vwap": 9.9,
+        "momentum_5m": 1.0,
+        "momentum_15m": 2.0,
+        "spread_pct": 0.4,
+    }
+    assert v2._analyzer_live_data_integrity(good)["ok"] is True
+
+    weak = dict(good)
+    weak["live_feed"] = "IEX"
+    weak["market_provider"] = "alpaca"
+    weak["trade_age_seconds"] = 300
+    result = v2._analyzer_live_data_integrity(weak)
+    assert result["ok"] is False
+    assert result["consolidated"] is False
+    assert any("stale" in reason for reason in result["reasons"])
+
+
+def test_historical_analogs_cannot_change_live_plan_geometry_or_scores():
+    import analyzer_v2_integration as v2
+
+    stock_source = __import__("pathlib").Path("stock_analyzer.py").read_text(
+        encoding="utf-8"
+    )
+    v2_source = __import__("pathlib").Path("analyzer_v2_integration.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "Historical excursion statistics are research-only" in stock_source
+    assert "Historical analog sample size/direction is research-only" in stock_source
+    assert '"historical_research_only":True' in stock_source
+    assert "history_points = 0.0" in v2_source
+    assert "Historical bounce occurrence rates are reference context only" in v2_source
+    assert "Historical behavior is displayed separately as research-only" in v2_source
+    assert "Historical failure rates remain research-only" in v2_source
+    assert "must not help an entry clear the safety gate" in v2_source
+
+
+def test_advisory_model_percentages_are_explicit_and_neutral():
+    import ml_ui
+
+    advisory = {
+        "status": "ok",
+        "validated": False,
+        "probability_pct": 72.0,
+    }
+    validated = {
+        "status": "ok",
+        "validated": True,
+        "probability_pct": 72.0,
+    }
+    assert ml_ui._pct_value(advisory) == "ADVISORY · 72%"
+    assert ml_ui._probability_class(advisory, high=60) == ""
+    assert ml_ui._pct_value(validated) == "72%"
+    assert ml_ui._probability_class(validated, high=60) == "good"
+
+
 if __name__ == "__main__":
     tests = [
         test_analyzer_daily_history_prefers_tradier,
@@ -3763,6 +3960,14 @@ if __name__ == "__main__":
         test_scanner_historical_validation_excludes_live_confirmation_pool,
         test_scanner_replay_live_confirmation_gate_is_integrity_sized,
         test_validation_workflow_runs_before_merge_on_pull_requests,
+        test_prediction_tracker_uses_first_post_horizon_bar_with_three_minute_cap,
+        test_same_ticker_ml_uses_clock_horizons_and_effective_samples,
+        test_same_ticker_ml_requires_consolidated_live_and_history_for_validation,
+        test_scanner_ml_excludes_non_consolidated_observations,
+        test_scanner_actions_fail_closed_on_data_integrity,
+        test_analyzer_entries_fail_closed_on_data_integrity,
+        test_historical_analogs_cannot_change_live_plan_geometry_or_scores,
+        test_advisory_model_percentages_are_explicit_and_neutral,
         test_analyzer_ml_validation_requires_probability_skill,
         test_impulse_detector_measures_fraction_of_run,
         test_entry_readiness_penalizes_unconfirmed_shallow_retrace,

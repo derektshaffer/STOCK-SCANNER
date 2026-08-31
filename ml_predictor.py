@@ -327,6 +327,87 @@ def _first_touch_outcome(future_bars, price, target_pct, stop_pct):
     return "unresolved"
 
 
+ML_HORIZON_MAX_DELAY_SECONDS = 300
+ML_EFFECTIVE_SAMPLE_GAP_SECONDS = 60 * 60
+
+
+def _clock_window(bars, current_dt, et, minutes):
+    if current_dt is None:
+        return []
+    end_dt = current_dt + timedelta(minutes=minutes)
+    out = []
+    for bar in bars:
+        dt = _bar_dt(bar, et)
+        if dt is None or dt <= current_dt or dt > end_dt:
+            continue
+        out.append(bar)
+    return out
+
+
+def _close_at_clock_horizon(
+    bars,
+    current_dt,
+    et,
+    minutes,
+    max_delay_seconds=ML_HORIZON_MAX_DELAY_SECONDS,
+):
+    if current_dt is None:
+        return None
+    target_dt = current_dt + timedelta(minutes=minutes)
+    best = None
+    best_delta = None
+    for bar in bars:
+        dt = _bar_dt(bar, et)
+        close = _fnum(bar.get("c"))
+        if dt is None or close is None or dt < target_dt:
+            continue
+        delta = (dt - target_dt).total_seconds()
+        if best_delta is None or delta < best_delta:
+            best = close
+            best_delta = delta
+    if best_delta is None or best_delta > max_delay_seconds:
+        return None
+    return best
+
+
+def _decorrelate_effective_rows(
+    rows,
+    min_gap_seconds=ML_EFFECTIVE_SAMPLE_GAP_SECONDS,
+):
+    selected = []
+    last_by_day = {}
+    for row in sorted(rows, key=lambda item: float(item.get("timestamp") or 0.0)):
+        day = str(row.get("trading_date") or "")
+        ts = _fnum(row.get("timestamp"))
+        if not day or ts is None or ts <= 0:
+            continue
+        last = last_by_day.get(day)
+        if last is not None and ts - last < min_gap_seconds:
+            continue
+        selected.append(row)
+        last_by_day[day] = ts
+    return selected
+
+
+def _consolidated_source(source):
+    text = str(source or "").lower()
+    if "mixed" in text or "iex" in text:
+        return False
+    return "tradier" in text or "sip" in text or "consolidated" in text
+
+
+def _consolidated_live_metrics(metrics):
+    provider = str(
+        metrics.get("market_provider")
+        or metrics.get("live_provider")
+        or ""
+    ).lower()
+    feed = str(metrics.get("live_feed") or "").lower()
+    if provider == "tradier" or "tradier" in feed:
+        return True
+    return "sip" in feed or "consolidated" in feed
+
+
 def _build_dataset(bars5, et, target_pct, stop_pct):
     grouped = defaultdict(list)
     for bar in bars5:
@@ -374,12 +455,23 @@ def _build_dataset(bars5, et, target_pct, stop_pct):
             if not feat:
                 continue
             price = feat["_price"]
-            future30 = bars[idx + 1: idx + 7]
-            future60 = bars[idx + 1: idx + 13]
-            if len(future30) < 6 or len(future60) < 12:
+            current_dt = _bar_dt(bars[idx], et)
+            future30 = _clock_window(bars, current_dt, et, 30)
+            future60 = _clock_window(bars, current_dt, et, 60)
+            c30 = _close_at_clock_horizon(
+                bars,
+                current_dt,
+                et,
+                30,
+            )
+            c60 = _close_at_clock_horizon(
+                bars,
+                current_dt,
+                et,
+                60,
+            )
+            if c30 is None or c60 is None:
                 continue
-            c30 = _fnum(future30[-1].get("c"))
-            c60 = _fnum(future60[-1].get("c"))
 
             prior_window = bars[max(0, idx - 6):idx]
             prior_highs = [_fnum(b.get("h")) for b in prior_window]
@@ -521,7 +613,14 @@ def _build_dataset(bars5, et, target_pct, stop_pct):
             # Target 1 is a day-trade first-touch question, not a 60-minute
             # continuation question. Evaluate it through the rest of this same
             # session. Timeouts are censored instead of being mislabeled losses.
-            future_session = bars[idx + 1:]
+            future_session = [
+                bar for bar in bars
+                if (
+                    (_bar_dt(bar, et) is not None)
+                    and current_dt is not None
+                    and _bar_dt(bar, et) > current_dt
+                )
+            ]
             target_outcome = _first_touch_outcome(
                 future_session, price, target_pct, stop_pct
             )
@@ -732,24 +831,45 @@ def _walk_forward_fit(rows, label, current_features):
     clean, X, y = _matrix(rows, label, np, xgb)
     n = len(clean)
     positives = int(y.sum()) if n else 0
-    if n < 180 or positives < 25 or (n - positives) < 25:
+
+    effective_clean = _decorrelate_effective_rows(clean)
+    _, X_effective, y_effective = _matrix(
+        effective_clean,
+        label,
+        np,
+        xgb,
+    )
+    effective_n = len(effective_clean)
+    effective_positives = int(y_effective.sum()) if effective_n else 0
+
+    if (
+        n < 180
+        or positives < 25
+        or (n - positives) < 25
+        or effective_n < 90
+        or effective_positives < 15
+        or (effective_n - effective_positives) < 15
+    ):
         return {
             "status": "insufficient_samples",
             "label": label,
             "samples": n,
+            "effective_samples": effective_n,
             "positives": positives,
             "negatives": max(0, n - positives),
+            "effective_positives": effective_positives,
+            "effective_negatives": max(0, effective_n - effective_positives),
         }
 
     val_probs = []
     val_y = []
     baseline_probs = []
-    folds = _walk_forward_day_splits(clean)
+    folds = _walk_forward_day_splits(effective_clean)
     for train_idx, val_idx, _train_cut, _val_cut in folds:
         if len(train_idx) < 80 or len(val_idx) < 16:
             continue
-        Xtr, ytr = X[train_idx], y[train_idx]
-        Xv, yv = X[val_idx], y[val_idx]
+        Xtr, ytr = X_effective[train_idx], y_effective[train_idx]
+        Xv, yv = X_effective[val_idx], y_effective[val_idx]
         if len(set(ytr.tolist())) < 2 or len(set(yv.tolist())) < 2:
             continue
         model = xgb.train(
@@ -785,9 +905,15 @@ def _walk_forward_fit(rows, label, current_features):
     auc = validation["auc"]
     brier_skill = validation["brier_skill"]
 
+    # Fit the served model on the same de-correlated evidence unit used
+    # for validation so repeated overlapping windows cannot dominate learning.
     final_model = xgb.train(
         _model_params(),
-        xgb.DMatrix(X, label=y, feature_names=FEATURES),
+        xgb.DMatrix(
+            X_effective,
+            label=y_effective,
+            feature_names=FEATURES,
+        ),
         num_boost_round=130,
         verbose_eval=False,
     )
@@ -818,6 +944,8 @@ def _walk_forward_fit(rows, label, current_features):
         "label": label,
         "probability_pct": round(probability * 100.0, 1),
         "samples": n,
+        "effective_samples": effective_n,
+        "effective_sample_gap_minutes": int(ML_EFFECTIVE_SAMPLE_GAP_SECONDS / 60),
         "positives": positives,
         "negatives": max(0, n - positives),
         "validation_samples": len(val_y),
@@ -1055,6 +1183,19 @@ def predict_ml(symbol, now, metrics, fetch_bars, et):
         and (price >= breakout_level * 0.96)
     )
 
+    history_source_ok = _consolidated_source(source)
+    live_source_ok = _consolidated_live_metrics(metrics)
+    production_source_ok = history_source_ok and live_source_ok
+    if not production_source_ok:
+        for model in models.values():
+            if isinstance(model, dict) and model.get("status") == "ok":
+                model["validated"] = False
+                model["source_integrity"] = "advisory_only_non_consolidated"
+                model["source_integrity_note"] = (
+                    "Production validation requires consolidated live market "
+                    "data and consolidated historical 5-minute bars."
+                )
+
     target_valid = bool((models.get("target_before_stop") or {}).get("validated"))
     continuation_valid = any(
         bool((models.get(name) or {}).get("validated"))
@@ -1095,6 +1236,9 @@ def predict_ml(symbol, now, metrics, fetch_bars, et):
         "model_type": "XGBoost",
         "version": "ml-v1.6-sequence-regimes",
         "source": source,
+        "history_source_consolidated": history_source_ok,
+        "live_source_consolidated": live_source_ok,
+        "production_source_ok": production_source_ok,
         "training_samples": len(dataset),
         "target_pct": round(target_pct, 2),
         "stop_pct": round(stop_pct, 2),
@@ -1111,12 +1255,13 @@ def predict_ml(symbol, now, metrics, fetch_bars, et):
         "current_features": current,
         "cached": False,
         "note": (
-            "Walk-forward validation uses older observations to predict later unseen observations. "
+            "Walk-forward validation uses de-correlated, whole-day chronological observations to predict later unseen observations. "
             "Target 1 uses same-session first-touch outcomes; sessions where neither target nor stop is touched are excluded. "
             "Impulse size, retracement depth, bounce recovery and pullback-volume behavior are included as leakage-safe features. "
             "A separate 30-minute reversal model estimates whether downside is hit before renewed continuation. "
             "Later-bounce models separately estimate repeat-bounce-before-breakdown, fresh-high-before-breakdown, and mature-sequence failure. "
             "A multi-session stair-step model separately estimates plateau reacceleration versus loss of the accepted higher level. "
+            "Production validation also requires consolidated live and historical market data. "
             "ML only adjusts plan confidence when the validation gate passes; it does not override "
             "the rule-based entry/stop/target decision."
         ),
