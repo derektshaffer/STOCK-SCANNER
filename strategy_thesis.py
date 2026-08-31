@@ -160,8 +160,14 @@ def _terminal_reason(state, metrics, plan, now, expiry_minutes):
     return None
 
 
-def _overlay_anchor(plan, state, metrics):
-    """Keep the accepted thesis geometry while new bars update evidence."""
+def _overlay_anchor(plan, state, metrics, *, conservative=False):
+    """Keep accepted thesis geometry while new bars update evidence.
+
+    conservative=True is used when a different family is merely being proposed;
+    that state can never manufacture a fresh entry. For the same active family,
+    an already-qualified ENTRY AVAILABLE may survive only when current price is
+    still inside the anchored entry zone.
+    """
     family = str(state.get("active_family") or "").lower().strip()
     family_plan = dict(plan.get(family) or plan.get("selected") or {})
     geometry = state.get("geometry") or {}
@@ -192,38 +198,66 @@ def _overlay_anchor(plan, state, metrics):
         else "the anchored entry zone"
     )
 
-    # A held thesis is conservative until the current evidence engine re-clears
-    # the entry gates against the anchored geometry.
-    plan["status"] = "WAIT"
-    if price is not None and low is not None and high is not None:
-        if low <= price <= high:
-            plan["entry_state"] = "TRIGGER TESTING"
-            plan["action"] = f"{family.replace('_', ' ').upper()} TRIGGER TESTING"
-            plan["entry_instruction"] = (
-                f"ENTRY TRIGGER IS {zone}. The prior thesis remains active; "
-                "wait for the current confirmation/evidence gates to clear."
-            )
-        elif price > high:
-            plan["entry_state"] = "WAIT FOR RETEST"
-            plan["action"] = f"WAIT FOR {family.replace('_', ' ').upper()} RETEST"
-            plan["entry_instruction"] = (
-                f"DO NOT CHASE. The active thesis still uses {zone}; wait for "
-                "a controlled retest/hold before entry."
-            )
-        else:
-            plan["entry_state"] = "ARMED"
-            plan["action"] = f"{family.replace('_', ' ').upper()} PLAN ARMED"
-            plan["entry_instruction"] = (
-                f"NEXT ENTRY remains {zone}. The trigger stays fixed unless the "
-                "thesis is explicitly invalidated, completed, or expires."
-            )
-    else:
-        plan["entry_state"] = "WAIT FOR CONFIRMATION"
-        plan["action"] = f"{family.replace('_', ' ').upper()} THESIS HOLD"
+    raw_status = str(plan.get("status") or "WAIT").upper().strip()
+    raw_action = plan.get("action")
+
+    in_zone = bool(
+        price is not None
+        and low is not None
+        and high is not None
+        and low <= price <= high
+    )
+
+    # A different-family proposal is always conservative. For the same active
+    # family, preserve a real entry only when price is still inside the anchored
+    # zone. This lets the app eventually say ENTRY AVAILABLE without allowing
+    # a newly recalculated zone to move underneath the current price.
+    if not conservative and raw_status == "ENTRY AVAILABLE" and in_zone:
+        plan["status"] = "ENTRY AVAILABLE"
+        plan["entry_state"] = "ENTRY AVAILABLE"
+        plan["action"] = raw_action or f"{family.replace('_', ' ').upper()} ENTRY AVAILABLE"
         plan["entry_instruction"] = (
-            "The prior plan family remains active while the current refresh "
-            "re-evaluates confirmation."
+            f"ENTRY AVAILABLE NOW in {zone}. The entry is using the anchored "
+            "thesis geometry; use the displayed stop/invalidation."
         )
+    elif not conservative and raw_status == "NO TRADE":
+        plan["status"] = "NO TRADE"
+        plan["entry_state"] = "NO ENTRY"
+        plan["action"] = raw_action or "NO TRADE"
+        plan["entry_instruction"] = (
+            "NO ENTRY SIGNAL while the active thesis is rejected by the current gates."
+        )
+    else:
+        plan["status"] = "WAIT"
+        if price is not None and low is not None and high is not None:
+            if in_zone:
+                plan["entry_state"] = "TRIGGER TESTING"
+                plan["action"] = f"{family.replace('_', ' ').upper()} TRIGGER TESTING"
+                plan["entry_instruction"] = (
+                    f"ENTRY TRIGGER IS {zone}. The prior thesis remains active; "
+                    "wait for the current confirmation/evidence gates to clear."
+                )
+            elif price > high:
+                plan["entry_state"] = "WAIT FOR RETEST"
+                plan["action"] = f"WAIT FOR {family.replace('_', ' ').upper()} RETEST"
+                plan["entry_instruction"] = (
+                    f"DO NOT CHASE. The active thesis still uses {zone}; wait for "
+                    "a controlled retest/hold before entry."
+                )
+            else:
+                plan["entry_state"] = "ARMED"
+                plan["action"] = f"{family.replace('_', ' ').upper()} PLAN ARMED"
+                plan["entry_instruction"] = (
+                    f"NEXT ENTRY remains {zone}. The trigger stays fixed unless the "
+                    "thesis is explicitly invalidated, completed, or expires."
+                )
+        else:
+            plan["entry_state"] = "WAIT FOR CONFIRMATION"
+            plan["action"] = f"{family.replace('_', ' ').upper()} THESIS HOLD"
+            plan["entry_instruction"] = (
+                "The prior plan family remains active while the current refresh "
+                "re-evaluates confirmation."
+            )
     return plan
 
 
@@ -347,7 +381,7 @@ def prepare_intraday_thesis(
             metrics["trade_plan"] = plan
             return context
 
-        _overlay_anchor(plan, state, metrics)
+        _overlay_anchor(plan, state, metrics, conservative=True)
         reason = (
             f"new {proposed.replace('_', ' ')} proposal has appeared only "
             f"{pending_count}/{int(replacement_confirmations)} required times; "
@@ -377,7 +411,7 @@ def prepare_intraday_thesis(
     state["pending_family"] = None
     state["pending_count"] = 0
     state["last_updated"] = now.isoformat()
-    _overlay_anchor(plan, state, metrics)
+    _overlay_anchor(plan, state, metrics, conservative=False)
     context = {
         "version": THESIS_VERSION,
         "status": "THESIS STABLE",
