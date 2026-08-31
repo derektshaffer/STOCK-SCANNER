@@ -54,13 +54,14 @@ def _config():
     }
 
 
-def _price_line_layer(bars, *, x_type="temporal"):
+def _price_line_layer(bars, *, x_type="temporal", opacity=0.72):
     return {
         "data": {"values": bars},
         "mark": {
             "type": "line",
-            "strokeWidth": 3,
-            "color": "#f2f8ff",
+            "strokeWidth": 2,
+            "color": "#dbeafe",
+            "opacity": opacity,
             "tooltip": True,
         },
         "encoding": {
@@ -78,12 +79,69 @@ def _price_line_layer(bars, *, x_type="temporal"):
             },
             "tooltip": [
                 {"field": "t", "type": x_type, "title": "Time"},
-                {"field": "c", "type": "quantitative", "title": "Close", "format": "$.2f"},
+                {"field": "o", "type": "quantitative", "title": "Open", "format": "$.2f"},
                 {"field": "h", "type": "quantitative", "title": "High", "format": "$.2f"},
                 {"field": "l", "type": "quantitative", "title": "Low", "format": "$.2f"},
+                {"field": "c", "type": "quantitative", "title": "Close", "format": "$.2f"},
+                {"field": "v", "type": "quantitative", "title": "Volume", "format": ",.0f"},
             ],
         },
     }
+
+
+def _candlestick_layers(bars, *, x_type="temporal", line_overlay=False):
+    candles=[
+        row for row in bars
+        if all(_num(row.get(key)) is not None for key in ("o","h","l","c"))
+    ]
+    if not candles:
+        return [_price_line_layer(bars, x_type=x_type)]
+
+    color_encoding={
+        "condition":{"test":"datum.c >= datum.o","value":"#00d26a"},
+        "value":"#ff5a1f",
+    }
+    tooltip=[
+        {"field":"t","type":x_type,"title":"Time"},
+        {"field":"o","type":"quantitative","title":"Open","format":"$.2f"},
+        {"field":"h","type":"quantitative","title":"High","format":"$.2f"},
+        {"field":"l","type":"quantitative","title":"Low","format":"$.2f"},
+        {"field":"c","type":"quantitative","title":"Close","format":"$.2f"},
+        {"field":"v","type":"quantitative","title":"Volume","format":",.0f"},
+    ]
+    layers=[
+        {
+            "data":{"values":candles},
+            "mark":{"type":"rule","strokeWidth":1.25},
+            "encoding":{
+                "x":{
+                    "field":"t","type":x_type,"title":None,
+                    "axis":{"labelOverlap":True},
+                },
+                "y":{
+                    "field":"l","type":"quantitative","title":"Price",
+                    "scale":{"zero":False},
+                },
+                "y2":{"field":"h"},
+                "color":color_encoding,
+                "tooltip":tooltip,
+            },
+        },
+        {
+            "data":{"values":candles},
+            "mark":{"type":"bar","size":7},
+            "encoding":{
+                "x":{"field":"t","type":x_type},
+                "y":{"field":"o","type":"quantitative","scale":{"zero":False}},
+                "y2":{"field":"c"},
+                "color":color_encoding,
+                "tooltip":tooltip,
+            },
+        },
+    ]
+    if line_overlay:
+        layers.append(_price_line_layer(candles,x_type=x_type,opacity=0.55))
+    return layers
 
 
 def _horizontal_level_layers(levels):
@@ -147,7 +205,7 @@ def _horizontal_level_layers(levels):
     ]
 
 
-def trade_plan_chart_spec(result):
+def trade_plan_chart_spec(result, line_overlay=False):
     result = result or {}
     bars = _bars(result, "intraday")
     plan = result.get("trade_plan") or {}
@@ -158,7 +216,7 @@ def trade_plan_chart_spec(result):
     first_t, last_t = bars[0]["t"], bars[-1]["t"]
     entry_low = _num(selected.get("entry_low"))
     entry_high = _num(selected.get("entry_high"))
-    layers = [_price_line_layer(bars)]
+    layers = _candlestick_layers(bars, line_overlay=line_overlay)
 
     if entry_low is not None and entry_high is not None:
         layers.append(
@@ -206,7 +264,7 @@ def trade_plan_chart_spec(result):
     }
 
 
-def multi_bounce_chart_spec(result):
+def multi_bounce_chart_spec(result, line_overlay=False):
     result = result or {}
     bars = _bars(result, "intraday")
     sequence = result.get("bounce_sequence") or {}
@@ -266,7 +324,7 @@ def multi_bounce_chart_spec(result):
             "kind": "developing",
         })
 
-    layers = [_price_line_layer(bars)]
+    layers = _candlestick_layers(bars, line_overlay=line_overlay)
     if markers:
         layers.extend([
             {
@@ -319,14 +377,14 @@ def multi_bounce_chart_spec(result):
     return {"height": 280, "layer": layers, "config": _config()}
 
 
-def stair_step_chart_spec(result):
+def stair_step_chart_spec(result, line_overlay=False):
     result = result or {}
     bars = _bars(result, "daily")
     stair = result.get("stair_step") or {}
     if len(bars) < 3 or not stair.get("detected"):
         return None
 
-    layers = [_price_line_layer(bars, x_type="temporal")]
+    layers = _candlestick_layers(bars, x_type="temporal", line_overlay=line_overlay)
     steps = []
     for idx, step in enumerate(stair.get("steps") or [], start=1):
         price = _num(step.get("step_close"))
@@ -429,7 +487,7 @@ def stair_step_chart_spec(result):
     return {"height": 280, "layer": layers, "config": _config()}
 
 
-def impulse_pullback_chart_spec(result):
+def impulse_pullback_chart_spec(result, line_overlay=False):
     result = result or {}
     bars = _bars(result, "intraday")
     impulse = result.get("impulse_pullback") or {}
@@ -437,7 +495,7 @@ def impulse_pullback_chart_spec(result):
     if len(bars) < 2 or not impulse.get("detected"):
         return None
 
-    layers = [_price_line_layer(bars)]
+    layers = _candlestick_layers(bars, line_overlay=line_overlay)
     markers = []
     low = _num(impulse.get("impulse_low"))
     high = _num(impulse.get("impulse_high"))
@@ -528,7 +586,7 @@ def impulse_pullback_chart_spec(result):
     return {"height": 270, "layer": layers, "config": _config()}
 
 
-def support_resistance_chart_spec(result):
+def support_resistance_chart_spec(result, line_overlay=False):
     result = result or {}
     bars = _bars(result, "intraday")
     if len(bars) < 2:
@@ -555,7 +613,7 @@ def support_resistance_chart_spec(result):
                 "kind": "resistance",
             })
 
-    layers = [_price_line_layer(bars)]
+    layers = _candlestick_layers(bars, line_overlay=line_overlay)
     layers.extend(_horizontal_level_layers(levels))
     return {
         "height": 260,
