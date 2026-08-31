@@ -288,6 +288,7 @@ def extract_market_structure(
                 candidate_low_idx < i
                 and prior_idx is not None
                 and candidate_low_idx - prior_idx >= min_leg_bars
+                and i - candidate_low_idx >= min_leg_bars
                 and _pct_up(candidate_low, row["h"]) >= threshold
             ):
                 if append_pivot("LOW", candidate_low_idx, candidate_low, i):
