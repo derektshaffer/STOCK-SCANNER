@@ -827,14 +827,71 @@ def run_challenge(replay_payload, audit_payload, include_standing=True):
     for hypothesis in hypotheses:
         hypothesis_id = str(hypothesis.get("id") or "")
         challenge = CHALLENGERS.get(hypothesis_id)
+
+        evidence_window = hypothesis.get("evidence_window") or {}
+        evidence_start = str(evidence_window.get("start_date") or "").strip()
+        if evidence_start:
+            # Historical challenge data must predate the earliest live/shadow
+            # evidence used to invent the hypothesis. This prevents the same
+            # trading day from helping both generate and "confirm" an idea.
+            challenge_rows = [
+                row
+                for row in rows
+                if _day(row) and _day(row) < evidence_start
+            ]
+        else:
+            # Standing specification hypotheses originate from code/objective
+            # review rather than empirical outcome rows, so the full causal
+            # replay is an independent challenge set.
+            challenge_rows = rows
+
+        independence = {
+            "hypothesis_evidence_start_date": evidence_start or None,
+            "hypothesis_evidence_end_date": (
+                evidence_window.get("end_date")
+                if evidence_window
+                else None
+            ),
+            "historical_replay_used_to_generate": bool(
+                evidence_window.get("historical_replay_used_to_generate")
+            ),
+            "challenge_rows_before_evidence_window": len(challenge_rows),
+            "challenge_rows_total_replay": len(rows),
+            "independent": not bool(
+                evidence_window.get("historical_replay_used_to_generate")
+            ),
+        }
+
         if challenge is None:
             result = {
                 "challenge_id": hypothesis_id,
                 "decision": "blocked_no_challenge_spec",
                 "production_influence": False,
             }
+        elif evidence_start and not challenge_rows:
+            result = {
+                "challenge_id": hypothesis_id,
+                "decision": "blocked_no_pre_evidence_historical_holdout",
+                "production_influence": False,
+                "reason": (
+                    "No replay observations predate the live/shadow evidence "
+                    "window that generated this hypothesis."
+                ),
+            }
+        elif not independence["independent"]:
+            result = {
+                "challenge_id": hypothesis_id,
+                "decision": "blocked_independence_violation",
+                "production_influence": False,
+                "reason": (
+                    "Historical replay was marked as part of the hypothesis "
+                    "generation evidence and cannot also be used to challenge it."
+                ),
+            }
         else:
-            result = challenge(rows)
+            result = challenge(challenge_rows)
+
+        result["independence"] = independence
         result["hypothesis"] = hypothesis
         results.append(result)
 
@@ -874,6 +931,8 @@ def run_challenge(replay_payload, audit_payload, include_standing=True):
             "frozen_confirmation_fraction": 0.40,
             "historical_support_never_promotes_production": True,
             "live_shadow_confirmation_required": True,
+            "hypothesis_generation_excludes_historical_replay": True,
+            "empirical_hypotheses_use_only_replay_days_before_evidence_start": True,
         },
         "summary": {
             "hypotheses_challenged": len(results),
@@ -897,7 +956,8 @@ def render_markdown(payload):
         "",
         "- Whole trading days are the split unit.",
         "- Same-symbol observations are de-correlated by the 60-minute target horizon.",
-        "- The newest 40% of replay days are frozen confirmation data.",
+        "- Empirical hypotheses are challenged only on replay days that predate the evidence window that generated them.",
+        "- The newest 40% of the remaining independent replay days are frozen confirmation data.",
         "- Candidate models are compared with the current hand score and a naive base-rate baseline.",
         "- Calibration, discrimination, top-decile lift, path-utility friction sensitivity, day stability, symbol concentration, and market-regime coverage are reported.",
         "",
