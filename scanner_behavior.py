@@ -17,7 +17,7 @@ from market_structure import (
 )
 from stair_step import detect_stair_step, stair_step_feature_values
 
-BEHAVIOR_FEATURE_VERSION = "scanner-behavior-v6-shared-break-structure"
+BEHAVIOR_FEATURE_VERSION = "scanner-behavior-v7-confirmed-multisession"
 
 
 def _num(value):
@@ -280,10 +280,17 @@ def intraday_behavior_features(
     return features
 
 
-def multi_session_behavior_features(daily_bars, current_day, atr_pct=None):
+def multi_session_behavior_features(
+    daily_bars,
+    current_day,
+    atr_pct=None,
+    *,
+    current_day_completed=False,
+):
     stair = detect_stair_step(
         daily_bars or [],
         current_day=current_day,
         atr_pct=atr_pct,
+        current_day_completed=current_day_completed,
     )
     return stair_step_feature_values(stair)
