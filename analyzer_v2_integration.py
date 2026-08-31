@@ -672,6 +672,39 @@ def _catalyst_strength(news_rows):
     }
 
 
+def _production_ml_context(metrics):
+    """Return the headline ML edge only when the production gate is complete.
+
+    Individual submodels may still be displayed when they pass their own
+    validation, but the composite ML edge must not boost potential/evidence or
+    the headline scenario context unless the same-ticker production gate and
+    consolidated-source checks passed.
+    """
+    ml = (metrics or {}).get("ml_prediction") or {}
+    count = int(ml.get("validated_edge_model_count") or 0)
+    edge = _num(ml.get("ml_edge_score"))
+    status_ok = str(ml.get("status") or "") == "ok"
+    gate_ok = bool(ml.get("gate_passed"))
+    source_ok = ml.get("production_source_ok")
+    source_ok = True if source_ok is None else bool(source_ok)
+    eligible = bool(
+        status_ok
+        and gate_ok
+        and source_ok
+        and count > 0
+        and edge is not None
+    )
+    return {
+        "eligible": eligible,
+        "edge": edge if eligible else None,
+        "validated_model_count": count if eligible else 0,
+        "raw_validated_model_count": count,
+        "gate_passed": gate_ok,
+        "production_source_ok": source_ok,
+        "status_ok": status_ok,
+    }
+
+
 def _potential_score(metrics, sec, market, catalyst):
     """Further-upside quality with each evidence family counted once."""
     base = 40.5
@@ -732,16 +765,22 @@ def _potential_score(metrics, sec, market, catalyst):
         history_points = 0.0
         reasons.append("historical analogs shown as research-only context")
 
-    ml = metrics.get("ml_prediction") or {}
-    edge = _num(ml.get("ml_edge_score"))
-    validated = int(ml.get("validated_edge_model_count") or 0)
+    ml_context = _production_ml_context(metrics)
+    edge = ml_context.get("edge")
+    validated = int(ml_context.get("validated_model_count") or 0)
     if edge is not None and validated:
         ml_points = _clamp(
             (edge - 50.0) * 0.22 * min(1.0, validated / 2.0),
             -8.0,
             8.0,
         )
-        reasons.append(f"{validated} validated ML model(s)")
+        reasons.append(
+            f"{validated} validated ML model(s) passed the production gate"
+        )
+    elif int(ml_context.get("raw_validated_model_count") or 0):
+        reasons.append(
+            "validated ML submodels are advisory until the composite production gate passes"
+        )
 
     catalyst_points = _num(catalyst.get("score")) or 0.0
     if catalyst_points >= 3:
@@ -1610,13 +1649,19 @@ def _evidence_strength(metrics, sec, market, catalyst):
     else:
         reasons.append("historical analog research context unavailable")
 
-    ml = metrics.get("ml_prediction") or {}
-    validated = int(ml.get("validated_edge_model_count") or 0)
+    ml_context = _production_ml_context(metrics)
+    validated = int(ml_context.get("validated_model_count") or 0)
     score += min(30.0, validated * 10.0)
     if validated:
-        reasons.append(f"{validated}/9 ML models validated")
+        reasons.append(
+            f"{validated}/9 ML models validated and production-gated"
+        )
+    elif int(ml_context.get("raw_validated_model_count") or 0):
+        reasons.append(
+            "validated ML submodels remain advisory; production gate not complete"
+        )
     else:
-        reasons.append("no validated ML models yet")
+        reasons.append("no production-eligible validated ML models yet")
 
     trade_age = _num(metrics.get("trade_age_seconds"))
     live_feed = str(metrics.get("live_feed") or "").upper()
@@ -1739,17 +1784,13 @@ def _full_spectrum_analysis(metrics, sec, market, catalyst, turnover):
 
     # 5) Validated ML continuation plus reversal model.
     ml=metrics.get("ml_prediction") or {}
-    ml_edge=_num(ml.get("ml_edge_score"))
-    validated_edge_count=int(ml.get("validated_edge_model_count") or 0)
-    # Defense in depth: full-spectrum scenario context may only consume the
-    # headline ML edge when it is explicitly backed by validated models.
-    # Old/cached/advisory payloads with a numeric edge but no validation badge
-    # are forced neutral so they cannot silently tilt scenario weights.
-    ml_score=cap(
-        ml_edge
-        if ml_edge is not None and validated_edge_count > 0
-        else 50.0
-    )
+    ml_context=_production_ml_context(metrics)
+    ml_edge=_num(ml_context.get("edge"))
+    validated_edge_count=int(ml_context.get("validated_model_count") or 0)
+    # Defense in depth: the headline ML edge affects scenario context only
+    # after the complete production gate passes. Numeric advisory/cached edges
+    # are neutral even when individual submodels have validation badges.
+    ml_score=cap(ml_edge if ml_edge is not None else 50.0)
     reversal_model=(ml.get("models") or {}).get("reversal_30") or {}
     reversal_ml=_num(reversal_model.get("probability_pct"))
     reversal_ml_valid=bool(reversal_model.get("validated"))
@@ -1911,7 +1952,11 @@ def _full_spectrum_analysis(metrics, sec, market, catalyst, turnover):
             "score":ml_score,
             "stance":stance(ml_score),
             "validated_model_count":validated_edge_count,
-            "production_influence":bool(validated_edge_count > 0),
+            "raw_validated_model_count":int(
+                ml_context.get("raw_validated_model_count") or 0
+            ),
+            "production_gate_passed":bool(ml_context.get("eligible")),
+            "production_influence":bool(ml_context.get("eligible")),
         },
         "catalyst":{"score":cat_score,"stance":stance(cat_score)},
         "market_sector":{"score":market_score,"stance":stance(market_score)},
