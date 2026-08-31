@@ -197,12 +197,15 @@ def render_historical_setup(st, pd, result, card, pp):
                     "breakout_failed",
                 ] if c in matches.columns
             ]
-            st.dataframe(matches[show], width="stretch", hide_index=True)
+            with st.expander("Historical setup match table", expanded=False):
+                st.dataframe(matches[show], width="stretch", hide_index=True)
 
         st.caption(
-            "Included in the setup score and trade-plan confidence. Similarity uses today's move size, "
-            "opening gap and relative volume; recent 5-minute matches add VWAP-reclaim, early-pullback, "
-            "multi-bounce falloff and time-of-day tendencies. Daily history separately studies multi-session stair-step outcomes."
+            "Research-only context; these completed historical matches are not included in the live "
+            "Setup Score, Entry Readiness, targets, action, or trade-plan confidence. Similarity uses "
+            "today's move size, opening gap and relative volume; recent 5-minute matches add VWAP-reclaim, "
+            "early-pullback, multi-bounce falloff and time-of-day tendencies. Daily history separately "
+            "studies multi-session stair-step outcomes."
         )
     elif setup.get("status") == "unavailable":
         detail = setup.get("error")

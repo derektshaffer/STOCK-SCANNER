@@ -746,22 +746,8 @@ def card(col,k,v,n="",cls="",tooltip=None,n_tooltip_term=None,n_tooltip=None):
             unsafe_allow_html=True,
         )
 
-with st.container(key="analyzer_metrics_top"):
-    cols=st.columns(6)
-    _trade_age=r.get("trade_age_seconds")
-    _price_note=f'{pp(r.get("day_pct"))} · trade {_age_text(_trade_age)} · {r.get("live_feed")}'
-    card(cols[0],"PRICE",money(r.get("price")),_price_note,"good" if (r.get("day_pct") or 0)>=0 else "bad")
-    card(cols[1],"VWAP",money(r.get("vwap")),f'{r.get("vwap_position")} · {pp(r.get("vwap_extension_pct"))}',"good" if r.get("vwap_position")=="ABOVE" else "bad")
-    card(cols[2],"DAY RANGE",f'{money(r.get("day_low"))}–{money(r.get("day_high"))}',f'{r.get("from_high_pct",0):.1f}% below high')
-    card(cols[3],"VOL PACE",multiple(r.get("volume_pace")),f'{r.get("volume",0):,.0f} shown · {r.get("volume_source")}')
-    card(cols[4],"SETUP SCORE",f'{r.get("score"):.1f} / 100',f'Grade {r.get("grade")}',"good" if r.get("grade") in ("A","B") else "warn")
-    card(cols[5],"BASE SETUP",r.get("entry_quality"),f'Live feed: {r.get("live_feed")}',"good" if r.get("entry_quality")=="FAVORABLE" else "warn")
-
-with st.container(key="analyzer_decision_v2"):
-    render_v2_decision(st, r)
-
-# Dynamic decision-support trade plan. Position mode replaces the visible
-# entry plan with an exit-management plan while leaving the entry engine intact.
+# Resolve the live plan before rendering so the page can lead with the
+# decision instead of forcing the user to interpret every supporting metric.
 plan=r.get("trade_plan") or {}
 if not plan:
     st.error(
@@ -770,6 +756,74 @@ if not plan:
         "Upload the matched trade-plan version of stock_analyzer.py."
     )
     st.stop()
+
+if not _position_enabled:
+    _v2_top=r.get("decision_v2") or {}
+    _integrity=_v2_top.get("live_data_integrity") or {}
+    _integrity_ok=bool(_integrity.get("ok"))
+    _selected_top=plan.get("selected") or {}
+    _top_status=str(plan.get("status") or "WAIT")
+    _top_action=str(plan.get("action") or _top_status)
+    _top_readiness=_v2_top.get("entry_readiness")
+    _top_entry_label=str(_v2_top.get("entry_label") or "—")
+    _top_rr=_selected_top.get("risk_reward")
+
+    st.markdown(
+        '<div class="section">Decision first '
+        '<span style="font-size:12px;color:#91a7c2">start here before the deeper analysis</span></div>',
+        unsafe_allow_html=True,
+    )
+    _dc=st.columns(6)
+    card(
+        _dc[0],
+        "LIVE DATA",
+        "TRUSTED" if _integrity_ok else "DATA CHECK",
+        "consolidated + fresh" if _integrity_ok else "; ".join((_integrity.get("reasons") or [])[:2]) or "integrity check incomplete",
+        "good" if _integrity_ok else "bad",
+    )
+    card(
+        _dc[1],
+        "CURRENT ACTION",
+        _top_status,
+        _top_action,
+        "good" if _top_status=="ENTRY AVAILABLE" else "bad" if _top_status=="NO TRADE" else "warn",
+    )
+    card(
+        _dc[2],
+        "ENTRY READINESS",
+        f'{float(_top_readiness):.0f} / 100' if _top_readiness is not None else "—",
+        _top_entry_label,
+        "good" if (_top_readiness or 0)>=72 else "bad" if _top_readiness is not None and _top_readiness<45 else "warn",
+    )
+    card(
+        _dc[3],
+        "ENTRY ZONE",
+        zone_text(_selected_top),
+        str(_selected_top.get("entry_source") or _selected_top.get("breakout_source") or plan.get("preferred_plan") or "—"),
+        "good" if _top_status=="ENTRY AVAILABLE" else "warn",
+    )
+    card(
+        _dc[4],
+        "STOP / INVALIDATION",
+        money(_selected_top.get("stop")),
+        "where the setup is considered invalid",
+        "warn",
+    )
+    card(
+        _dc[5],
+        "TARGET 1",
+        money(_selected_top.get("target1")),
+        f'R/R {rr(_top_rr)}' if _top_rr is not None else str(_selected_top.get("target1_reason") or "—"),
+        "good",
+    )
+    st.caption(
+        "Priority order: trust the data → read the current action → check entry readiness → "
+        "use the entry/stop/target levels. Everything below adds context or explains why."
+    )
+
+# Dynamic decision-support trade plan. Position mode replaces the visible
+# entry plan with an exit-management plan while leaving the entry engine intact.
+_trade_age=r.get("trade_age_seconds")
 
 @st.fragment(run_every="5s" if _position_enabled else None)
 def _render_position_exit_plan():
@@ -970,7 +1024,6 @@ if not _position_enabled:
         histctx=plan.get("historical") or {}
         cat=plan.get("catalyst") or {}
         liq=plan.get("liquidity") or {}
-        st.markdown("#### Live plan inputs + research context")
         ddf=pd.DataFrame([{
             "ATR 14":money(plan.get("atr")),
             "ATR %":pp(plan.get("atr_pct")),
@@ -987,12 +1040,31 @@ if not _position_enabled:
             "Median 1d drawdown":pp(histctx.get("median_mae_1d")),
             "Catalyst bias":cat.get("label") or "NEUTRAL",
         }])
-        st.dataframe(ddf,width="stretch",hide_index=True)
-        st.caption(
-            "Historical columns in this table are research-only and do not alter "
-            "the live plan. " + str(plan.get("method_note") or "")
-        )
+        with st.expander("Live plan inputs + research context", expanded=False):
+            st.dataframe(ddf,width="stretch",hide_index=True)
+            st.caption(
+                "Historical columns in this table are research-only and do not alter "
+                "the live plan. " + str(plan.get("method_note") or "")
+            )
 
+
+st.markdown(
+    '<div class="section">Live market snapshot '
+    '<span style="font-size:12px;color:#91a7c2">supporting context</span></div>',
+    unsafe_allow_html=True,
+)
+with st.container(key="analyzer_metrics_top"):
+    cols=st.columns(6)
+    _price_note=f'{pp(r.get("day_pct"))} · trade {_age_text(_trade_age)} · {r.get("live_feed")}'
+    card(cols[0],"PRICE",money(r.get("price")),_price_note,"good" if (r.get("day_pct") or 0)>=0 else "bad")
+    card(cols[1],"VWAP",money(r.get("vwap")),f'{r.get("vwap_position")} · {pp(r.get("vwap_extension_pct"))}',"good" if r.get("vwap_position")=="ABOVE" else "bad")
+    card(cols[2],"DAY RANGE",f'{money(r.get("day_low"))}–{money(r.get("day_high"))}',f'{r.get("from_high_pct",0):.1f}% below high')
+    card(cols[3],"VOL PACE",multiple(r.get("volume_pace")),f'{r.get("volume",0):,.0f} shown · {r.get("volume_source")}')
+    card(cols[4],"SETUP SCORE",f'{r.get("score"):.1f} / 100',f'Grade {r.get("grade")}',"good" if r.get("grade") in ("A","B") else "warn")
+    card(cols[5],"BASE SETUP",r.get("entry_quality"),f'Live feed: {r.get("live_feed")}',"good" if r.get("entry_quality")=="FAVORABLE" else "warn")
+
+with st.container(key="analyzer_decision_v2"):
+    render_v2_decision(st, r)
 
 _impulse = r.get("impulse_pullback") or {}
 if _impulse.get("detected"):
@@ -1031,9 +1103,9 @@ if _impulse.get("detected"):
         "PREFERRED PULLBACK",
         f'{money(_zone_low)}–{money(_zone_high)}' if _zone_low is not None and _zone_high is not None else "—",
         (
-            f'Own-history median {_hist_retrace:.0f}% retrace'
+            f'Live 33–50% impulse zone · historical median {_hist_retrace:.0f}% shown for reference only'
             if _hist_retrace is not None
-            else "Default 33–50% impulse zone"
+            else "Live 33–50% impulse zone"
         ),
         "good",
     )
@@ -1349,7 +1421,6 @@ if _trade_age is not None and float(_trade_age) > max(30, AUTO_REFRESH_SECONDS*2
         extra=" The upstream Alpaca feed itself has not reported a newer eligible trade yet."
     st.warning(f"Latest {feed_name or 'market'} trade is {_age_text(_trade_age)}.{extra}")
 
-st.markdown('<div class="section">Momentum & liquidity</div>',unsafe_allow_html=True)
 liq=r.get("liquidity") or {}
 df=pd.DataFrame([{
     "5m %":r.get("momentum_5m"),"15m %":r.get("momentum_15m"),"30m %":r.get("momentum_30m"),
@@ -1357,7 +1428,8 @@ df=pd.DataFrame([{
     "Spread %":r.get("spread_pct"),"Volume Pace":r.get("volume_pace"),"Liquidity":liq.get("label"),
     "Avg $ Volume":dollars_compact(liq.get("avg_dollar_volume"))
 }])
-st.dataframe(df,width="stretch",hide_index=True)
+with st.expander("Momentum & liquidity", expanded=False):
+    st.dataframe(df,width="stretch",hide_index=True)
 
 def level_table(rows):
     columns=["Price","Touches","Last touch","Age","Quality","Side"]
@@ -1375,26 +1447,27 @@ def level_table(rows):
         })
     return pd.DataFrame(out,columns=columns)
 
-scol,rcol=st.columns(2)
-with scol:
-    st.markdown('<div class="section">Support</div>',unsafe_allow_html=True)
-    sup=r.get("supports") or []
-    st.dataframe(
-        level_table(sup),
-        width="stretch",
-        hide_index=True,
-        column_config={"Price":st.column_config.NumberColumn(format="$%.2f")},
-    )
-with rcol:
-    st.markdown('<div class="section">Resistance</div>',unsafe_allow_html=True)
-    res=r.get("resistances") or []
-    st.dataframe(
-        level_table(res),
-        width="stretch",
-        hide_index=True,
-        column_config={"Price":st.column_config.NumberColumn(format="$%.2f")},
-    )
-st.caption("Last touch = most recent regular-session test of the level. Recent tests use 1-minute bars; older tests use 5-minute bars as a fallback. Times are Eastern (ET).")
+with st.expander("Support & resistance levels", expanded=False):
+    scol,rcol=st.columns(2)
+    with scol:
+        st.markdown('<div class="section">Support</div>',unsafe_allow_html=True)
+        sup=r.get("supports") or []
+        st.dataframe(
+            level_table(sup),
+            width="stretch",
+            hide_index=True,
+            column_config={"Price":st.column_config.NumberColumn(format="$%.2f")},
+        )
+    with rcol:
+        st.markdown('<div class="section">Resistance</div>',unsafe_allow_html=True)
+        res=r.get("resistances") or []
+        st.dataframe(
+            level_table(res),
+            width="stretch",
+            hide_index=True,
+            column_config={"Price":st.column_config.NumberColumn(format="$%.2f")},
+        )
+    st.caption("Last touch = most recent regular-session test of the level. Recent tests use 1-minute bars; older tests use 5-minute bars as a fallback. Times are Eastern (ET).")
 
 h=r.get("historical_analogs") or {}
 st.markdown('<div class="section">Historical spike analogs <span style="font-size:12px;color:#91a7c2">research-only</span></div>',unsafe_allow_html=True)
@@ -1411,7 +1484,8 @@ if h.get("status")=="ok":
     sdf=pd.DataFrame(h.get("samples") or [])
     if not sdf.empty:
         show=[c for c in ["date","spike_pct","d1","d2","d3","d5"] if c in sdf.columns]
-        st.dataframe(sdf[show],width="stretch",hide_index=True)
+        with st.expander("Historical spike table", expanded=False):
+            st.dataframe(sdf[show],width="stretch",hide_index=True)
 else: st.info("Not enough historical data for spike analogs yet.")
 
 st.markdown('<div class="section">Recent catalyst/news context</div>',unsafe_allow_html=True)
