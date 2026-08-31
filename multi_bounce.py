@@ -174,8 +174,13 @@ def detect_bounce_sequence(
     swing_abs = max(impulse_high * swing_pct / 100.0, run_size * 0.045)
     bar_minutes = _bar_spacing_minutes(rows)
     min_leg_minutes = max(2.0, bar_minutes)
+    first_bounce_min_cycle_minutes = max(3.0, bar_minutes * 1.5)
     min_cycle_minutes = max(5.0, bar_minutes * 2.0)
     min_leg_bars = max(1, int(math.ceil(min_leg_minutes / bar_minutes)))
+    first_bounce_min_cycle_bars = max(
+        2,
+        int(math.ceil(first_bounce_min_cycle_minutes / bar_minutes)),
+    )
     min_cycle_bars = max(2, int(math.ceil(min_cycle_minutes / bar_minutes)))
     min_recovery_fraction = 0.35
 
@@ -253,11 +258,17 @@ def detect_bounce_sequence(
                     if pullback_range > 0
                     else 0.0
                 )
+                required_cycle_bars = (
+                    first_bounce_min_cycle_bars
+                    if not bounces
+                    else min_cycle_bars
+                )
                 bounce_is_distinct = bool(
                     bounce_peak_idx is not None
                     and trough_idx is not None
+                    and i > bounce_peak_idx
                     and bounce_peak_idx - trough_idx >= min_leg_bars
-                    and bounce_peak_idx - prior_peak_idx >= min_cycle_bars
+                    and bounce_peak_idx - prior_peak_idx >= required_cycle_bars
                     and recovery_fraction >= min_recovery_fraction
                 )
                 if not bounce_is_distinct:
@@ -542,8 +553,10 @@ def detect_bounce_sequence(
         "swing_threshold_pct": round(swing_pct, 2),
         "bar_spacing_minutes": round(bar_minutes, 2),
         "min_leg_minutes": round(min_leg_minutes, 2),
+        "first_bounce_min_cycle_minutes": round(first_bounce_min_cycle_minutes, 2),
         "min_cycle_minutes": round(min_cycle_minutes, 2),
         "min_leg_bars": int(min_leg_bars),
+        "first_bounce_min_cycle_bars": int(first_bounce_min_cycle_bars),
         "min_cycle_bars": int(min_cycle_bars),
         "min_recovery_fraction": min_recovery_fraction,
     }
