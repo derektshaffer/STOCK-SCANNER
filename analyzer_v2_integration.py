@@ -1033,13 +1033,9 @@ def _timeframe_analysis(sa, symbol, metrics, sec, market, catalyst, potential, r
     )
 
     hist = metrics.get("historical_setup") or {}
+    # Completed-day analogs are research-only. Timeframe fit must not inherit
+    # a historical directional lean into its live score.
     history_score = 50.0
-    if hist.get("status") == "ok":
-        history_score += (_num(hist.get("bias_score")) or 0.0) * 1.6
-        next_day = _num(hist.get("next_day_up_pct"))
-        if next_day is not None:
-            history_score += (next_day - 50.0) * 0.15
-    history_score = _clamp(history_score)
 
     stair_score = _num((metrics.get("stair_step") or {}).get("structure_score"))
     if stair_score is None:
@@ -1537,30 +1533,11 @@ def _full_spectrum_analysis(metrics, sec, market, catalyst, turnover):
         stair_score=45.0 if not stair.get("detected") else 50.0
     stair_score=cap(stair_score)
 
-    # 4) Historical behavior.
+    # 4) Historical behavior is displayed separately as research-only.
+    # Keep a neutral placeholder so the full-spectrum score shape remains
+    # stable without allowing completed analogs to change live decisions.
     hist=metrics.get("historical_setup") or {}
     history=50.0
-    if hist.get("status")=="ok":
-        history += (_num(hist.get("bias_score")) or 0.0)*1.8
-        fail=_num(hist.get("breakout_failure_pct"))
-        follow=_num(hist.get("breakout_follow_through_pct"))
-        if fail is not None and follow is not None:
-            history += (follow-fail)*0.16
-        bounce=_num(hist.get("impulse_bounce_5pct_rate"))
-        if bounce is not None:
-            history += (bounce-50.0)*0.12
-        second_bounce_rate=_num(hist.get("second_bounce_rate_pct"))
-        if second_bounce_rate is not None:
-            history += (second_bounce_rate-50.0)*0.08
-        stair_hist=hist.get("stair_step_history") or {}
-        if stair.get("detected") and int(stair_hist.get("event_count") or 0)>=3:
-            stair_hit5=_num(stair_hist.get("next3d_hit5_rate_pct"))
-            stair_fail5=_num(stair_hist.get("next3d_failure5_rate_pct"))
-            if stair_hit5 is not None:
-                history += (stair_hit5-50.0)*0.08
-            if stair_fail5 is not None:
-                history -= max(0.0,stair_fail5-35.0)*0.06
-    history=cap(history)
 
     # 5) Validated ML continuation plus reversal model.
     ml=metrics.get("ml_prediction") or {}
@@ -1616,27 +1593,15 @@ def _full_spectrum_analysis(metrics, sec, market, catalyst, turnover):
     elif dilution=="NONE FOUND":fundamental+=5
     fundamental=cap(fundamental)
 
-    # 10) Reversal risk combines live tape/structure with historical failure and
-    # a validated ML reversal probability when one exists.
+    # 10) Reversal risk uses causal live structure plus validated ML only.
+    # Historical failure rates remain research-only and cannot raise/lower this
+    # safety score.
     live_ex=metrics.get("run_exhaustion") or {}
     live_rev=_num(live_ex.get("score"))
     reversal_parts=[]
     if live_rev is not None:reversal_parts.append((live_rev,0.50))
-    fail=_num(hist.get("breakout_failure_pct"))
-    fade=_num(hist.get("gap_fade_pct"))
-    hist_rev=None
-    vals=[x for x in (fail,fade) if x is not None]
-    if vals:hist_rev=sum(vals)/len(vals)
-    if hist_rev is not None:reversal_parts.append((hist_rev,0.12))
     if reversal_ml is not None and reversal_ml_valid:reversal_parts.append((reversal_ml,0.14))
     completed_for_failure=int(sequence.get("completed_bounces") or 0)
-    historical_post_bounce=None
-    if completed_for_failure>=3:
-        historical_post_bounce=_num(hist.get("post_third_bounce_drop5_rate_pct"))
-    elif completed_for_failure>=2:
-        historical_post_bounce=_num(hist.get("post_second_bounce_drop5_rate_pct"))
-    if historical_post_bounce is not None:
-        reversal_parts.append((historical_post_bounce,0.12))
     if completed_for_failure>=2 and post_failure_valid and post_failure_ml is not None:
         reversal_parts.append((post_failure_ml,0.20))
     if reversal_parts:
@@ -1664,18 +1629,10 @@ def _full_spectrum_analysis(metrics, sec, market, catalyst, turnover):
         if retrace is not None and 25<=retrace<=62:bounce_base+=18
         if impulse.get("bounce_confirmed"):bounce_base+=14
         elif retrace is not None and 25<=retrace<=62:bounce_base-=4
-        hist_bounce=_num(hist.get("impulse_bounce_5pct_rate"))
-        if hist_bounce is not None:bounce_base+=(hist_bounce-50)*0.20
         if pvr is not None and pvr<0.85:bounce_base+=6
 
     completed_bounces=int(sequence.get("completed_bounces") or 0)
     if completed_bounces>=1:
-        hist_second=_num(hist.get("second_bounce_rate_pct"))
-        hist_third=_num(hist.get("third_bounce_rate_pct"))
-        if completed_bounces==1 and hist_second is not None:
-            bounce_base+=(hist_second-50)*0.28
-        elif completed_bounces>=2 and hist_third is not None:
-            bounce_base+=(hist_third-50)*0.24
         if repeat_bounce_valid and repeat_bounce_ml is not None:
             bounce_base+=(repeat_bounce_ml-50)*0.45
         decay=_num(sequence.get("bounce_decay_ratio"))
