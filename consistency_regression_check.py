@@ -1111,6 +1111,8 @@ def test_historical_replay_source_survives_ml_extraction():
                 "momentum_5m": 1.0,
                 "momentum_15m": 2.0,
                 "volume_pace": 2.5,
+                "liquidity_source": "historical_tradier_replay",
+                "live_intraday_source": "tradier_historical_5min_open",
             }
         ],
     }
