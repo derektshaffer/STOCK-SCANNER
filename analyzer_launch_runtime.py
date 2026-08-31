@@ -61,6 +61,10 @@ def start_analyzer_process(
     env["ALPACA_LIVE_FEED"]=feed if feed in {"iex","sip"} else "iex"
     if tradier_token:
         env["TRADIER_ACCESS_TOKEN"]=str(tradier_token)
+    # The launch subprocess should compute snapshots/analysis, not open a
+    # long-lived market-stream session or block the page on prediction-log
+    # persistence. Those are handled by the persistent UI/background tracker.
+    env["ANALYZER_BACKGROUND_WORKER"]="1"
 
     result_path=_result_path()
     stdout_path=_log_path("out")
