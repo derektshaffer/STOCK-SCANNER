@@ -5972,7 +5972,7 @@ def test_analyzer_ui_exposes_thesis_continuity_reason():
     source = Path("analyzer_ui_core.py").read_text(encoding="utf-8")
     assert "_thesis_status" in source
     assert "_thesis_reason" in source
-    assert "Why the thesis changed/held" in source
+    assert "Why the execution thesis changed/held" in source
 
 
 def test_visual_truth_usde_like_run_counts_obvious_rebounds():
