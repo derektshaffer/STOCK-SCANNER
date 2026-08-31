@@ -20,6 +20,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+from analyzer_runtime_context import get_analyzer_namespace
+
 
 ET = ZoneInfo("America/New_York")
 THESIS_VERSION = "intraday-thesis-v1"
@@ -62,10 +64,7 @@ def _parse_dt(value):
 def _state_path(path=None):
     if path is not None:
         return Path(path)
-    namespace = (
-        os.environ.get("ANALYZER_THESIS_NAMESPACE", "").strip()
-        or "standalone"
-    )
+    namespace = get_analyzer_namespace()
     digest = hashlib.sha256(namespace.encode("utf-8")).hexdigest()[:16]
     return THESIS_PATH.with_name(
         f"{THESIS_PATH.stem}-{digest}{THESIS_PATH.suffix}"
@@ -98,10 +97,7 @@ def _save(payload, path=None):
 
 def _session_key(symbol, now):
     now = now.astimezone(ET)
-    namespace = (
-        os.environ.get("ANALYZER_THESIS_NAMESPACE", "").strip()
-        or "standalone"
-    )
+    namespace = get_analyzer_namespace()
     return (
         f"{namespace}:{str(symbol).upper().strip()}:"
         f"{now.date().isoformat()}"
