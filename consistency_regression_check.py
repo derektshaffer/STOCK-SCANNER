@@ -4329,14 +4329,34 @@ def test_momentum_alert_ui_has_in_app_and_optional_browser_notifications():
     source = Path("app.py").read_text(encoding="utf-8")
     assert "ACTIONABLE MOMENTUM ALERT" in source
     assert "PULLBACK WATCH" in source
-    assert "High-Score Pullback Watch" in source
-    assert "This is an early heads-up, not an entry signal." in source
+    assert "HIGH-SCORE PULLBACK WATCH" in source
+    assert "Early heads-up — not an entry signal." in source
+    assert "pullback-watch-banner" in source
+    assert "border: 2px solid #f6b83f" in source
+    assert "box-shadow:" in source
     assert "Review it in Analyzer before deciding whether to trade." in source
     assert "Enable browser alerts" in source
     assert "Notification.requestPermission" in source
     assert "permission === 'denied'" in source
     assert "browser notifications unavailable" in source
     assert "not an automatic buy signal" in source
+
+
+def test_scanner_monitor_and_saved_stocks_are_vertically_compact():
+    from pathlib import Path
+
+    app_source = Path("app.py").read_text(encoding="utf-8")
+    bootstrap = Path("analyzer_bootstrap.py").read_text(encoding="utf-8")
+    analyzer_css = Path("analyzer_app.py").read_text(encoding="utf-8")
+
+    assert 'status_col, alerts_col = st.columns(' in app_source
+    assert "scanner-monitor-status" in app_source
+    assert "_browser_alert_control(first_alert, first_alert_kind)" in app_source
+    assert "first_saved = saved[:5]" in bootstrap
+    assert 'weights = [1.15, 1.15, 1.15] + [0.95] * len(first_saved)' in bootstrap
+    assert "title/actions/first tickers share one row" in analyzer_css
+    assert "min-height: 30px !important" in analyzer_css
+    assert "margin: 0 0 4px !important" in analyzer_css
 
 
 def test_scanner_runtime_async_start_is_nonblocking_and_lock_safe():
@@ -5197,6 +5217,7 @@ if __name__ == "__main__":
         test_momentum_alert_only_fires_when_symbol_newly_enters_ready_state,
         test_combined_app_keeps_one_async_scanner_loop_across_views,
         test_momentum_alert_ui_has_in_app_and_optional_browser_notifications,
+        test_scanner_monitor_and_saved_stocks_are_vertically_compact,
         test_scanner_runtime_async_start_is_nonblocking_and_lock_safe,
         test_scanner_runtime_timeout_releases_shared_lock,
         test_scanner_runtime_recovers_stale_lock_after_crash,
