@@ -3496,6 +3496,23 @@ def test_scanner_ui_surfaces_completed_daily_discovery_when_market_closed():
     assert "DAILY REVIEW" in app_source
 
 
+def test_analyzer_outcome_horizon_rejects_late_gap_bars():
+    import score_analyzer_outcomes as sao
+
+    target = datetime(2026, 8, 28, 15, 0, tzinfo=timezone.utc)
+    bars = [
+        {"t": "2026-08-28T15:03:00Z", "c": 10.3},
+        {"t": "2026-08-28T15:04:00Z", "c": 10.4},
+    ]
+    assert sao.OUTCOME_MAX_BAR_DELAY_SECONDS == 180
+    assert sao._price_at_or_after(bars, target) == 10.3
+
+    late_only = [
+        {"t": "2026-08-28T15:04:00Z", "c": 10.4},
+    ]
+    assert sao._price_at_or_after(late_only, target) is None
+
+
 def test_peer_ml_replay_requires_strictly_later_live_confirmation():
     import peer_ml_predictor as peer
 
@@ -3601,6 +3618,7 @@ if __name__ == "__main__":
         test_analyzer_calibration_version_gate,
         test_scanner_outcome_metadata,
         test_scanner_outcome_horizon_rejects_late_gap_bars,
+        test_analyzer_outcome_horizon_rejects_late_gap_bars,
         test_scanner_outcomes_expose_deduplicated_actionable_events,
         test_scanner_historical_returns_are_causal_and_timestamp_matched,
         test_scanner_enrichment_pool_is_not_display_watchlist_truncated,
