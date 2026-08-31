@@ -3467,7 +3467,7 @@ def test_live_scanner_uses_two_minute_cadence():
 
     source = Path("scanner_app.py").read_text(encoding="utf-8")
     assert "AUTO_SCAN_SECONDS = 120" in source
-    assert "AUTO_STATUS_REFRESH_SECONDS = 15" in source
+    assert "AUTO_STATUS_REFRESH_SECONDS = 5" in source
     assert "Auto scan every 2 minutes" in source
     assert "Automatic 2-minute scan running" in source
     assert "scan_age_seconds > 4 * 60" in source
