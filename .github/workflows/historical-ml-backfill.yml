@@ -2,7 +2,7 @@ name: Historical Scanner ML Backfill
 
 # Historical replay is manual-by-default; this marker intentionally triggers the current backfill.
 # Current run validates completed-bar behavior parity and Scanner ACTION quality.
-# Rerun marker after completed-bar source-format validation passed.
+# Rerun marker: Phase 6 independence + regime-coverage challenge refresh.
 on:
   schedule:
     # Weekly deep historical refresh. Runs in GitHub's cloud even when the
@@ -319,10 +319,15 @@ jobs:
           print("PHASE6_BLOCKED=" + str(summary.get("blocked", 0)))
 
           assert report.get("production_influence") is False
-          assert (report.get("policy") or {}).get("whole_day_split") is True
-          assert (report.get("policy") or {}).get("live_shadow_confirmation_required") is True
+          policy = report.get("policy") or {}
+          assert policy.get("whole_day_split") is True
+          assert policy.get("live_shadow_confirmation_required") is True
+          assert policy.get("hypothesis_generation_excludes_historical_replay") is True
+          assert policy.get("empirical_hypotheses_use_only_replay_days_before_evidence_start") is True
 
           for result in report.get("results") or []:
+              independence = result.get("independence") or {}
+              assert independence.get("independent") is not False, result
               assert result.get("production_influence") is False
               model = result.get("predictive_challenge") or {}
               if model.get("status") == "complete":
