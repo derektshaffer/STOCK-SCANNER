@@ -1437,13 +1437,38 @@ if _stair.get("detected"):
         "good" if _stair.get("plateau_tight") else "warn",
         "The high-to-low width of the current plateau. A tighter range with cooling volume can precede another expansion, but it is not a guarantee.",
     )
+    _reaccel_confirmed=bool(_stair.get("reaccelerating"))
+    _reaccel_developing=bool(_stair.get("reacceleration_developing"))
+    _break_confirmed=bool(_stair.get("breakdown_confirmed"))
+    _break_developing=bool(_stair.get("breakdown_developing"))
+    if _reaccel_confirmed:
+        _reaccel_value="✓ CONFIRMED"
+        _reaccel_note="completed session confirmed a new expansion step"
+        _reaccel_cls="good"
+    elif _reaccel_developing:
+        _reaccel_value="… DEVELOPING"
+        _reaccel_note="live session is expanding; not a completed step yet"
+        _reaccel_cls="warn"
+    elif _break_confirmed:
+        _reaccel_value="FAILED"
+        _reaccel_note="completed session lost the accepted higher level"
+        _reaccel_cls="bad"
+    elif _break_developing:
+        _reaccel_value="WEAKENING"
+        _reaccel_note="live session is below the plateau; breakdown not confirmed yet"
+        _reaccel_cls="warn"
+    else:
+        _reaccel_value="WAITING"
+        _reaccel_note="higher level is still being tested"
+        _reaccel_cls="warn"
+
     card(
         _sc[5],
         "REACCELERATION",
-        "ACTIVE" if _stair.get("reaccelerating") else "WAITING" if not _stair.get("breakdown") else "FAILED",
-        "new expansion leg" if _stair.get("reaccelerating") else "higher level still being tested",
-        "good" if _stair.get("reaccelerating") else "bad" if _stair.get("breakdown") else "warn",
-        "Whether price has started another meaningful expansion leg after the higher plateau.",
+        _reaccel_value,
+        _reaccel_note,
+        _reaccel_cls,
+        "A live daily candle can be DEVELOPING, but it only becomes a confirmed stair-step after that session is complete.",
     )
     _render_visual_snapshot(
         "📈 Stair-step visual · steps · plateau · reacceleration",
@@ -1453,9 +1478,15 @@ if _stair.get("detected"):
     )
 
     _steps=_stair.get("steps") or []
-    if _steps:
+    _developing_step=_stair.get("developing_step")
+    if _steps or _developing_step:
         with st.expander("Stair-step details"):
-            st.dataframe(pd.DataFrame(_steps),width="stretch",hide_index=True)
+            if _steps:
+                st.caption("Confirmed steps — completed sessions only")
+                st.dataframe(pd.DataFrame(_steps),width="stretch",hide_index=True)
+            if _developing_step:
+                st.caption("Developing live step — not yet confirmed")
+                st.dataframe(pd.DataFrame([_developing_step]),width="stretch",hide_index=True)
 
 
 _full = ((r.get("decision_v2") or {}).get("full_spectrum") or {})
