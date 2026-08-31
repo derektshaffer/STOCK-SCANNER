@@ -34,6 +34,8 @@ on:
     branches: [main]
     paths:
       - "historical_scanner_replay.py"
+      - "sequence_features.py"
+      - "sequence_ml_research.py"
       - "historical_timeframe_replay.py"
       - "timeframe_ml_ranker.py"
       - "timeframe_targets.py"
@@ -165,6 +167,38 @@ jobs:
           assert len(tf_replay.get("calendar_years_covered") or []) >= 4
           PY
 
+      - name: Benchmark ordered candle sequence ML
+        if: github.event_name != 'push' || (!contains(github.event.head_commit.message, 'Run historical timeframe backfill') && !contains(github.event.head_commit.message, 'Run timeframe ML validation') && !contains(github.event.head_commit.message, 'Run Swing feature research'))
+        run: |
+          python sequence_ml_research.py
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report=json.loads(
+              Path("outcome_reports/sequence_ml_validation.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          data=report.get("dataset") or {}
+          validation=report.get("validation") or {}
+          print("SEQUENCE_REPORT_STATUS="+str(report.get("status")))
+          print("SEQUENCE_REPORT_SAMPLES="+str(data.get("samples")))
+          print("SEQUENCE_REPORT_DATES="+str(data.get("unique_dates")))
+          print("SEQUENCE_REPORT_FOLDS="+str(validation.get("fold_count")))
+          print("SEQUENCE_REPORT_STRUCTURED_AUC="+str((validation.get("structured_baseline") or {}).get("auc")))
+          print("SEQUENCE_REPORT_SEQUENCE_AUC="+str((validation.get("sequence_only") or {}).get("auc")))
+          print("SEQUENCE_REPORT_HYBRID_AUC="+str((validation.get("hybrid") or {}).get("auc")))
+          print("SEQUENCE_REPORT_AUC_LIFT="+str(validation.get("hybrid_minus_structured_auc")))
+          print("SEQUENCE_REPORT_GATE="+str(bool(validation.get("candidate_gate_passed"))).lower())
+          assert report.get("research_only") is True
+          assert report.get("production_enabled") is False
+          assert report.get("can_change_scanner_rank") is False
+          assert report.get("can_change_analyzer_trade_plan") is False
+          assert int(data.get("samples") or 0) >= 500
+          assert int(validation.get("fold_count") or 0) >= 2
+          PY
+
       - name: Validate shadow Swing timeframe ML
         run: |
           python timeframe_ml_ranker.py --output timeframe_replay/timeframe_ml_validation.json
@@ -259,6 +293,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add outcome_reports/outcomes_historical_replay.json
+          git add outcome_reports/sequence_ml_validation.json
           git add timeframe_replay/timeframe_historical_replay.json
           git add timeframe_replay/timeframe_ml_validation.json
           git add timeframe_replay/swing_feature_research.json
@@ -277,6 +312,8 @@ jobs:
           name: outcome-report-historical-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             outcome_reports/outcomes_historical_replay.json
+            outcome_reports/sequence_ml_validation.json
+            outcome_reports/sequence_replay_training.json.gz
             timeframe_replay/timeframe_historical_replay.json
             timeframe_replay/timeframe_ml_validation.json
             timeframe_replay/swing_feature_research.json
