@@ -276,6 +276,10 @@ def _extract_observations(payload):
                     or payload.get("source")
                     or "live_scan"
                 ),
+                "behavior_feature_version": (
+                    row.get("behavior_feature_version")
+                    or payload.get("behavior_feature_version")
+                ),
                 "label": int(return_60 >= 3.0),
                 "features": features,
             }
