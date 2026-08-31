@@ -821,24 +821,9 @@ if not _position_enabled:
         "use the entry/stop/target levels. Everything below adds context or explains why."
     )
 
-st.markdown(
-    '<div class="section">Live market snapshot '
-    '<span style="font-size:12px;color:#91a7c2">supporting context</span></div>',
-    unsafe_allow_html=True,
-)
-with st.container(key="analyzer_metrics_top"):
-    cols=st.columns(6)
-    _trade_age=r.get("trade_age_seconds")
-    _price_note=f'{pp(r.get("day_pct"))} · trade {_age_text(_trade_age)} · {r.get("live_feed")}'
-    card(cols[0],"PRICE",money(r.get("price")),_price_note,"good" if (r.get("day_pct") or 0)>=0 else "bad")
-    card(cols[1],"VWAP",money(r.get("vwap")),f'{r.get("vwap_position")} · {pp(r.get("vwap_extension_pct"))}',"good" if r.get("vwap_position")=="ABOVE" else "bad")
-    card(cols[2],"DAY RANGE",f'{money(r.get("day_low"))}–{money(r.get("day_high"))}',f'{r.get("from_high_pct",0):.1f}% below high')
-    card(cols[3],"VOL PACE",multiple(r.get("volume_pace")),f'{r.get("volume",0):,.0f} shown · {r.get("volume_source")}')
-    card(cols[4],"SETUP SCORE",f'{r.get("score"):.1f} / 100',f'Grade {r.get("grade")}',"good" if r.get("grade") in ("A","B") else "warn")
-    card(cols[5],"BASE SETUP",r.get("entry_quality"),f'Live feed: {r.get("live_feed")}',"good" if r.get("entry_quality")=="FAVORABLE" else "warn")
-
 # Dynamic decision-support trade plan. Position mode replaces the visible
 # entry plan with an exit-management plan while leaving the entry engine intact.
+_trade_age=r.get("trade_age_seconds")
 
 @st.fragment(run_every="5s" if _position_enabled else None)
 def _render_position_exit_plan():
@@ -1062,6 +1047,21 @@ if not _position_enabled:
                 "the live plan. " + str(plan.get("method_note") or "")
             )
 
+
+st.markdown(
+    '<div class="section">Live market snapshot '
+    '<span style="font-size:12px;color:#91a7c2">supporting context</span></div>',
+    unsafe_allow_html=True,
+)
+with st.container(key="analyzer_metrics_top"):
+    cols=st.columns(6)
+    _price_note=f'{pp(r.get("day_pct"))} · trade {_age_text(_trade_age)} · {r.get("live_feed")}'
+    card(cols[0],"PRICE",money(r.get("price")),_price_note,"good" if (r.get("day_pct") or 0)>=0 else "bad")
+    card(cols[1],"VWAP",money(r.get("vwap")),f'{r.get("vwap_position")} · {pp(r.get("vwap_extension_pct"))}',"good" if r.get("vwap_position")=="ABOVE" else "bad")
+    card(cols[2],"DAY RANGE",f'{money(r.get("day_low"))}–{money(r.get("day_high"))}',f'{r.get("from_high_pct",0):.1f}% below high')
+    card(cols[3],"VOL PACE",multiple(r.get("volume_pace")),f'{r.get("volume",0):,.0f} shown · {r.get("volume_source")}')
+    card(cols[4],"SETUP SCORE",f'{r.get("score"):.1f} / 100',f'Grade {r.get("grade")}',"good" if r.get("grade") in ("A","B") else "warn")
+    card(cols[5],"BASE SETUP",r.get("entry_quality"),f'Live feed: {r.get("live_feed")}',"good" if r.get("entry_quality")=="FAVORABLE" else "warn")
 
 with st.container(key="analyzer_decision_v2"):
     render_v2_decision(st, r)
