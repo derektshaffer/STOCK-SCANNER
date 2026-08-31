@@ -269,24 +269,27 @@ def _overlay_anchor(plan, state, metrics, *, conservative=False):
         and low <= price <= high
     )
 
-    # A different-family proposal is always conservative. For the same active
-    # family, preserve a real entry only when price is still inside the anchored
-    # zone. This lets the app eventually say ENTRY AVAILABLE without allowing
-    # a newly recalculated zone to move underneath the current price.
-    if not conservative and raw_status == "ENTRY AVAILABLE" and in_zone:
+    # A raw NO TRADE is a safety veto, never something continuity may soften
+    # into WAIT merely to preserve an old thesis.
+    if raw_status == "NO TRADE":
+        plan["status"] = "NO TRADE"
+        plan["entry_state"] = "NO ENTRY"
+        plan["action"] = raw_action or "NO TRADE"
+        plan["entry_instruction"] = (
+            "NO ENTRY SIGNAL while the current market/evidence gates reject the setup. "
+            f"The prior {family.replace('_', ' ')} thesis may remain on watch, but it is not actionable."
+        )
+    # A different-family proposal is otherwise conservative. For the same
+    # active family, preserve a real entry only when price is still inside the
+    # anchored zone. This lets the app eventually say ENTRY AVAILABLE without
+    # allowing a newly recalculated zone to move underneath the current price.
+    elif not conservative and raw_status == "ENTRY AVAILABLE" and in_zone:
         plan["status"] = "ENTRY AVAILABLE"
         plan["entry_state"] = "ENTRY AVAILABLE"
         plan["action"] = raw_action or f"{family.replace('_', ' ').upper()} ENTRY AVAILABLE"
         plan["entry_instruction"] = (
             f"ENTRY AVAILABLE NOW in {zone}. The entry is using the anchored "
             "thesis geometry; use the displayed stop/invalidation."
-        )
-    elif not conservative and raw_status == "NO TRADE":
-        plan["status"] = "NO TRADE"
-        plan["entry_state"] = "NO ENTRY"
-        plan["action"] = raw_action or "NO TRADE"
-        plan["entry_instruction"] = (
-            "NO ENTRY SIGNAL while the active thesis is rejected by the current gates."
         )
     else:
         plan["status"] = "WAIT"
@@ -353,6 +356,26 @@ def prepare_intraday_thesis(
     store = _load(store_path)
     key = _session_key(symbol, now)
     state = store.get(key)
+    raw_status = str(plan.get("status") or "WAIT").upper().strip()
+
+    # A rejected setup is not a thesis worth anchoring. Wait until the rule
+    # engine has at least a valid watch/entry plan before creating session
+    # geometry that later refreshes must respect.
+    if (
+        (not isinstance(state, dict) or state.get("session_key") != key)
+        and raw_status == "NO TRADE"
+    ):
+        context = {
+            "version": THESIS_VERSION,
+            "status": "NO ACTIVE THESIS",
+            "active_family": None,
+            "proposed_family": proposed,
+            "held": False,
+            "change_reason": "current setup is NO TRADE; nothing anchored",
+        }
+        plan["thesis_continuity"] = context
+        metrics["trade_plan"] = plan
+        return context
 
     if not isinstance(state, dict) or state.get("session_key") != key:
         state = _new_state(
@@ -408,6 +431,37 @@ def prepare_intraday_thesis(
         return context
 
     if active in VALID_FAMILIES and proposed != active:
+        # A rejected alternate family cannot accumulate evidence toward
+        # replacing an accepted thesis. Preserve the active family but keep
+        # the current NO TRADE veto intact.
+        if raw_status == "NO TRADE":
+            state["pending_family"] = None
+            state["pending_count"] = 0
+            state["last_updated"] = now.isoformat()
+            _overlay_anchor(plan, state, metrics, conservative=True)
+            reason = (
+                f"new {proposed.replace('_', ' ')} proposal is currently NO TRADE; "
+                f"holding prior {active.replace('_', ' ')} thesis on watch without an entry"
+            )
+            context = {
+                "version": THESIS_VERSION,
+                "status": "HOLDING PRIOR THESIS",
+                "active_family": active,
+                "proposed_family": proposed,
+                "held": True,
+                "pending_count": 0,
+                "required_confirmations": int(replacement_confirmations),
+                "revision": int(state.get("revision") or 1),
+                "anchored_at": state.get("anchored_at"),
+                "change_reason": reason,
+            }
+            plan["plan_selection_note"] = reason
+            plan["thesis_continuity"] = context
+            metrics["trade_plan"] = plan
+            store[key] = state
+            _save(store, store_path)
+            return context
+
         if state.get("pending_family") == proposed:
             pending_count = int(state.get("pending_count") or 0) + 1
         else:
