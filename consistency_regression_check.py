@@ -3585,6 +3585,8 @@ def test_scanner_replay_live_confirmation_gate_is_integrity_sized():
 
 
 def test_validation_workflow_runs_before_merge_on_pull_requests():
+    from pathlib import Path
+
     source = Path(".github/workflows/analyzer-v2-check.yml").read_text(
         encoding="utf-8"
     )
