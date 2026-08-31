@@ -1445,6 +1445,22 @@ def test_multi_bounce_ignores_micro_wiggles_and_waits_for_distinct_second_swing(
     assert float(seq.get("min_recovery_fraction") or 0) >= 0.35, seq
 
 
+def test_distinct_bounce_semantics_are_version_isolated_for_peer_ml():
+    import peer_ml_predictor as peer
+    import scanner_behavior as behavior
+
+    assert behavior.BEHAVIOR_FEATURE_VERSION == "scanner-behavior-v3-distinct-swings"
+    assert peer.PEER_MODEL_VERSION == "analyzer-peer-v5-distinct-swing-bounces"
+
+    rows=[
+        {"symbol":"OLD","behavior_feature_version":"scanner-behavior-v2-completed-bars"},
+        {"symbol":"NEW","behavior_feature_version":behavior.BEHAVIOR_FEATURE_VERSION},
+        {"symbol":"MISSING"},
+    ]
+    kept=peer._matching_behavior_rows(rows)
+    assert [row.get("symbol") for row in kept] == ["NEW"], kept
+
+
 def test_multi_bounce_full_spectrum_accepts_sequence_state():
     import analyzer_v2_integration as v2
 
@@ -4471,6 +4487,7 @@ if __name__ == "__main__":
         test_full_spectrum_exposes_all_scenarios,
         test_multi_bounce_detector_tracks_decay_and_lower_highs,
         test_multi_bounce_ignores_micro_wiggles_and_waits_for_distinct_second_swing,
+        test_distinct_bounce_semantics_are_version_isolated_for_peer_ml,
         test_multi_bounce_full_spectrum_accepts_sequence_state,
         test_stair_step_detector_finds_higher_plateau_sequence,
         test_scanner_behavior_completed_bar_parity,
