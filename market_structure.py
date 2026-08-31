@@ -675,7 +675,7 @@ def bounce_sequence_context(
         # A shared pivot already requires a meaningful reversal. Requiring
         # recovery of the actual preceding pullback adds pattern semantics
         # without inventing another raw-candle zig-zag detector.
-        if recovery_fraction < 0.25:
+        if recovery_fraction < 0.35:
             i += 2
             continue
 
@@ -912,7 +912,7 @@ def bounce_sequence_context(
         "min_leg_bars": structure.get("min_leg_bars"),
         "first_bounce_min_cycle_bars": max(2, int(round(3.0 / (structure.get("bar_spacing_minutes") or 1.0)))),
         "min_cycle_bars": max(2, int(round(5.0 / (structure.get("bar_spacing_minutes") or 1.0)))),
-        "min_recovery_fraction": 0.25,
+        "min_recovery_fraction": 0.35,
         "market_structure": structure,
         "current_price": round(price, 4),
     }
