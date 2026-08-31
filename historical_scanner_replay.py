@@ -33,7 +33,7 @@ from scanner_behavior import (
     multi_session_behavior_features,
 )
 
-REPLAY_VERSION = "historical-scanner-replay-v4.7-shared-break-structure"
+REPLAY_VERSION = "historical-scanner-replay-v4.8-confirmed-multisession"
 ET = ZoneInfo("America/New_York")
 
 DEFAULT_TRADING_DAYS = int(os.environ.get("REPLAY_TRADING_DAYS", "20") or 20)
@@ -1229,7 +1229,10 @@ def build_replay_observations(
                         "stair_higher_plateau_count": snap.get("stair_higher_plateau_count"),
                         "stair_structure_score": snap.get("stair_structure_score"),
                         "stair_reaccelerating": snap.get("stair_reaccelerating"),
+                        "stair_reacceleration_developing": snap.get("stair_reacceleration_developing"),
                         "stair_breakdown": snap.get("stair_breakdown"),
+                        "stair_breakdown_confirmed": snap.get("stair_breakdown_confirmed"),
+                        "stair_breakdown_developing": snap.get("stair_breakdown_developing"),
                         "above_vwap": snap["above_vwap"],
                         "failed_filters": snap["failed_filters"],
                         "failed_count": snap["failed_count"],
