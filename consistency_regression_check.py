@@ -5254,6 +5254,61 @@ def test_advisory_model_percentages_are_explicit_and_neutral():
 
 
 
+
+def test_intraday_thesis_state_is_namespaced_per_browser_session():
+    import os
+    import tempfile
+    from pathlib import Path
+    import strategy_thesis as thesis
+
+    now = datetime(2026, 8, 31, 14, 0, tzinfo=timezone.utc)
+    plan = {
+        "symbol": "TEST",
+        "price": 9.0,
+        "trade_plan": {
+            "status": "WAIT",
+            "preferred_plan": "breakout",
+            "breakout_reference_level": 9.0,
+            "breakout_reference_locked": True,
+            "breakout": {
+                "entry_low": 9.0, "entry_high": 9.1, "stop": 8.7,
+                "target1": 9.8,
+            },
+            "selected": {
+                "entry_low": 9.0, "entry_high": 9.1, "stop": 8.7,
+                "target1": 9.8,
+            },
+        },
+    }
+
+    old = os.environ.get("ANALYZER_THESIS_NAMESPACE")
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "thesis.json"
+            os.environ["ANALYZER_THESIS_NAMESPACE"] = "session-a"
+            thesis.prepare_intraday_thesis(
+                dict(plan, trade_plan=dict(plan["trade_plan"])),
+                now=now,
+                store_path=path,
+            )
+            os.environ["ANALYZER_THESIS_NAMESPACE"] = "session-b"
+            result = thesis.prepare_intraday_thesis(
+                dict(plan, trade_plan=dict(plan["trade_plan"])),
+                now=now,
+                store_path=path,
+            )
+            assert result.get("status") == "NEW THESIS", result
+            stored = thesis._load(path)
+            assert len(stored) == 2, stored
+            assert any(key.startswith("session-a:") for key in stored), stored
+            assert any(key.startswith("session-b:") for key in stored), stored
+    finally:
+        if old is None:
+            os.environ.pop("ANALYZER_THESIS_NAMESPACE", None)
+        else:
+            os.environ["ANALYZER_THESIS_NAMESPACE"] = old
+
+
 def test_intraday_thesis_keeps_entry_geometry_stable_and_can_still_enter():
     import tempfile
     from pathlib import Path
@@ -5949,6 +6004,7 @@ if __name__ == "__main__":
         test_two_minute_runtime_health_flags_tight_and_overrun_scans,
         test_momentum_alert_can_realert_only_after_leaving_ready_state,
         test_analyzer_live_test_status_exposes_tracking_health,
+        test_intraday_thesis_state_is_namespaced_per_browser_session,
         test_intraday_thesis_keeps_entry_geometry_stable_and_can_still_enter,
         test_intraday_thesis_requires_persistent_replacement_before_family_switch,
         test_intraday_thesis_replans_immediately_on_invalidation,
