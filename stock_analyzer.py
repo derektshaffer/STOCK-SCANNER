@@ -1828,7 +1828,7 @@ def analyze(symbol):
         "stair_step":stair,
         "run_exhaustion":exhaustion,
         "chart_data":{
-            "intraday":_chart_bars(intraday,240),
+            "intraday":_chart_bars(intraday,420),
             "daily":_chart_bars(
                 list(daily or []) + [{
                     "t":now_et.date().isoformat(),
