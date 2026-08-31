@@ -5234,6 +5234,162 @@ def test_advisory_model_percentages_are_explicit_and_neutral():
     assert ml_ui._probability_class(validated, high=60) == "good"
 
 
+
+def test_visual_truth_usde_like_run_counts_obvious_rebounds():
+    """Graph-level truth case modeled after the visible USDE stair-step run."""
+    from market_structure import bounce_sequence_context
+
+    start = datetime(2026, 8, 31, 13, 30, tzinfo=timezone.utc)
+    closes = (
+        6.80, 6.95, 7.10, 7.28, 7.45, 7.62,
+        7.48, 7.34, 7.46, 7.66, 7.90, 8.18,
+        8.48, 8.72, 8.94,
+        8.78, 8.56, 8.66, 8.82, 9.02,
+        8.88, 8.66, 8.78, 8.98, 9.16,
+        9.02, 8.84, 8.76, 8.86, 8.96,
+    )
+    bars = []
+    for i, close in enumerate(closes):
+        bars.append({
+            "t": _iso(start + timedelta(minutes=i)),
+            "o": close - 0.02,
+            "h": close + 0.04,
+            "l": close - 0.04,
+            "c": close,
+            "v": 1500 if i in {5, 14, 19, 24} else 900,
+        })
+
+    seq = bounce_sequence_context(
+        bars,
+        current_price=closes[-1],
+        atr_pct=5.0,
+    )
+    assert seq.get("detected"), seq
+    # A human looking at this chart sees multiple distinct pullback/rebound
+    # cycles. The detector may keep the final one developing, but it may not
+    # collapse the whole run into "Bounce #1 not reached."
+    assert int(seq.get("observed_bounces") or 0) >= 2, seq
+    assert int(seq.get("completed_bounces") or 0) >= 1, seq
+    assert str(seq.get("sequence_state") or "") != "FIRST PULLBACK / BOUNCE FORMING", seq
+
+
+def test_visual_truth_breakout_plan_keeps_same_goalpost_after_touch():
+    """Touching a breakout trigger cannot silently replace it with a new plan."""
+    import copy
+    import stock_analyzer as analyzer
+
+    base = {
+        "vwap": 8.30,
+        "supports": [{"price": 8.45, "quality_score": 70, "quality": "STRONG"}],
+        "resistances": [{"price": 9.15, "quality_score": 80, "quality": "STRONG"}],
+        "atr_14": 0.55,
+        "atr_14_pct": 6.1,
+        "spread_pct": 0.4,
+        "volume_pace": 2.1,
+        "momentum_5m": 0.25,
+        "momentum_15m": 0.55,
+        "day_pct": 32.0,
+        "vwap_extension_pct": 9.4,
+        "score": 80,
+        "historical_analogs": {"status": "insufficient_history"},
+        "historical_setup": {"status": "insufficient_history", "intraday": {}},
+        "impulse_pullback": {
+            "detected": True,
+            "impulse_low": 7.0,
+            "impulse_high": 9.10,
+            "impulse_move_pct": 30.0,
+            "current_retracement_pct": 1.0,
+            "bounce_recovery_pct": 0.0,
+            "bounce_confirmed": False,
+            "levels": {"61.8%": 7.80},
+        },
+        "bounce_sequence": {"detected": True, "completed_bounces": 0},
+        "breakout_structure": {
+            "breakout_recent": 1.0,
+            "breakout_holding": 0.0,
+            "failed_breakout": 0.0,
+            "breakout_level": 9.00,
+        },
+        "stair_step": {"detected": False},
+        "run_exhaustion": {"score": 30},
+        "liquidity": {"label": "HIGH", "avg_dollar_volume": 10_000_000},
+        "news": [],
+        "day_high": 9.10,
+    }
+    first = copy.deepcopy(base)
+    first["price"] = 9.03
+    second = copy.deepcopy(base)
+    second["price"] = 9.08
+
+    p1 = analyzer.build_trade_plan(first, datetime.now(timezone.utc))
+    p2 = analyzer.build_trade_plan(second, datetime.now(timezone.utc))
+    assert p1.get("preferred_plan") == "breakout", p1
+    assert p2.get("preferred_plan") == "breakout", p2
+    assert p1.get("breakout_reference_locked") is True, p1
+    assert p2.get("breakout_reference_locked") is True, p2
+    assert p1.get("breakout_reference_level") == p2.get("breakout_reference_level") == 9.0
+    assert "PULLBACK" not in str(p2.get("action") or ""), p2
+
+
+def test_final_decision_contract_cannot_show_entry_when_safety_gate_waits():
+    import analyzer_v2_integration as v2
+
+    metrics = {
+        "trade_plan": {
+            "status": "ENTRY AVAILABLE",
+            "action": "ENTRY AVAILABLE — confirmed breakout zone",
+            "entry_state": "ENTRY AVAILABLE",
+            "entry_instruction": "ENTRY AVAILABLE NOW in $9.00–$9.10.",
+            "selected": {
+                "entry_low": 9.00,
+                "entry_high": 9.10,
+                "entry_mid": 9.05,
+                "stop": 8.70,
+                "target1": 9.80,
+                "risk_reward": 2.0,
+            },
+        }
+    }
+    contract = v2._finalize_trade_plan_contract(
+        metrics,
+        live_data_integrity={"ok": False},
+    )
+    plan = metrics["trade_plan"]
+    assert contract.get("version") == "trade-plan-contract-v1", contract
+    assert plan.get("status") == "WAIT", plan
+    assert plan.get("entry_state") == "DATA CHECK", plan
+    assert "ENTRY AVAILABLE NOW" not in str(plan.get("entry_instruction") or ""), plan
+    assert "NO ENTRY SIGNAL" in str(plan.get("entry_instruction") or ""), plan
+
+
+def test_final_decision_contract_rejects_impossible_long_geometry():
+    import analyzer_v2_integration as v2
+
+    metrics = {
+        "trade_plan": {
+            "status": "ENTRY AVAILABLE",
+            "entry_state": "ENTRY AVAILABLE",
+            "selected": {
+                "entry_low": 9.00,
+                "entry_high": 9.10,
+                "entry_mid": 9.05,
+                "stop": 9.20,
+                "target1": 8.90,
+                "risk_reward": 3.0,
+            },
+        }
+    }
+    contract = v2._finalize_trade_plan_contract(
+        metrics,
+        live_data_integrity={"ok": True},
+    )
+    plan = metrics["trade_plan"]
+    assert contract.get("ok") is False, contract
+    assert plan.get("status") == "NO TRADE", plan
+    assert plan.get("entry_state") == "NO ENTRY", plan
+    assert contract.get("geometry_errors"), contract
+
+
 if __name__ == "__main__":
     tests = [
         test_analyzer_daily_history_prefers_tradier,
@@ -5429,6 +5585,10 @@ if __name__ == "__main__":
         test_two_minute_runtime_health_flags_tight_and_overrun_scans,
         test_momentum_alert_can_realert_only_after_leaving_ready_state,
         test_analyzer_live_test_status_exposes_tracking_health,
+        test_visual_truth_usde_like_run_counts_obvious_rebounds,
+        test_visual_truth_breakout_plan_keeps_same_goalpost_after_touch,
+        test_final_decision_contract_cannot_show_entry_when_safety_gate_waits,
+        test_final_decision_contract_rejects_impossible_long_geometry,
     ]
     for test in tests:
         test()
