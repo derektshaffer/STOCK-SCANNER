@@ -14,7 +14,7 @@ from scanner_behavior import BEHAVIOR_FEATURE_VERSION
 from stair_step import stair_step_feature_values
 
 
-PEER_MODEL_VERSION = "analyzer-peer-v8-shared-break-structure"
+PEER_MODEL_VERSION = "analyzer-peer-v9-confirmed-multisession"
 PEER_TARGET = ">= +3% at 60 minutes"
 PEER_FEATURES = [
     "day_pct",
@@ -53,7 +53,10 @@ PEER_FEATURES = [
     "stair_higher_plateau_count",
     "stair_structure_score",
     "stair_reaccelerating",
+    "stair_reacceleration_developing",
     "stair_breakdown",
+    "stair_breakdown_confirmed",
+    "stair_breakdown_developing",
 ]
 
 MIN_PEER_SAMPLES = 500
@@ -198,7 +201,10 @@ def _similarity_distance(row, current):
         ("stair_higher_plateau_count", 1.0, 1.00),
         ("stair_structure_score", 20.0, 1.15),
         ("stair_reaccelerating", 1.0, 1.10),
+        ("stair_reacceleration_developing", 1.0, 0.80),
         ("stair_breakdown", 1.0, 1.20),
+        ("stair_breakdown_confirmed", 1.0, 1.20),
+        ("stair_breakdown_developing", 1.0, 0.80),
     )
     for name, scale, weight in specs:
         d = _scaled_abs(features.get(name), current.get(name), scale)
