@@ -1168,14 +1168,38 @@ MAX_ACTIONABLE_MARKET_DATA_AGE_SECONDS = 120
 
 def _scanner_data_integrity(c, now_et):
     reasons = []
-    source = str(c.get("live_quote_source") or "").lower()
-    consolidated = (
-        "tradier" in source
-        or ("alpaca_sip" in source)
-        or "consolidated" in source
-    )
-    if not consolidated:
+
+    def source_family(value):
+        text = str(value or "").lower().strip()
+        if "tradier" in text:
+            return "tradier"
+        if "sip" in text or "consolidated" in text:
+            return "sip"
+        if "iex" in text:
+            return "iex"
+        return "unknown"
+
+    quote_source = str(c.get("live_quote_source") or "").lower()
+    intraday_source = str(c.get("live_intraday_source") or "").lower()
+    quote_family = source_family(quote_source)
+    intraday_family = source_family(intraday_source)
+
+    quote_consolidated = quote_family in {"tradier", "sip"}
+    intraday_consolidated = intraday_family in {"tradier", "sip"}
+    if not quote_consolidated:
         reasons.append("live quote source is not consolidated")
+    if not intraday_source:
+        reasons.append("live intraday source is missing")
+    elif not intraday_consolidated:
+        reasons.append("live intraday source is not consolidated")
+    if (
+        quote_consolidated
+        and intraday_consolidated
+        and quote_family != intraday_family
+    ):
+        reasons.append(
+            "live quote and intraday technicals come from different consolidated providers"
+        )
 
     now_utc = now_et.astimezone(timezone.utc)
     for label, key in (
