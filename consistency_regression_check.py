@@ -822,6 +822,7 @@ def test_analyzer_white_tables_are_collapsible():
         'with st.expander("Momentum & liquidity", expanded=False):',
         'with st.expander("Support & resistance levels", expanded=False):',
         'with st.expander("Historical spike table", expanded=False):',
+        'with st.expander("Live plan inputs + research context", expanded=False):',
     ]
     missing_core = [item for item in required_core if item not in core]
     assert not missing_core, f"Missing Analyzer collapsible tables: {missing_core}"
@@ -829,6 +830,29 @@ def test_analyzer_white_tables_are_collapsible():
         'with st.expander("Historical setup match table", expanded=False):'
         in historical
     ), "Historical setup match table is not collapsible"
+
+
+def test_analyzer_page_leads_with_actionable_decision_hierarchy():
+    from pathlib import Path
+
+    core = Path("analyzer_ui_core.py").read_text(encoding="utf-8")
+    historical = Path("historical_ui.py").read_text(encoding="utf-8")
+
+    decision = core.find("Decision first")
+    trade_plan = core.find("SUGGESTED TRADE PLAN")
+    snapshot = core.find("Live market snapshot")
+    v2 = core.find('render_v2_decision(st, r)')
+    impulse = core.find("Impulse / pullback structure")
+
+    assert decision >= 0, "Decision-first section is missing"
+    assert trade_plan > decision, "Trade plan must follow the decision-first strip"
+    assert snapshot > trade_plan, "Supporting market snapshot should follow the trade plan"
+    assert v2 > snapshot, "Decision-v2 explanations should follow the primary plan"
+    assert impulse > v2, "Pattern engines should remain below decision-level information"
+
+    assert "Priority order: trust the data" in core
+    assert "Research-only context; these completed historical matches are not included" in historical
+    assert "Live 33–50% impulse zone" in core
 
 
 def test_analyzer_shared_button_styles_live_in_bootstrap():
@@ -3958,6 +3982,7 @@ if __name__ == "__main__":
         test_position_live_overlay_recomputes_derived_fields,
         test_analyzer_ui_preserves_historical_context_dependencies,
         test_analyzer_white_tables_are_collapsible,
+        test_analyzer_page_leads_with_actionable_decision_hierarchy,
         test_analyzer_shared_button_styles_live_in_bootstrap,
         test_scanner_aligned_volume_pace_matches_analyzer_baseline,
         test_scanner_action_avoids_chasing_extreme_mover,
