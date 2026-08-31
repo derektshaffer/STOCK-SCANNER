@@ -19,9 +19,12 @@ from swing_research_flags import FLAG_VERSION as SWING_RESEARCH_FLAG_VERSION
 LOG_PATH = Path(os.environ.get("ANALYZER_PREDICTION_LOG", "analysis_logs/analyzer_predictions.json"))
 BUCKET_MINUTES = 5
 ET = ZoneInfo("America/New_York")
-ANALYZER_FEATURE_VERSION = "analyzer-features-v6-sequence-regimes"
-DECISION_SCORE_VERSION = "decision-v2.6-sequence-regimes"
-TIMEFRAME_SCORE_VERSION = "timeframe-fit-v1"
+from analyzer_versions import (
+    ANALYZER_FEATURE_VERSION,
+    CALIBRATION_SCHEMA_VERSION,
+    DECISION_SCORE_VERSION,
+    TIMEFRAME_SCORE_VERSION,
+)
 
 GITHUB_TOKEN = (
     os.environ.get("ANALYZER_GITHUB_TOKEN", "").strip()
@@ -1352,7 +1355,7 @@ def tracker_summary(rows=None, symbol=None, current_metrics=None):
 
     durable = _load_durable_calibration()
     if (
-        int(durable.get("schema_version") or 0) < 8
+        int(durable.get("schema_version") or 0) < CALIBRATION_SCHEMA_VERSION
         or durable.get("feature_version") != ANALYZER_FEATURE_VERSION
         or durable.get("decision_score_version") != DECISION_SCORE_VERSION
     ):
