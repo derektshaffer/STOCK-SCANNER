@@ -1933,13 +1933,16 @@ def install_v2_analysis(sa):
         sip_status = prefer_best_live_feed(sa, "SPY")
         metrics = base_analyze(symbol)
         now = datetime.now(timezone.utc)
+        live_data_integrity = _analyzer_live_data_integrity(metrics)
 
         # Apply the accepted intraday thesis before readiness/evidence scoring.
-        # This keeps entry geometry/plan family stable across refreshes while
-        # still allowing the current bars to change confidence and safety gates.
+        # New/switching geometry may only be anchored from trusted live data;
+        # stale/incomplete snapshots can keep an existing thesis on watch but
+        # cannot create or replace one.
         thesis_context = prepare_intraday_thesis(
             metrics,
             now=now,
+            evidence_trusted=bool(live_data_integrity.get("ok")),
         )
 
         background_worker = (
@@ -1975,7 +1978,6 @@ def install_v2_analysis(sa):
         market = _market_context(sa, sec.get("sector_etf"))
         catalyst = _catalyst_strength(metrics.get("news") or [])
         turnover = _turnover_context(metrics, sec, float_context)
-        live_data_integrity = _analyzer_live_data_integrity(metrics)
 
         potential, potential_reasons, potential_components = _potential_score(
             metrics, sec, market, catalyst
