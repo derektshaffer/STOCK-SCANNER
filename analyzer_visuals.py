@@ -475,16 +475,25 @@ def stair_step_chart_spec(result, line_overlay=False):
             },
         })
 
+    _reaccel_label=None
+    _reaccel_color="#ffd166"
     if stair.get("reaccelerating"):
+        _reaccel_label="Reacceleration ✓ confirmed"
+        _reaccel_color="#57f287"
+    elif stair.get("reacceleration_developing"):
+        _reaccel_label="Reacceleration developing"
+        _reaccel_color="#ffd166"
+
+    if _reaccel_label:
         marker = [{
             "t": bars[-1]["t"],
             "price": bars[-1]["c"],
-            "label": "Reacceleration active",
+            "label": _reaccel_label,
         }]
         layers.extend([
             {
                 "data": {"values": marker},
-                "mark": {"type": "point", "filled": True, "size": 135, "color": "#ffd166"},
+                "mark": {"type": "point", "filled": True, "size": 135, "color": _reaccel_color},
                 "encoding": {
                     "x": {"field": "t", "type": "temporal"},
                     "y": {"field": "price", "type": "quantitative"},
@@ -497,7 +506,7 @@ def stair_step_chart_spec(result, line_overlay=False):
                     "dy": -14,
                     "fontSize": 11,
                     "fontWeight": "bold",
-                    "color": "#ffd166",
+                    "color": _reaccel_color,
                 },
                 "encoding": {
                     "x": {"field": "t", "type": "temporal"},
