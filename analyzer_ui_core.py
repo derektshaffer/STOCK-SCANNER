@@ -608,6 +608,16 @@ with st.container(key="analyzer_controls"):
         if not _COMBINED_WORKSPACE:
             st.caption(f"Refresh every {AUTO_REFRESH_SECONDS}s · use `ALPACA_LIVE_FEED=\"sip\"` for consolidated real-time data when your Alpaca plan supports SIP.")
 
+# In the combined workspace, Saved Stocks belongs directly below the
+# ticker-search / Analyze controls. analyzer_bootstrap injects the shared
+# renderer into this runpy namespace so we keep one source of truth for
+# saved-stock behavior while controlling its visual placement here.
+if _COMBINED_WORKSPACE:
+    _saved_renderer = globals().get("_render_combined_saved_stocks")
+    if callable(_saved_renderer):
+        with st.container(key="saved_stocks_top"):
+            _saved_renderer("toolbar")
+
 def _save_position_input(symbol, field, widget_key):
     store = st.session_state.setdefault("_position_inputs_by_symbol", {})
     record = dict(store.get(symbol) or {})
