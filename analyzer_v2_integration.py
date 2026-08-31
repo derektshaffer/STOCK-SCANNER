@@ -13,6 +13,7 @@ from float_data import get_public_float
 from swing_research_flags import evaluate_swing_research_flags
 from analyzer_context_cache import get_cached_context, set_cached_context
 from strategy_thesis import prepare_intraday_thesis, commit_intraday_thesis
+from timeframe_thesis import track_timeframe_thesis
 
 
 SEC_BASE = "https://data.sec.gov"
@@ -1994,6 +1995,18 @@ def install_v2_analysis(sa):
             potential,
             readiness,
         )
+        raw_best_fit = timeframe.get("best_fit")
+        horizon_continuity = track_timeframe_thesis(
+            symbol_clean,
+            timeframe,
+            now=now,
+        )
+        timeframe["raw_best_fit"] = raw_best_fit
+        timeframe["stable_best_fit"] = horizon_continuity.get(
+            "stable_best_fit"
+        ) or raw_best_fit
+        timeframe["continuity"] = horizon_continuity
+        timeframe["production_influence"] = False
         swing_research = evaluate_swing_research_flags(metrics, timeframe)
         timeframe["swing_research_flags"] = swing_research
 
