@@ -338,9 +338,8 @@ def _activate_saved_stock(symbol):
 def _render_saved_stocks(key_prefix="saved"):
     """Compact session-persistent saved-stock toolbar.
 
-    key_prefix keeps the temporary pre-analysis toolbar and the completed
-    post-analysis toolbar from registering duplicate Streamlit widget keys
-    during the same script run.
+    Keep the title, Save/Remove actions, and the first saved tickers on one
+    horizontal row. Additional saved names only create extra rows when needed.
     """
     if "saved_stocks" not in st.session_state:
         st.session_state["saved_stocks"] = []
@@ -359,11 +358,15 @@ def _render_saved_stocks(key_prefix="saved"):
         or "SDOT"
     ).upper().strip()
 
-    # One compact toolbar row instead of a header card + separate action row.
-    title_col, action_a, action_b, spacer = st.columns(
-        [1.15, 1.05, 1.05, 4.75],
-        vertical_alignment="center",
-    )
+    first_saved = saved[:5]
+    weights = [1.15, 1.15, 1.15] + [0.95] * len(first_saved)
+    if not first_saved:
+        weights += [3.0]
+
+    cols = st.columns(weights, vertical_alignment="center")
+    title_col, action_a, action_b = cols[:3]
+    saved_cols = cols[3:3 + len(first_saved)]
+
     with title_col:
         st.markdown(
             '<div class="saved-stock-inline-title">★ Saved Stocks</div>',
@@ -392,35 +395,47 @@ def _render_saved_stocks(key_prefix="saved"):
             st.session_state["saved_stocks"] = [x for x in saved if x != current]
             st.rerun()
 
-    saved = st.session_state.get("saved_stocks", [])
-    if not saved:
-        return
+    loading_symbol = str(
+        st.session_state.get("saved_stock_loading") or ""
+    ).upper().strip()
 
-    # Saved ticker chips only add a second compact row when there are actually
-    # saved names to show.
-    for start in range(0, len(saved), 8):
-        chunk = saved[start : start + 8]
-        cols = st.columns(8)
-        for i, col in enumerate(cols):
+    for i, (col, symbol) in enumerate(zip(saved_cols, first_saved)):
+        is_loading = loading_symbol == symbol
+        with col:
+            if st.button(
+                "Analyzing..." if is_loading else (
+                    f"● {symbol}" if symbol == current else symbol
+                ),
+                key=f"{key_prefix}_saved_stock_{i}_{symbol}",
+                type="primary" if symbol == current else "secondary",
+                disabled=bool(is_loading),
+                use_container_width=True,
+            ):
+                _activate_saved_stock(symbol)
+                st.rerun()
+
+    remaining = saved[5:]
+    for start in range(0, len(remaining), 8):
+        chunk = remaining[start : start + 8]
+        row_cols = st.columns(8)
+        for i, col in enumerate(row_cols):
             if i >= len(chunk):
                 continue
             symbol = chunk[i]
-            loading_symbol = str(
-                st.session_state.get("saved_stock_loading") or ""
-            ).upper().strip()
             is_loading = loading_symbol == symbol
             with col:
                 if st.button(
                     "Analyzing..." if is_loading else (
                         f"● {symbol}" if symbol == current else symbol
                     ),
-                    key=f"{key_prefix}_saved_stock_{start+i}_{symbol}",
+                    key=f"{key_prefix}_saved_stock_more_{start+i}_{symbol}",
                     type="primary" if symbol == current else "secondary",
                     disabled=bool(is_loading),
                     use_container_width=True,
                 ):
                     _activate_saved_stock(symbol)
                     st.rerun()
+
 
 def _prepare_combined_result(sa):
     """Calculate the selected ticker without rendering Analyzer UI."""
