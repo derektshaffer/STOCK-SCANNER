@@ -1251,7 +1251,10 @@ def bounce_sequence_context(
         health += min(8.0, ongoing_bounce_pct * 0.5)
     health = _clamp(health, 0.0, 100.0)
 
-    if len(bounces) == 0:
+    observed_bounces = len(bounces) + (1 if developing_bounce else 0)
+    if len(bounces) == 0 and developing_bounce:
+        sequence_state = "BOUNCE #1 ACTIVE / AWAITING PEAK CONFIRMATION"
+    elif len(bounces) == 0:
         sequence_state = "FIRST PULLBACK / BOUNCE FORMING"
     elif lower_high_streak >= 2 and (last_decay is None or last_decay < 0.85):
         sequence_state = "BOUNCES WEAKENING"
@@ -1280,9 +1283,13 @@ def bounce_sequence_context(
         "reference_peak": round(prior_peak_price, 4),
         "reference_peak_index": int(prior_peak_idx),
         "completed_bounces": len(bounces),
+        "observed_bounces": int(observed_bounces),
         "next_bounce_number": len(bounces) + 1,
         "current_leg": current_leg,
         "developing_bounce": bool(developing_bounce),
+        "active_bounce_number": (
+            len(bounces) + 1 if developing_bounce else None
+        ),
         "developing_bounce_pct": (
             round(developing_bounce_pct, 2)
             if developing_bounce_pct is not None
