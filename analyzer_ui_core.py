@@ -860,6 +860,13 @@ if not _position_enabled:
     )
     _timeframe_top=(_v2_top.get("timeframe_analysis") or {})
     _best_fit_top=str(_timeframe_top.get("best_fit") or "MIXED")
+    _thesis_top=(
+        plan.get("thesis_continuity")
+        or _v2_top.get("thesis_continuity")
+        or {}
+    )
+    _thesis_status=str(_thesis_top.get("status") or "THESIS INITIALIZING")
+    _thesis_reason=str(_thesis_top.get("change_reason") or "")
 
     st.markdown(
         '<div class="section">Decision first '
@@ -913,7 +920,9 @@ if not _position_enabled:
     st.info(
         f"**Strategy thesis · {_best_fit_top} · "
         f"{str(plan.get('preferred_plan') or 'watch').replace('_',' ').upper()} · "
-        f"{_top_entry_state}** — {_top_entry_instruction}"
+        f"{_top_entry_state} · {_thesis_status}** — {_top_entry_instruction}"
+        + (f"  
+**Why the thesis changed/held:** {_thesis_reason}" if _thesis_reason else "")
     )
     st.caption(
         "The action tells you whether the entry is ready now; NEXT ENTRY tells you the "
