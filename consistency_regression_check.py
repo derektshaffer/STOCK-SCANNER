@@ -1377,6 +1377,74 @@ def test_multi_bounce_detector_tracks_decay_and_lower_highs():
     assert features.get("bounce_decay_ratio") is not None, features
 
 
+def test_multi_bounce_ignores_micro_wiggles_and_waits_for_distinct_second_swing():
+    from multi_bounce import detect_bounce_sequence
+    from datetime import datetime, timedelta, timezone
+
+    start=datetime(2026,8,31,11,0,tzinfo=timezone.utc)
+    bars=[]
+
+    # Dominant impulse into 07:15 PT (14:15 UTC): roughly $0.36 -> $0.95.
+    for i in range(16):
+        close=0.36 + (0.59 * i / 15.0)
+        bars.append({
+            "t":(start+timedelta(minutes=i)).isoformat(),
+            "o":close-0.005,
+            "h":close+0.008,
+            "l":close-0.008,
+            "c":close,
+            "v":1000+i*150,
+        })
+
+    def add(minute, o, h, l, close, v=5000):
+        bars.append({
+            "t":datetime(2026,8,31,14,minute,tzinfo=timezone.utc).isoformat(),
+            "o":o,"h":h,"l":l,"c":close,"v":v,
+        })
+
+    # First real pullback/bounce: low ~07:17 PT, peak ~07:19 PT.
+    add(16,0.93,0.94,0.87,0.89)
+    add(17,0.89,0.90,0.82,0.84)
+    add(18,0.84,0.87,0.83,0.86)
+    add(19,0.86,0.90,0.85,0.89)
+    add(20,0.89,0.90,0.83,0.84)  # confirms bounce #1
+
+    # Micro wiggle around 07:21-07:23. Old price-only zig-zag logic could
+    # incorrectly call the 07:22 high a new bounce.
+    add(21,0.84,0.85,0.82,0.83)
+    add(22,0.83,0.88,0.82,0.87)
+    add(23,0.87,0.87,0.81,0.82)
+
+    # The larger pullback continues; true second swing low is 07:29 PT.
+    add(24,0.82,0.83,0.80,0.81)
+    add(25,0.81,0.82,0.79,0.80)
+    add(26,0.80,0.81,0.78,0.79)
+    add(27,0.79,0.80,0.77,0.78)
+    add(28,0.78,0.79,0.76,0.77)
+    add(29,0.77,0.78,0.74,0.75)
+
+    # True second rebound builds for several minutes and peaks 07:33 PT.
+    add(30,0.75,0.79,0.74,0.78)
+    add(31,0.78,0.82,0.77,0.81)
+    add(32,0.81,0.84,0.80,0.83)
+    add(33,0.83,0.85,0.82,0.84)
+    add(34,0.84,0.84,0.77,0.78)  # confirms bounce #2
+
+    seq=detect_bounce_sequence(bars,current_price=0.78,atr_pct=30)
+    assert seq.get("detected"), seq
+    completed=seq.get("bounces") or []
+    assert len(completed) == 2, seq
+    assert completed[0].get("bounce_peak_time","").startswith("2026-08-31T14:19"), completed
+    assert completed[1].get("pullback_low_time","").startswith("2026-08-31T14:29"), completed
+    assert completed[1].get("bounce_peak_time","").startswith("2026-08-31T14:33"), completed
+    assert all(
+        not str(row.get("bounce_peak_time") or "").startswith("2026-08-31T14:22")
+        for row in completed
+    ), completed
+    assert float(seq.get("min_cycle_minutes") or 0) >= 5.0, seq
+    assert float(seq.get("min_recovery_fraction") or 0) >= 0.35, seq
+
+
 def test_multi_bounce_full_spectrum_accepts_sequence_state():
     import analyzer_v2_integration as v2
 
@@ -1620,13 +1688,16 @@ def test_analyzer_visuals_use_dark_high_contrast_theme():
     assert axis.get("titleColor") == "#dcecff", axis
     assert axis.get("gridColor") == "#28435d", axis
 
-    layer=av._price_line_layer([
-        {"t":"2026-08-31T14:30:00Z","c":10.0,"h":10.1,"l":9.9},
-        {"t":"2026-08-31T14:31:00Z","c":10.2,"h":10.3,"l":10.0},
-    ])
-    mark=layer.get("mark") or {}
-    assert float(mark.get("strokeWidth") or 0) >= 3
-    assert mark.get("color") == "#f2f8ff"
+    candles=[
+        {"t":"2026-08-31T14:30:00Z","o":9.95,"c":10.0,"h":10.1,"l":9.9,"v":1000},
+        {"t":"2026-08-31T14:31:00Z","o":10.0,"c":10.2,"h":10.3,"l":10.0,"v":1200},
+    ]
+    layers=av._candlestick_layers(candles,line_overlay=False)
+    assert any((layer.get("mark") or {}).get("type")=="rule" for layer in layers), layers
+    assert any((layer.get("mark") or {}).get("type")=="bar" for layer in layers), layers
+    assert not any((layer.get("mark") or {}).get("type")=="line" for layer in layers), layers
+    overlay=av._candlestick_layers(candles,line_overlay=True)
+    assert any((layer.get("mark") or {}).get("type")=="line" for layer in overlay), overlay
 
 
 def test_analyzer_visual_snapshots_are_collapsible_and_contextual():
@@ -1641,11 +1712,13 @@ def test_analyzer_visual_snapshots_are_collapsible_and_contextual():
     ):
         assert label in source, label
 
-    assert "trade_plan_chart_spec(r)" in source
-    assert "multi_bounce_chart_spec(r)" in source
-    assert "stair_step_chart_spec(r)" in source
-    assert "impulse_pullback_chart_spec(r)" in source
-    assert "support_resistance_chart_spec(r)" in source
+    assert "trade_plan_chart_spec(r, line_overlay=overlay)" in source
+    assert "multi_bounce_chart_spec(r, line_overlay=overlay)" in source
+    assert "stair_step_chart_spec(r, line_overlay=overlay)" in source
+    assert "impulse_pullback_chart_spec(r, line_overlay=overlay)" in source
+    assert "support_resistance_chart_spec(r,line_overlay=_sr_line)" in source
+    assert "Close-line overlay" in source
+    assert "Candlesticks are the primary chart" in source
 
 
 def test_analyzer_long_context_text_is_collapsible():
@@ -4397,6 +4470,7 @@ if __name__ == "__main__":
         test_run_exhaustion_flags_rejected_mature_run,
         test_full_spectrum_exposes_all_scenarios,
         test_multi_bounce_detector_tracks_decay_and_lower_highs,
+        test_multi_bounce_ignores_micro_wiggles_and_waits_for_distinct_second_swing,
         test_multi_bounce_full_spectrum_accepts_sequence_state,
         test_stair_step_detector_finds_higher_plateau_sequence,
         test_scanner_behavior_completed_bar_parity,
