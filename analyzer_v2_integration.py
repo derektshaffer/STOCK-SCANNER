@@ -1913,6 +1913,30 @@ def install_v2_analysis(sa):
             if safety_reasons:
                 plan["status"] = "WAIT"
                 plan["action"] = "WAIT FOR STRONGER CONFIRMATION"
+
+                selected_plan = plan.get("selected") or {}
+                entry_low = _num(selected_plan.get("entry_low"))
+                entry_high = _num(selected_plan.get("entry_high"))
+                if entry_low is not None and entry_high is not None:
+                    entry_zone_text = f"${entry_low:.2f}–${entry_high:.2f}"
+                else:
+                    entry_zone_text = "the displayed entry zone"
+
+                if not live_data_integrity.get("ok"):
+                    plan["entry_state"] = "DATA CHECK"
+                    plan["entry_instruction"] = (
+                        f"NO ENTRY SIGNAL while live data is stale, incomplete, or not trusted. "
+                        f"{entry_zone_text} remains a watch area only; wait for fresh consolidated "
+                        "price/quote plus the required momentum inputs."
+                    )
+                else:
+                    plan["entry_state"] = "WAIT FOR CONFIRMATION"
+                    plan["entry_instruction"] = (
+                        f"NEXT ENTRY remains {entry_zone_text}, but it is NOT actionable yet. "
+                        "Wait until the readiness/evidence/reversal gates clear; do not treat a "
+                        "zone touch as an entry."
+                    )
+
                 plan_reasons = list(plan.get("reasons") or [])
                 plan_reasons.insert(
                     0,
