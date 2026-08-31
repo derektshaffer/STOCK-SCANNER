@@ -116,6 +116,122 @@ def _support_level(metrics, price):
     return value, quality
 
 
+def _post_exit_rebound_watch(metrics, price, atr_pct, vwap, m5, m15, from_high):
+    """Describe rebound potential after a sharp breakdown without weakening exits.
+
+    This is intentionally a watch/re-entry context, not permission to ignore a
+    stop. A broken long thesis can still produce a violent reflex bounce.
+    """
+    sequence = metrics.get("bounce_sequence") or {}
+    impulse = metrics.get("impulse_pullback") or {}
+    exhaustion = metrics.get("run_exhaustion") or {}
+    day_low = _num(metrics.get("day_low"))
+
+    vwap_below_pct = None
+    if vwap is not None and vwap > 0 and price < vwap:
+        vwap_below_pct = (vwap - price) / vwap * 100.0
+
+    off_low_pct = None
+    if day_low is not None and day_low > 0 and price >= day_low:
+        off_low_pct = (price / day_low - 1.0) * 100.0
+
+    observed_bounces = int(
+        sequence.get("observed_bounces")
+        or sequence.get("completed_bounces")
+        or 0
+    )
+    developing = bool(sequence.get("developing_bounce"))
+    bounce_pct = _num(sequence.get("developing_bounce_pct"))
+    recovery_pct = _num(impulse.get("bounce_recovery_pct"))
+    retracement = _num(impulse.get("current_retracement_pct"))
+    exhaustion_score = _num(exhaustion.get("score"))
+
+    severity = 0.0
+    reasons = []
+    if from_high is not None:
+        if from_high >= 35:
+            severity += 28
+            reasons.append(f"price is {from_high:.1f}% below the session high")
+        elif from_high >= 20:
+            severity += 18
+            reasons.append(f"price is {from_high:.1f}% below the session high")
+    if vwap_below_pct is not None:
+        if vwap_below_pct >= max(12.0, atr_pct * 1.5):
+            severity += 22
+            reasons.append(f"price is {vwap_below_pct:.1f}% below VWAP")
+        elif vwap_below_pct >= max(7.0, atr_pct):
+            severity += 12
+            reasons.append(f"price is {vwap_below_pct:.1f}% below VWAP")
+    if retracement is not None and retracement >= 75:
+        severity += 14
+        reasons.append("the prior impulse has retraced deeply")
+    if exhaustion_score is not None and exhaustion_score >= 62:
+        # The existing exhaustion detector is run-oriented, so this is only
+        # weak corroboration; never let it dominate a downside-rebound call.
+        severity += 4
+
+    recovery = 0.0
+    if m5 is not None and m5 > 0:
+        recovery += 16
+        reasons.append("5-minute momentum has turned positive")
+    if m15 is not None and m15 > 0:
+        recovery += 14
+        reasons.append("15-minute momentum has turned positive")
+    if developing:
+        recovery += 18
+        reasons.append("a rebound leg is developing")
+    if observed_bounces >= 1:
+        recovery += 8
+        reasons.append("at least one rebound is already visible")
+    if bounce_pct is not None and bounce_pct >= 5:
+        recovery += 8
+    if recovery_pct is not None and recovery_pct >= 8:
+        recovery += 8
+    if off_low_pct is not None and off_low_pct >= 8:
+        recovery += 8
+        reasons.append(f"price has recovered {off_low_pct:.1f}% from the session low")
+
+    score = round(_clamp(severity + recovery, 0.0, 100.0), 1)
+    if severity >= 30 and recovery >= 24:
+        status = "REBOUND DEVELOPING"
+    elif severity >= 30:
+        status = "CAPITULATION / REBOUND WATCH"
+    elif recovery >= 28:
+        status = "REBOUND WATCH"
+    else:
+        status = "NO SPECIAL REBOUND SIGNAL"
+
+    # Reclaim level: use the nearest overhead structure as a confirmation
+    # trigger. This is deliberately not an automatic buy level.
+    reclaim_candidates = []
+    ref_peak = _num(sequence.get("reference_peak"))
+    if ref_peak is not None and ref_peak > price * 1.003:
+        reclaim_candidates.append((ref_peak, "recent rebound reference peak"))
+    for value, label in _candidate_levels(metrics, price):
+        if value > price * 1.003:
+            reclaim_candidates.append((value, label))
+    if vwap is not None and vwap > price * 1.003:
+        reclaim_candidates.append((vwap, "VWAP"))
+    reclaim_candidates.sort(key=lambda item: item[0])
+    reclaim = reclaim_candidates[0] if reclaim_candidates else (None, None)
+
+    return {
+        "status": status,
+        "score": score,
+        "severity_score": round(_clamp(severity, 0.0, 100.0), 1),
+        "recovery_score": round(_clamp(recovery, 0.0, 100.0), 1),
+        "reasons": reasons[:5],
+        "reclaim_level": round(reclaim[0], 4) if reclaim[0] is not None else None,
+        "reclaim_reason": reclaim[1],
+        "production_entry_signal": False,
+        "note": (
+            "A broken trade can still produce a sharp reflex bounce. This flag "
+            "is for post-exit/re-entry monitoring only; it does not cancel a "
+            "protective exit or create a new entry by itself."
+        ),
+    }
+
+
 def build_position_exit_plan(metrics, average_cost, shares=None):
     metrics = metrics or {}
     price = _num(metrics.get("price"))
@@ -151,6 +267,16 @@ def build_position_exit_plan(metrics, average_cost, shares=None):
     from_high = _num(metrics.get("from_high_pct"))
     liquidity = str((metrics.get("liquidity") or {}).get("label") or "")
     potential = _num((metrics.get("decision_v2") or {}).get("potential_score"))
+
+    rebound_watch = _post_exit_rebound_watch(
+        metrics,
+        price,
+        atr_pct,
+        vwap,
+        m5,
+        m15,
+        from_high,
+    )
 
     support, support_quality = _support_level(metrics, price)
     buffer_pct = _clamp(atr_pct * 0.07, 0.4, 1.4)
@@ -277,6 +403,17 @@ def build_position_exit_plan(metrics, average_cost, shares=None):
 
     if execution_risk:
         reasons.append("low liquidity can make exits less reliable")
+    if (
+        read in {"EXIT", "REDUCE"}
+        and rebound_watch.get("status") in {
+            "CAPITULATION / REBOUND WATCH",
+            "REBOUND DEVELOPING",
+        }
+    ):
+        reasons.append(
+            "a reflex rebound is possible after this flush; exit protection "
+            "and rebound/re-entry monitoring are separate decisions"
+        )
 
     protective_return_pct = (protective_exit / cost - 1.0) * 100.0
     trailing_return_pct = (trailing_exit / cost - 1.0) * 100.0
@@ -329,9 +466,12 @@ def build_position_exit_plan(metrics, average_cost, shares=None):
         "vwap": round(vwap, 4) if vwap is not None else None,
         "atr": round(atr, 4),
         "confidence": round(_clamp(confidence, 0, 95)),
+        "rebound_watch": rebound_watch,
         "method_note": (
             "Position-management aid using cost basis, live price, VWAP, ATR, "
             "support/resistance, momentum, liquidity and the existing trade plan. "
-            "Levels are decision-support scenarios, not guaranteed execution prices."
+            "A separate rebound-watch layer tracks post-flush recovery potential "
+            "without overriding a protective exit. Levels are decision-support "
+            "scenarios, not guaranteed execution prices."
         ),
     }
