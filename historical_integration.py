@@ -56,15 +56,10 @@ def install_historical_analysis(sa):
         now = datetime.now(timezone.utc)
 
         gap_pct = None
-        try:
-            snap = sa.snapshot(symbol.upper().strip(), sa.LIVE_FEED)
-            day = snap.get("dailyBar") or {}
-            day_open = _num(day.get("o"))
-            prev_close = _num(metrics.get("prev_close"))
-            if day_open and prev_close:
-                gap_pct = sa.pct(day_open, prev_close)
-        except Exception:
-            pass
+        day_open = _num(metrics.get("session_open"))
+        prev_close = _num(metrics.get("prev_close"))
+        if day_open and prev_close:
+            gap_pct = sa.pct(day_open, prev_close)
         metrics["gap_pct"] = round(gap_pct, 2) if gap_pct is not None else None
 
         try:
