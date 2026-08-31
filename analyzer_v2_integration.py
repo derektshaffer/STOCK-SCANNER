@@ -868,16 +868,25 @@ def _fundamental_quality(sec):
 
 def _daily_trend_context(sa, symbol, metrics):
     now = datetime.now(timezone.utc)
-    try:
-        daily, source = sa.try_sip_delayed_bars(
-            symbol,
-            "1Day",
-            now - timedelta(days=560),
-            now,
-            320,
+    shared_daily = list((metrics or {}).get("daily_context_bars") or [])
+    if shared_daily:
+        daily = shared_daily
+        source = (
+            (metrics or {}).get("historical_feed")
+            or (metrics or {}).get("historical_provider")
+            or "shared daily history"
         )
-    except Exception as exc:
-        return {"status": "unavailable", "error": str(exc)[:120]}
+    else:
+        try:
+            daily, source = sa.try_sip_delayed_bars(
+                symbol,
+                "1Day",
+                now - timedelta(days=560),
+                now,
+                320,
+            )
+        except Exception as exc:
+            return {"status": "unavailable", "error": str(exc)[:120]}
 
     cleaned = []
     for bar in daily or []:
@@ -1791,12 +1800,27 @@ def install_v2_analysis(sa):
         metrics = base_analyze(symbol)
         now = datetime.now(timezone.utc)
 
-        stream_status = ensure_live_stream(
-            symbol_clean,
-            str(sa.LIVE_FEED or "iex").lower(),
-            metrics=metrics,
+        background_worker = (
+            os.environ.get("ANALYZER_BACKGROUND_WORKER", "").strip() == "1"
         )
-        live_overlay = get_live_overlay(metrics)
+        if background_worker:
+            # The short-lived launch subprocess must not consume another
+            # Tradier websocket session. It already has fresh snapshot data;
+            # the persistent UI process owns live streaming.
+            stream_status = {
+                "status": "snapshot_only",
+                "provider": metrics.get("live_provider"),
+                "feed": metrics.get("live_feed"),
+                "background_worker": True,
+            }
+            live_overlay = {}
+        else:
+            stream_status = ensure_live_stream(
+                symbol_clean,
+                str(sa.LIVE_FEED or "iex").lower(),
+                metrics=metrics,
+            )
+            live_overlay = get_live_overlay(metrics)
 
         sec = _recent_sec_risk(symbol_clean)
         float_context = get_public_float(symbol_clean)
@@ -1902,14 +1926,25 @@ def install_v2_analysis(sa):
             "live_overlay": live_overlay,
         }
 
-        try:
-            record_result = record_prediction(metrics, now)
-            tracking = resolve_symbol_predictions(
-                sa, symbol_clean, now, current_metrics=metrics
-            )
-            tracking["last_record"] = record_result
-        except Exception as exc:
-            tracking = {"error": str(exc)[:140], "persistence": "runtime-local"}
+        if background_worker:
+            # Prediction logging/outcome resolution can involve GitHub sync and
+            # delayed-history requests. Never put that latency on the user's
+            # click-to-Analyzer path; the persistent Analyzer/outcome workflow
+            # handles durable tracking separately.
+            tracking = {
+                "status": "deferred",
+                "persistence": "persistent-ui/outcome-workflow",
+                "background_worker": True,
+            }
+        else:
+            try:
+                record_result = record_prediction(metrics, now)
+                tracking = resolve_symbol_predictions(
+                    sa, symbol_clean, now, current_metrics=metrics
+                )
+                tracking["last_record"] = record_result
+            except Exception as exc:
+                tracking = {"error": str(exc)[:140], "persistence": "runtime-local"}
         metrics["decision_v2"]["tracking"] = tracking
         return metrics
 
