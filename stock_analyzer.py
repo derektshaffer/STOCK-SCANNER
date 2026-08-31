@@ -1283,13 +1283,12 @@ def build_trade_plan(metrics, now):
     )
     negative_catalyst=catalyst.get("score",0)<=-5
 
+    # Primary plan selection deliberately ignores an unconfirmed repeat-bounce
+    # alternative. A later-bounce scalp only becomes the headline plan after it
+    # independently clears confirmation + in-zone + reward/risk gates.
     preferred="pullback"
-    if repeat_bounce_plan and completed_bounces>=1:
-        preferred="repeat_bounce"
     if in_break and breakout_confirm and reversal_score<62:
         preferred="breakout"
-    elif in_repeat_bounce:
-        preferred="repeat_bounce"
     elif in_pull:
         preferred="pullback"
     elif (
@@ -1307,33 +1306,36 @@ def build_trade_plan(metrics, now):
     ):
         preferred="breakout"
 
-    chosen=(
-        breakout_plan if preferred=="breakout"
-        else repeat_bounce_plan if preferred=="repeat_bounce" and repeat_bounce_plan
-        else pull_plan
+    chosen=breakout_plan if preferred=="breakout" else pull_plan
+    primary_preferred=preferred
+    primary_chosen=chosen
+
+    repeat_bounce_rr=(
+        fnum((repeat_bounce_plan or {}).get("risk_reward"))
+        if repeat_bounce_plan
+        else None
     )
-    rr=fnum(chosen.get("risk_reward")) or 0
-    confidence=setup_score
-    if rr>=2.5:confidence+=9
-    elif rr>=1.5:confidence+=4
-    elif rr<1:confidence-=14
-    if liquidity.get("label")=="HIGH":confidence+=5
-    elif liquidity.get("label")=="LOW":confidence-=8
-    if pace is not None and pace>=2:confidence+=5
-    if spread is not None and spread>5:confidence-=8
-    # Historical analog sample size/direction is research-only and cannot
-    # increase live plan confidence.
-    if catalyst.get("label")=="POSITIVE":confidence+=4
-    elif catalyst.get("label")=="NEGATIVE":confidence-=6
-    if overextended:confidence-=10
-    stair_score=fnum(stair.get("structure_score"))
-    if stair.get("reaccelerating") and stair_score is not None and stair_score>=65:
-        confidence+=6
-    elif stair.get("breakdown"):
-        confidence-=10
-    if repeat_bounce_plan and preferred=="repeat_bounce":
-        if sequence_health is not None and sequence_health<35:confidence-=8
-    confidence=int(round(_clamp(confidence,0,95)))
+    repeat_leg=str(sequence.get("current_leg") or "").upper()
+    repeat_bounce_status=None
+    if repeat_bounce_plan:
+        if (
+            repeat_bounce_confirm
+            and in_repeat_bounce
+            and (repeat_bounce_rr or 0)>=1.25
+            and reversal_score<78
+            and (sequence_health is None or sequence_health>=32)
+        ):
+            repeat_bounce_status="CONFIRMED / ELIGIBLE"
+        elif (repeat_bounce_rr or 0)<1.25:
+            repeat_bounce_status=(
+                f"WATCH ONLY — reward/risk {repeat_bounce_rr or 0:.2f}:1 is below 1.25:1"
+            )
+        elif repeat_leg=="BOUNCING" and not in_repeat_bounce:
+            repeat_bounce_status="DEVELOPING — outside low-risk entry zone"
+        elif repeat_leg.startswith("PULL"):
+            repeat_bounce_status="FORMING — wait for dip hold / reclaim"
+        else:
+            repeat_bounce_status="WATCH ONLY — confirmation incomplete"
 
     reasons=[]
     if severe_risk:
@@ -1352,20 +1354,13 @@ def build_trade_plan(metrics, now):
         status="NO TRADE"
         action="NO TRADE — run exhaustion / reversal risk is very high"
         reasons.append("Multiple top/reversal signals are aligned; avoid treating a mature run as a fresh momentum entry.")
-    elif (
-        repeat_bounce_plan
-        and repeat_bounce_confirm
-        and in_repeat_bounce
-        and reversal_score<78
-        and (sequence_health is None or sequence_health>=32)
-        and (fnum(repeat_bounce_plan.get("risk_reward")) or 0)>=1.25
-    ):
+    elif repeat_bounce_status=="CONFIRMED / ELIGIBLE":
         status="ENTRY AVAILABLE"
         preferred="repeat_bounce"; chosen=repeat_bounce_plan
         action=f"ENTRY AVAILABLE — BOUNCE #{next_bounce_number} SCALP CONFIRMED"
         reasons.append(
-            f"Bounce #{next_bounce_number} has begun reclaiming from the latest dip. "
-            "This plan targets a quick recovery and does not assume the stock will return to its session high."
+            f"Bounce #{next_bounce_number} independently passed its confirmation, entry-zone and "
+            "minimum 1.25:1 reward/risk gates, so it temporarily replaces the primary plan."
         )
         if reversal_score>=62:
             reasons.append("Overall run-exhaustion risk is elevated, so treat this as a shorter-duration bounce setup rather than a fresh continuation thesis.")
@@ -1380,79 +1375,133 @@ def build_trade_plan(metrics, now):
                 "This statistic does not alter the live stop, target, entry, "
                 "confidence, or action."
             )
-    elif repeat_bounce_plan and str(sequence.get("current_leg") or "").upper().startswith("PULL"):
-        status="WAIT"
-        preferred="repeat_bounce"; chosen=repeat_bounce_plan
-        action=f"WAIT FOR BOUNCE #{next_bounce_number} CONFIRMATION"
-        reasons.append(
-            f"This is the developing dip before possible Bounce #{next_bounce_number}. "
-            "Wait for the dip to hold and reclaim the dedicated confirmation level before considering the quick-bounce plan."
-        )
-    elif repeat_bounce_plan and str(sequence.get("current_leg") or "").upper()=="BOUNCING" and not in_repeat_bounce:
-        status="WAIT"
-        preferred="repeat_bounce"; chosen=repeat_bounce_plan
-        action=f"WAIT — BOUNCE #{next_bounce_number} IS OUTSIDE ENTRY ZONE"
-        reasons.append("The later bounce has started, but price is outside the modeled low-risk reclaim zone; avoid chasing the rebound.")
     elif reversal_score>=68:
         status="WAIT"
-        preferred="repeat_bounce" if repeat_bounce_plan else "pullback"
-        chosen=repeat_bounce_plan if repeat_bounce_plan else pull_plan
+        preferred=primary_preferred; chosen=primary_chosen
         action="WAIT — HIGH RUN-EXHAUSTION RISK"
         reasons.append("The run is showing meaningful exhaustion/reversal evidence; require a fresh base or a tightly confirmed later-bounce reclaim.")
-    elif rr < 1.15:
-        status="NO TRADE"
-        action="NO TRADE — reward/risk is unattractive"
-        reasons.append(f"Preferred plan offers only about {rr:.2f}:1 reward/risk to Target 1.")
-    elif in_pull and pullback_confirm and setup_score>=62 and pull_plan["risk_reward"]>=1.3:
-        status="ENTRY AVAILABLE"
-        preferred="pullback"; chosen=pull_plan
-        action="ENTRY AVAILABLE — pullback confirmed"
-        reasons.append("Price is in the preferred pullback zone and has shown a bounce/reclaim rather than merely touching the zone.")
-    elif in_break and breakout_confirm and setup_score>=65 and breakout_plan["risk_reward"]>=1.3:
-        status="ENTRY AVAILABLE"
-        preferred="breakout"; chosen=breakout_plan
-        action="ENTRY AVAILABLE — confirmed breakout zone"
-        reasons.append("Price is through the breakout trigger with acceptable momentum/volume confirmation.")
     else:
-        status="WAIT"
-        if overextended:
+        preferred=primary_preferred
+        chosen=primary_chosen
+        rr=fnum(chosen.get("risk_reward")) or 0
+        if rr < 1.15:
+            status="NO TRADE"
+            action="NO TRADE — reward/risk is unattractive"
+            reasons.append(f"Primary plan offers only about {rr:.2f}:1 reward/risk to Target 1.")
+        elif in_pull and pullback_confirm and setup_score>=62 and pull_plan["risk_reward"]>=1.3:
+            status="ENTRY AVAILABLE"
             preferred="pullback"; chosen=pull_plan
-            action="WAIT FOR REAL PULLBACK — price is extended"
-            if impulse_zone:
-                reasons.append(
-                    f"The last impulse has retraced only {current_retrace:.0f}% so far; the preferred structure is roughly {retrace_shallow:.0f}–{retrace_deep:.0f}% of the impulse before confirmation."
-                    if current_retrace is not None
-                    else "The current move is still extended; wait for a meaningful impulse retracement before considering entry."
-                )
-            else:
-                reasons.append("Current price is stretched relative to VWAP/normal volatility; chasing raises reversal risk.")
-        elif in_pull and not pullback_confirm:
-            preferred="pullback"; chosen=pull_plan
-            action="WAIT FOR PULLBACK TO HOLD / BOUNCE"
-            reasons.append("Price reached the pullback zone, but a zone touch alone is not enough; wait for a hold, higher low or reclaim with positive momentum.")
-        elif price < breakout_zone["low"] and price > pull_zone["high"]:
-            if pull_plan["risk_reward"] >= breakout_plan["risk_reward"]:
-                preferred="pullback"; chosen=pull_plan
-                action="WAIT FOR PULLBACK"
-                reasons.append("Current price is between the preferred pullback area and breakout confirmation area.")
-            else:
-                preferred="breakout"; chosen=breakout_plan
-                action="WAIT FOR BREAKOUT CONFIRMATION"
-                reasons.append("Current price is below the breakout confirmation zone; wait for the level to clear with participation.")
-        elif price < pull_zone["low"]:
-            action="WAIT FOR SUPPORT TO HOLD / RECLAIM"
-            preferred="pullback"; chosen=pull_plan
-            reasons.append("Price is below the modeled pullback entry zone; wait for support to hold or reclaim before considering entry.")
+            action="ENTRY AVAILABLE — pullback confirmed"
+            reasons.append("Price is in the preferred pullback zone and has shown a bounce/reclaim rather than merely touching the zone.")
+        elif in_break and breakout_confirm and setup_score>=65 and breakout_plan["risk_reward"]>=1.3:
+            status="ENTRY AVAILABLE"
+            preferred="breakout"; chosen=breakout_plan
+            action="ENTRY AVAILABLE — confirmed breakout zone"
+            reasons.append("Price is through the breakout trigger with acceptable momentum/volume confirmation.")
         else:
-            action="WAIT FOR CONFIRMATION"
-            reasons.append("The setup is not currently at a clean entry trigger.")
+            status="WAIT"
+            if overextended:
+                preferred="pullback"; chosen=pull_plan
+                action="WAIT FOR REAL PULLBACK — price is extended"
+                if impulse_zone:
+                    reasons.append(
+                        f"The last impulse has retraced only {current_retrace:.0f}% so far; the preferred structure is roughly {retrace_shallow:.0f}–{retrace_deep:.0f}% of the impulse before confirmation."
+                        if current_retrace is not None
+                        else "The current move is still extended; wait for a meaningful impulse retracement before considering entry."
+                    )
+                else:
+                    reasons.append("Current price is stretched relative to VWAP/normal volatility; chasing raises reversal risk.")
+            elif in_pull and not pullback_confirm:
+                preferred="pullback"; chosen=pull_plan
+                action="WAIT FOR PULLBACK TO HOLD / BOUNCE"
+                reasons.append("Price reached the pullback zone, but a zone touch alone is not enough; wait for a hold, higher low or reclaim with positive momentum.")
+            elif price < breakout_zone["low"] and price > pull_zone["high"]:
+                if pull_plan["risk_reward"] >= breakout_plan["risk_reward"]:
+                    preferred="pullback"; chosen=pull_plan
+                    action="WAIT FOR PULLBACK"
+                    reasons.append("Current price is between the preferred pullback area and breakout confirmation area.")
+                else:
+                    preferred="breakout"; chosen=breakout_plan
+                    action="WAIT FOR BREAKOUT CONFIRMATION"
+                    reasons.append("Current price is below the breakout confirmation zone; wait for the level to clear with participation.")
+            elif price < pull_zone["low"]:
+                action="WAIT FOR SUPPORT TO HOLD / RECLAIM"
+                preferred="pullback"; chosen=pull_plan
+                reasons.append("Price is below the modeled pullback entry zone; wait for support to hold or reclaim before considering entry.")
+            else:
+                action="WAIT FOR CONFIRMATION"
+                reasons.append("The primary setup is not currently at a clean entry trigger.")
 
-    # Recompute display RR/confidence if status logic changed the preferred plan.
+    if repeat_bounce_plan and preferred!="repeat_bounce" and repeat_bounce_status:
+        reasons.append(
+            f"Alternative Bounce #{next_bounce_number}: {repeat_bounce_status}. "
+            "It remains secondary and does not replace the headline plan."
+        )
+
+    # Plan confidence describes the actual displayed trade plan, not merely the
+    # strength of the stock's overall setup. Recalculate it after final plan
+    # selection so a low-R/R or WAIT plan cannot inherit a misleadingly high
+    # setup score.
     rr=fnum(chosen.get("risk_reward")) or 0
+    confidence=setup_score
+    if rr>=2.5:
+        confidence+=8
+    elif rr>=1.5:
+        confidence+=4
+    elif rr>=1.25:
+        confidence+=1
+    elif rr>=1.0:
+        confidence-=12
+    else:
+        confidence-=25
+
+    if liquidity.get("label")=="HIGH":confidence+=5
+    elif liquidity.get("label")=="LOW":confidence-=8
+    if pace is not None and pace>=2:confidence+=5
+    if spread is not None and spread>5:confidence-=8
+    if catalyst.get("label")=="POSITIVE":confidence+=4
+    elif catalyst.get("label")=="NEGATIVE":confidence-=6
+    if overextended:confidence-=10
+
+    stair_score=fnum(stair.get("structure_score"))
+    if stair.get("reaccelerating") and stair_score is not None and stair_score>=65:
+        confidence+=6
+    elif stair.get("breakdown"):
+        confidence-=10
+    if preferred=="repeat_bounce" and sequence_health is not None and sequence_health<35:
+        confidence-=8
+
+    if status=="WAIT":
+        confidence-=8
+    elif status=="NO TRADE":
+        confidence-=20
+    elif status=="ENTRY AVAILABLE":
+        confidence+=3
+
+    confidence=_clamp(confidence,0,95)
+    if rr<1.0:
+        confidence=min(confidence,55)
+    elif rr<1.15:
+        confidence=min(confidence,62)
+    if status=="WAIT":
+        confidence=min(confidence,72)
+    elif status=="NO TRADE":
+        confidence=min(confidence,45)
+    confidence=int(round(confidence))
+
     support_distance=(price/support_price-1)*100 if support_price else None
     resistance_distance=(resistance_price/price-1)*100 if resistance_price else None
     return {
         "status":status,"action":action,"preferred_plan":preferred,
+        "primary_plan":primary_preferred,
+        "primary_selected":primary_chosen,
+        "selected_plan_role":"alternative_repeat_bounce" if preferred=="repeat_bounce" else "primary",
+        "repeat_bounce_status":repeat_bounce_status,
+        "plan_selection_note":(
+            f"Headline plan switched from {primary_preferred.replace('_',' ')} to confirmed Bounce #{next_bounce_number} because the alternative independently passed confirmation, entry-zone and reward/risk gates."
+            if preferred=="repeat_bounce"
+            else f"Headline plan remains the {primary_preferred.replace('_',' ')} plan. Later-bounce ideas stay secondary until they independently pass confirmation, entry-zone and reward/risk gates."
+        ),
         "confidence":confidence,
         "confidence_label":"HIGH" if confidence>=75 else "MODERATE" if confidence>=58 else "LOW",
         "pullback":pull_plan,"breakout":breakout_plan,"repeat_bounce":repeat_bounce_plan,"selected":chosen,
@@ -1469,7 +1518,7 @@ def build_trade_plan(metrics, now):
         "updated":now.astimezone(ET).isoformat(),
         "historical_research_only":True,
         "historical_research_note":"Completed-day same-ticker analogs are displayed for research only and do not alter live entry zones, targets, stops, preferred plan, action, or confidence.",
-        "method_note":"Rule-based long momentum decision support using causal live impulse/retracement, dedicated later-bounce geometry, multi-session stair-step structure, confirmation, VWAP, support/resistance, ATR, momentum, volume pace, spread/liquidity and catalyst context. Completed historical analogs are research-only. Pullback zones are not automatic entries; targets are scenarios, not guarantees.",
+        "method_note":"Rule-based long momentum decision support using causal live impulse/retracement, dedicated later-bounce geometry, multi-session stair-step structure, confirmation, VWAP, support/resistance, ATR, momentum, volume pace, spread/liquidity and catalyst context. Completed historical analogs are research-only. Later-bounce plans remain secondary unless independently confirmed in-zone with acceptable reward/risk. Plan confidence describes the displayed trade plan, not the overall stock setup. Pullback zones are not automatic entries; targets are scenarios, not guarantees.",
     }
 
 def score_setup(metrics):
