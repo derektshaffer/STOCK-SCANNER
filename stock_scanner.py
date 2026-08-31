@@ -3495,6 +3495,28 @@ def main():
         performance=performance,
     )
 
+    # The live Streamlit app scans much more frequently than the durable
+    # GitHub Actions collector. When explicitly enabled by scanner_runtime,
+    # inspect every live scan and preserve a bounded 15-minute-bucket journal
+    # of the strongest/actionable states plus below-cutoff controls. This is
+    # shadow learning data only and must never make the scan fail.
+    if (
+        os.environ.get("SCANNER_LIVE_JOURNAL_ENABLED", "").strip().lower()
+        in {"1", "true", "yes", "on"}
+    ):
+        try:
+            from scanner_live_journal import capture_live_scan
+
+            journal = capture_live_scan(rows, now_et)
+            print(
+                "LIVE LEARNING JOURNAL | "
+                f"captured={journal.get('captured', 0)} | "
+                f"local={journal.get('local_count', 0)} | "
+                f"remote={((journal.get('remote') or {}).get('reason') or ('synced' if (journal.get('remote') or {}).get('synced') else 'idle'))}"
+            )
+        except Exception as exc:
+            print(f"WARN live learning journal failed: {exc}")
+
     print("\nJSON RESULTS - TOP WATCHLIST")
     print(json.dumps(rows[:WATCHLIST_SIZE], indent=2))
 
