@@ -276,17 +276,27 @@ def multi_bounce_chart_spec(result, line_overlay=False):
         number = int(bounce.get("number") or 0)
         low_idx = bounce.get("pullback_low_index")
         peak_idx = bounce.get("bounce_peak_index")
-        if isinstance(low_idx, int) and 0 <= low_idx < len(bars):
+        low_time = bounce.get("pullback_low_time")
+        peak_time = bounce.get("bounce_peak_time")
+        if low_time or (isinstance(low_idx, int) and 0 <= low_idx < len(bars)):
             markers.append({
-                "t": bars[low_idx]["t"],
-                "price": _num(bounce.get("pullback_low")) or bars[low_idx]["c"],
-                "label": f"B{number} dip",
+                "t": str(low_time or bars[low_idx]["t"]),
+                "price": _num(bounce.get("pullback_low")) or (
+                    bars[low_idx]["c"]
+                    if isinstance(low_idx,int) and 0 <= low_idx < len(bars)
+                    else None
+                ),
+                "label": f"B{number} low",
                 "kind": "dip",
             })
-        if isinstance(peak_idx, int) and 0 <= peak_idx < len(bars):
+        if peak_time or (isinstance(peak_idx, int) and 0 <= peak_idx < len(bars)):
             markers.append({
-                "t": bars[peak_idx]["t"],
-                "price": _num(bounce.get("bounce_peak")) or bars[peak_idx]["c"],
+                "t": str(peak_time or bars[peak_idx]["t"]),
+                "price": _num(bounce.get("bounce_peak")) or (
+                    bars[peak_idx]["c"]
+                    if isinstance(peak_idx,int) and 0 <= peak_idx < len(bars)
+                    else None
+                ),
                 "label": f"Bounce #{number} ✓",
                 "kind": "confirmed",
             })
@@ -326,53 +336,66 @@ def multi_bounce_chart_spec(result, line_overlay=False):
 
     layers = _candlestick_layers(bars, line_overlay=line_overlay)
     if markers:
-        layers.extend([
-            {
-                "data": {"values": markers},
-                "mark": {"type": "point", "filled": True, "size": 120},
-                "encoding": {
-                    "x": {"field": "t", "type": "temporal"},
-                    "y": {"field": "price", "type": "quantitative"},
-                    "color": {
-                        "field": "kind",
-                        "type": "nominal",
-                        "scale": {
-                            "domain": ["confirmed", "dip", "developing"],
-                            "range": ["#50fa9b", "#8be9fd", "#ffd166"],
-                        },
-                        "legend": None,
+        valid_markers=[m for m in markers if _num(m.get("price")) is not None]
+        top_markers=[m for m in valid_markers if m.get("kind") != "dip"]
+        dip_markers=[m for m in valid_markers if m.get("kind") == "dip"]
+        layers.append({
+            "data": {"values": valid_markers},
+            "mark": {"type": "point", "filled": True, "size": 120},
+            "encoding": {
+                "x": {"field": "t", "type": "temporal"},
+                "y": {"field": "price", "type": "quantitative"},
+                "color": {
+                    "field": "kind",
+                    "type": "nominal",
+                    "scale": {
+                        "domain": ["confirmed", "dip", "developing"],
+                        "range": ["#57f287", "#8be9fd", "#ffd166"],
                     },
-                    "shape": {
-                        "field": "kind",
-                        "type": "nominal",
-                        "scale": {
-                            "domain": ["confirmed", "dip", "developing"],
-                            "range": ["circle", "triangle-up", "diamond"],
-                        },
-                        "legend": None,
+                    "legend": None,
+                },
+                "shape": {
+                    "field": "kind",
+                    "type": "nominal",
+                    "scale": {
+                        "domain": ["confirmed", "dip", "developing"],
+                        "range": ["circle", "triangle-up", "diamond"],
                     },
-                    "tooltip": [
-                        {"field": "label", "title": "Pattern"},
-                        {"field": "price", "type": "quantitative", "title": "Price", "format": "$.2f"},
-                    ],
+                    "legend": None,
                 },
+                "tooltip": [
+                    {"field": "label", "title": "Pattern"},
+                    {"field": "price", "type": "quantitative", "title": "Price", "format": "$.2f"},
+                ],
             },
-            {
-                "data": {"values": markers},
-                "mark": {
-                    "type": "text",
-                    "dy": -12,
-                    "fontSize": 11,
-                    "fontWeight": "bold",
-                    "color": "#f2f8ff",
+        })
+        if top_markers:
+            layers.append({
+                "data":{"values":top_markers},
+                "mark":{
+                    "type":"text","dy":-14,"fontSize":11,
+                    "fontWeight":"bold","color":"#f2f8ff",
                 },
-                "encoding": {
-                    "x": {"field": "t", "type": "temporal"},
-                    "y": {"field": "price", "type": "quantitative"},
-                    "text": {"field": "label"},
+                "encoding":{
+                    "x":{"field":"t","type":"temporal"},
+                    "y":{"field":"price","type":"quantitative"},
+                    "text":{"field":"label"},
                 },
-            },
-        ])
+            })
+        if dip_markers:
+            layers.append({
+                "data":{"values":dip_markers},
+                "mark":{
+                    "type":"text","dy":16,"fontSize":10,
+                    "fontWeight":"bold","color":"#c7e9f7",
+                },
+                "encoding":{
+                    "x":{"field":"t","type":"temporal"},
+                    "y":{"field":"price","type":"quantitative"},
+                    "text":{"field":"label"},
+                },
+            })
+
 
     return {"height": 280, "layer": layers, "config": _config()}
 
