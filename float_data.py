@@ -4,6 +4,8 @@ import time
 import urllib.parse
 import urllib.request
 
+from analyzer_context_cache import get_cached_context, set_cached_context
+
 
 INTRINIO_API_KEY = os.environ.get("INTRINIO_API_KEY", "").strip()
 BASE = "https://api-v2.intrinio.com"
@@ -32,6 +34,13 @@ def get_public_float(symbol):
             "provider": "Intrinio",
             "reason": "missing_intrinio_api_key",
         }
+
+    persistent_key=f"intrinio-public-float-v1:{symbol}"
+    persistent=get_cached_context(persistent_key,21600)
+    if persistent is not None:
+        persistent=dict(persistent)
+        persistent["cache_status"]="warm"
+        return persistent
 
     bucket = int(time.time() // 21600)
     key = (symbol, bucket)
@@ -103,4 +112,7 @@ def get_public_float(symbol):
         "filing_date": latest.get("filing_date"),
     }
     _CACHE[key] = result
-    return dict(result)
+    set_cached_context(persistent_key,result)
+    result=dict(result)
+    result["cache_status"]="cold"
+    return result
