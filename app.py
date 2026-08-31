@@ -688,6 +688,15 @@ def _workspace_scanner_monitor():
             alpaca_live_feed=_shell_live_feed(),
             tradier_token=_shell_tradier_token(),
             discovery_universe_size="1200",
+            learning_github_token=(
+                _shell_secret("ANALYZER_GITHUB_TOKEN")
+                or _shell_secret("GITHUB_TOKEN")
+            ),
+            learning_repository=(
+                _shell_secret("ANALYZER_GITHUB_REPO")
+                or "derektshaffer/STOCK-SCANNER"
+            ),
+            learning_branch="learning-journal",
             timeout_seconds=105,
         )
         if started.get("started"):
