@@ -1260,7 +1260,7 @@ def _finalize_trade_plan_contract(metrics, live_data_integrity=None):
             else "the displayed entry zone"
         )
         plan["entry_instruction"] = (
-            f"NEXT ENTRY remains ${zone}, but it is NOT actionable yet. "
+            f"NEXT ENTRY remains {zone}, but it is NOT actionable yet. "
             "Wait for the final confirmation gates to clear."
             if final_status != "NO TRADE"
             else "NO ENTRY SIGNAL while the current plan is rejected."
