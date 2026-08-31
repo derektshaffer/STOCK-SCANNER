@@ -168,6 +168,66 @@ def test_session_hypothesis_blocks_without_extended_history():
     assert result["decision"] == "blocked_requires_extended_historical_replay", result
 
 
+def test_empirical_hypothesis_uses_only_pre_evidence_replay():
+    replay = {
+        "observations": [
+            _row(3, "AAA", 0),
+            _row(9, "BBB", 0),
+            _row(11, "CCC", 0),
+        ],
+        "replay": {"trading_days": 3},
+    }
+    audit = {
+        "hypotheses": [
+            {
+                "id": "session_specific_calibration_candidate",
+                "evidence_window": {
+                    "start_date": "2026-08-10",
+                    "end_date": "2026-08-12",
+                    "historical_replay_used_to_generate": False,
+                },
+                "production_influence": False,
+            }
+        ]
+    }
+    report = hh.run_challenge(
+        replay,
+        audit,
+        include_standing=False,
+    )
+    result = report["results"][0]
+    independence = result["independence"]
+    assert independence["challenge_rows_total_replay"] == 3, result
+    assert independence["challenge_rows_before_evidence_window"] == 2, result
+    assert independence["independent"] is True, result
+
+
+def test_replay_generation_evidence_blocks_self_confirmation():
+    replay = {
+        "observations": [_row(3, "AAA", 0)],
+        "replay": {"trading_days": 1},
+    }
+    audit = {
+        "hypotheses": [
+            {
+                "id": "path_target_candidate",
+                "evidence_window": {
+                    "start_date": "2026-08-10",
+                    "historical_replay_used_to_generate": True,
+                },
+                "production_influence": False,
+            }
+        ]
+    }
+    report = hh.run_challenge(
+        replay,
+        audit,
+        include_standing=False,
+    )
+    result = report["results"][0]
+    assert result["decision"] == "blocked_independence_violation", result
+
+
 def test_standing_path_hypothesis_is_challenged():
     audit = {
         "source_findings": [
@@ -186,6 +246,8 @@ def main():
     test_path_target_rejects_unstable_result()
     test_score_monotonicity_requires_out_of_sample_repeat()
     test_session_hypothesis_blocks_without_extended_history()
+    test_empirical_hypothesis_uses_only_pre_evidence_replay()
+    test_replay_generation_evidence_blocks_self_confirmation()
     test_standing_path_hypothesis_is_challenged()
     print("PHASE6_HISTORICAL_CHALLENGE_REGRESSIONS=passed")
 
