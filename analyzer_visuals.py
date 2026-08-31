@@ -54,6 +54,58 @@ def _config():
     }
 
 
+def _interactive_params():
+    """Trading-chart-like independent horizontal and vertical scale controls.
+
+    Normal wheel/pinch + drag manipulates the date axis. Holding Option/Alt
+    switches the same gestures to the price axis, so small price moves can be
+    expanded without changing the visible date window. Double-click clears
+    both bound-scale selections and restores the full chart.
+    """
+    return [
+        {
+            "name": "date_zoom",
+            "select": {
+                "type": "interval",
+                "encodings": ["x"],
+                "translate": (
+                    "[mousedown[!event.altKey], window:mouseup] "
+                    "> window:mousemove!"
+                ),
+                "zoom": "wheel![!event.altKey]",
+                "clear": "dblclick",
+            },
+            "bind": "scales",
+        },
+        {
+            "name": "price_zoom",
+            "select": {
+                "type": "interval",
+                "encodings": ["y"],
+                "translate": (
+                    "[mousedown[event.altKey], window:mouseup] "
+                    "> window:mousemove!"
+                ),
+                "zoom": "wheel![event.altKey]",
+                "clear": "dblclick",
+            },
+            "bind": "scales",
+        },
+    ]
+
+
+def _interactive_chart(layers, *, height, resolve=None):
+    spec = {
+        "height": height,
+        "layer": layers,
+        "params": _interactive_params(),
+        "config": _config(),
+    }
+    if resolve:
+        spec["resolve"] = resolve
+    return spec
+
+
 def _price_line_layer(bars, *, x_type="temporal", opacity=0.72):
     return {
         "data": {"values": bars},
@@ -256,12 +308,11 @@ def trade_plan_chart_spec(result, line_overlay=False):
         levels.append({"t": last_t, "price": vwap, "label": "VWAP", "kind": "vwap"})
 
     layers.extend(_horizontal_level_layers(levels))
-    return {
-        "height": 280,
-        "layer": layers,
-        "resolve": {"scale": {"color": "independent"}},
-        "config": _config(),
-    }
+    return _interactive_chart(
+        layers,
+        height=280,
+        resolve={"scale": {"color": "independent"}},
+    )
 
 
 def multi_bounce_chart_spec(result, line_overlay=False):
@@ -397,7 +448,7 @@ def multi_bounce_chart_spec(result, line_overlay=False):
             })
 
 
-    return {"height": 280, "layer": layers, "config": _config()}
+    return _interactive_chart(layers, height=280)
 
 
 def stair_step_chart_spec(result, line_overlay=False):
@@ -516,7 +567,7 @@ def stair_step_chart_spec(result, line_overlay=False):
             },
         ])
 
-    return {"height": 280, "layer": layers, "config": _config()}
+    return _interactive_chart(layers, height=280)
 
 
 def impulse_pullback_chart_spec(result, line_overlay=False):
@@ -615,7 +666,7 @@ def impulse_pullback_chart_spec(result, line_overlay=False):
             },
         })
 
-    return {"height": 270, "layer": layers, "config": _config()}
+    return _interactive_chart(layers, height=270)
 
 
 def support_resistance_chart_spec(result, line_overlay=False):
@@ -647,9 +698,8 @@ def support_resistance_chart_spec(result, line_overlay=False):
 
     layers = _candlestick_layers(bars, line_overlay=line_overlay)
     layers.extend(_horizontal_level_layers(levels))
-    return {
-        "height": 260,
-        "layer": layers,
-        "resolve": {"scale": {"color": "independent"}},
-        "config": _config(),
-    }
+    return _interactive_chart(
+        layers,
+        height=260,
+        resolve={"scale": {"color": "independent"}},
+    )
