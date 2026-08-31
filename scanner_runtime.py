@@ -19,7 +19,7 @@ from pathlib import Path
 
 SCAN_FILE = Path("scan_logs/latest_scan.json")
 LOCK_FILE = Path(tempfile.gettempdir()) / "stock-scanner-live.lock"
-LOCK_STALE_SECONDS = 300.0
+LOCK_STALE_SECONDS = 120.0
 
 
 def _provider_error():
@@ -88,6 +88,73 @@ def _lock_age_seconds(payload=None):
         return None
 
 
+def _pid_alive(pid):
+    try:
+        pid = int(pid)
+    except Exception:
+        return False
+    if pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except Exception:
+        return False
+
+
+def _update_lock_child_pid(token, child_pid):
+    payload = _read_lock() or {}
+    if not token or payload.get("token") != token:
+        return
+    payload["child_pid"] = int(child_pid)
+    try:
+        LOCK_FILE.write_text(json.dumps(payload), encoding="utf-8")
+    except Exception:
+        pass
+
+
+def _scan_marker():
+    if not SCAN_FILE.exists():
+        return {"mtime": None, "scan_time_et": None}
+    try:
+        mtime = SCAN_FILE.stat().st_mtime
+    except Exception:
+        mtime = None
+    scan_time = None
+    try:
+        payload = json.loads(SCAN_FILE.read_text(encoding="utf-8"))
+        scan_time = payload.get("scan_time_et")
+    except Exception:
+        pass
+    return {"mtime": mtime, "scan_time_et": scan_time}
+
+
+def _scan_marker_changed(before, after):
+    before = before or {}
+    after = after or {}
+    if (
+        after.get("scan_time_et")
+        and after.get("scan_time_et") != before.get("scan_time_et")
+    ):
+        return True
+    before_mtime = before.get("mtime")
+    after_mtime = after.get("mtime")
+    try:
+        return (
+            after_mtime is not None
+            and (
+                before_mtime is None
+                or float(after_mtime) > float(before_mtime)
+            )
+        )
+    except Exception:
+        return False
+
+
 def _clear_stale_lock():
     payload = _read_lock()
     if payload is None:
@@ -96,6 +163,15 @@ def _clear_stale_lock():
         except Exception:
             pass
         return True
+
+    child_pid = payload.get("child_pid")
+    if child_pid and not _pid_alive(child_pid):
+        try:
+            LOCK_FILE.unlink(missing_ok=True)
+            return True
+        except Exception:
+            return False
+
     age = _lock_age_seconds(payload)
     if age is not None and age > LOCK_STALE_SECONDS:
         try:
@@ -220,6 +296,7 @@ def start_scanner_process(
 
     stdout_path = _log_path("out")
     stderr_path = _log_path("err")
+    scan_marker_before = _scan_marker()
     out_handle = None
     err_handle = None
     try:
@@ -232,6 +309,7 @@ def start_scanner_process(
             stderr=err_handle,
             text=True,
         )
+        _update_lock_child_pid(token, process.pid)
     except Exception as exc:
         _release_scan_lock(token)
         for handle in (out_handle, err_handle):
@@ -272,6 +350,7 @@ def start_scanner_process(
         "stdout_path": str(stdout_path),
         "stderr_path": str(stderr_path),
         "require_scan_file": bool(require_scan_file),
+        "scan_marker_before": scan_marker_before,
     }
 
 
@@ -350,7 +429,12 @@ def poll_scanner_process(state):
         }
 
     require_scan_file = bool(state.get("require_scan_file", True))
-    ok = SCAN_FILE.exists() if require_scan_file else True
+    marker_before = state.get("scan_marker_before") or {}
+    marker_after = _scan_marker()
+    fresh_snapshot = _scan_marker_changed(marker_before, marker_after)
+    ok = True if not require_scan_file else bool(
+        SCAN_FILE.exists() and fresh_snapshot
+    )
     return {
         "done": True,
         "ok": ok,
@@ -359,8 +443,8 @@ def poll_scanner_process(state):
             f"Fresh scan complete in {elapsed:.1f}s."
             if ok
             else (
-                "Scanner ran, but latest_scan.json was not created "
-                f"(runtime {elapsed:.1f}s)."
+                "Scanner process exited, but it did not write a fresh "
+                "latest_scan.json snapshot."
             )
         ),
         "runtime_seconds": elapsed,
@@ -401,6 +485,7 @@ def run_scanner_process(
             "runtime_seconds": None,
         }
 
+    scan_marker_before = _scan_marker()
     started = time.perf_counter()
     try:
         process = subprocess.run(
@@ -441,7 +526,11 @@ def run_scanner_process(
             "runtime_seconds": elapsed,
         }
 
-    ok = SCAN_FILE.exists()
+    fresh_snapshot = _scan_marker_changed(
+        scan_marker_before,
+        _scan_marker(),
+    )
+    ok = bool(SCAN_FILE.exists() and fresh_snapshot)
     return {
         "ok": ok,
         "started": True,
@@ -450,8 +539,8 @@ def run_scanner_process(
             f"Fresh scan complete in {elapsed:.1f}s."
             if ok
             else (
-                "Scanner ran, but latest_scan.json was not created "
-                f"(runtime {elapsed:.1f}s)."
+                "Scanner process exited, but it did not write a fresh "
+                "latest_scan.json snapshot."
             )
         ),
         "stdout": stdout,
