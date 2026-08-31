@@ -4359,6 +4359,31 @@ def test_scanner_monitor_and_saved_stocks_are_vertically_compact():
     assert "margin: 0 0 4px !important" in analyzer_css
 
 
+def test_combined_analyzer_refresh_is_background_and_saved_stocks_follow_search():
+    from pathlib import Path
+
+    core = Path("analyzer_ui_core.py").read_text(encoding="utf-8")
+    bootstrap = Path("analyzer_bootstrap.py").read_text(encoding="utf-8")
+    app = Path("app.py").read_text(encoding="utf-8")
+
+    controls = core.find('with st.container(key="analyzer_controls")')
+    saved = core.find('with st.container(key="saved_stocks_top")')
+    position = core.find('_position_store=st.session_state.setdefault(')
+    assert controls >= 0 and saved > controls and position > saved, (
+        controls,
+        saved,
+        position,
+    )
+
+    assert '"_render_combined_saved_stocks": _render_saved_stocks' in bootstrap
+    assert "_render_saved_stock_toolbar" not in bootstrap
+    assert 'if _needs_analysis and not _COMBINED_WORKSPACE:' in core
+    assert '"_analyzer_background_request_symbol"' in core
+    assert "can_render_existing = bool(" in bootstrap
+    assert "keep the complete Analyzer page rendered from the last good result" in bootstrap
+    assert 'div[data-testid="stHorizontalBlock"]:has(.combined-ticker-row)' in app
+
+
 def test_scanner_runtime_async_start_is_nonblocking_and_lock_safe():
     import sys
     import tempfile
@@ -5218,6 +5243,7 @@ if __name__ == "__main__":
         test_combined_app_keeps_one_async_scanner_loop_across_views,
         test_momentum_alert_ui_has_in_app_and_optional_browser_notifications,
         test_scanner_monitor_and_saved_stocks_are_vertically_compact,
+        test_combined_analyzer_refresh_is_background_and_saved_stocks_follow_search,
         test_scanner_runtime_async_start_is_nonblocking_and_lock_safe,
         test_scanner_runtime_timeout_releases_shared_lock,
         test_scanner_runtime_recovers_stale_lock_after_crash,
