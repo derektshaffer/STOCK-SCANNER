@@ -26,9 +26,13 @@ MIN_UNIQUE_SCANS = 24
 MIN_TRADING_DAYS = 3
 MIN_CLASS_COUNT = 30
 MIN_VALIDATION_SAMPLES = 60
-MIN_LIVE_CONFIRMATION_SAMPLES = 30
-MIN_LIVE_CONFIRMATION_DAYS = 2
-MIN_LIVE_CONFIRMATION_CLASS_COUNT = 5
+# Historical replay is intentionally useful for fast learning, but its seed
+# universe is based on stocks listed/liquid today. That creates survivorship
+# risk in older replay periods. Require a materially larger, strictly later
+# live holdout before replay-backed ML may change production ranking.
+MIN_LIVE_CONFIRMATION_SAMPLES = 100
+MIN_LIVE_CONFIRMATION_DAYS = 5
+MIN_LIVE_CONFIRMATION_CLASS_COUNT = 15
 MAX_ARTIFACTS = 12
 ARTIFACT_PREFIX = "outcome-report-"
 MODEL_CACHE_DIR = Path(
