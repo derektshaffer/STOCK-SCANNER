@@ -34,6 +34,9 @@ on:
     branches: [main]
     paths:
       - "historical_scanner_replay.py"
+      - "historical_hypothesis_challenge.py"
+      - "historical_hypothesis_regression_check.py"
+      - "learning_system_audit.py"
       - "sequence_features.py"
       - "sequence_ml_research.py"
       - "historical_timeframe_replay.py"
@@ -287,6 +290,43 @@ jobs:
           assert int((report.get("design") or {}).get("confirmation_samples") or 0) >= 500
           PY
 
+      - name: Run Phase 6 learning objective audit
+        if: github.event_name != 'push' || (!contains(github.event.head_commit.message, 'Run historical timeframe backfill') && !contains(github.event.head_commit.message, 'Run timeframe ML validation') && !contains(github.event.head_commit.message, 'Run Swing feature research'))
+        run: python learning_system_audit.py
+
+      - name: Challenge learning hypotheses on frozen historical holdout
+        if: github.event_name != 'push' || (!contains(github.event.head_commit.message, 'Run historical timeframe backfill') && !contains(github.event.head_commit.message, 'Run timeframe ML validation') && !contains(github.event.head_commit.message, 'Run Swing feature research'))
+        run: |
+          python historical_hypothesis_regression_check.py
+          python historical_hypothesis_challenge.py
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(
+              Path("hypothesis_challenges/latest_historical_challenge.json").read_text(
+                  encoding="utf-8"
+              )
+          )
+          summary = report.get("summary") or {}
+          print("PHASE6_HYPOTHESES_CHALLENGED=" + str(summary.get("hypotheses_challenged", 0)))
+          print("PHASE6_HISTORICALLY_SUPPORTED=" + str(summary.get("historically_supported_shadow_only", 0)))
+          print("PHASE6_REJECTED=" + str(summary.get("rejected", 0)))
+          print("PHASE6_BLOCKED=" + str(summary.get("blocked", 0)))
+
+          assert report.get("production_influence") is False
+          assert (report.get("policy") or {}).get("whole_day_split") is True
+          assert (report.get("policy") or {}).get("live_shadow_confirmation_required") is True
+
+          for result in report.get("results") or []:
+              assert result.get("production_influence") is False
+              model = result.get("predictive_challenge") or {}
+              if model.get("status") == "complete":
+                  assert model.get("split_unit") == "whole_trading_day"
+                  assert int(model.get("confirmation_samples") or 0) >= 100
+                  assert int(model.get("confirmation_symbols") or 0) >= 15
+          PY
+
       - name: Commit durable replay dataset
         shell: bash
         run: |
@@ -294,6 +334,8 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add outcome_reports/outcomes_historical_replay.json
           git add outcome_reports/sequence_ml_validation.json
+          git add learning_audits/latest_learning_audit.json learning_audits/latest_learning_audit.md 2>/dev/null || true
+          git add hypothesis_challenges/latest_historical_challenge.json hypothesis_challenges/latest_historical_challenge.md 2>/dev/null || true
           git add timeframe_replay/timeframe_historical_replay.json
           git add timeframe_replay/timeframe_ml_validation.json
           git add timeframe_replay/swing_feature_research.json
@@ -314,6 +356,10 @@ jobs:
             outcome_reports/outcomes_historical_replay.json
             outcome_reports/sequence_ml_validation.json
             outcome_reports/sequence_replay_training.json.gz
+            learning_audits/latest_learning_audit.json
+            learning_audits/latest_learning_audit.md
+            hypothesis_challenges/latest_historical_challenge.json
+            hypothesis_challenges/latest_historical_challenge.md
             timeframe_replay/timeframe_historical_replay.json
             timeframe_replay/timeframe_ml_validation.json
             timeframe_replay/swing_feature_research.json
