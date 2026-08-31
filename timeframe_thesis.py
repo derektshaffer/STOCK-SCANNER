@@ -143,6 +143,7 @@ def track_timeframe_thesis(
     now=None,
     store_path=None,
     replacement_confirmations=REPLACEMENT_CONFIRMATIONS,
+    persist=True,
 ):
     """Return a stable setup horizon while preserving the raw current fit."""
     symbol = str(symbol or "").upper().strip()
@@ -185,9 +186,7 @@ def track_timeframe_thesis(
                 "scores": scores,
             }
         )
-        store[symbol] = state
-        _save(store, store_path)
-        return {
+        context = {
             "version": VERSION,
             "status": "NEW HORIZON THESIS",
             "stable_best_fit": raw_fit,
@@ -201,6 +200,16 @@ def track_timeframe_thesis(
             "history_points": len(state["history"]),
             "transition_count": len(state["transitions"]),
         }
+        if persist:
+            store[symbol] = state
+            _save(store, store_path)
+        else:
+            context["_transaction"] = {
+                "action": "upsert",
+                "symbol": symbol,
+                "state": state,
+            }
+        return context
 
     active = str(state.get("active_fit") or "MIXED").upper().strip()
     status = "HORIZON STABLE"
@@ -268,10 +277,7 @@ def track_timeframe_thesis(
     )
     state["history"] = history[-120:]
     state["change_reason"] = reason
-    store[symbol] = state
-    _save(store, store_path)
-
-    return {
+    context = {
         "version": VERSION,
         "status": status,
         "stable_best_fit": active,
@@ -287,3 +293,29 @@ def track_timeframe_thesis(
         "history_points": len(state.get("history") or []),
         "transition_count": len(state.get("transitions") or []),
     }
+    if persist:
+        store[symbol] = state
+        _save(store, store_path)
+    else:
+        context["_transaction"] = {
+            "action": "upsert",
+            "symbol": symbol,
+            "state": state,
+        }
+    return context
+
+
+def commit_timeframe_thesis(context, *, store_path=None):
+    """Persist a staged setup-horizon update after Analyzer completion."""
+    if not isinstance(context, dict):
+        return False
+    transaction = context.pop("_transaction", None) or {}
+    if transaction.get("action") != "upsert":
+        return True
+    symbol = str(transaction.get("symbol") or "").upper().strip()
+    state = transaction.get("state")
+    if not symbol or not isinstance(state, dict):
+        return False
+    store = _load(store_path)
+    store[symbol] = state
+    return _save(store, store_path)
