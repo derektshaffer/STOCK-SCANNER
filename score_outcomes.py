@@ -622,6 +622,14 @@ def build_observations(scans, target_date, bars_index):
                     or scan.get("behavior_feature_version")
                 ),
                 "observation_source": "live_scan",
+                "session_phase": (
+                    scan.get("session_phase")
+                    or (
+                        "regular"
+                        if scan.get("mode") == "regular_market_session"
+                        else "unknown"
+                    )
+                ),
                 "market_provider": scan_provider,
                 "live_feed": scan_live_feed,
                 "rank": c.get("rank"),
@@ -1147,7 +1155,7 @@ def write_reports(target_date, discovery, rows, status, error=None):
     csv_fields = [
         "observation_id", "scan_id", "scan_time_et", "feature_version",
         "behavior_feature_version",
-        "observation_source", "market_provider", "live_feed", "rank", "symbol",
+        "observation_source", "session_phase", "market_provider", "live_feed", "rank", "symbol",
         "entry_price", "day_pct", "score", "base_score", "live_bonus", "news_bonus",
         "opportunity_score", "intraday_range_pct", "expected_volume_fraction_pct",
         "volume_vs_expected_pct", "live_confirmation_count",
