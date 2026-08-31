@@ -3152,6 +3152,19 @@ def test_scanner_timeframe_fit_never_changes_production_rank_fields():
     assert row["timeframe_fit"]["production_rank_impact"] is False, row
 
 
+def test_scanner_and_analyzer_scores_are_labeled_as_non_probabilities():
+    from pathlib import Path
+
+    scanner = Path("scanner_app.py").read_text(encoding="utf-8")
+    analyzer = Path("analyzer_v2_ui.py").read_text(encoding="utf-8")
+    assert "SETUP SCORE / 100" in scanner
+    assert "not a probability of profit and not an entry command" in scanner
+    assert "very high Setup Score" in scanner
+    assert "setup-strength score for further upside; not a probability" in analyzer
+    assert "current entry-quality score; not a success probability" in analyzer
+    assert "fit scores are not probabilities" in analyzer
+
+
 def test_scanner_ui_exposes_timeframe_filter_without_reranking():
     from pathlib import Path
 
@@ -3640,6 +3653,7 @@ if __name__ == "__main__":
         test_scanner_timeframe_fit_separates_intraday_swing_and_longer_term,
         test_scanner_longer_term_fit_is_capped_when_history_is_sparse,
         test_scanner_timeframe_fit_never_changes_production_rank_fields,
+        test_scanner_and_analyzer_scores_are_labeled_as_non_probabilities,
         test_scanner_ui_exposes_timeframe_filter_without_reranking,
         test_offhours_daily_context_builds_swing_longer_term_candidate_without_live_action,
         test_offhours_history_pool_is_price_band_balanced_and_not_only_daily_movers,
