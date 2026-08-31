@@ -5315,6 +5315,23 @@ def test_intraday_thesis_keeps_entry_geometry_stable_and_can_still_enter():
         assert plan.get("breakout_reference_level") == 9.0, plan
         assert plan.get("status") == "ENTRY AVAILABLE", plan
         assert "9.00" in str(plan.get("entry_instruction") or ""), plan
+        second["decision_v2"] = {
+            "entry_readiness": 74.0,
+            "evidence_strength": 68.0,
+            "potential_score": 81.0,
+        }
+        assert thesis.commit_intraday_thesis(
+            second,
+            context,
+            now=now + timedelta(minutes=5),
+            store_path=path,
+        )
+        saved = thesis._load(path)
+        state = next(iter(saved.values()))
+        history = state.get("history") or []
+        assert len(history) == 1, history
+        assert history[-1].get("entry_readiness") == 74.0, history
+        assert history[-1].get("status") == "ENTRY AVAILABLE", history
 
 
 def test_intraday_thesis_requires_persistent_replacement_before_family_switch():
