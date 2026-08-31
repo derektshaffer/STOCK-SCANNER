@@ -177,7 +177,7 @@ def _first_touch(bars, target, stop, created):
         return None
     for bar in bars:
         dt = _bar_dt(bar)
-        if dt is None or dt < created:
+        if dt is None or dt <= created:
             continue
         high = _num(bar.get("h"))
         low = _num(bar.get("l"))
@@ -201,7 +201,7 @@ def _window_excursions(bars, created, price, minutes):
     window=[]
     for bar in bars:
         dt=_bar_dt(bar)
-        if dt is None or dt < created or dt > end:
+        if dt is None or dt <= created or dt > end:
             continue
         window.append(bar)
     highs=[_num(b.get("h")) for b in window]
@@ -299,7 +299,7 @@ def _resolve_rows(rows, day):
                     within60=[]
                     for bar in bars:
                         dt=_bar_dt(bar)
-                        if dt is not None and created <= dt <= created + timedelta(minutes=60):
+                        if dt is not None and created < dt <= created + timedelta(minutes=60):
                             within60.append(bar)
                     highs=[_num(b.get("h")) for b in within60]
                     highs=[v for v in highs if v is not None]
