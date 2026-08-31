@@ -1349,7 +1349,6 @@ if _trade_age is not None and float(_trade_age) > max(30, AUTO_REFRESH_SECONDS*2
         extra=" The upstream Alpaca feed itself has not reported a newer eligible trade yet."
     st.warning(f"Latest {feed_name or 'market'} trade is {_age_text(_trade_age)}.{extra}")
 
-st.markdown('<div class="section">Momentum & liquidity</div>',unsafe_allow_html=True)
 liq=r.get("liquidity") or {}
 df=pd.DataFrame([{
     "5m %":r.get("momentum_5m"),"15m %":r.get("momentum_15m"),"30m %":r.get("momentum_30m"),
@@ -1357,7 +1356,8 @@ df=pd.DataFrame([{
     "Spread %":r.get("spread_pct"),"Volume Pace":r.get("volume_pace"),"Liquidity":liq.get("label"),
     "Avg $ Volume":dollars_compact(liq.get("avg_dollar_volume"))
 }])
-st.dataframe(df,width="stretch",hide_index=True)
+with st.expander("Momentum & liquidity", expanded=False):
+    st.dataframe(df,width="stretch",hide_index=True)
 
 def level_table(rows):
     columns=["Price","Touches","Last touch","Age","Quality","Side"]
@@ -1375,26 +1375,27 @@ def level_table(rows):
         })
     return pd.DataFrame(out,columns=columns)
 
-scol,rcol=st.columns(2)
-with scol:
-    st.markdown('<div class="section">Support</div>',unsafe_allow_html=True)
-    sup=r.get("supports") or []
-    st.dataframe(
-        level_table(sup),
-        width="stretch",
-        hide_index=True,
-        column_config={"Price":st.column_config.NumberColumn(format="$%.2f")},
-    )
-with rcol:
-    st.markdown('<div class="section">Resistance</div>',unsafe_allow_html=True)
-    res=r.get("resistances") or []
-    st.dataframe(
-        level_table(res),
-        width="stretch",
-        hide_index=True,
-        column_config={"Price":st.column_config.NumberColumn(format="$%.2f")},
-    )
-st.caption("Last touch = most recent regular-session test of the level. Recent tests use 1-minute bars; older tests use 5-minute bars as a fallback. Times are Eastern (ET).")
+with st.expander("Support & resistance levels", expanded=False):
+    scol,rcol=st.columns(2)
+    with scol:
+        st.markdown('<div class="section">Support</div>',unsafe_allow_html=True)
+        sup=r.get("supports") or []
+        st.dataframe(
+            level_table(sup),
+            width="stretch",
+            hide_index=True,
+            column_config={"Price":st.column_config.NumberColumn(format="$%.2f")},
+        )
+    with rcol:
+        st.markdown('<div class="section">Resistance</div>',unsafe_allow_html=True)
+        res=r.get("resistances") or []
+        st.dataframe(
+            level_table(res),
+            width="stretch",
+            hide_index=True,
+            column_config={"Price":st.column_config.NumberColumn(format="$%.2f")},
+        )
+    st.caption("Last touch = most recent regular-session test of the level. Recent tests use 1-minute bars; older tests use 5-minute bars as a fallback. Times are Eastern (ET).")
 
 h=r.get("historical_analogs") or {}
 st.markdown('<div class="section">Historical spike analogs <span style="font-size:12px;color:#91a7c2">research-only</span></div>',unsafe_allow_html=True)
@@ -1411,7 +1412,8 @@ if h.get("status")=="ok":
     sdf=pd.DataFrame(h.get("samples") or [])
     if not sdf.empty:
         show=[c for c in ["date","spike_pct","d1","d2","d3","d5"] if c in sdf.columns]
-        st.dataframe(sdf[show],width="stretch",hide_index=True)
+        with st.expander("Historical spike table", expanded=False):
+            st.dataframe(sdf[show],width="stretch",hide_index=True)
 else: st.info("Not enough historical data for spike analogs yet.")
 
 st.markdown('<div class="section">Recent catalyst/news context</div>',unsafe_allow_html=True)
