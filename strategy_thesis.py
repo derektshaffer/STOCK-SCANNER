@@ -84,7 +84,14 @@ def _save(payload, path=None):
 
 def _session_key(symbol, now):
     now = now.astimezone(ET)
-    return f"{str(symbol).upper().strip()}:{now.date().isoformat()}"
+    namespace = (
+        os.environ.get("ANALYZER_THESIS_NAMESPACE", "").strip()
+        or "standalone"
+    )
+    return (
+        f"{namespace}:{str(symbol).upper().strip()}:"
+        f"{now.date().isoformat()}"
+    )
 
 
 def _selected_geometry(plan):
