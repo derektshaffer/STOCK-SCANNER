@@ -1228,6 +1228,136 @@ def test_analyzer_ml_validation_requires_probability_skill():
     assert abs(float(bad["brier"]) - float(bad["baseline_brier"])) < 1e-12, bad
 
 
+def test_shared_market_structure_is_causal_alternating_and_append_invariant():
+    from market_structure import extract_market_structure
+    from datetime import datetime, timedelta, timezone
+
+    start=datetime(2026,8,31,13,30,tzinfo=timezone.utc)
+    closes=[
+        10.00,10.20,10.50,10.90,11.30,11.10,10.80,10.55,
+        10.75,11.00,11.20,10.95,10.70,10.85,11.05,10.90,
+    ]
+    bars=[]
+    for i,close in enumerate(closes):
+        bars.append({
+            "t":(start+timedelta(minutes=i)).isoformat(),
+            "o":close-0.03,
+            "h":close+0.07,
+            "l":close-0.07,
+            "c":close,
+            "v":1000+i*20,
+        })
+
+    prefix=extract_market_structure(bars[:12],swing_threshold_pct=1.5,min_leg_minutes=2)
+    full=extract_market_structure(bars,swing_threshold_pct=1.5,min_leg_minutes=2)
+    prefix_swings=prefix.get("confirmed_swings") or []
+    full_swings=full.get("confirmed_swings") or []
+
+    assert prefix_swings, prefix
+    assert full_swings[:len(prefix_swings)] == prefix_swings, (prefix,full)
+    assert all(
+        int(swing.get("confirmed_index")) > int(swing.get("index"))
+        for swing in full_swings
+    ), full_swings
+    assert all(
+        full_swings[i].get("kind") != full_swings[i-1].get("kind")
+        for i in range(1,len(full_swings))
+    ), full_swings
+
+
+def test_shared_structure_does_not_confirm_same_candle_reversal():
+    from market_structure import extract_market_structure
+    from datetime import datetime, timedelta, timezone
+
+    start=datetime(2026,8,31,14,0,tzinfo=timezone.utc)
+    bars=[
+        {"t":(start+timedelta(minutes=0)).isoformat(),"o":10.0,"h":10.1,"l":9.9,"c":10.0,"v":100},
+        {"t":(start+timedelta(minutes=1)).isoformat(),"o":10.0,"h":12.0,"l":9.8,"c":11.8,"v":1000},
+        # Huge range, but the engine cannot assume whether the low or high
+        # happened first inside this one-minute candle.
+        {"t":(start+timedelta(minutes=2)).isoformat(),"o":11.8,"h":12.2,"l":10.5,"c":10.8,"v":1200},
+        {"t":(start+timedelta(minutes=3)).isoformat(),"o":10.8,"h":10.9,"l":10.4,"c":10.5,"v":900},
+        {"t":(start+timedelta(minutes=4)).isoformat(),"o":10.5,"h":11.2,"l":10.5,"c":11.1,"v":900},
+    ]
+    structure=extract_market_structure(
+        bars,
+        swing_threshold_pct=3.0,
+        min_leg_minutes=1,
+    )
+    for swing in structure.get("confirmed_swings") or []:
+        assert swing.get("confirmed_index") != swing.get("index"), swing
+
+
+def test_impulse_and_bounce_consumers_share_identical_structure_version():
+    import stock_analyzer as sa
+    from multi_bounce import detect_bounce_sequence
+    from market_structure import STRUCTURE_VERSION
+    from datetime import datetime, timedelta, timezone
+
+    start=datetime(2026,8,31,13,30,tzinfo=timezone.utc)
+    bars=[]
+    for i in range(15):
+        close=10.0+i*(8.0/14.0)
+        bars.append({
+            "t":(start+timedelta(minutes=i)).isoformat(),
+            "o":close-0.05,"h":close+0.10,"l":close-0.10,"c":close,"v":1000+i*100,
+        })
+    for j,close in enumerate((17.2,16.2,15.3,15.8,16.5,17.0,16.4,15.9,16.4,16.8,16.2),start=15):
+        bars.append({
+            "t":(start+timedelta(minutes=j)).isoformat(),
+            "o":close-0.05,"h":close+0.10,"l":close-0.10,"c":close,"v":800,
+        })
+
+    impulse=sa.impulse_pullback_context(bars,current_price=16.2,atr_pct=8)
+    sequence=detect_bounce_sequence(bars,current_price=16.2,atr_pct=8)
+    assert impulse.get("structure_version") == STRUCTURE_VERSION, impulse
+    assert sequence.get("structure_version") == STRUCTURE_VERSION, sequence
+    assert impulse.get("impulse_high_time") == sequence.get("impulse_peak_time"), (impulse,sequence)
+
+
+def test_unconfirmed_rebound_is_labeled_developing_not_confirmed():
+    import stock_analyzer as sa
+    from datetime import datetime, timedelta, timezone
+
+    start=datetime(2026,8,31,13,30,tzinfo=timezone.utc)
+    bars=[]
+    for i in range(12):
+        close=10.0+i*(8.0/11.0)
+        bars.append({
+            "t":(start+timedelta(minutes=i)).isoformat(),
+            "o":close-0.04,"h":close+0.08,"l":close-0.08,"c":close,"v":1000,
+        })
+    # Pullback creates a LOW, then price starts recovering. No later reversal
+    # has yet confirmed a rebound HIGH.
+    for j,close in enumerate((17.1,16.2,15.5,15.8,16.2,16.5),start=12):
+        bars.append({
+            "t":(start+timedelta(minutes=j)).isoformat(),
+            "o":close-0.04,"h":close+0.08,"l":close-0.08,"c":close,"v":800,
+        })
+    ctx=sa.impulse_pullback_context(bars,current_price=16.5,atr_pct=8)
+    assert ctx.get("detected"), ctx
+    assert ctx.get("bounce_confirmed") is False, ctx
+    assert ctx.get("phase") in {"BOUNCE DEVELOPING","PULLBACK FORMING"}, ctx
+
+
+def test_all_intraday_movement_feature_paths_use_shared_structure_engine():
+    from pathlib import Path
+
+    market=Path("market_structure.py").read_text(encoding="utf-8")
+    bounce=Path("multi_bounce.py").read_text(encoding="utf-8")
+    analyzer=Path("stock_analyzer.py").read_text(encoding="utf-8")
+    behavior=Path("scanner_behavior.py").read_text(encoding="utf-8")
+    replay=Path("historical_scanner_replay.py").read_text(encoding="utf-8")
+    ml=Path("ml_predictor.py").read_text(encoding="utf-8")
+
+    assert 'STRUCTURE_VERSION = "market-structure-v1-causal-swings"' in market
+    assert "return bounce_sequence_context(" in bounce
+    assert "shared_impulse_pullback_context(" in analyzer
+    assert "shared_impulse_pullback_context(" in behavior
+    assert "shared_impulse_pullback_context(" in replay
+    assert "shared_impulse_pullback_context(" in ml
+
+
 def test_impulse_detector_measures_fraction_of_run():
     import stock_analyzer as sa
 
@@ -4657,6 +4787,11 @@ if __name__ == "__main__":
         test_historical_analogs_cannot_change_live_plan_geometry_or_scores,
         test_advisory_model_percentages_are_explicit_and_neutral,
         test_analyzer_ml_validation_requires_probability_skill,
+        test_shared_market_structure_is_causal_alternating_and_append_invariant,
+        test_shared_structure_does_not_confirm_same_candle_reversal,
+        test_impulse_and_bounce_consumers_share_identical_structure_version,
+        test_unconfirmed_rebound_is_labeled_developing_not_confirmed,
+        test_all_intraday_movement_feature_paths_use_shared_structure_engine,
         test_impulse_detector_measures_fraction_of_run,
         test_entry_readiness_penalizes_unconfirmed_shallow_retrace,
         test_run_exhaustion_flags_rejected_mature_run,
