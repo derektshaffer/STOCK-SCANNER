@@ -13,7 +13,7 @@ from float_data import get_public_float
 from swing_research_flags import evaluate_swing_research_flags
 from analyzer_context_cache import get_cached_context, set_cached_context
 from strategy_thesis import prepare_intraday_thesis, commit_intraday_thesis
-from timeframe_thesis import track_timeframe_thesis
+from timeframe_thesis import track_timeframe_thesis, commit_timeframe_thesis
 
 
 SEC_BASE = "https://data.sec.gov"
@@ -2056,6 +2056,9 @@ def install_v2_analysis(sa):
             symbol_clean,
             timeframe,
             now=now,
+            # Like execution-thesis continuity, horizon continuity is staged
+            # until the full Analyzer decision has completed successfully.
+            persist=False,
         )
         timeframe["raw_best_fit"] = raw_best_fit
         timeframe["stable_best_fit"] = horizon_continuity.get(
@@ -2184,6 +2187,7 @@ def install_v2_analysis(sa):
             thesis_context,
             now=now,
         )
+        commit_timeframe_thesis(horizon_continuity)
         plan = metrics.get("trade_plan") or {}
         thesis_context = plan.get("thesis_continuity") or thesis_context
         metrics["decision_v2"]["thesis_continuity"] = thesis_context
