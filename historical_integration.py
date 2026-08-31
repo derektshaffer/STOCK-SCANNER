@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
 
 from historical_patterns import analyze_historical_patterns
+from analyzer_history_cache import load_deep_5m_history, filter_history_rows
 
 
 def _num(value):
@@ -24,30 +25,16 @@ def _expanded_history_fetch(sa, symbol, timeframe, start, end, limit=10000):
         return sa.try_sip_delayed_bars(symbol, timeframe, start, end, limit)
 
     expanded_start = min(start, end - timedelta(days=540))
-    cursor = expanded_start
-    step = timedelta(days=45)
-    merged = {}
-    sources = []
-
-    while cursor < end:
-        chunk_end = min(end, cursor + step)
-        try:
-            chunk, source = sa.try_sip_delayed_bars(
-                symbol, timeframe, cursor, chunk_end, 10000
-            )
-        except Exception:
-            chunk, source = [], "unavailable"
-
-        if source and source not in sources:
-            sources.append(source)
-        for bar in chunk or []:
-            ts = str(bar.get("t") or "")
-            if ts:
-                merged[ts] = bar
-        cursor = chunk_end
-
-    rows = [merged[k] for k in sorted(merged)]
-    return rows, " + ".join(sources) if sources else "unavailable"
+    rows, source = load_deep_5m_history(
+        symbol,
+        end=end,
+        days=540,
+        step_days=45,
+        fetch_bars=lambda sym, tf, chunk_start, chunk_end, chunk_limit: sa.try_sip_delayed_bars(
+            sym, tf, chunk_start, chunk_end, chunk_limit
+        ),
+    )
+    return filter_history_rows(rows, expanded_start, end), source
 
 
 def install_historical_analysis(sa):
