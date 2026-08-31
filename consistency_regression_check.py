@@ -2716,6 +2716,87 @@ def test_scanner_behavior_fields_survive_scan_logging():
     assert row.get("stair_reaccelerating") == 1.0, row
 
 
+
+def test_prediction_tracker_logs_exact_final_plan_and_contract():
+    import prediction_tracker as pt
+
+    original_load = pt._load
+    original_save = pt._save
+    captured = []
+    try:
+        pt._load = lambda: []
+        def _capture(rows, force_remote=False):
+            captured.extend(rows)
+            return True
+        pt._save = _capture
+
+        metrics = {
+            "symbol": "TEST",
+            "market_session": "regular",
+            "price": 9.05,
+            "trade_plan": {
+                "status": "WAIT",
+                "action": "WAIT — LIVE DATA INTEGRITY CHECK",
+                "entry_state": "DATA CHECK",
+                "entry_instruction": "NO ENTRY SIGNAL until live data is trusted.",
+                "preferred_plan": "breakout",
+                "selected": {
+                    "entry_low": 9.00,
+                    "entry_high": 9.10,
+                    "stop": 8.70,
+                    "target1": 9.80,
+                    "target2": 10.20,
+                },
+                "decision_contract": {
+                    "version": "trade-plan-contract-v1",
+                    "ok": True,
+                    "status": "WAIT",
+                    "entry_state": "DATA CHECK",
+                    "geometry_errors": [],
+                    "corrections": ["entry blocked by live-data integrity"],
+                },
+            },
+            "decision_v2": {
+                "version": pt.DECISION_SCORE_VERSION,
+                "decision_contract": {
+                    "version": "trade-plan-contract-v1",
+                    "ok": True,
+                    "status": "WAIT",
+                    "entry_state": "DATA CHECK",
+                    "geometry_errors": [],
+                    "corrections": ["entry blocked by live-data integrity"],
+                },
+            },
+        }
+        result = pt.record_prediction(
+            metrics,
+            now=datetime(2026, 8, 31, 15, 0, tzinfo=timezone.utc),
+        )
+        assert result.get("recorded"), result
+        assert captured, result
+        row = captured[-1]
+        assert row.get("plan_status") == "WAIT", row
+        assert row.get("plan_action") == "WAIT — LIVE DATA INTEGRITY CHECK", row
+        assert row.get("plan_entry_state") == "DATA CHECK", row
+        assert row.get("plan_entry_instruction") == (
+            "NO ENTRY SIGNAL until live data is trusted."
+        ), row
+        assert row.get("entry_low") == 9.0, row
+        assert row.get("entry_high") == 9.1, row
+        assert row.get("stop") == 8.7, row
+        assert row.get("target1") == 9.8, row
+        assert row.get("decision_contract_version") == "trade-plan-contract-v1", row
+        assert row.get("decision_contract_ok") is True, row
+        assert row.get("decision_contract_status") == "WAIT", row
+        assert row.get("decision_contract_entry_state") == "DATA CHECK", row
+        assert row.get("decision_contract_corrections") == [
+            "entry blocked by live-data integrity"
+        ], row
+    finally:
+        pt._load = original_load
+        pt._save = original_save
+
+
 def test_prediction_tracker_records_sequence_regime_fields():
     import prediction_tracker as pt
 
@@ -6571,6 +6652,7 @@ if __name__ == "__main__":
         test_analyzer_visual_snapshots_are_collapsible_and_contextual,
         test_analyzer_long_context_text_is_collapsible,
         test_dedicated_repeat_bounce_trade_plan_uses_latest_dip,
+        test_prediction_tracker_logs_exact_final_plan_and_contract,
         test_prediction_tracker_records_sequence_regime_fields,
         test_sec_fundamental_snapshot_extracts_comparable_periods,
         test_timeframe_analysis_caps_long_term_when_fundamentals_are_sparse,
