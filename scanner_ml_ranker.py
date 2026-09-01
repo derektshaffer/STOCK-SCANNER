@@ -347,12 +347,22 @@ def _extract_path_research_observations(payload):
             continue
         if not _consolidated_observation_source(row, payload):
             continue
-        if row.get("research_horizon_60m_complete") is not True:
+        horizon_complete = row.get("research_horizon_60m_complete")
+        if horizon_complete is None:
+            horizon_complete = row.get("opportunity_horizon_60m_complete")
+        if horizon_complete is not True:
             continue
 
         path_label = row.get("research_path_success_60m")
         if path_label not in (0, 1):
-            continue
+            before_stop = row.get("opportunity_up_3_60m_before_stop")
+            up_hit = row.get("opportunity_up_3_60m_hit")
+            if before_stop is True:
+                path_label = 1
+            elif before_stop is False or up_hit is False:
+                path_label = 0
+            else:
+                continue
 
         scan_time = row.get("scan_time_et")
         dt = _parse_dt(scan_time)
@@ -376,7 +386,12 @@ def _extract_path_research_observations(payload):
 
         endpoint_label = row.get("research_endpoint_success_60m")
         if endpoint_label not in (0, 1):
-            endpoint_label = None
+            endpoint_return = _num(row.get("return_60m_pct"))
+            endpoint_label = (
+                int(endpoint_return >= 3.0)
+                if endpoint_return is not None
+                else None
+            )
 
         out.append(
             {
@@ -404,10 +419,20 @@ def _extract_path_research_observations(payload):
                     endpoint_label is not None
                     and int(endpoint_label) != int(path_label)
                 ),
-                "mfe_60m_pct": _num(row.get("research_mfe_60m_pct")),
-                "mae_60m_pct": _num(row.get("research_mae_60m_pct")),
+                "mfe_60m_pct": _num(
+                    row.get("research_mfe_60m_pct")
+                    if row.get("research_mfe_60m_pct") is not None
+                    else row.get("opportunity_mfe_60m_pct")
+                ),
+                "mae_60m_pct": _num(
+                    row.get("research_mae_60m_pct")
+                    if row.get("research_mae_60m_pct") is not None
+                    else row.get("opportunity_mae_60m_pct")
+                ),
                 "time_to_peak_60m": _num(
                     row.get("research_time_to_peak_60m")
+                    if row.get("research_time_to_peak_60m") is not None
+                    else row.get("opportunity_time_to_peak_60m")
                 ),
                 "features": features,
             }
@@ -415,29 +440,51 @@ def _extract_path_research_observations(payload):
     return out
 
 
-def load_path_research_observations(report_dir=Path("opportunity_reports")):
-    """Load deduplicated path-aware shadow rows from durable opportunity reports."""
+def load_path_research_observations(
+    report_dir=Path("opportunity_reports"),
+    replay_path=Path("outcome_reports/outcomes_historical_replay.json"),
+):
+    """Load path-aware replay + live shadow rows without production influence."""
     rows = {}
     report_count = 0
     directory = Path(report_dir)
-    if not directory.exists():
-        return [], {"report_count": 0, "observations_loaded": 0}
 
-    for path in sorted(directory.glob("opportunity_outcomes_*.json")):
+    if directory.exists():
+        for path in sorted(directory.glob("opportunity_outcomes_*.json")):
+            try:
+                payload = json.loads(path.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            report_count += 1
+            for row in _extract_path_research_observations(payload):
+                key = row.get("observation_id")
+                if key:
+                    rows[key] = row
+
+    replay_loaded = 0
+    replay_path = Path(replay_path)
+    if replay_path.exists():
         try:
-            payload = json.loads(path.read_text(encoding="utf-8"))
+            payload = json.loads(replay_path.read_text(encoding="utf-8"))
         except Exception:
-            continue
-        report_count += 1
-        for row in _extract_path_research_observations(payload):
+            payload = {}
+        extracted = _extract_path_research_observations(payload)
+        replay_loaded = len(extracted)
+        for row in extracted:
             key = row.get("observation_id")
             if key:
                 rows[key] = row
 
     ordered = sorted(rows.values(), key=lambda row: row["timestamp"])
+    source_counts = {}
+    for row in ordered:
+        source = str(row.get("observation_source") or "shadow_opportunity")
+        source_counts[source] = source_counts.get(source, 0) + 1
     return ordered, {
         "report_count": report_count,
+        "historical_replay_path_rows": replay_loaded,
         "observations_loaded": len(ordered),
+        "observation_source_counts": source_counts,
         "target_description": PATH_RESEARCH_TARGET_DESCRIPTION,
         "production_influence": False,
     }
