@@ -269,11 +269,6 @@ st.markdown(
 VIEWS = ("Momentum Scanner", "Stock Analyzer")
 if st.session_state.get("app_view") not in VIEWS:
     st.session_state["app_view"] = "Momentum Scanner"
-_pending_app_view = st.session_state.pop("_pending_app_view", None)
-if _pending_app_view in VIEWS:
-    # A candidate button lives inside a fragment. Its callback can safely queue
-    # navigation, but the keyed radio must be changed here, before it is built.
-    st.session_state["app_view"] = _pending_app_view
 if "auto_scan_enabled" not in st.session_state:
     st.session_state["auto_scan_enabled"] = True
 if "last_auto_scan_at" not in st.session_state:
@@ -584,7 +579,7 @@ def _install_workspace_selector_cleanup():
           }
 
           clean();
-          const observer = new p.MutationObserver(() => p.requestAnimationFrame(clean));
+          const observer = new MutationObserver(() => p.requestAnimationFrame(clean));
           if (d.body) observer.observe(d.body, {childList: true, subtree: true});
           p.__workspaceSelectorCleanup = {observer};
         })();
@@ -613,13 +608,9 @@ if view != previous_rendered_view:
             or st.session_state.get("_analyzer_launch_state")
             or {}
         )
-        scanner_launch_symbol = str(
-            st.session_state.get("_analyzer_scanner_launch_pending") or ""
-        ).upper().strip()
+        launch_process = launch_state.get("process")
         launched_from_scanner = bool(
-            scanner_launch_symbol
-            and scanner_launch_symbol
-            == str(launch_state.get("symbol") or scanner_launch_symbol).upper().strip()
+            launch_process is not None and launch_process.poll() is None
         )
         if not launched_from_scanner:
             st.session_state.pop("ticker_search_request", None)
@@ -1182,7 +1173,6 @@ def _cancel_analyzer_launch():
         st.session_state["_analyzer_cancel_notice"]=result.get("message")
     st.session_state["_analyzer_bootstrap_launch_state"]=None
     st.session_state["_analyzer_launch_state"]=None
-    st.session_state.pop("_analyzer_scanner_launch_pending",None)
     st.session_state["_analyzer_loading"]=False
     st.session_state.pop("_analyzer_background_request_symbol",None)
 
@@ -1255,22 +1245,12 @@ def _toggle_analyzer_launch(symbol):
 
     st.session_state["_analyzer_bootstrap_launch_state"]=launch
     st.session_state["_analyzer_launch_state"]=None
-    # The worker can fail or finish before the full-app rerun begins. Preserve
-    # the Scanner handoff independently of process.poll(), otherwise that fast
-    # terminal state is mistaken for a direct Analyzer-tab click and the ticker
-    # is cleared, leaving a blank Analyzer shell.
-    st.session_state["_analyzer_scanner_launch_pending"]=symbol
     st.session_state.pop("_analyzer_background_request_symbol",None)
     st.session_state["ticker"]=symbol
     st.session_state["ticker_search_request"]=symbol
     st.session_state["_analyzer_loading"]=True
     st.session_state.pop("ticker_picker",None)
-    st.session_state["_pending_app_view"]="Stock Analyzer"
-
-
-def _toggle_analyzer_and_navigate(symbol):
-    """Queue navigation from the candidate fragment's pre-render callback."""
-    _toggle_analyzer_launch(symbol)
+    st.session_state["app_view"]="Stock Analyzer"
 
 
 def _poll_analyzer_launch():
@@ -1282,7 +1262,6 @@ def _poll_analyzer_launch():
         return
 
     st.session_state["_analyzer_launch_state"]=None
-    st.session_state.pop("_analyzer_scanner_launch_pending",None)
     if not outcome.get("ok"):
         st.session_state["_analyzer_launch_error"]=outcome.get("message") or "Analyzer failed."
         return
@@ -1385,7 +1364,7 @@ if view == "Momentum Scanner":
         st.error(f"Could not analyze the selected ticker: {launch_error}")
     cancel_notice = st.session_state.pop("_analyzer_cancel_notice", None)
     if cancel_notice:
-        st.toast(cancel_notice, icon="❌")
+        st.toast(cancel_notice, icon="✕")
 
     _analyzer_poll_every = 1 if st.session_state.get("_analyzer_launch_state") else None
 
@@ -1399,11 +1378,6 @@ if view == "Momentum Scanner":
 
     @st.fragment(run_every=_candidate_refresh_every)
     def _render_compact_scanner_candidates():
-        if st.session_state.get("_pending_app_view") in VIEWS:
-            # Callback execution cannot rerun the parent app directly. Rerun
-            # here, outside the callback; the parent consumes the queued view
-            # before recreating the navigation radio.
-            st.rerun(scope="app")
         offhours_mode = not workspace_live
         offhours_candidates = (
             _offhours_timeframe_candidates()
@@ -1517,7 +1491,7 @@ if view == "Momentum Scanner":
                         _launch_active
                         and str(_launch_state.get("symbol") or "").upper()==symbol
                     )
-                    st.button(
+                    if st.button(
                         f"Cancel {symbol}" if _this_running else f"Analyze {symbol}",
                         key=f"combined_analyze_{idx}_{symbol}",
                         type="secondary" if _this_running else "primary",
@@ -1528,9 +1502,12 @@ if view == "Momentum Scanner":
                             if latest_scan_stale and not _this_running
                             else None
                         ),
-                        on_click=_toggle_analyzer_and_navigate,
-                        args=(symbol,),
-                    )
+                    ):
+                        _toggle_analyzer_launch(symbol)
+                        # Candidate rows refresh in a fragment, but a deliberate
+                        # Scanner -> Analyzer navigation must rerun the parent app.
+                        # This is user-triggered only; background scans never do it.
+                        st.rerun(scope="app")
         else:
             st.caption(
                 "No scanner candidates are available yet. Live momentum scanning runs "
@@ -1740,7 +1717,7 @@ def _install_technical_tooltips():
           d.addEventListener('focusout', focusout);
 
           let queued = false;
-          const observer = new p.MutationObserver(() => {{
+          const observer = new MutationObserver(() => {{
             if (queued) return;
             queued = true;
             p.requestAnimationFrame(() => {{

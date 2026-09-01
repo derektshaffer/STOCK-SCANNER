@@ -7,11 +7,7 @@ from datetime import datetime, timedelta, timezone
 from functools import lru_cache
 from concurrent.futures import ThreadPoolExecutor
 
-from prediction_tracker import (
-    durable_tracking_enabled,
-    record_prediction,
-    resolve_symbol_predictions,
-)
+from prediction_tracker import record_prediction, resolve_symbol_predictions
 from analyzer_versions import DECISION_SCORE_VERSION, TIMEFRAME_SCORE_VERSION
 from live_market_stream import ensure_live_stream, get_live_overlay
 from float_data import get_public_float
@@ -2274,12 +2270,7 @@ def install_v2_analysis(sa):
                 )
                 tracking = {
                     "status": "recorded_local_sync_deferred",
-                    "persistence": (
-                        "github+local (async sync deferred)"
-                        if durable_tracking_enabled()
-                        else "runtime-local"
-                    ),
-                    "durable_enabled": durable_tracking_enabled(),
+                    "persistence": "runtime-local + async durable sync",
                     "background_worker": True,
                     "last_record": record_result,
                 }

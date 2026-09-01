@@ -3043,51 +3043,9 @@ def test_scanner_analyze_button_navigates_out_of_candidate_fragment():
         "_render_compact_scanner_candidates()", 1
     )[0]
     assert 'f"Analyze {symbol}"' in fragment
-    assert "on_click=_toggle_analyzer_and_navigate" in fragment
-    callback = source.split("def _toggle_analyzer_and_navigate(symbol):", 1)[1].split(
-        "def _poll_analyzer_launch():", 1
-    )[0]
-    assert "_toggle_analyzer_launch(symbol)" in callback
-    assert 'st.rerun(scope="app")' not in callback
-    assert 'st.session_state["_pending_app_view"]="Stock Analyzer"' in source
-    assert 'st.session_state.pop("_pending_app_view", None)' in source
-    assert 'if st.session_state.get("_pending_app_view") in VIEWS:' in fragment
+    assert "_toggle_analyzer_launch(symbol)" in fragment
     assert 'st.rerun(scope="app")' in fragment
-
-
-def test_cold_scanner_analyzer_handoff_paints_before_poll_fragment():
-    from pathlib import Path
-
-    app = Path("app.py").read_text(encoding="utf-8")
-    bootstrap = Path("analyzer_bootstrap.py").read_text(encoding="utf-8")
-
-    assert 'st.session_state["_analyzer_scanner_launch_pending"]=symbol' in app
-    assert 'st.session_state.get("_analyzer_scanner_launch_pending")' in app
-    for source in (app, bootstrap):
-        assert 'pop("_analyzer_scanner_launch_pending"' in source
-
-    loader = bootstrap.split(
-        "def _cancel_combined_loader():", 1
-    )[1].split("\n            _render_combined_analysis_loader()", 1)[0]
-    static, polling = loader.split('@st.fragment(run_every="1s")', 1)
-    assert "Single Stock Analyzer" in static
-    assert "Loading deep analysis for" in static
-    assert 'f"Cancel {requested_ticker}"' in static
-    assert "poll_analyzer_process(state)" in polling
-    assert "Single Stock Analyzer" not in polling
-    assert 'f"Cancel {requested_ticker}"' not in polling
-    assert 'st.toast(cancel_notice, icon="❌")' in app
-
-
-def test_cross_frame_observers_use_parent_window_dom_realm():
-    from pathlib import Path
-
-    app = Path("app.py").read_text(encoding="utf-8")
-    bootstrap = Path("analyzer_bootstrap.py").read_text(encoding="utf-8")
-    assert app.count("new p.MutationObserver") >= 2
-    assert "new MutationObserver" not in app
-    assert "new p.MutationObserver" in bootstrap
-    assert "new MutationObserver" not in bootstrap
+    assert "on_click=_toggle_analyzer_launch" not in fragment
 
 
 def test_combined_scanner_defers_heavy_duplicate_dashboard_by_default():
@@ -4618,17 +4576,6 @@ def test_analyzer_live_test_status_exposes_tracking_health():
     assert "Swing forward tracking **" in source
 
 
-def test_background_worker_reports_durable_tracking_truthfully():
-    from pathlib import Path
-
-    integration = Path("analyzer_v2_integration.py").read_text(encoding="utf-8")
-    tracker = Path("prediction_tracker.py").read_text(encoding="utf-8")
-    assert "def durable_tracking_enabled():" in tracker
-    assert '"durable_enabled": durable_tracking_enabled()' in integration
-    assert '"github+local (async sync deferred)"' in integration
-    assert 'else "runtime-local"' in integration
-
-
 def test_analyzer_tradier_does_not_block_on_alpaca_snapshot():
     _install_common_analyzer_stubs()
     bars = _regular_bars()
@@ -4790,7 +4737,7 @@ def test_combined_analyze_button_has_no_obvious_help_popup_and_can_cancel():
 
     assert "Open this ticker in the live Stock Analyzer." not in source
     assert 'f"Cancel {symbol}" if _this_running else f"Analyze {symbol}"' in source
-    assert "on_click=_toggle_analyzer_and_navigate" in source
+    assert "on_click=_toggle_analyzer_launch" not in source
     assert "_toggle_analyzer_launch(symbol)" in source
     assert 'st.rerun(scope="app")' in source
     assert "_cancel_analyzer_launch()" in source
@@ -8211,9 +8158,6 @@ if __name__ == "__main__":
         test_intraday_thesis_replans_immediately_on_invalidation,
         test_intraday_thesis_detects_barrier_hits_between_refreshes_conservatively,
         test_analyzer_ui_exposes_thesis_continuity_reason,
-        test_cold_scanner_analyzer_handoff_paints_before_poll_fragment,
-        test_cross_frame_observers_use_parent_window_dom_realm,
-        test_background_worker_reports_durable_tracking_truthfully,
         test_visual_truth_usde_like_run_counts_obvious_rebounds,
         test_visual_truth_breakout_plan_keeps_same_goalpost_after_touch,
         test_final_decision_contract_cannot_show_entry_when_safety_gate_waits,

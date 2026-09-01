@@ -41,11 +41,6 @@ REMOTE_SYNC_SECONDS = max(
 _REMOTE_STATE = {"loaded": False, "last_sync": 0.0, "last_error": None, "last_path": None}
 
 
-def durable_tracking_enabled():
-    """Return whether prediction records can survive this process."""
-    return bool(GITHUB_TOKEN)
-
-
 def _num(value):
     try:
         return float(value)
