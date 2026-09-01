@@ -36,7 +36,7 @@ def _gate(current, required):
 
 
 def scanner_live_evidence():
-    rows = scanner_ml.load_training_observations()
+    rows, training_source = scanner_ml.load_training_observations()
     replay_rows = [r for r in rows if r.get("observation_source") == "historical_replay"]
     live_rows = [r for r in rows if r.get("observation_source") != "historical_replay"]
     replay_days = sorted({
@@ -61,6 +61,7 @@ def scanner_live_evidence():
         "negatives": _gate(negatives, scanner_ml.MIN_LIVE_CONFIRMATION_CLASS_COUNT),
     }
     return {
+        "training_source": training_source,
         "replay_end_day": replay_end,
         "historical_replay_samples": len(replay_rows),
         "live_samples": len(live_rows),
