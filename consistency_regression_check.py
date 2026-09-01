@@ -176,6 +176,7 @@ def test_analyzer_calibration_version_gate():
         "timestamp": "2026-08-27T14:00:00+00:00",
         "feature_version": pt.ANALYZER_FEATURE_VERSION,
         "decision_score_version": pt.DECISION_SCORE_VERSION,
+        "live_data_integrity_ok": True,
         "potential_score": 75,
         "entry_readiness": 65,
         "outcomes": {"return_60m_pct": 3.0},
@@ -3043,6 +3044,8 @@ def test_prediction_tracker_logs_exact_final_plan_and_contract():
             "symbol": "TEST",
             "market_session": "regular",
             "price": 9.05,
+            "trade_age_seconds": 15.0,
+            "quote_age_seconds": 18.0,
             "trade_plan": {
                 "status": "WAIT",
                 "action": "WAIT — LIVE DATA INTEGRITY CHECK",
@@ -3067,6 +3070,11 @@ def test_prediction_tracker_logs_exact_final_plan_and_contract():
             },
             "decision_v2": {
                 "version": pt.DECISION_SCORE_VERSION,
+                "live_data_integrity": {
+                    "ok": False,
+                    "consolidated": True,
+                    "reasons": ["latest quote is stale"],
+                },
                 "decision_contract": {
                     "version": "trade-plan-contract-v1",
                     "ok": True,
@@ -3094,6 +3102,11 @@ def test_prediction_tracker_logs_exact_final_plan_and_contract():
         assert row.get("entry_high") == 9.1, row
         assert row.get("stop") == 8.7, row
         assert row.get("target1") == 9.8, row
+        assert row.get("live_data_integrity_ok") is False, row
+        assert row.get("live_data_consolidated") is True, row
+        assert row.get("live_data_integrity_reasons") == ["latest quote is stale"], row
+        assert row.get("trade_age_seconds") == 15.0, row
+        assert row.get("quote_age_seconds") == 18.0, row
         assert row.get("decision_contract_version") == "trade-plan-contract-v1", row
         assert row.get("decision_contract_ok") is True, row
         assert row.get("decision_contract_status") == "WAIT", row
@@ -4055,6 +4068,7 @@ def test_live_swing_research_calibration_dedupes_ticker_day():
     rows = [
         {
             "symbol": "TEST",
+            "live_data_integrity_ok": True,
             "timestamp": "2026-08-24T14:00:00+00:00",
             "swing_research_flag_version": srf.FLAG_VERSION,
             "swing_research_flag_ids": ["reversal_ignition"],
@@ -4068,6 +4082,7 @@ def test_live_swing_research_calibration_dedupes_ticker_day():
         },
         {
             "symbol": "TEST",
+            "live_data_integrity_ok": True,
             "timestamp": "2026-08-24T14:05:00+00:00",
             "swing_research_flag_version": srf.FLAG_VERSION,
             "swing_research_flag_ids": ["reversal_ignition"],
@@ -4081,6 +4096,7 @@ def test_live_swing_research_calibration_dedupes_ticker_day():
         },
         {
             "symbol": "NEXT",
+            "live_data_integrity_ok": True,
             "timestamp": "2026-08-24T15:00:00+00:00",
             "swing_research_flag_version": srf.FLAG_VERSION,
             "swing_research_flag_ids": ["reversal_ignition"],
@@ -4249,6 +4265,7 @@ def test_swing_research_calibration_excludes_wrong_context():
     rows = [
         {
             "symbol": "GOOD",
+            "live_data_integrity_ok": True,
             "timestamp": "2026-08-28T15:00:00+00:00",
             "swing_research_flag_version": srf.FLAG_VERSION,
             "swing_research_flag_ids": ["strong_momentum_day"],
@@ -4258,6 +4275,7 @@ def test_swing_research_calibration_excludes_wrong_context():
         },
         {
             "symbol": "AFTER",
+            "live_data_integrity_ok": True,
             "timestamp": "2026-08-28T21:00:00+00:00",
             "swing_research_flag_version": srf.FLAG_VERSION,
             "swing_research_flag_ids": ["strong_momentum_day"],
@@ -4267,6 +4285,7 @@ def test_swing_research_calibration_excludes_wrong_context():
         },
         {
             "symbol": "THIN",
+            "live_data_integrity_ok": True,
             "timestamp": "2026-08-28T15:05:00+00:00",
             "swing_research_flag_version": srf.FLAG_VERSION,
             "swing_research_flag_ids": ["strong_momentum_day"],
@@ -4493,26 +4512,31 @@ def test_intraday_calibration_excludes_offhours_and_weekends():
     rows = [
         {
             "symbol": "TEST",
+            "live_data_integrity_ok": True,
             "timestamp": "2026-08-28T13:15:00+00:00",  # 9:15 AM ET
             "outcomes": {"return_60m_pct": 1.0},
         },
         {
             "symbol": "TEST",
+            "live_data_integrity_ok": True,
             "timestamp": "2026-08-28T13:35:00+00:00",  # 9:35 AM ET
             "outcomes": {"return_60m_pct": 2.0},
         },
         {
             "symbol": "TEST",
+            "live_data_integrity_ok": True,
             "timestamp": "2026-08-28T13:50:00+00:00",  # same ET hour
             "outcomes": {"return_60m_pct": 3.0},
         },
         {
             "symbol": "TEST",
+            "live_data_integrity_ok": True,
             "timestamp": "2026-08-28T14:05:00+00:00",  # 10:05 AM ET
             "outcomes": {"return_60m_pct": 4.0},
         },
         {
             "symbol": "WEEKEND",
+            "live_data_integrity_ok": True,
             "timestamp": "2026-08-29T15:00:00+00:00",
             "outcomes": {"return_60m_pct": 9.0},
         },
@@ -4522,12 +4546,58 @@ def test_intraday_calibration_excludes_offhours_and_weekends():
     assert [row["outcomes"]["return_60m_pct"] for row in selected] == [2.0, 4.0], selected
 
 
+def test_analyzer_calibration_excludes_untrusted_live_data():
+    import prediction_tracker as pt
+    import score_analyzer_outcomes as sao
+
+    rows = [
+        {
+            "symbol": "TEST",
+            "timestamp": "2026-08-28T13:35:00+00:00",
+            "live_data_integrity_ok": True,
+            "outcomes": {"return_60m_pct": 1.0},
+        },
+        {
+            "symbol": "TEST",
+            "timestamp": "2026-08-28T13:45:00+00:00",
+            "live_data_integrity_ok": False,
+            "outcomes": {"return_60m_pct": 99.0},
+        },
+        {
+            "symbol": "TEST",
+            "timestamp": "2026-08-28T14:05:00+00:00",
+            # Legacy/malformed row: missing integrity metadata must fail closed.
+            "outcomes": {"return_60m_pct": 88.0},
+        },
+        {
+            "symbol": "TEST",
+            "timestamp": "2026-08-28T14:15:00+00:00",
+            "live_data_integrity_ok": True,
+            "outcomes": {"return_60m_pct": 2.0},
+        },
+    ]
+
+    for module in (pt, sao):
+        selected = module._independent_calibration_rows(rows)
+        assert [row["outcomes"]["return_60m_pct"] for row in selected] == [1.0, 2.0], (
+            module.__name__,
+            selected,
+        )
+        daily = module._timeframe_daily_calibration_rows(rows)
+        assert len(daily) == 1, (module.__name__, daily)
+        assert daily[0]["outcomes"]["return_60m_pct"] == 2.0, (
+            module.__name__,
+            daily,
+        )
+
+
 def test_timeframe_calibration_uses_one_latest_regular_row_per_ticker_day():
     import score_analyzer_outcomes as sao
 
     rows = [
         {
             "symbol": "TEST",
+            "live_data_integrity_ok": True,
             "timestamp": "2026-08-28T14:00:00+00:00",  # 10 AM ET
             "timeframe_score_version": sao.TIMEFRAME_SCORE_VERSION,
             "timeframe_swing_score": 60.0,
@@ -4535,6 +4605,7 @@ def test_timeframe_calibration_uses_one_latest_regular_row_per_ticker_day():
         },
         {
             "symbol": "TEST",
+            "live_data_integrity_ok": True,
             "timestamp": "2026-08-28T18:00:00+00:00",  # 2 PM ET
             "timeframe_score_version": sao.TIMEFRAME_SCORE_VERSION,
             "timeframe_swing_score": 80.0,
@@ -4542,6 +4613,7 @@ def test_timeframe_calibration_uses_one_latest_regular_row_per_ticker_day():
         },
         {
             "symbol": "TEST",
+            "live_data_integrity_ok": True,
             "timestamp": "2026-08-28T21:00:00+00:00",  # 5 PM ET
             "timeframe_score_version": sao.TIMEFRAME_SCORE_VERSION,
             "timeframe_swing_score": 95.0,
@@ -4549,6 +4621,7 @@ def test_timeframe_calibration_uses_one_latest_regular_row_per_ticker_day():
         },
         {
             "symbol": "WEEKEND",
+            "live_data_integrity_ok": True,
             "timestamp": "2026-08-29T15:00:00+00:00",
             "timeframe_score_version": sao.TIMEFRAME_SCORE_VERSION,
             "timeframe_swing_score": 99.0,
@@ -4571,6 +4644,7 @@ def test_prediction_tracker_mirrors_daily_timeframe_sampling():
     rows = [
         {
             "symbol": "TEST",
+            "live_data_integrity_ok": True,
             "timestamp": "2026-08-28T14:00:00+00:00",
             "timeframe_score_version": pt.TIMEFRAME_SCORE_VERSION,
             "timeframe_swing_score": 61.0,
@@ -4578,6 +4652,7 @@ def test_prediction_tracker_mirrors_daily_timeframe_sampling():
         },
         {
             "symbol": "TEST",
+            "live_data_integrity_ok": True,
             "timestamp": "2026-08-28T19:00:00+00:00",
             "timeframe_score_version": pt.TIMEFRAME_SCORE_VERSION,
             "timeframe_swing_score": 79.0,
@@ -4585,6 +4660,7 @@ def test_prediction_tracker_mirrors_daily_timeframe_sampling():
         },
         {
             "symbol": "TEST",
+            "live_data_integrity_ok": True,
             "timestamp": "2026-08-28T20:30:00+00:00",
             "timeframe_score_version": pt.TIMEFRAME_SCORE_VERSION,
             "timeframe_swing_score": 99.0,
@@ -4604,7 +4680,7 @@ def test_old_calibration_schema_is_rejected():
     assert 'int(durable.get("schema_version") or 0) < CALIBRATION_SCHEMA_VERSION' in source
     outcome_source = Path("score_analyzer_outcomes.py").read_text(encoding="utf-8")
     assert '"schema_version": CALIBRATION_SCHEMA_VERSION' in outcome_source
-    assert versions.CALIBRATION_SCHEMA_VERSION >= 8
+    assert versions.CALIBRATION_SCHEMA_VERSION >= 9
 
 
 
@@ -7304,6 +7380,7 @@ if __name__ == "__main__":
         test_analyzer_closed_preview_uses_latest_regular_session,
         test_analyzer_does_not_fake_extended_hours_volume_pace,
         test_intraday_calibration_excludes_offhours_and_weekends,
+        test_analyzer_calibration_excludes_untrusted_live_data,
         test_timeframe_calibration_uses_one_latest_regular_row_per_ticker_day,
         test_prediction_tracker_mirrors_daily_timeframe_sampling,
         test_old_calibration_schema_is_rejected,

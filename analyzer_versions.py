@@ -10,4 +10,4 @@ comparable.
 ANALYZER_FEATURE_VERSION = "analyzer-features-v7-integrity-contract"
 DECISION_SCORE_VERSION = "decision-v2.8-integrity-gated"
 TIMEFRAME_SCORE_VERSION = "timeframe-fit-v1"
-CALIBRATION_SCHEMA_VERSION = 8
+CALIBRATION_SCHEMA_VERSION = 9

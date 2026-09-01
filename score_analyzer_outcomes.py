@@ -540,17 +540,23 @@ def _row_market_session(row):
     return "closed"
 
 
+def _calibration_integrity_ok(row):
+    """Only trusted consolidated live snapshots may teach score calibration."""
+    return (row or {}).get("live_data_integrity_ok") is True
+
+
 def _independent_calibration_rows(rows):
-    """Keep one regular-session observation per ticker per ET clock hour.
+    """Keep one trusted regular-session observation per ticker per ET clock hour.
 
     Raw five-minute rows remain durable for lifecycle/path analysis. Intraday
-    calibration excludes pre/post-market, overnight and weekend observations,
-    and keys by New York time so UTC midnight cannot split one trading session.
+    calibration excludes untrusted market-data snapshots, pre/post-market,
+    overnight and weekend observations, and keys by New York time so UTC
+    midnight cannot split one trading session.
     """
     chosen = {}
     ordered = sorted(rows, key=lambda row: str(row.get("timestamp") or ""))
     for row in ordered:
-        if _row_market_session(row) != "regular":
+        if _row_market_session(row) != "regular" or not _calibration_integrity_ok(row):
             continue
         symbol = str(row.get("symbol") or "").upper().strip()
         dt = _parse_dt(row.get("timestamp"))
@@ -564,7 +570,7 @@ def _independent_calibration_rows(rows):
 
 
 def _timeframe_daily_calibration_rows(rows):
-    """Keep the latest regular-session observation per ticker per ET day.
+    """Keep the latest trusted regular-session observation per ticker per ET day.
 
     Swing and longer-term outcomes share the same future path for every
     same-day refresh. Counting hourly copies would inflate n. The latest
@@ -574,7 +580,7 @@ def _timeframe_daily_calibration_rows(rows):
     chosen = {}
     ordered = sorted(rows, key=lambda row: str(row.get("timestamp") or ""))
     for row in ordered:
-        if _row_market_session(row) != "regular":
+        if _row_market_session(row) != "regular" or not _calibration_integrity_ok(row):
             continue
         symbol = str(row.get("symbol") or "").upper().strip()
         dt = _parse_dt(row.get("timestamp"))
@@ -710,6 +716,10 @@ def _swing_research_flag_calibration(rows):
     ordered = sorted(rows, key=lambda row: str(row.get("timestamp") or ""))
     for row in ordered:
         if row.get("swing_research_flag_version") != SWING_RESEARCH_FLAG_VERSION:
+            continue
+        if not _calibration_integrity_ok(row):
+            if row.get("swing_research_flag_ids"):
+                excluded_context += 1
             continue
         flag_ids = row.get("swing_research_flag_ids") or []
         if (
@@ -974,6 +984,11 @@ def _write_calibration():
     legacy_decision_rows_excluded = len(feature_rows) - len(rows)
     calibration_rows = _independent_calibration_rows(rows)
     timeframe_daily_rows = _timeframe_daily_calibration_rows(rows)
+    untrusted_integrity_rows_excluded = sum(
+        1 for row in rows
+        if _row_market_session(row) == "regular"
+        and not _calibration_integrity_ok(row)
+    )
     resolved = [
         row for row in calibration_rows
         if _num((row.get("outcomes") or {}).get("return_60m_pct")) is not None
@@ -1019,7 +1034,10 @@ def _write_calibration():
         "legacy_prediction_rows_excluded": legacy_rows_excluded,
         "legacy_decision_rows_excluded": legacy_decision_rows_excluded,
         "calibration_rows": len(calibration_rows),
-        "calibration_sampling": "regular-session one observation per ticker per ET hour",
+        "untrusted_integrity_rows_excluded": untrusted_integrity_rows_excluded,
+        "calibration_sampling": (
+            "trusted consolidated regular-session one observation per ticker per ET hour"
+        ),
         "timeframe_calibration_sampling": (
             "Intraday: regular-session ticker-hour; Swing/Longer-term: "
             "latest regular-session observation per ticker per ET day"
