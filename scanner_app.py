@@ -1124,6 +1124,33 @@ with status_context:
 
 @st.fragment(run_every=10)
 def render_scanner_results():
+    if combined_monitor_active:
+        show_details = st.toggle(
+            "Show detailed scanner data",
+            value=False,
+            key="scanner_show_detailed_data",
+            help=(
+                "The quick ranked candidates above stay live without rendering "
+                "the heavier duplicate cards, tables, metric guide, and diagnostics. "
+                "Turn this on only when you want the deeper Scanner dashboard."
+            ),
+        )
+        if not show_details:
+            payload = load_scan()
+            if payload:
+                scan_et = payload.get("scan_time_et") or "latest saved snapshot"
+                summary = payload.get("summary") or {}
+                count = len(payload.get("records") or payload.get("candidates") or [])
+                st.caption(
+                    f"Quick mode · {count} saved candidates · snapshot {scan_et}. "
+                    "Scores and rankings are unchanged; detailed tables are simply not rendered."
+                )
+            else:
+                st.caption(
+                    "Quick mode · no saved scanner snapshot yet. Run a fresh scan to populate candidates."
+                )
+            return
+
     payload = load_scan()
     offhours_payload = load_offhours_timeframe_scan()
     current_phase = market_session_phase(datetime.now(ZoneInfo("America/New_York")))
