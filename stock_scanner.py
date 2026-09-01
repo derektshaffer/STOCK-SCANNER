@@ -3215,10 +3215,17 @@ def main():
         if row.get("symbol")
     ]
     alpaca_snapshots = {}
-    needs_alpaca_snapshots = (
-        not FORCE_TRADIER_DISCOVERY
+    # Tradier is the preferred live quote/volume source, but extended-hours
+    # quote payloads can legitimately omit daily high/low/previous-close
+    # context. Without a fallback, analyze_snapshot() rejects every otherwise
+    # valid pre/post-market symbol before live enrichment begins. When Alpaca
+    # credentials are available, load one cheap batched snapshot to provide
+    # that daily context while Tradier still owns the live price/volume/spread.
+    needs_alpaca_snapshots = bool(
+        ALPACA_CONFIGURED
         and (
             not USE_TRADIER
+            or phase in {"premarket", "afterhours"}
             or phase == "regular"
             or len(tradier_quotes) < len(quote_symbols)
         )
