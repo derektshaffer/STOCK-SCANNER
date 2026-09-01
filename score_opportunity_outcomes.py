@@ -11,7 +11,7 @@ from pathlib import Path
 
 import score_outcomes as so
 
-VERSION = "1.0"
+VERSION = "2.0"
 HORIZONS_MINUTES = (15, 30, 60, 120)
 UPSIDE_THRESHOLDS_PCT = (3, 5, 10, 20)
 FAILURE_STOP_PCT = 3.0
@@ -281,6 +281,26 @@ def opportunity_path_metrics(
     return result
 
 
+def path_success_label(path, threshold_pct=3):
+    """Shadow label: upside threshold reached before the failure stop.
+
+    Only a complete horizon is labelable. Same-bar target/stop cases are already
+    handled conservatively by opportunity_path_metrics, where the stop wins the
+    ordering tie.
+    """
+    if not isinstance(path, dict) or not path.get("horizon_complete"):
+        return None
+    if int(path.get("bars_seen") or 0) <= 0:
+        return None
+    key = str(int(threshold_pct))
+    before_stop = path.get(f"up_{key}_before_stop")
+    if before_stop is True:
+        return 1
+    if before_stop is False or path.get(f"up_{key}_hit") is False:
+        return 0
+    return None
+
+
 def build_research_observations(scans, target_date, bars_index):
     session_end = datetime.combine(target_date, time(20, 0), tzinfo=so.ET)
     regular_close = datetime.combine(target_date, time(16, 0), tzinfo=so.ET)
@@ -411,6 +431,24 @@ def build_research_observations(scans, target_date, bars_index):
                         row[f"research_up_{key}_{minutes}m_before_stop"] = path.get(
                             f"up_{key}_before_stop"
                         )
+                    if minutes == 60:
+                        endpoint_return = row.get("research_return_60m_pct")
+                        endpoint_label = (
+                            int(float(endpoint_return) >= 3.0)
+                            if endpoint_return is not None
+                            else None
+                        )
+                        path_label = path_success_label(path, threshold_pct=3)
+                        row["research_endpoint_success_60m"] = endpoint_label
+                        row["research_path_success_60m"] = path_label
+                        row["research_path_target_description"] = (
+                            ">= +3% within 60m before -3% failure stop"
+                        )
+                        row["research_endpoint_path_disagreement_60m"] = (
+                            endpoint_label != path_label
+                            if endpoint_label is not None and path_label is not None
+                            else None
+                        )
 
             # Preserve the complete candidate snapshot for later hypothesis
             # research without allowing this shadow dataset into production ML.
@@ -437,6 +475,18 @@ def render_markdown(target_date, scans, rows, outcome_source):
             and row["research_return_60m_pct"] < 3.0
         )
     ]
+    path_labeled = [
+        row for row in rows
+        if row.get("research_path_success_60m") in {0, 1}
+    ]
+    path_wins = [
+        row for row in path_labeled
+        if row.get("research_path_success_60m") == 1
+    ]
+    disagreements = [
+        row for row in path_labeled
+        if row.get("research_endpoint_path_disagreement_60m") is True
+    ]
 
     lines = [
         f"# Shadow Opportunity Outcomes — {target_date.isoformat()}",
@@ -451,6 +501,9 @@ def render_markdown(target_date, scans, rows, outcome_source):
         f"- After-hours observations: **{phase_counts.get('afterhours', 0)}**",
         f"- >= +10% MFE within 60m: **{len(explosive)}**",
         f"- MFE >= +5% but 60m endpoint < +3%: **{len(endpoint_misses)}**",
+        f"- Path-labeled 60m observations: **{len(path_labeled)}**",
+        f"- +3% before -3% path successes: **{len(path_wins)}**",
+        f"- Endpoint/path label disagreements: **{len(disagreements)}**",
         "",
         "## Largest 60-minute favorable excursions",
         "",
@@ -487,8 +540,9 @@ def render_markdown(target_date, scans, rows, outcome_source):
 def write_reports(target_date, scans, rows, outcome_source):
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
     payload = {
-        "schema_version": 1,
+        "schema_version": 2,
         "version": VERSION,
+        "path_target": ">= +3% within 60m before -3% failure stop",
         "trading_date": target_date.isoformat(),
         "generated_at_utc": datetime.now(so.timezone.utc).isoformat(),
         "production_influence": False,

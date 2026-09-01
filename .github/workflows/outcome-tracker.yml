@@ -10,6 +10,10 @@ on:
     branches: [main]
     paths:
       - "score_analyzer_outcomes.py"
+      - "score_opportunity_outcomes.py"
+      - "scanner_ml_ranker.py"
+      - "scanner_live_journal.py"
+      - "validation_status.py"
       - "offhours_outcome_tracker.py"
       - "analyzer_versions.py"
       - ".github/workflows/outcome-tracker.yml"

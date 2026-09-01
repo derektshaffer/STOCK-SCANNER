@@ -47,21 +47,36 @@ def audit_source_contracts(root: Path = ROOT) -> list[dict[str, Any]]:
         ">= +3% at 60 minutes" in scanner_ml
         or re.search(r"return_60\s*>=\s*3(?:\.0)?", scanner_ml) is not None
     )
+    path_shadow_connected = (
+        "research_path_success_60m" in opportunity_scorer
+        and "_extract_path_research_observations" in scanner_ml
+        and "PATH_RESEARCH_TARGET_DESCRIPTION" in scanner_ml
+    )
     if narrow_target:
         findings.append(
             {
                 "id": "single_endpoint_primary_target",
-                "severity": "high",
-                "status": "open",
+                "severity": "medium" if path_shadow_connected else "high",
+                "status": "mitigated_shadow" if path_shadow_connected else "open",
                 "category": "objective",
-                "evidence": "Scanner ML primary label is a >= +3% 60-minute endpoint target.",
+                "evidence": (
+                    "Scanner ML production label remains a >= +3% 60-minute endpoint "
+                    + (
+                        "target, with an explicit path-aware shadow target connected "
+                        "for independent validation."
+                        if path_shadow_connected
+                        else "target."
+                    )
+                ),
                 "risk": (
-                    "A large interim winner can be labeled negative if it gives back "
-                    "enough of the move by the 60-minute endpoint."
+                    "A large interim winner can be labeled negative by the production "
+                    "endpoint target if it gives back enough of the move."
                 ),
                 "recommended_action": (
-                    "Keep the endpoint target for continuity, but add shadow path/MFE "
-                    "targets and validate a multi-objective ranking layer."
+                    "Accumulate independent path-target evidence and compare models "
+                    "before any production promotion."
+                    if path_shadow_connected
+                    else "Keep the endpoint target for continuity, but add shadow path/MFE targets and validate a multi-objective ranking layer."
                 ),
             }
         )
@@ -118,32 +133,69 @@ def audit_source_contracts(root: Path = ROOT) -> list[dict[str, Any]]:
         findings.append(
             {
                 "id": "path_information_not_primary_target",
-                "severity": "medium",
-                "status": "open",
+                "severity": "info" if path_shadow_connected else "medium",
+                "status": "resolved_shadow" if path_shadow_connected else "open",
                 "category": "objective",
-                "evidence": "Outcome scoring records MFE/MAE, while Scanner ML is endpoint-label driven.",
-                "risk": "Useful path information is collected but can be underused by the ranking model.",
-                "recommended_action": "Add MFE/MAE and threshold-before-failure shadow targets.",
+                "evidence": (
+                    "Outcome scoring records MFE/MAE and the production model remains "
+                    "endpoint-label driven"
+                    + (
+                        ", while a separate +3%-before--3% path target is now connected "
+                        "to the research validation loader."
+                        if path_shadow_connected
+                        else "."
+                    )
+                ),
+                "risk": (
+                    "No production behavior change; path information must still prove "
+                    "incremental predictive value before promotion."
+                    if path_shadow_connected
+                    else "Useful path information is collected but can be underused by the ranking model."
+                ),
+                "recommended_action": (
+                    "Validate the shadow path target against the endpoint baseline."
+                    if path_shadow_connected
+                    else "Add MFE/MAE and threshold-before-failure shadow targets."
+                ),
             }
         )
 
     top_match = re.search(r"SCAN_LOG_TOP\s*=\s*(\d+)", scanner)
     if top_match:
         top_n = int(top_match.group(1))
+        control_match = re.search(
+            r"CONTROL_RANKS\s*=\s*\(([^)]*)\)",
+            live_journal,
+        )
+        control_ranks = [
+            int(value)
+            for value in re.findall(r"\d+", control_match.group(1) if control_match else "")
+        ]
+        deep_shadow_control = any(rank > top_n for rank in control_ranks)
         findings.append(
             {
                 "id": "top_n_observation_censoring",
-                "severity": "medium",
-                "status": "watch",
+                "severity": "info" if deep_shadow_control else "medium",
+                "status": "resolved_shadow" if deep_shadow_control else "watch",
                 "category": "coverage",
-                "evidence": f"Only the top {top_n} Scanner rows are written to each durable scan snapshot.",
+                "evidence": (
+                    f"Durable scan artifacts stop at top {top_n}; "
+                    + (
+                        f"the bounded live journal also samples controls at ranks {control_ranks}, including below the cutoff."
+                        if deep_shadow_control
+                        else "no below-cutoff shadow control was detected."
+                    )
+                ),
                 "risk": (
-                    "The system has less evidence about near-misses and false negatives "
-                    "that ranked below the durable logging cutoff."
+                    "The primary scan artifact remains top-N, but deeper missed-winner "
+                    "evidence is available in the shadow journal."
+                    if deep_shadow_control
+                    else "The system has less evidence about near-misses and false negatives that ranked below the durable logging cutoff."
                 ),
                 "recommended_action": (
-                    "Retain a bounded shadow sample below the cutoff so the opportunity "
-                    "audit can study explosive winners the production ranking missed."
+                    "Use the deep shadow controls in opportunity/path validation."
+                    if deep_shadow_control
+                    else "Retain a bounded shadow sample below the cutoff so the opportunity audit can study explosive winners the production ranking missed."
                 ),
             }
         )

@@ -85,6 +85,91 @@ def scanner_live_evidence():
     }
 
 
+def scanner_path_target_evidence():
+    rows, source = scanner_ml.load_path_research_observations()
+    replay_rows = [
+        r for r in rows
+        if r.get("observation_source") == "historical_replay"
+    ]
+    live_rows = [
+        r for r in rows
+        if r.get("observation_source") != "historical_replay"
+    ]
+    replay_independent = scanner_ml.independent_confirmation_rows(replay_rows)
+    replay_days = sorted({
+        r.get("trading_date") for r in replay_independent if r.get("trading_date")
+    })
+    replay_end = replay_days[-1] if replay_days else None
+
+    live_after = [
+        r for r in live_rows
+        if not replay_end
+        or (r.get("trading_date") and r.get("trading_date") > replay_end)
+    ]
+    independent = scanner_ml.independent_confirmation_rows(live_after)
+    days = sorted({r.get("trading_date") for r in independent if r.get("trading_date")})
+    symbols = sorted({r.get("symbol") for r in independent if r.get("symbol")})
+    positives = sum(int(r.get("label") or 0) for r in independent)
+    negatives = len(independent) - positives
+    comparable = [
+        r for r in independent
+        if r.get("endpoint_label") in (0, 1)
+    ]
+    disagreements = sum(
+        bool(r.get("endpoint_path_disagreement")) for r in comparable
+    )
+    replay_comparable = [
+        r for r in replay_independent
+        if r.get("endpoint_label") in (0, 1)
+    ]
+    replay_disagreements = sum(
+        bool(r.get("endpoint_path_disagreement"))
+        for r in replay_comparable
+    )
+    gates = {
+        "samples": _gate(len(independent), scanner_ml.MIN_LIVE_CONFIRMATION_SAMPLES),
+        "days": _gate(len(days), scanner_ml.MIN_LIVE_CONFIRMATION_DAYS),
+        "symbols": _gate(len(symbols), scanner_ml.MIN_LIVE_CONFIRMATION_SYMBOLS),
+        "positives": _gate(positives, scanner_ml.MIN_LIVE_CONFIRMATION_CLASS_COUNT),
+        "negatives": _gate(negatives, scanner_ml.MIN_LIVE_CONFIRMATION_CLASS_COUNT),
+    }
+    return {
+        "target_description": scanner_ml.PATH_RESEARCH_TARGET_DESCRIPTION,
+        "production_influence": False,
+        "source": source,
+        "historical_replay_samples": len(replay_rows),
+        "historical_replay_independent_samples": len(replay_independent),
+        "historical_replay_days": len(replay_days),
+        "historical_replay_endpoint_comparable": len(replay_comparable),
+        "historical_replay_endpoint_path_disagreements": replay_disagreements,
+        "historical_replay_disagreement_rate_pct": (
+            round(replay_disagreements / len(replay_comparable) * 100.0, 1)
+            if replay_comparable else None
+        ),
+        "replay_end_day": replay_end,
+        "live_raw_samples": len(live_rows),
+        "live_confirmation_raw_samples": len(live_after),
+        "independent_samples": len(independent),
+        "days": len(days),
+        "symbols": len(symbols),
+        "positives": positives,
+        "negatives": negatives,
+        "endpoint_comparable_samples": len(comparable),
+        "endpoint_path_disagreements": disagreements,
+        "endpoint_path_disagreement_rate_pct": (
+            round(disagreements / len(comparable) * 100.0, 1)
+            if comparable else None
+        ),
+        "gates": gates,
+        "comparison_ready": all(g["passed"] for g in gates.values()),
+        "note": (
+            "Historical replay can bootstrap research immediately, but promotion "
+            "still requires independent live path evidence strictly after the "
+            "replay period plus a later model-performance comparison."
+        ),
+    }
+
+
 def analyzer_forward_evidence():
     data = _load(ANALYZER_CALIBRATION)
     schema = int(data.get("schema_version") or 0)
@@ -214,6 +299,7 @@ def historical_listing_coverage():
 def build_status():
     sections = {
         "scanner_ml_live_confirmation": scanner_live_evidence(),
+        "scanner_path_target_shadow": scanner_path_target_evidence(),
         "analyzer_calibration_v9": analyzer_forward_evidence(),
         "offhours_timeframe_forward": offhours_forward_evidence(),
         "swing_timeframe_ml": timeframe_ml_evidence(),
@@ -242,6 +328,7 @@ def _progress_line(label, gate):
 def render_markdown(payload):
     s = payload["sections"]
     scanner = s["scanner_ml_live_confirmation"]
+    path_target = s["scanner_path_target_shadow"]
     analyzer = s["analyzer_calibration_v9"]
     off = s["offhours_timeframe_forward"]
     tf = s["swing_timeframe_ml"]
@@ -274,6 +361,27 @@ def render_markdown(payload):
         _progress_line("Negative class", scanner["gates"]["negatives"]),
         f"- **Count gate ready:** {'YES' if scanner['evidence_gate_ready'] else 'NO'}",
         f"- Replay end day: {scanner.get('replay_end_day') or '—'}",
+        "",
+        "## Scanner path target — shadow validation",
+        f"- Target: {path_target['target_description']}",
+        f"- Historical replay: {path_target['historical_replay_independent_samples']} independent rows "
+        f"across {path_target['historical_replay_days']} days",
+        f"- Historical endpoint/path disagreement: "
+        f"{path_target['historical_replay_endpoint_path_disagreements']}/"
+        f"{path_target['historical_replay_endpoint_comparable']} "
+        f"({path_target.get('historical_replay_disagreement_rate_pct') if path_target.get('historical_replay_disagreement_rate_pct') is not None else '—'}%)",
+        f"- Replay end day: {path_target.get('replay_end_day') or '—'}",
+        _progress_line("Independent live samples", path_target["gates"]["samples"]),
+        _progress_line("Trading days", path_target["gates"]["days"]),
+        _progress_line("Symbols", path_target["gates"]["symbols"]),
+        _progress_line("Positive class", path_target["gates"]["positives"]),
+        _progress_line("Negative class", path_target["gates"]["negatives"]),
+        f"- Endpoint/path disagreements: {path_target['endpoint_path_disagreements']}/"
+        f"{path_target['endpoint_comparable_samples']} "
+        f"({path_target.get('endpoint_path_disagreement_rate_pct') if path_target.get('endpoint_path_disagreement_rate_pct') is not None else '—'}%)",
+        f"- **Ready for endpoint-vs-path model comparison:** "
+        f"{'YES' if path_target['comparison_ready'] else 'NO'}",
+        f"- Production influence: **OFF**",
         "",
         "## Analyzer calibration",
         f"- Schema: {analyzer['schema_version']} / required {analyzer['required_schema_version']} "
