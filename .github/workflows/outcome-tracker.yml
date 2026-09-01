@@ -11,6 +11,7 @@ on:
     paths:
       - "score_analyzer_outcomes.py"
       - "offhours_outcome_tracker.py"
+      - "analyzer_versions.py"
       - ".github/workflows/outcome-tracker.yml"
   workflow_dispatch:
     inputs:
