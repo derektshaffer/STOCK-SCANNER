@@ -283,6 +283,18 @@ def history_seed_candidates(
     return ranked[: max(0, int(budget or 0))]
 
 
+def provider_status(api_key=None):
+    api_key = str(api_key or os.environ.get("ALPHA_VANTAGE_API_KEY", "")).strip()
+    return {
+        "schema_version": 1,
+        "provider": "alpha_vantage",
+        "endpoint": "LISTING_STATUS",
+        "api_key_configured": bool(api_key),
+        "status": "ready" if api_key else "missing_key",
+        "coverage_semantics": "exact_historical_date_membership_only",
+    }
+
+
 def backfill(api_key=None, max_dates=None):
     api_key = str(api_key or os.environ.get("ALPHA_VANTAGE_API_KEY", "")).strip()
     targets = target_replay_dates()
@@ -335,6 +347,14 @@ def backfill(api_key=None, max_dates=None):
 
 
 def main():
+    status = provider_status()
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    (OUTPUT_DIR / "provider_status.json").write_text(
+        json.dumps(status, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    print("HISTORICAL_LISTING_PROVIDER=" + json.dumps(status, sort_keys=True))
+
     result = backfill()
     print("HISTORICAL_LISTING_BACKFILL=" + json.dumps(result, sort_keys=True))
     if result.get("status") == "skipped_missing_key":
