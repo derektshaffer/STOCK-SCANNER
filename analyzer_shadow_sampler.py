@@ -37,7 +37,7 @@ def load_latest_scan():
     return path, payload if isinstance(payload, dict) else None
 
 
-def select_shadow_symbols(payload, max_symbols=MAX_SYMBOLS):
+def select_shadow_candidates(payload, max_symbols=MAX_SYMBOLS):
     """Pick deterministic strong/mid/weaker candidates without cherry-picking outcomes."""
     payload = payload or {}
     if str(payload.get("session_phase") or "").lower() != "regular":
@@ -49,7 +49,7 @@ def select_shadow_symbols(payload, max_symbols=MAX_SYMBOLS):
         return []
 
     candidates = [
-        row for row in (payload.get("candidates") or [])
+        dict(row) for row in (payload.get("candidates") or [])
         if str((row or {}).get("symbol") or "").strip()
     ]
     candidates.sort(key=lambda row: int(row.get("rank") or 10_000))
@@ -74,7 +74,7 @@ def select_shadow_symbols(payload, max_symbols=MAX_SYMBOLS):
         symbol = str(row.get("symbol") or "").upper().strip()
         if symbol and symbol not in seen:
             seen.add(symbol)
-            chosen.append(symbol)
+            chosen.append(dict(row))
         if len(chosen) >= max_symbols:
             return chosen
 
@@ -82,13 +82,20 @@ def select_shadow_symbols(payload, max_symbols=MAX_SYMBOLS):
         symbol = str(row.get("symbol") or "").upper().strip()
         if symbol and symbol not in seen:
             seen.add(symbol)
-            chosen.append(symbol)
+            chosen.append(dict(row))
         if len(chosen) >= max_symbols:
             break
     return chosen
 
 
-def run_shadow_sample(symbols):
+def select_shadow_symbols(payload, max_symbols=MAX_SYMBOLS):
+    return [
+        str(row.get("symbol") or "").upper().strip()
+        for row in select_shadow_candidates(payload, max_symbols=max_symbols)
+    ]
+
+
+def run_shadow_sample(candidates, scan_id=None):
     import stock_analyzer as sa
     from historical_integration import install_historical_analysis
     from ml_integration import install_ml_analysis
@@ -103,12 +110,32 @@ def run_shadow_sample(symbols):
     install_v2_analysis(sa)
 
     results = []
-    for symbol in symbols:
+    for candidate in candidates:
+        if isinstance(candidate, dict):
+            row = candidate
+            symbol = str(row.get("symbol") or "").upper().strip()
+        else:
+            row = {"symbol": candidate}
+            symbol = str(candidate or "").upper().strip()
+
+        os.environ["ANALYZER_SOURCE_SCAN_ID"] = str(scan_id or "")
+        os.environ["ANALYZER_SOURCE_SCANNER_RANK"] = str(row.get("rank") or "")
+        os.environ["ANALYZER_SOURCE_SCANNER_SCORE"] = str(row.get("score") or "")
+        os.environ["ANALYZER_SOURCE_OPPORTUNITY_SCORE"] = str(
+            row.get("opportunity_score") or ""
+        )
+        os.environ["ANALYZER_SOURCE_SCANNER_ACTION"] = str(
+            row.get("scanner_action") or ""
+        )
+
         try:
             metrics = sa.analyze(symbol)
             integrity = ((metrics.get("decision_v2") or {}).get("live_data_integrity") or {})
             results.append({
                 "symbol": symbol,
+                "source_scanner_rank": row.get("rank"),
+                "source_scanner_score": row.get("score"),
+                "source_opportunity_score": row.get("opportunity_score"),
                 "ok": True,
                 "live_data_integrity_ok": integrity.get("ok") is True,
                 "integrity_reasons": list(integrity.get("reasons") or []),
@@ -137,7 +164,11 @@ def main():
         print("ANALYZER_SHADOW_SAMPLE=skipped_no_scan")
         return 0
 
-    symbols = select_shadow_symbols(payload)
+    candidates = select_shadow_candidates(payload)
+    symbols = [
+        str(row.get("symbol") or "").upper().strip()
+        for row in candidates
+    ]
     if not symbols:
         print(
             "ANALYZER_SHADOW_SAMPLE=skipped_untrusted_or_nonregular "
@@ -146,7 +177,10 @@ def main():
         return 0
 
     print("ANALYZER_SHADOW_SYMBOLS=" + ",".join(symbols))
-    results, sync = run_shadow_sample(symbols)
+    results, sync = run_shadow_sample(
+        candidates,
+        scan_id=payload.get("scan_id"),
+    )
     print("ANALYZER_SHADOW_RESULTS=" + json.dumps(results, sort_keys=True))
     print("ANALYZER_SHADOW_SYNC=" + json.dumps(sync, sort_keys=True))
 

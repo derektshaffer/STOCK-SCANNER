@@ -328,6 +328,31 @@ def record_prediction(metrics, now=None, defer_remote=False):
             or os.environ.get("ANALYZER_PREDICTION_SOURCE", "").strip()
             or "interactive_analyzer"
         ),
+        "source_scan_id": (
+            str(metrics.get("source_scan_id") or "").strip()
+            or os.environ.get("ANALYZER_SOURCE_SCAN_ID", "").strip()
+            or None
+        ),
+        "source_scanner_rank": _num(
+            metrics.get("source_scanner_rank")
+            if metrics.get("source_scanner_rank") is not None
+            else os.environ.get("ANALYZER_SOURCE_SCANNER_RANK")
+        ),
+        "source_scanner_score": _num(
+            metrics.get("source_scanner_score")
+            if metrics.get("source_scanner_score") is not None
+            else os.environ.get("ANALYZER_SOURCE_SCANNER_SCORE")
+        ),
+        "source_opportunity_score": _num(
+            metrics.get("source_opportunity_score")
+            if metrics.get("source_opportunity_score") is not None
+            else os.environ.get("ANALYZER_SOURCE_OPPORTUNITY_SCORE")
+        ),
+        "source_scanner_action": (
+            str(metrics.get("source_scanner_action") or "").strip()
+            or os.environ.get("ANALYZER_SOURCE_SCANNER_ACTION", "").strip()
+            or None
+        ),
         "feature_version": (
             metrics.get("feature_version")
             or ANALYZER_FEATURE_VERSION
@@ -1328,6 +1353,67 @@ def _mature_bounce_failure_summary(rows):
     }
 
 
+def _prediction_source_summary(rows):
+    grouped = {}
+    for row in rows or []:
+        source = str(row.get("prediction_source") or "legacy_unspecified").strip()
+        g = grouped.setdefault(
+            source,
+            {
+                "calibration_rows": 0,
+                "symbols": set(),
+                "resolved_60m_values": [],
+                "target_stop_resolved": 0,
+                "target_first": 0,
+                "source_scanner_ranks": [],
+            },
+        )
+        g["calibration_rows"] += 1
+        symbol = str(row.get("symbol") or "").upper().strip()
+        if symbol:
+            g["symbols"].add(symbol)
+        value = _num((row.get("outcomes") or {}).get("return_60m_pct"))
+        if value is not None:
+            g["resolved_60m_values"].append(value)
+        touch = (row.get("outcomes") or {}).get("target1_first_touch")
+        if touch in {"target", "stop", "ambiguous"}:
+            g["target_stop_resolved"] += 1
+            g["target_first"] += int(touch == "target")
+        rank = _num(row.get("source_scanner_rank"))
+        if rank is not None:
+            g["source_scanner_ranks"].append(rank)
+
+    out = {}
+    for source, g in sorted(grouped.items()):
+        returns = g["resolved_60m_values"]
+        target_n = int(g["target_stop_resolved"])
+        ranks = g["source_scanner_ranks"]
+        out[source] = {
+            "calibration_rows": int(g["calibration_rows"]),
+            "unique_symbols": len(g["symbols"]),
+            "resolved_60m": len(returns),
+            "higher_60m_rate": (
+                round(sum(value > 0 for value in returns) / len(returns) * 100.0, 1)
+                if returns else None
+            ),
+            "avg_return_60m_pct": (
+                round(sum(returns) / len(returns), 3) if returns else None
+            ),
+            "target_stop_resolved": target_n,
+            "target_before_stop_rate": (
+                round(g["target_first"] / target_n * 100.0, 1)
+                if target_n else None
+            ),
+            "avg_source_scanner_rank": (
+                round(sum(ranks) / len(ranks), 2) if ranks else None
+            ),
+            "source_scanner_rank_min": min(ranks) if ranks else None,
+            "source_scanner_rank_max": max(ranks) if ranks else None,
+            "diagnostic_only": True,
+        }
+    return out
+
+
 def tracker_summary(rows=None, symbol=None, current_metrics=None):
     all_rows = rows if rows is not None else _load()
     current_rows = [
@@ -1434,6 +1520,10 @@ def tracker_summary(rows=None, symbol=None, current_metrics=None):
         "legacy_predictions_excluded": legacy_excluded,
         "legacy_decision_scores_excluded": legacy_decision_excluded,
         "calibration_rows": len(calibration_rows),
+        "calibration_by_prediction_source": (
+            durable.get("calibration_by_prediction_source")
+            or _prediction_source_summary(calibration_rows)
+        ),
         "untrusted_integrity_rows_excluded": untrusted_integrity_rows_excluded,
         "calibration_sampling": (
             "trusted consolidated regular-session one observation per ticker per ET hour"

@@ -138,6 +138,16 @@ This is an infrastructure and evidence-quality improvement, not a retroactive pe
 
 PR #82 passed compilation, provider smoke checks, app-boundary checks, exact-date/CSV/common-stock regressions, learning regressions, and Phase 6 historical-challenge regressions before merge.
 
+### PR #83 — Historical listing provider readiness is explicit
+
+The first production backfill run proved the optional Alpha Vantage key is not currently configured. A durable secret-free provider status now records only `ready` or `missing_key`; the key value is never persisted or displayed. The validation scoreboard can therefore explain why exact historical coverage remains at zero without requiring workflow-log inspection.
+
+### PR #84 — Forward calibration provenance diagnostics
+
+Automated shadow sampling now preserves the source Scanner scan ID, rank, Scanner score, opportunity score, and Scanner action on each Analyzer prediction row. Calibration summaries are split by `prediction_source` so interactive Analyzer evidence and automated shadow evidence can be compared independently. Automated source summaries also report average/min/max Scanner rank. These fields are explicitly diagnostic-only and do not alter score weights, trade plans, ML eligibility, or calibration thresholds.
+
+PR #84 passed compilation, provider smoke checks, app-boundary checks, provenance/source-separation regressions, learning regressions, and Phase 6 historical-challenge regressions before merge.
+
 ## Critical findings and remediation
 
 ### P0-1 — Replay survivorship could support a falsely strong peer-ML validation claim

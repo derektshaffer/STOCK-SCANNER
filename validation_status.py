@@ -96,6 +96,9 @@ def analyzer_forward_evidence():
         "schema_current": schema == versions.CALIBRATION_SCHEMA_VERSION,
         "prediction_rows": int(data.get("prediction_rows") or 0),
         "calibration_rows": int(data.get("calibration_rows") or 0),
+        "calibration_by_prediction_source": (
+            data.get("calibration_by_prediction_source") or {}
+        ),
         "untrusted_integrity_rows_excluded": int(
             data.get("untrusted_integrity_rows_excluded") or 0
         ),
@@ -244,6 +247,19 @@ def render_markdown(payload):
     tf = s["swing_timeframe_ml"]
     universe = s["point_in_time_universe"]
     historical_listing = s["historical_listing_universe"]
+    source_diag = analyzer.get("calibration_by_prediction_source") or {}
+    source_diag_text = ", ".join(
+        (
+            f"{source}: {int(values.get('calibration_rows') or 0)} rows/"
+            f"{int(values.get('resolved_60m') or 0)} resolved"
+            + (
+                f", avg Scanner rank {values.get('avg_source_scanner_rank')}"
+                if values.get("avg_source_scanner_rank") is not None
+                else ""
+            )
+        )
+        for source, values in sorted(source_diag.items())
+    ) or "none yet"
 
     lines = [
         "# Forward Validation Status",
@@ -265,6 +281,7 @@ def render_markdown(payload):
         _progress_line("Resolved 60m rows — early read", analyzer["early_read_gate"]),
         _progress_line("Resolved 60m rows — useful", analyzer["useful_gate"]),
         f"- Untrusted rows excluded: {analyzer['untrusted_integrity_rows_excluded']}",
+        f"- Calibration provenance: {source_diag_text}",
         "",
         "## Swing / Longer-Term forward cohorts",
         _progress_line("Swing 5-day resolved — early read", off["swing_early_read_gate"]),
