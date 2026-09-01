@@ -3033,6 +3033,31 @@ def test_analyzer_visual_ui_uses_plotly_renderer():
 
 
 
+
+def test_scanner_refreshes_results_without_full_page_flash():
+    from pathlib import Path
+
+    app = Path("app.py").read_text(encoding="utf-8")
+    scanner = Path("scanner_app.py").read_text(encoding="utf-8")
+
+    monitor = app.split("def _workspace_scanner_monitor", 1)[1].split(
+        "_workspace_scanner_monitor()", 1
+    )[0]
+    assert 'st.rerun(scope="app")' not in monitor
+    assert 'st.session_state["_scanner_snapshot_refresh_at"] = now_ts' in monitor
+
+    assert "@st.fragment(run_every=10)" in app
+    assert "def _render_compact_scanner_candidates():" in app
+    assert '[data-stale="true"]' in app
+    assert "opacity: 1 !important;" in app
+
+    assert "@st.fragment(run_every=10)" in scanner
+    assert "def render_scanner_results():" in scanner
+    assert "live-countdown" not in scanner
+    assert "Results update in place when the scan finishes." in scanner
+    assert 'st.session_state["_scanner_snapshot_refresh_at"] = time.time()' in scanner
+
+
 def test_analyzer_plotly_figures_render_candlesticks_and_levels():
     import analyzer_visuals as av
 
