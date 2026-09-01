@@ -3090,6 +3090,21 @@ def test_scanner_refreshes_results_without_full_page_flash():
     assert 'st.session_state["_scanner_snapshot_refresh_at"] = time.time()' in scanner
 
 
+def test_combined_analyzer_preserves_scroll_across_background_refresh():
+    from pathlib import Path
+
+    source = Path("analyzer_bootstrap.py").read_text(encoding="utf-8")
+    cleanup = source.split("def _cleanup_combined_browser_helpers", 1)[1].split(
+        "def _install_scroll_keeper", 1
+    )[0]
+    run_tail = source.split("_render_live_analyzer()", 1)[1]
+
+    assert "scroll.savePosition && scroll.savePosition()" in cleanup
+    assert "savePosition" in source.split("p.__ssaScrollKeeper = {", 1)[1]
+    assert "_install_scroll_keeper()" in run_tail
+    assert "if not combined:\n        _install_scroll_keeper()" not in run_tail
+
+
 def test_analyzer_plotly_figures_render_candlesticks_and_levels():
     import analyzer_visuals as av
 
@@ -8007,6 +8022,7 @@ if __name__ == "__main__":
         test_analyzer_white_tables_are_collapsible,
         test_analyzer_page_leads_with_actionable_decision_hierarchy,
         test_analyzer_shared_button_styles_live_in_bootstrap,
+        test_combined_analyzer_preserves_scroll_across_background_refresh,
         test_scanner_aligned_volume_pace_matches_analyzer_baseline,
         test_scanner_action_avoids_chasing_extreme_mover,
         test_scanner_action_analyze_now_requires_aligned_conditions,
