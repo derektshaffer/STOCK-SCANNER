@@ -4853,6 +4853,16 @@ def test_outcome_tracker_runs_after_extended_hours():
     assert "github.event_name != 'push'" in source
 
 
+def test_scanner_cloud_evidence_collector_is_failure_tolerant_and_redundant():
+    from pathlib import Path
+
+    scanner_source = Path("stock_scanner.py").read_text(encoding="utf-8")
+    workflow = Path(".github/workflows/stock-scanner.yml").read_text(encoding="utf-8")
+    assert "json.dumps(rows[:WATCHLIST_SIZE], indent=2, default=str)" in scanner_source
+    assert "- cron: '17 14-20 * * 1-5'" in workflow
+    assert "cancel-in-progress: true" in workflow
+
+
 def test_scanner_table_volume_pace_formatter_matches_column():
     from pathlib import Path
 
@@ -7520,6 +7530,7 @@ if __name__ == "__main__":
         test_old_calibration_schema_is_rejected,
         test_ambiguous_ohlc_bar_is_conservative_in_calibration,
         test_outcome_tracker_runs_after_extended_hours,
+        test_scanner_cloud_evidence_collector_is_failure_tolerant_and_redundant,
         test_scanner_table_volume_pace_formatter_matches_column,
         test_combined_scanner_uses_display_volume_pace_source,
         test_scanner_timeframe_fit_separates_intraday_swing_and_longer_term,
