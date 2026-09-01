@@ -59,19 +59,19 @@ from analyzer_v2_ui import render_v2_decision
 from position_exit import build_position_exit_plan, merge_live_position_metrics
 from live_market_stream import get_live_overlay
 from analyzer_visuals import (
-    impulse_pullback_chart_spec,
-    multi_bounce_chart_spec,
-    stair_step_chart_spec,
-    support_resistance_chart_spec,
-    trade_plan_chart_spec,
+    impulse_pullback_plotly_figure,
+    multi_bounce_plotly_figure,
+    stair_step_plotly_figure,
+    support_resistance_plotly_figure,
+    trade_plan_plotly_figure,
 )
 
 AUTO_REFRESH_SECONDS = max(30, int(os.environ.get("ANALYZER_REFRESH_SECONDS", "60") or 60))
 
 
-def _render_visual_snapshot(label, spec_factory, caption=None, key=None):
-    preview = spec_factory(False) if callable(spec_factory) else spec_factory
-    if not preview:
+def _render_visual_snapshot(label, figure_factory, caption=None, key=None):
+    preview = figure_factory(False) if callable(figure_factory) else figure_factory
+    if preview is None:
         return
     with st.expander(label, expanded=False):
         overlay = st.toggle(
@@ -80,14 +80,26 @@ def _render_visual_snapshot(label, spec_factory, caption=None, key=None):
             key=f"{key or label}_close_line",
             help="Candlesticks are the primary chart. Turn this on to add a subtle close-price line over them.",
         )
-        spec = spec_factory(overlay) if callable(spec_factory) else preview
-        st.vega_lite_chart(spec=spec, use_container_width=True)
-        st.caption(
-            "Chart rendering restored with the stable base renderer. "
-            "Interactive scale controls are temporarily disabled while the blank-chart issue is verified."
-        )
+        fig = figure_factory(overlay) if callable(figure_factory) else preview
+        if fig is not None:
+            st.plotly_chart(
+                fig,
+                width="stretch",
+                config={
+                    "displaylogo": False,
+                    "displayModeBar": False,
+                    "scrollZoom": True,
+                    "doubleClick": "reset",
+                    "responsive": True,
+                },
+                key=f"{key or label}_plotly",
+            )
+            st.caption(
+                "Drag to pan · scroll/trackpad to zoom · double-click to reset."
+            )
         if caption:
             st.caption(caption)
+
 
 def _result_age_seconds(result):
     if not result or not result.get("as_of"):
@@ -1263,7 +1275,7 @@ if not _position_enabled:
 
     _render_visual_snapshot(
         "📈 Trade plan visual · entry · stop · targets",
-        lambda overlay: trade_plan_chart_spec(r, line_overlay=overlay),
+        lambda overlay: trade_plan_plotly_figure(r, line_overlay=overlay),
         "Candlesticks use the same live regular-session bars as the Analyzer. The shaded band is the entry zone; dashed levels are stop, targets and VWAP.",
         key="trade_plan_visual",
     )
@@ -1419,7 +1431,7 @@ if _impulse.get("detected"):
     )
     _render_visual_snapshot(
         "📈 Impulse / pullback visual",
-        lambda overlay: impulse_pullback_chart_spec(r, line_overlay=overlay),
+        lambda overlay: impulse_pullback_plotly_figure(r, line_overlay=overlay),
         "Candlesticks show the actual intraday path, detected impulse low/high, the live pullback entry band, and reclaim confirmation when present.",
         key="impulse_pullback_visual",
     )
@@ -1503,7 +1515,7 @@ if _sequence.get("detected"):
 
     _render_visual_snapshot(
         "📈 Multi-bounce visual · dips · confirmed bounces",
-        lambda overlay: multi_bounce_chart_spec(r, line_overlay=overlay),
+        lambda overlay: multi_bounce_plotly_figure(r, line_overlay=overlay),
         "Candlesticks show the actual 1-minute swings. Confirmed bounce peaks are marked ✓; lows and developing bounces are labeled separately.",
         key="multi_bounce_visual",
     )
@@ -1663,7 +1675,7 @@ if _stair.get("detected"):
     )
     _render_visual_snapshot(
         "📈 Stair-step visual · steps · plateau · reacceleration",
-        lambda overlay: stair_step_chart_spec(r, line_overlay=overlay),
+        lambda overlay: stair_step_plotly_figure(r, line_overlay=overlay),
         "Daily candlesticks show the actual multi-session structure. Step markers show expansion legs; the plateau band shows the latest accepted level.",
         key="stair_step_visual",
     )
@@ -1817,13 +1829,21 @@ with st.expander("Support & resistance levels", expanded=False):
         key="support_resistance_close_line",
         help="Candlesticks are primary; enable this for a subtle close-price line.",
     )
-    _sr_visual=support_resistance_chart_spec(r,line_overlay=_sr_line)
+    _sr_visual=support_resistance_plotly_figure(r,line_overlay=_sr_line)
     if _sr_visual:
-        st.vega_lite_chart(spec=_sr_visual, use_container_width=True)
-        st.caption(
-            "Chart rendering restored with the stable base renderer. "
-            "Interactive scale controls are temporarily disabled while the blank-chart issue is verified."
+        st.plotly_chart(
+            _sr_visual,
+            width="stretch",
+            config={
+                "displaylogo": False,
+                "displayModeBar": False,
+                "scrollZoom": True,
+                "doubleClick": "reset",
+                "responsive": True,
+            },
+            key="support_resistance_plotly",
         )
+        st.caption("Drag to pan · scroll/trackpad to zoom · double-click to reset.")
         st.caption("Candlesticks show recent price action. Horizontal levels are the same nearby support/resistance levels listed below.")
     scol,rcol=st.columns(2)
     with scol:
