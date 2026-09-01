@@ -1,0 +1,8 @@
+{
+  "api_key_configured": false,
+  "coverage_semantics": "exact_historical_date_membership_only",
+  "endpoint": "LISTING_STATUS",
+  "provider": "alpha_vantage",
+  "schema_version": 1,
+  "status": "missing_key"
+}
