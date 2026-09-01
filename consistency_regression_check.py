@@ -3000,19 +3000,11 @@ def test_analyzer_visual_specs_show_real_pattern_markers():
 
     for spec in (trade,bounce,stair,impulse,sr):
         assert spec and spec.get("layer"), spec
-        params = spec.get("params") or []
-        assert len(params) == 1, params
-        zoom = params[0]
-        assert zoom.get("name") == "chart_zoom", zoom
-        assert zoom.get("bind") == "scales", zoom
-        select = zoom.get("select") or {}
-        assert select.get("type") == "interval", zoom
-        assert select.get("encodings") == ["x", "y"], zoom
-        assert select.get("clear") == "dblclick", zoom
-        # Keep the shared interaction spec intentionally simple and portable:
-        # no custom Vega event-stream expressions that can blank layered charts.
-        assert "translate" not in select, zoom
-        assert "zoom" not in select, zoom
+        # Analyzer charts must prioritize reliable rendering. Scale-bound
+        # interval params have repeatedly produced blank layered charts in the
+        # Streamlit Cloud Vega runtime, so the base specs intentionally omit them.
+        assert not spec.get("params"), spec.get("params")
+        assert spec.get("$schema") == "https://vega.github.io/schema/vega-lite/v5.json", spec
 
     bounce_text=str(bounce)
     assert "Bounce #1 ✓" in bounce_text
@@ -3032,7 +3024,8 @@ def test_analyzer_visual_ui_uses_safe_shared_chart_controls():
     from pathlib import Path
 
     source = Path("analyzer_ui_core.py").read_text(encoding="utf-8")
-    assert "Chart controls: scroll/pinch = zoom · drag = pan · " in source
+    assert "Chart rendering restored with the stable base renderer." in source
+    assert "Interactive scale controls are temporarily disabled" in source
     assert "Option/Alt + scroll/pinch" not in source
     assert "Option/Alt + drag" not in source
 
@@ -3080,10 +3073,10 @@ def test_analyzer_visual_snapshots_are_collapsible_and_contextual():
     assert "support_resistance_chart_spec(r,line_overlay=_sr_line)" in source
     assert "Close-line overlay" in source
     assert "Candlesticks are the primary chart" in source
-    assert "Chart controls: scroll/pinch = zoom · drag = pan · " in source
+    assert "Chart rendering restored with the stable base renderer." in source
+    assert "Interactive scale controls are temporarily disabled" in source
     assert "Option/Alt + scroll/pinch" not in source
     assert "Option/Alt + drag" not in source
-    assert "double-click = reset" in source
 
 
 def test_analyzer_long_context_text_is_collapsible():
