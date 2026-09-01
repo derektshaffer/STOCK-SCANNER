@@ -3111,6 +3111,10 @@ def test_combined_analyzer_timed_refresh_stays_fragment_scoped():
     assert "const watcher = p.setInterval" in bootstrap
     assert "restorePosition(pendingY)" in bootstrap
     assert "settledTicks >= 10" in bootstrap
+    assert "lockViewportBeforePaint" in bootstrap
+    assert "requestAnimationFrame(lockViewportBeforePaint)" in bootstrap
+    assert "root.style.setProperty('height', px, 'important')" in bootstrap
+    assert "releaseHeight()" in bootstrap
     assert ".st-key-analyzer_live_fragment" in bootstrap
     assert "staleNode.isConnected" in bootstrap
     assert "childList: true" in bootstrap
@@ -3120,6 +3124,17 @@ def test_combined_analyzer_timed_refresh_stays_fragment_scoped():
     )
     assert "_install_scroll_keeper()" in run_tail
     assert "if not combined:\n        _install_scroll_keeper()" not in run_tail
+
+
+def test_scanner_scan_completion_feedback_never_changes_layout():
+    from pathlib import Path
+
+    source = Path("scanner_app.py").read_text(encoding="utf-8")
+    controls = source.split("with controls_context:", 1)[1].split(
+        "scan_col, auto_col", 1
+    )[0]
+    assert 'st.toast(str(flash_success), icon="✓")' in controls
+    assert "st.success(str(flash_success))" not in controls
 
 
 def test_analyzer_plotly_figures_render_candlesticks_and_levels():
@@ -8041,6 +8056,7 @@ if __name__ == "__main__":
         test_analyzer_page_leads_with_actionable_decision_hierarchy,
         test_analyzer_shared_button_styles_live_in_bootstrap,
         test_combined_analyzer_timed_refresh_stays_fragment_scoped,
+        test_scanner_scan_completion_feedback_never_changes_layout,
         test_scanner_aligned_volume_pace_matches_analyzer_baseline,
         test_scanner_action_avoids_chasing_extreme_mover,
         test_scanner_action_analyze_now_requires_aligned_conditions,

@@ -886,7 +886,11 @@ controls_context = controls_mount.container() if controls_mount is not None else
 with controls_context:
     flash_success = st.session_state.pop("_scanner_flash_success", None)
     if flash_success:
-        st.success(str(flash_success))
+        # A success alert participates in document layout. On the next rerun it
+        # disappears again, which used to push every scanner row down and then
+        # pull it back up. Toasts overlay the page, so scan completion feedback
+        # cannot move the user's viewport.
+        st.toast(str(flash_success), icon="✓")
 
     scan_col, auto_col, horizon_col, market_col = st.columns(
         [1.10, 1.35, 2.65, 1.40],
