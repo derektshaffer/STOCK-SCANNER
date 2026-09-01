@@ -240,6 +240,7 @@ def _cleanup_combined_browser_helpers():
           const scroll = p.__ssaScrollKeeper;
           if (scroll) {
             try { scroll.observer && scroll.observer.disconnect(); } catch (_) {}
+            try { scroll.watcher && p.clearInterval(scroll.watcher); } catch (_) {}
             try { scroll.scroller && scroll.onScroll && scroll.scroller.removeEventListener('scroll', scroll.onScroll); } catch (_) {}
             try { scroll.onWindowScroll && p.removeEventListener('scroll', scroll.onWindowScroll); } catch (_) {}
           }
@@ -334,6 +335,7 @@ def _install_scroll_keeper():
           const old = p.__ssaScrollKeeper;
           if (old) {
             try { old.observer && old.observer.disconnect(); } catch (_) {}
+            try { old.watcher && p.clearInterval(old.watcher); } catch (_) {}
             try { old.scroller && old.onScroll && old.scroller.removeEventListener("scroll", old.onScroll); } catch (_) {}
             try { old.onWindowScroll && p.removeEventListener("scroll", old.onWindowScroll); } catch (_) {}
           }
@@ -381,6 +383,35 @@ def _install_scroll_keeper():
             }, 900);
           }
 
+          function liveStaleNode() {
+            const liveRoot = d.querySelector('.st-key-analyzer_live_fragment');
+            if (!liveRoot) return null;
+            for (const node of d.querySelectorAll('[data-stale="true"]')) {
+              if (
+                node === liveRoot ||
+                (node.contains && node.contains(liveRoot)) ||
+                (liveRoot.contains && liveRoot.contains(node))
+              ) {
+                return node;
+              }
+            }
+            return null;
+          }
+
+          function beginFragmentSwap(node) {
+            if (p.__ssaRerunPending) return;
+            pendingY = getY();
+            staleNode = node;
+            restoreScheduled = false;
+            p.__ssaRerunPending = true;
+            try {
+              p.sessionStorage.setItem(
+                KEY,
+                JSON.stringify({ y: pendingY, t: Date.now() })
+              );
+            } catch (_) {}
+          }
+
           const observer = new MutationObserver((mutations) => {
             for (const m of mutations) {
               if (
@@ -396,15 +427,7 @@ def _install_scroll_keeper():
                   (liveRoot.contains && liveRoot.contains(m.target))
                 );
                 if (liveFragment && !p.__ssaRerunPending) {
-                  pendingY = getY();
-                  staleNode = m.target;
-                  p.__ssaRerunPending = true;
-                  try {
-                    p.sessionStorage.setItem(
-                      KEY,
-                      JSON.stringify({ y: pendingY, t: Date.now() })
-                    );
-                  } catch (_) {}
+                  beginFragmentSwap(m.target);
                 }
               }
             }
@@ -429,8 +452,31 @@ def _install_scroll_keeper():
             });
           }
 
+          // Streamlit keeps the old subtree marked stale for several seconds
+          // while the deep calculation runs. During that window the browser
+          // can clamp stMain before the removal mutation arrives. Hold the
+          // saved position throughout the stale phase, then through ten short
+          // settling ticks after the replacement mounts.
+          let settledTicks = 0;
+          const watcher = p.setInterval(() => {
+            const liveStale = liveStaleNode();
+            if (liveStale && !p.__ssaRerunPending) {
+              beginFragmentSwap(liveStale);
+            }
+            if (!p.__ssaRerunPending || !Number.isFinite(pendingY)) return;
+
+            restorePosition(pendingY);
+            if (liveStale) {
+              settledTicks = 0;
+            } else {
+              settledTicks += 1;
+              if (settledTicks >= 10) finishFragmentSwap();
+            }
+          }, 100);
+
           p.__ssaScrollKeeper = {
             observer,
+            watcher,
             scroller,
             onScroll,
             onWindowScroll: onScroll
