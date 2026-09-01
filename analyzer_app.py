@@ -1,4 +1,4 @@
-# Deployment refresh: analyzer-chart-render-v2
+# Deployment refresh: analyzer-plotly-render-v3
 from pathlib import Path
 import runpy
 
