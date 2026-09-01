@@ -653,8 +653,20 @@ def get_live_overlay(metrics):
         ask = _num(metrics.get("ask"))
 
     spread_pct = None
-    if bid and ask and ask > 0:
-        spread_pct = (ask - bid) / ask * 100.0
+    if bid and ask and ask >= bid:
+        midpoint = (ask + bid) / 2.0
+        if midpoint > 0:
+            spread_pct = (ask - bid) / midpoint * 100.0
+
+    now_ts = time.time()
+    trade_dt = _parse_dt(trade.get("timestamp") or metrics.get("latest_trade_time"))
+    quote_dt = _parse_dt(quote.get("timestamp") or metrics.get("latest_quote_time"))
+    trade_age_seconds = (
+        max(0.0, now_ts - trade_dt.timestamp()) if trade_dt is not None else None
+    )
+    quote_age_seconds = (
+        max(0.0, now_ts - quote_dt.timestamp()) if quote_dt is not None else None
+    )
 
     vwap = _num(state.get("session_vwap"))
     if vwap is None:
@@ -695,6 +707,12 @@ def get_live_overlay(metrics):
         "bid": bid,
         "ask": ask,
         "spread_pct": round(spread_pct, 3) if spread_pct is not None else None,
+        "trade_age_seconds": (
+            round(trade_age_seconds, 2) if trade_age_seconds is not None else None
+        ),
+        "quote_age_seconds": (
+            round(quote_age_seconds, 2) if quote_age_seconds is not None else None
+        ),
         "vwap": round(vwap, 4) if vwap is not None else None,
         "vwap_position": vwap_position,
         "session_volume": round(volume) if volume is not None else None,

@@ -23,7 +23,7 @@ A model or score is not considered trustworthy merely because a backtest passes.
 
 **Rules-based Scanner / Analyzer foundation: materially improved and generally well defended by regression tests.**
 
-**Predictive ML: not yet entitled to a broad production-valid claim.** The original validation-boundary findings were remediated in PR #53 and merged only after the integrity suite passed. Follow-up audit PRs #68-#74 closed additional forward-target parity, advisory-ML leakage, stale-schema/source-integrity, final-contract fail-open, and untrusted-calibration contamination gaps. Live forward evidence is still too sparse to make strong performance claims.
+**Predictive ML: not yet entitled to a broad production-valid claim.** The original validation-boundary findings were remediated in PR #53 and merged only after the integrity suite passed. Follow-up audit PRs #68-#75 closed additional forward-target parity, advisory-ML leakage, stale-schema/source-integrity, final-contract fail-open, untrusted-calibration contamination, and stale position-advice gaps. Live forward evidence is still too sparse to make strong performance claims.
 
 The safest current interpretation is:
 
@@ -56,6 +56,7 @@ The current code already fixed multiple issues from earlier audits:
 - Peer blending and ML trade-plan confidence adjustments require the same explicit source-integrity gate rather than trusting `gate_passed` alone.
 - The final Analyzer trade-plan contract treats missing live-data integrity evidence as untrusted, so omitted integrity metadata cannot preserve an actionable entry.
 - Analyzer calibration and forward-learning cohorts require explicit trusted live-data integrity; stale, non-consolidated, or legacy rows missing integrity metadata remain available for diagnostics but are excluded from calibration.
+- Position-management HOLD/EXIT/REDUCE advice requires a fresh live overlay and fresh trade/quote ages; stale or missing live data falls back to DATA CHECK while keeping protective/target levels as reference only.
 
 ## Post-audit hardening completed 2026-08-31
 
@@ -83,7 +84,11 @@ The production Analyzer already passed a live-data integrity object into its fin
 
 Regular-session Analyzer snapshots were durably recorded even when live-data integrity failed, while the calibration selectors previously filtered only by session/time. That meant a stale or non-consolidated snapshot could be blocked from trading but still teach later calibration. Prediction rows now record live-data integrity, consolidation state, trade/quote age, and integrity reasons. Intraday calibration, Swing/Longer-Term daily calibration, and live Swing research calibration all require explicit `live_data_integrity_ok=true`; legacy rows missing that field fail closed. Calibration schema version 9 invalidates older durable calibration under the stricter sampling contract. Untrusted rows remain available for diagnostics and outcome review but cannot teach score calibration.
 
-All six follow-up PRs (#68-#71 and #73-#74) passed compilation, import checks, provider smoke tests, app-boundary checks, consistency regressions, learning regressions, and Phase 6 historical-challenge regressions before merge.
+### PR #75 — Position advice requires fresh live evidence
+
+Position mode refreshed a lightweight live overlay every five seconds, but an overlay failure could leave older Analyzer metrics in place and the exit engine did not gate HOLD/EXIT/REDUCE advice on trade/quote freshness. Position metrics now record whether a live overlay was actually received, failed overlays clear freshness fields rather than preserving frozen ages, and live position advice requires both trade and quote ages to be known and no more than 120 seconds old. If that evidence is missing or stale, the panel reports `DATA CHECK` instead of a live HOLD/EXIT/REDUCE instruction while retaining protective/target levels only as reference. Alpaca overlays now expose trade/quote ages and use the same midpoint spread convention as the rest of the Analyzer.
+
+All seven follow-up PRs (#68-#71 and #73-#75) passed compilation, import checks, provider smoke tests, app-boundary checks, consistency regressions, learning regressions, and Phase 6 historical-challenge regressions before merge.
 
 ## Critical findings and remediation
 
@@ -248,6 +253,6 @@ Do not optimize thresholds or add features until the integrity findings are reso
 
 ## Current gate status
 
-PR #53 and follow-up audit PRs #68-#71 and #73-#74 were merged only after the required validation suites passed. The code-level integrity findings documented above are therefore remediated on `main`.
+PR #53 and follow-up audit PRs #68-#71 and #73-#75 were merged only after the required validation suites passed. The code-level integrity findings documented above are therefore remediated on `main`.
 
 This does **not** convert the remaining evidence gaps into validated performance claims. Analyzer live calibration, forward Swing/Longer-Term cohorts, survivorship limitations, and historical feature-parity limitations remain explicit blockers on stronger claims until their required evidence exists.

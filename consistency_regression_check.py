@@ -741,6 +741,11 @@ def _position_metrics(**overrides):
             }
         },
         "decision_v2": {"potential_score": 70},
+        "position_live_overlay_received": True,
+        "position_live_provider": "tradier",
+        "position_live_status": "streaming",
+        "trade_age_seconds": 1.0,
+        "quote_age_seconds": 1.0,
     }
     metrics.update(overrides)
     return metrics
@@ -840,6 +845,30 @@ def test_position_exit_profit_floor():
     assert plan["protective_exit_return_pct"] > 0, plan
 
 
+def test_position_exit_fails_closed_on_stale_or_missing_live_overlay():
+    from position_exit import build_position_exit_plan, merge_live_position_metrics
+
+    stale = _position_metrics(
+        trade_age_seconds=180.0,
+        quote_age_seconds=181.0,
+    )
+    stale_plan = build_position_exit_plan(stale, 8.50)
+    assert stale_plan["status"] == "ok", stale_plan
+    assert stale_plan["read"] == "DATA CHECK", stale_plan
+    assert "DATA CHECK" in stale_plan["action"], stale_plan
+    assert stale_plan["protective_exit"] is not None, stale_plan
+    assert stale_plan["live_data_integrity"]["ok"] is False, stale_plan
+
+    frozen = _position_metrics()
+    merged = merge_live_position_metrics(frozen, {})
+    assert merged["position_live_overlay_received"] is False, merged
+    assert merged["trade_age_seconds"] is None, merged
+    assert merged["quote_age_seconds"] is None, merged
+    missing_plan = build_position_exit_plan(merged, 8.50)
+    assert missing_plan["read"] == "DATA CHECK", missing_plan
+    assert missing_plan["live_data_integrity"]["ok"] is False, missing_plan
+
+
 def test_position_live_overlay_recomputes_derived_fields():
     from position_exit import merge_live_position_metrics
 
@@ -865,6 +894,7 @@ def test_position_live_overlay_recomputes_derived_fields():
     merged = merge_live_position_metrics(metrics, overlay)
     assert merged["position_live_provider"] == "tradier", merged
     assert merged["position_live_status"] == "streaming", merged
+    assert merged["position_live_overlay_received"] is True, merged
     assert merged["vwap_position"] == "ABOVE", merged
     assert abs(merged["vwap_extension_pct"] - 10.0) < 0.01, merged
     assert abs(merged["day_pct"] - 22.222) < 0.01, merged
@@ -7443,6 +7473,7 @@ if __name__ == "__main__":
         test_position_exit_keeps_protective_exit_separate_from_reflex_rebound_watch,
         test_position_exit_ui_explicitly_separates_exit_from_reentry_watch,
         test_position_exit_profit_floor,
+        test_position_exit_fails_closed_on_stale_or_missing_live_overlay,
         test_position_live_overlay_recomputes_derived_fields,
         test_analyzer_ui_preserves_historical_context_dependencies,
         test_analyzer_white_tables_are_collapsible,

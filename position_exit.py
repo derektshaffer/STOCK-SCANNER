@@ -21,6 +21,8 @@ def merge_live_position_metrics(metrics, overlay):
     """Apply a same-symbol live overlay and recompute price-derived fields."""
     out = dict(metrics or {})
     overlay = overlay or {}
+    overlay_received = bool(overlay)
+    out["position_live_overlay_received"] = overlay_received
 
     for key in (
         "price",
@@ -31,11 +33,15 @@ def merge_live_position_metrics(metrics, overlay):
         "session_volume",
         "day_high",
         "day_low",
-        "trade_age_seconds",
-        "quote_age_seconds",
     ):
         if overlay.get(key) is not None:
             out[key] = overlay.get(key)
+
+    # Freshness fields must come from this overlay attempt. Never preserve a
+    # frozen "2 seconds old" age from the earlier deep Analyzer result after a
+    # live overlay failure or a provider response with no timestamp evidence.
+    for key in ("trade_age_seconds", "quote_age_seconds"):
+        out[key] = overlay.get(key) if overlay_received else None
 
     price = _num(out.get("price"))
     vwap = _num(out.get("vwap"))
@@ -56,9 +62,39 @@ def merge_live_position_metrics(metrics, overlay):
     if provider:
         out["position_live_provider"] = provider
     status = overlay.get("status")
-    if status:
-        out["position_live_status"] = status
+    out["position_live_status"] = status or ("unavailable" if not overlay_received else "unknown")
     return out
+
+
+def _position_live_integrity(metrics, max_age_seconds=120.0):
+    """Fail closed before issuing live HOLD/EXIT/REDUCE position advice."""
+    metrics = metrics or {}
+    reasons = []
+    overlay_received = metrics.get("position_live_overlay_received") is True
+    trade_age = _num(metrics.get("trade_age_seconds"))
+    quote_age = _num(metrics.get("quote_age_seconds"))
+
+    if not overlay_received:
+        reasons.append("live position overlay is unavailable")
+    if trade_age is None:
+        reasons.append("latest trade freshness is unknown")
+    elif trade_age > max_age_seconds:
+        reasons.append(f"latest trade is stale ({trade_age:.0f}s old)")
+    if quote_age is None:
+        reasons.append("latest quote freshness is unknown")
+    elif quote_age > max_age_seconds:
+        reasons.append(f"latest quote is stale ({quote_age:.0f}s old)")
+
+    return {
+        "ok": not reasons,
+        "overlay_received": overlay_received,
+        "trade_age_seconds": trade_age,
+        "quote_age_seconds": quote_age,
+        "max_age_seconds": float(max_age_seconds),
+        "provider": metrics.get("position_live_provider"),
+        "status": metrics.get("position_live_status"),
+        "reasons": reasons,
+    }
 
 
 def _level_price(level):
@@ -267,6 +303,7 @@ def build_position_exit_plan(metrics, average_cost, shares=None):
     from_high = _num(metrics.get("from_high_pct"))
     liquidity = str((metrics.get("liquidity") or {}).get("label") or "")
     potential = _num((metrics.get("decision_v2") or {}).get("potential_score"))
+    live_integrity = _position_live_integrity(metrics)
 
     rebound_watch = _post_exit_rebound_watch(
         metrics,
@@ -435,6 +472,14 @@ def build_position_exit_plan(metrics, average_cost, shares=None):
     if liquidity == "LOW":
         confidence -= 10
 
+    # Reference levels are still useful when the feed is stale, but a stale
+    # snapshot must not produce a live HOLD/EXIT/REDUCE instruction.
+    if not live_integrity.get("ok"):
+        action = "DATA CHECK — refresh live trade/quote before acting"
+        read = "DATA CHECK"
+        reasons = list(live_integrity.get("reasons") or []) + reasons
+        confidence = min(confidence, 35.0)
+
     return {
         "status": "ok",
         "version": "position-exit-v1",
@@ -466,6 +511,7 @@ def build_position_exit_plan(metrics, average_cost, shares=None):
         "vwap": round(vwap, 4) if vwap is not None else None,
         "atr": round(atr, 4),
         "confidence": round(_clamp(confidence, 0, 95)),
+        "live_data_integrity": live_integrity,
         "rebound_watch": rebound_watch,
         "method_note": (
             "Position-management aid using cost basis, live price, VWAP, ATR, "
