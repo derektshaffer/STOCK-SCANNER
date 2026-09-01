@@ -4789,6 +4789,17 @@ def test_scanner_ui_accepts_tradier_without_alpaca_credentials():
     assert "No market-data provider is configured" in runtime_source
 
 
+def test_premarket_tradier_scan_keeps_alpaca_daily_context_fallback():
+    from pathlib import Path
+
+    source = Path("stock_scanner.py").read_text(encoding="utf-8")
+    main = source.split("def main():", 1)[1]
+    assert "phase in {\"premarket\", \"afterhours\"}" in main
+    assert "ALPACA_CONFIGURED" in main
+    assert "get_multi_snapshots(" in main
+    assert "Tradier still owns the live price/volume/spread" in main
+
+
 def test_live_scanner_matches_scheduled_tradier_discovery():
     from pathlib import Path
 
@@ -8095,6 +8106,7 @@ if __name__ == "__main__":
         test_scanner_ui_accepts_tradier_without_alpaca_credentials,
         test_combined_analyze_button_has_no_obvious_help_popup_and_can_cancel,
         test_cancelable_analyzer_runtime_terminates_active_process,
+        test_premarket_tradier_scan_keeps_alpaca_daily_context_fallback,
         test_live_scanner_matches_scheduled_tradier_discovery,
         test_discovery_universe_reserves_extreme_mover_rescue_slot,
         test_live_mover_rescue_is_merged_without_duplicate_symbols,
