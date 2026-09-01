@@ -1,0 +1,33 @@
+name: Historical Path Bootstrap Branch Check
+
+on:
+  push:
+    branches:
+      - research/path-aware-historical-bootstrap-20260901
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Compile changed modules
+        run: >-
+          python -m py_compile
+          historical_scanner_replay.py
+          scanner_ml_ranker.py
+          validation_status.py
+          learning_system_regression_check.py
+      - name: Run learning regressions
+        env:
+          GITHUB_REPOSITORY: example/repo
+          GH_TOKEN: synthetic-token
+          TRADIER_TOKEN: synthetic-token
+        run: python learning_system_regression_check.py
+      - name: Validate current scoreboard compatibility
+        run: python validation_status.py
