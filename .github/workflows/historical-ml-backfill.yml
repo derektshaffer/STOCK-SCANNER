@@ -148,6 +148,84 @@ jobs:
           print("ML_WALK_FORWARD_AUC=" + str(meta.get("walk_forward_auc")))
           print("ML_LIVE_CONFIRMATION_AUC=" + str(meta.get("live_confirmation_auc")))
 
+          path_rows, path_source = sm.load_path_research_observations()
+          path_meta = sm.validate_path_research_model(path_rows)
+          endpoint_replay_rows = [
+              row for row in rows
+              if row.get("observation_source") == "historical_replay"
+          ]
+          endpoint_independent = sm.independent_confirmation_rows(endpoint_replay_rows)
+          path_replay_rows = [
+              row for row in path_rows
+              if row.get("observation_source") == "historical_replay"
+          ]
+          path_independent = sm.independent_confirmation_rows(path_replay_rows)
+          comparable = [
+              row for row in path_independent
+              if row.get("endpoint_label") in (0, 1)
+          ]
+          disagreements = sum(
+              bool(row.get("endpoint_path_disagreement"))
+              for row in comparable
+          )
+          path_report = {
+              "schema_version": 1,
+              "generated_at_utc": __import__("datetime").datetime.now(
+                  __import__("datetime").timezone.utc
+              ).isoformat(),
+              "research_only": True,
+              "production_influence": False,
+              "can_change_scanner_rank": False,
+              "can_change_analyzer_trade_plan": False,
+              "path_target": sm.PATH_RESEARCH_TARGET_DESCRIPTION,
+              "path_model_version": sm.PATH_RESEARCH_MODEL_VERSION,
+              "source": path_source,
+              "historical_replay": {
+                  "raw_rows": len(path_replay_rows),
+                  "independent_rows": len(path_independent),
+                  "endpoint_comparable_rows": len(comparable),
+                  "endpoint_path_disagreements": disagreements,
+                  "endpoint_path_disagreement_rate_pct": (
+                      round(disagreements / len(comparable) * 100.0, 2)
+                      if comparable else None
+                  ),
+              },
+              "path_model": path_meta,
+              "endpoint_model": {
+                  "target": sm.TARGET_DESCRIPTION,
+                  "historical_replay_raw_rows": len(endpoint_replay_rows),
+                  "historical_replay_independent_rows": len(endpoint_independent),
+                  "historical_validated": bool(meta.get("historical_validated")),
+                  "status": meta.get("status"),
+                  "walk_forward_auc": meta.get("walk_forward_auc"),
+                  "walk_forward_brier": meta.get("walk_forward_brier"),
+                  "baseline_brier": meta.get("baseline_brier"),
+                  "validation_samples": meta.get("validation_samples"),
+                  "live_confirmation_samples": meta.get("live_confirmation_samples"),
+                  "live_confirmation_auc": meta.get("live_confirmation_auc"),
+                  "validated": bool(meta.get("validated")),
+              },
+          }
+          path_report_path = Path("outcome_reports/path_target_ml_validation.json")
+          path_report_path.write_text(
+              json.dumps(path_report, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          print("PATH_REPLAY_RAW=" + str(len(path_replay_rows)))
+          print("PATH_REPLAY_INDEPENDENT=" + str(len(path_independent)))
+          print("PATH_ENDPOINT_DISAGREEMENTS=" + str(disagreements))
+          print("PATH_MODEL_HISTORICAL_VALIDATED=" + str(bool(path_meta.get("historical_validated"))).lower())
+          print("PATH_MODEL_STATUS=" + str(path_meta.get("status")))
+          print("PATH_MODEL_AUC=" + str(path_meta.get("walk_forward_auc")))
+          print("PATH_MODEL_BRIER=" + str(path_meta.get("walk_forward_brier")))
+          print("PATH_MODEL_LIVE_CONFIRMATION_AUC=" + str(path_meta.get("live_confirmation_auc")))
+          assert path_report["research_only"] is True
+          assert path_report["production_influence"] is False
+          assert path_report["can_change_scanner_rank"] is False
+          assert path_report["can_change_analyzer_trade_plan"] is False
+          assert len(path_replay_rows) > 0
+          assert len(path_independent) > 0
+
           tf_path = Path("timeframe_replay/timeframe_historical_replay.json")
           tf = json.loads(tf_path.read_text(encoding="utf-8"))
           tf_summary = tf.get("summary") or {}
@@ -173,6 +251,9 @@ jobs:
           assert int(tf_replay.get("replay_dates") or 0) >= 120
           assert len(tf_replay.get("calendar_years_covered") or []) >= 4
           PY
+
+      - name: Refresh validation status with path evidence
+        run: python validation_status.py
 
       - name: Benchmark ordered candle sequence ML
         if: github.event_name != 'push' || (!contains(github.event.head_commit.message, 'Run historical timeframe backfill') && !contains(github.event.head_commit.message, 'Run timeframe ML validation') && !contains(github.event.head_commit.message, 'Run Swing feature research'))
@@ -342,7 +423,9 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add outcome_reports/outcomes_historical_replay.json
+          git add outcome_reports/path_target_ml_validation.json
           git add outcome_reports/sequence_ml_validation.json
+          git add validation_status/latest.json validation_status/latest.md 2>/dev/null || true
           git add learning_audits/latest_learning_audit.json learning_audits/latest_learning_audit.md 2>/dev/null || true
           git add hypothesis_challenges/latest_historical_challenge.json hypothesis_challenges/latest_historical_challenge.md 2>/dev/null || true
           git add timeframe_replay/timeframe_historical_replay.json
@@ -363,7 +446,10 @@ jobs:
           name: outcome-report-historical-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             outcome_reports/outcomes_historical_replay.json
+            outcome_reports/path_target_ml_validation.json
             outcome_reports/sequence_ml_validation.json
+            validation_status/latest.json
+            validation_status/latest.md
             outcome_reports/sequence_replay_training.json.gz
             learning_audits/latest_learning_audit.json
             learning_audits/latest_learning_audit.md

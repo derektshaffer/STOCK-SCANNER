@@ -46,7 +46,7 @@ from historical_listing_universe import (
     load_cached_historical_universes,
 )
 
-REPLAY_VERSION = "historical-scanner-replay-v4.9-opportunity-challenge"
+REPLAY_VERSION = "historical-scanner-replay-v5.0-path-target"
 ET = ZoneInfo("America/New_York")
 
 DEFAULT_TRADING_DAYS = int(os.environ.get("REPLAY_TRADING_DAYS", "20") or 20)
@@ -1318,6 +1318,28 @@ def build_replay_observations(
                     replay_idx,
                     entry_price,
                 )
+                path_before_stop = opportunity_path.get(
+                    "opportunity_up_3_60m_before_stop"
+                )
+                path_hit = opportunity_path.get("opportunity_up_3_60m_hit")
+                path_complete = opportunity_path.get(
+                    "opportunity_horizon_60m_complete"
+                )
+                if path_complete is True and path_before_stop is True:
+                    research_path_success_60m = 1
+                elif (
+                    path_complete is True
+                    and (path_before_stop is False or path_hit is False)
+                ):
+                    research_path_success_60m = 0
+                else:
+                    research_path_success_60m = None
+                research_endpoint_success_60m = int(return_60 >= 3.0)
+                research_endpoint_path_disagreement_60m = (
+                    research_path_success_60m is not None
+                    and research_endpoint_success_60m
+                    != research_path_success_60m
+                )
                 regime = daily_regimes.get(replay_day) or {}
 
                 action_row = dict(snap)
@@ -1362,6 +1384,14 @@ def build_replay_observations(
                     {
                         **quality,
                         **opportunity_path,
+                        "research_path_success_60m": research_path_success_60m,
+                        "research_endpoint_success_60m": research_endpoint_success_60m,
+                        "research_endpoint_path_disagreement_60m": (
+                            research_endpoint_path_disagreement_60m
+                        ),
+                        "research_path_target_description": (
+                            ">= +3% within 60m before -3% failure stop"
+                        ),
                         "regime_label": regime.get("regime_label"),
                         "regime_score": regime.get("regime_score"),
                         "spy_return_5d_pct": regime.get("spy_return_5d_pct"),
@@ -1757,8 +1787,9 @@ def main():
     action_benchmark = _action_benchmark(observations)
 
     payload = {
-        "schema_version": 2,
+        "schema_version": 3,
         "tracker_version": REPLAY_VERSION,
+        "path_target": ">= +3% within 60m before -3% failure stop",
         "feature_version": ss.SCANNER_FEATURE_VERSION,
         "source": "historical_scanner_replay",
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),

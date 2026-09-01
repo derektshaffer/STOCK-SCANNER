@@ -17,6 +17,7 @@ CURRENT_FEATURE_VERSION = "scanner-features-v2-consolidated"
 MODEL_TYPE = "XGBoost"
 TARGET_DESCRIPTION = ">= +3% at 60 minutes"
 PATH_RESEARCH_TARGET_DESCRIPTION = ">= +3% within 60m before -3% failure stop"
+PATH_RESEARCH_MODEL_VERSION = "scanner-path-shadow-v1"
 
 REPORT_DIR = Path(
     os.environ.get("OUTCOME_REPORT_DIR", "outcome_reports").strip()
@@ -1236,6 +1237,25 @@ def _validation_and_model(rows):
         for key, value in top
     ]
     return final_model, meta
+
+
+def validate_path_research_model(rows):
+    """Validate the path-aware target with production-equivalent safeguards.
+
+    This intentionally reuses the same chronological/de-correlation machinery as
+    production Scanner ML, but the returned contract can never grant production
+    influence. Promotion requires a separate explicit code change after live
+    confirmation and comparative validation.
+    """
+    _model, meta = _validation_and_model(list(rows or []))
+    meta = dict(meta or {})
+    meta["model_version"] = PATH_RESEARCH_MODEL_VERSION
+    meta["target"] = PATH_RESEARCH_TARGET_DESCRIPTION
+    meta["research_only"] = True
+    meta["production_influence"] = False
+    meta["can_change_scanner_rank"] = False
+    meta["can_change_analyzer_trade_plan"] = False
+    return meta
 
 
 def apply_scanner_ml(rows, now_et):

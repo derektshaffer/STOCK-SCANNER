@@ -17,6 +17,7 @@ from historical_listing_universe import (
 OUT_DIR = Path("validation_status")
 ANALYZER_CALIBRATION = Path("analyzer_outcomes/calibration.json")
 OFFHOURS_SUMMARY = Path("offhours_outcomes/latest_summary.json")
+PATH_MODEL_REPORT = Path("outcome_reports/path_target_ml_validation.json")
 TIMEFRAME_ML = Path("timeframe_replay/timeframe_ml_validation.json")
 UNIVERSE_DIR = Path("universe_snapshots")
 
@@ -87,6 +88,9 @@ def scanner_live_evidence():
 
 def scanner_path_target_evidence():
     rows, source = scanner_ml.load_path_research_observations()
+    model_report = _load(PATH_MODEL_REPORT)
+    path_model = model_report.get("path_model") or {}
+    endpoint_model = model_report.get("endpoint_model") or {}
     replay_rows = [
         r for r in rows
         if r.get("observation_source") == "historical_replay"
@@ -162,6 +166,30 @@ def scanner_path_target_evidence():
         ),
         "gates": gates,
         "comparison_ready": all(g["passed"] for g in gates.values()),
+        "historical_model_artifact_found": bool(model_report),
+        "path_model_version": model_report.get("path_model_version"),
+        "path_model_historical_validated": bool(
+            path_model.get("historical_validated")
+        ),
+        "path_model_status": path_model.get("status"),
+        "path_model_walk_forward_auc": path_model.get("walk_forward_auc"),
+        "path_model_walk_forward_brier": path_model.get("walk_forward_brier"),
+        "path_model_baseline_brier": path_model.get("baseline_brier"),
+        "path_model_validation_samples": path_model.get("validation_samples"),
+        "path_model_live_confirmation_auc": path_model.get(
+            "live_confirmation_auc"
+        ),
+        "endpoint_model_historical_validated": bool(
+            endpoint_model.get("historical_validated")
+        ),
+        "endpoint_model_status": endpoint_model.get("status"),
+        "endpoint_model_walk_forward_auc": endpoint_model.get(
+            "walk_forward_auc"
+        ),
+        "endpoint_model_walk_forward_brier": endpoint_model.get(
+            "walk_forward_brier"
+        ),
+        "endpoint_model_baseline_brier": endpoint_model.get("baseline_brier"),
         "note": (
             "Historical replay can bootstrap research immediately, but promotion "
             "still requires independent live path evidence strictly after the "
@@ -371,6 +399,22 @@ def render_markdown(payload):
         f"{path_target['historical_replay_endpoint_comparable']} "
         f"({path_target.get('historical_replay_disagreement_rate_pct') if path_target.get('historical_replay_disagreement_rate_pct') is not None else '—'}%)",
         f"- Replay end day: {path_target.get('replay_end_day') or '—'}",
+        f"- Path model historical status: "
+        f"{path_target.get('path_model_status') or 'not run'}"
+        + (
+            f" · AUC {path_target.get('path_model_walk_forward_auc')} "
+            f"· Brier {path_target.get('path_model_walk_forward_brier')}"
+            if path_target.get("path_model_walk_forward_auc") is not None
+            else ""
+        ),
+        f"- Endpoint model historical status: "
+        f"{path_target.get('endpoint_model_status') or 'not run'}"
+        + (
+            f" · AUC {path_target.get('endpoint_model_walk_forward_auc')} "
+            f"· Brier {path_target.get('endpoint_model_walk_forward_brier')}"
+            if path_target.get("endpoint_model_walk_forward_auc") is not None
+            else ""
+        ),
         _progress_line("Independent live samples", path_target["gates"]["samples"]),
         _progress_line("Trading days", path_target["gates"]["days"]),
         _progress_line("Symbols", path_target["gates"]["symbols"]),
