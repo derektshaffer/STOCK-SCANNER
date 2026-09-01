@@ -3287,6 +3287,11 @@ def test_prediction_tracker_logs_exact_final_plan_and_contract():
         metrics = {
             "symbol": "TEST",
             "prediction_source": "shadow_sampler",
+            "source_scan_id": "scan-provenance-test",
+            "source_scanner_rank": 8,
+            "source_scanner_score": 73.5,
+            "source_opportunity_score": 81.2,
+            "source_scanner_action": "WATCH",
             "market_session": "regular",
             "price": 9.05,
             "trade_age_seconds": 15.0,
@@ -3338,6 +3343,11 @@ def test_prediction_tracker_logs_exact_final_plan_and_contract():
         assert captured, result
         row = captured[-1]
         assert row.get("prediction_source") == "shadow_sampler", row
+        assert row.get("source_scan_id") == "scan-provenance-test", row
+        assert row.get("source_scanner_rank") == 8.0, row
+        assert row.get("source_scanner_score") == 73.5, row
+        assert row.get("source_opportunity_score") == 81.2, row
+        assert row.get("source_scanner_action") == "WATCH", row
         assert row.get("plan_status") == "WAIT", row
         assert row.get("plan_action") == "WAIT — LIVE DATA INTEGRITY CHECK", row
         assert row.get("plan_entry_state") == "DATA CHECK", row
@@ -6025,13 +6035,22 @@ def test_shadow_analyzer_sampler_is_stratified_and_fail_closed():
             "live_feed": "consolidated",
         },
         "candidates": [
-            {"rank": rank, "symbol": f"S{rank:02d}"}
+            {
+                "rank": rank,
+                "symbol": f"S{rank:02d}",
+                "score": 100.0 - rank,
+                "opportunity_score": 90.0 - rank,
+            }
             for rank in range(1, 31)
         ],
     }
     assert sampler.select_shadow_symbols(payload) == [
         "S01", "S03", "S08", "S15", "S25"
     ]
+    selected = sampler.select_shadow_candidates(payload)
+    assert [row["rank"] for row in selected] == [1, 3, 8, 15, 25], selected
+    assert selected[2]["score"] == 92.0, selected
+    assert selected[2]["opportunity_score"] == 82.0, selected
 
     extended = dict(payload)
     extended["session_phase"] = "afterhours"
@@ -6045,6 +6064,56 @@ def test_shadow_analyzer_sampler_is_stratified_and_fail_closed():
         },
     }
     assert sampler.select_shadow_symbols(untrusted) == []
+
+
+def test_analyzer_calibration_provenance_is_diagnostic_and_separated():
+    import prediction_tracker as pt
+
+    rows = [
+        {
+            "symbol": "AAA",
+            "prediction_source": "shadow_sampler",
+            "source_scanner_rank": 1,
+            "outcomes": {
+                "return_60m_pct": 2.0,
+                "target1_first_touch": "target",
+            },
+        },
+        {
+            "symbol": "BBB",
+            "prediction_source": "shadow_sampler",
+            "source_scanner_rank": 15,
+            "outcomes": {
+                "return_60m_pct": -1.0,
+                "target1_first_touch": "stop",
+            },
+        },
+        {
+            "symbol": "CCC",
+            "prediction_source": "interactive_analyzer",
+            "outcomes": {
+                "return_60m_pct": 3.0,
+                "target1_first_touch": "target",
+            },
+        },
+    ]
+    summary = pt._prediction_source_summary(rows)
+    shadow = summary["shadow_sampler"]
+    interactive = summary["interactive_analyzer"]
+
+    assert shadow["calibration_rows"] == 2, summary
+    assert shadow["resolved_60m"] == 2, summary
+    assert shadow["higher_60m_rate"] == 50.0, summary
+    assert shadow["target_before_stop_rate"] == 50.0, summary
+    assert shadow["avg_source_scanner_rank"] == 8.0, summary
+    assert shadow["source_scanner_rank_min"] == 1.0, summary
+    assert shadow["source_scanner_rank_max"] == 15.0, summary
+    assert shadow["diagnostic_only"] is True, summary
+
+    assert interactive["calibration_rows"] == 1, summary
+    assert interactive["resolved_60m"] == 1, summary
+    assert interactive["avg_source_scanner_rank"] is None, summary
+    assert interactive["diagnostic_only"] is True, summary
 
 
 def test_validation_workflow_runs_before_merge_on_pull_requests():
@@ -7783,6 +7852,7 @@ if __name__ == "__main__":
         test_scanner_replay_validation_decorrelates_overlapping_same_symbol_paths,
         test_scanner_replay_live_confirmation_gate_is_integrity_sized,
         test_shadow_analyzer_sampler_is_stratified_and_fail_closed,
+        test_analyzer_calibration_provenance_is_diagnostic_and_separated,
         test_validation_workflow_runs_before_merge_on_pull_requests,
         test_prediction_tracker_uses_first_post_horizon_bar_with_three_minute_cap,
         test_prediction_tracker_outcomes_start_strictly_after_observation,
