@@ -1,0 +1,60 @@
+name: Point-in-Time Universe Snapshot
+
+on:
+  schedule:
+    # Capture after the extended session. Snapshot is only eligible for later
+    # replay dates, never the same trading day.
+    - cron: '10 1 * * 2-6'
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "universe_snapshot.py"
+      - ".github/workflows/universe-snapshot.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: point-in-time-universe-snapshot
+  cancel-in-progress: false
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Capture point-in-time universe
+        env:
+          TRADIER_ACCESS_TOKEN: ${{ secrets.TRADIER_ACCESS_TOKEN }}
+          TRADIER_TOKEN: ${{ secrets.TRADIER_TOKEN }}
+        run: python universe_snapshot.py
+
+      - name: Commit universe snapshot
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add universe_snapshots/*.json
+          if git diff --cached --quiet; then
+            echo "No universe snapshot changes."
+          else
+            git commit -m "Capture point-in-time stock universe"
+            git pull --rebase origin "${GITHUB_REF_NAME}"
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+          fi
+
+      - name: Preserve snapshot artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: universe-snapshot-${{ github.run_id }}-${{ github.run_attempt }}
+          path: universe_snapshots/*.json
+          if-no-files-found: error
+          retention-days: 90
