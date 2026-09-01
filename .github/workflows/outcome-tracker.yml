@@ -25,7 +25,13 @@ permissions:
 
 jobs:
   score:
-    if: github.event_name != 'push' || contains(github.event.head_commit.message, 'Run Analyzer outcome smoke')
+    # Push runs remain opt-in so ordinary code changes do not repeatedly score
+    # market history. Either marker intentionally requests a post-close evidence
+    # refresh on the exact merged production head.
+    if: >-
+      github.event_name != 'push' ||
+      contains(github.event.head_commit.message, 'Run Analyzer outcome smoke') ||
+      contains(github.event.head_commit.message, 'Refresh forward evidence')
     runs-on: ubuntu-latest
 
     steps:
