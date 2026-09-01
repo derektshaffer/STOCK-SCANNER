@@ -4790,6 +4790,18 @@ def test_prediction_tracker_mirrors_daily_timeframe_sampling():
     assert daily[0]["timeframe_swing_score"] == 79.0, daily
 
 
+def test_analyzer_feature_version_is_single_canonical_contract():
+    import analyzer_versions as versions
+    import prediction_tracker as pt
+    import stock_analyzer as sa
+
+    assert versions.ANALYZER_FEATURE_VERSION == (
+        "analyzer-features-v10-confirmed-multisession"
+    )
+    assert sa.ANALYZER_FEATURE_VERSION == versions.ANALYZER_FEATURE_VERSION
+    assert pt.ANALYZER_FEATURE_VERSION == versions.ANALYZER_FEATURE_VERSION
+
+
 def test_old_calibration_schema_is_rejected():
     from pathlib import Path
     import analyzer_versions as versions
@@ -7504,6 +7516,7 @@ if __name__ == "__main__":
         test_analyzer_calibration_excludes_untrusted_live_data,
         test_timeframe_calibration_uses_one_latest_regular_row_per_ticker_day,
         test_prediction_tracker_mirrors_daily_timeframe_sampling,
+        test_analyzer_feature_version_is_single_canonical_contract,
         test_old_calibration_schema_is_rejected,
         test_ambiguous_ohlc_bar_is_conservative_in_calibration,
         test_outcome_tracker_runs_after_extended_hours,

@@ -7,7 +7,7 @@ durable outcome scorer from silently disagreeing about which rows are
 comparable.
 """
 
-ANALYZER_FEATURE_VERSION = "analyzer-features-v7-integrity-contract"
+ANALYZER_FEATURE_VERSION = "analyzer-features-v10-confirmed-multisession"
 DECISION_SCORE_VERSION = "decision-v2.8-integrity-gated"
 TIMEFRAME_SCORE_VERSION = "timeframe-fit-v1"
 CALIBRATION_SCHEMA_VERSION = 9
