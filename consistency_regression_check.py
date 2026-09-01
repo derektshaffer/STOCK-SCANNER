@@ -5573,8 +5573,9 @@ def test_scanner_monitor_and_saved_stocks_are_vertically_compact():
     bootstrap = Path("analyzer_bootstrap.py").read_text(encoding="utf-8")
     analyzer_css = Path("analyzer_app.py").read_text(encoding="utf-8")
 
-    assert 'status_col, alerts_col = st.columns(' in app_source
+    assert 'status_col, alerts_col = st.columns(' not in app_source
     assert "scanner-monitor-status" in app_source
+    assert "if first_alert:" in app_source
     assert "_browser_alert_control(first_alert, first_alert_kind)" in app_source
     assert "first_saved = saved[:5]" in bootstrap
     assert 'weights = [1.15, 1.15, 1.15] + [0.95] * len(first_saved)' in bootstrap
