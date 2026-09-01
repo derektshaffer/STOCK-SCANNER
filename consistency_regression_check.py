@@ -7109,6 +7109,38 @@ def test_final_decision_contract_cannot_show_entry_when_safety_gate_waits():
 
 
 
+def test_final_decision_contract_fails_closed_without_live_integrity():
+    import analyzer_v2_integration as v2
+
+    metrics = {
+        "price": 9.05,
+        "trade_plan": {
+            "status": "ENTRY AVAILABLE",
+            "action": "ENTRY AVAILABLE — confirmed setup",
+            "entry_state": "ENTRY AVAILABLE",
+            "entry_instruction": "ENTRY AVAILABLE NOW.",
+            "selected": {
+                "entry_low": 9.00,
+                "entry_high": 9.10,
+                "entry_mid": 9.05,
+                "stop": 8.70,
+                "target1": 9.80,
+                "risk_reward": 2.5,
+            },
+        },
+    }
+    contract = v2._finalize_trade_plan_contract(metrics)
+    plan = metrics["trade_plan"]
+    assert contract.get("version") == "trade-plan-contract-v1", contract
+    assert plan.get("status") == "WAIT", plan
+    assert plan.get("entry_state") == "DATA CHECK", plan
+    assert "NO ENTRY SIGNAL" in str(plan.get("entry_instruction") or ""), plan
+    assert any(
+        "live-data integrity" in str(item)
+        for item in contract.get("corrections") or []
+    ), contract
+
+
 def test_final_decision_contract_blocks_incomplete_entry_available_geometry():
     import analyzer_v2_integration as v2
 
@@ -7497,6 +7529,7 @@ if __name__ == "__main__":
         test_visual_truth_usde_like_run_counts_obvious_rebounds,
         test_visual_truth_breakout_plan_keeps_same_goalpost_after_touch,
         test_final_decision_contract_cannot_show_entry_when_safety_gate_waits,
+        test_final_decision_contract_fails_closed_without_live_integrity,
         test_final_decision_contract_blocks_incomplete_entry_available_geometry,
         test_final_decision_contract_blocks_entry_when_price_left_the_zone,
         test_final_decision_contract_requires_safe_geometry_across_full_entry_zone,

@@ -1290,9 +1290,12 @@ def _finalize_trade_plan_contract(metrics, live_data_integrity=None):
             selected["risk_reward"] = round(computed_rr, 2)
             corrections.append("reward/risk recomputed from displayed geometry")
 
-    integrity_ok = True
-    if isinstance(live_data_integrity, dict):
-        integrity_ok = bool(live_data_integrity.get("ok"))
+    # This is the final production contract: missing integrity evidence must
+    # never be interpreted as trusted live data.
+    integrity_ok = bool(
+        isinstance(live_data_integrity, dict)
+        and live_data_integrity.get("ok")
+    )
 
     if geometry_errors:
         plan["status"] = "NO TRADE"
