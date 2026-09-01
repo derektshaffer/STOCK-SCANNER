@@ -3072,13 +3072,18 @@ def test_scanner_refreshes_results_without_full_page_flash():
     )[0]
     assert 'st.rerun(scope="app")' not in monitor
     assert 'st.session_state["_scanner_snapshot_refresh_at"] = now_ts' in monitor
+    assert "status_col, alerts_col = st.columns(" not in monitor
+    assert "if first_alert:" in monitor
 
-    assert "@st.fragment(run_every=10)" in app
+    assert "_candidate_refresh_every = 30 if workspace_live else None" in app
+    assert "@st.fragment(run_every=_candidate_refresh_every)" in app
     assert "def _render_compact_scanner_candidates():" in app
     assert '[data-stale="true"]' in app
     assert "opacity: 1 !important;" in app
 
-    assert "@st.fragment(run_every=10)" in scanner
+    assert "None\n    if combined_monitor_active" in scanner
+    assert "_results_refresh_every = None if combined_monitor_active else 10" in scanner
+    assert "@st.fragment(run_every=_results_refresh_every)" in scanner
     assert "def render_scanner_results():" in scanner
     assert "live-countdown" not in scanner
     assert "Results update in place when the scan finishes." in scanner
