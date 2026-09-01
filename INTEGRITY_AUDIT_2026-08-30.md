@@ -23,7 +23,7 @@ A model or score is not considered trustworthy merely because a backtest passes.
 
 **Rules-based Scanner / Analyzer foundation: materially improved and generally well defended by regression tests.**
 
-**Predictive ML: not yet entitled to a broad production-valid claim.** The original validation-boundary findings were remediated in PR #53 and merged only after the integrity suite passed. Follow-up audit PRs #68-#75 closed additional forward-target parity, advisory-ML leakage, stale-schema/source-integrity, final-contract fail-open, untrusted-calibration contamination, and stale position-advice gaps. Live forward evidence is still too sparse to make strong performance claims.
+**Predictive ML: not yet entitled to a broad production-valid claim.** The original validation-boundary findings were remediated in PR #53 and merged only after the integrity suite passed. Follow-up audit PRs #68-#76 closed additional forward-target parity, advisory-ML leakage, stale-schema/source-integrity, final-contract fail-open, untrusted-calibration contamination, stale position-advice, and forward-universe evidence gaps. Live forward evidence is still too sparse to make strong performance claims.
 
 The safest current interpretation is:
 
@@ -57,6 +57,8 @@ The current code already fixed multiple issues from earlier audits:
 - The final Analyzer trade-plan contract treats missing live-data integrity evidence as untrusted, so omitted integrity metadata cannot preserve an actionable entry.
 - Analyzer calibration and forward-learning cohorts require explicit trusted live-data integrity; stale, non-consolidated, or legacy rows missing integrity metadata remain available for diagnostics but are excluded from calibration.
 - Position-management HOLD/EXIT/REDUCE advice requires a fresh live overlay and fresh trade/quote ages; stale or missing live data falls back to DATA CHECK while keeping protective/target levels as reference only.
+- A durable forward-validation scoreboard now reports exact remaining sample/day/symbol/class gates for Scanner ML, Analyzer schema-v9 calibration, Swing/Longer-Term forward cohorts, Swing ML validation, and point-in-time universe coverage.
+- Nightly dated stock-universe snapshots are captured after the session and may constrain only strictly later replay dates, preventing same-day universe look-ahead while eliminating current-survivor selection for future covered windows.
 
 ## Post-audit hardening completed 2026-08-31
 
@@ -88,7 +90,13 @@ Regular-session Analyzer snapshots were durably recorded even when live-data int
 
 Position mode refreshed a lightweight live overlay every five seconds, but an overlay failure could leave older Analyzer metrics in place and the exit engine did not gate HOLD/EXIT/REDUCE advice on trade/quote freshness. Position metrics now record whether a live overlay was actually received, failed overlays clear freshness fields rather than preserving frozen ages, and live position advice requires both trade and quote ages to be known and no more than 120 seconds old. If that evidence is missing or stale, the panel reports `DATA CHECK` instead of a live HOLD/EXIT/REDUCE instruction while retaining protective/target levels only as reference. Alpaca overlays now expose trade/quote ages and use the same midpoint spread convention as the rest of the Analyzer.
 
-All seven follow-up PRs (#68-#71 and #73-#75) passed compilation, import checks, provider smoke tests, app-boundary checks, consistency regressions, learning regressions, and Phase 6 historical-challenge regressions before merge.
+### PR #76 — Forward evidence scoreboard and point-in-time universe capture
+
+Forward validation previously existed across several artifacts but had no single durable gate report, and historical replay still had no mechanism to stop future survivorship bias from accumulating. The new validation scoreboard reports exact Scanner live-confirmation sample/day/symbol/class counts, Analyzer schema-v9 resolved calibration rows, Swing/Longer-Term forward outcomes, Swing ML status, and universe-snapshot coverage. A separate nightly workflow now captures the public common-stock directory plus a Tradier-screened replay seed after each session. A snapshot is eligible only for sessions strictly after its capture date, so same-day quote/liquidity information cannot leak into replay. Intraday and Swing/Longer-Term replay use the latest prior snapshot when one exists and explicitly report current-universe fallback dates when it does not.
+
+This is a **prospective** survivorship-bias fix. It does not invent delisted-stock membership for 2021-2026, so older replay dates remain explicitly biased until an independent historical listing source is available.
+
+All eight follow-up PRs (#68-#71 and #73-#76) passed compilation, import checks, provider smoke tests, app-boundary checks, consistency regressions, learning regressions, and Phase 6 historical-challenge regressions before merge.
 
 ## Critical findings and remediation
 
@@ -253,6 +261,6 @@ Do not optimize thresholds or add features until the integrity findings are reso
 
 ## Current gate status
 
-PR #53 and follow-up audit PRs #68-#71 and #73-#75 were merged only after the required validation suites passed. The code-level integrity findings documented above are therefore remediated on `main`.
+PR #53 and follow-up audit PRs #68-#71 and #73-#76 were merged only after the required validation suites passed. The code-level integrity findings documented above are therefore remediated on `main`.
 
 This does **not** convert the remaining evidence gaps into validated performance claims. Analyzer live calibration, forward Swing/Longer-Term cohorts, survivorship limitations, and historical feature-parity limitations remain explicit blockers on stronger claims until their required evidence exists.

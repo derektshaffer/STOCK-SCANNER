@@ -76,6 +76,13 @@ jobs:
           TRADIER_TOKEN: ${{ secrets.TRADIER_TOKEN }}
         run: python offhours_outcome_tracker.py
 
+      - name: Refresh forward validation scoreboard
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: python validation_status.py
+
       - name: Commit durable outcome history
         if: always()
         shell: bash
@@ -86,6 +93,7 @@ jobs:
           git add opportunity_reports/*.json opportunity_reports/*.md 2>/dev/null || true
           git add analyzer_outcomes/*.json 2>/dev/null || true
           git add offhours_outcomes/*.json offhours_outcomes/*.md 2>/dev/null || true
+          git add validation_status/*.json validation_status/*.md 2>/dev/null || true
           if git diff --cached --quiet; then
             echo "No new outcome report to commit."
           else
@@ -104,5 +112,6 @@ jobs:
             opportunity_reports/*
             analyzer_outcomes/*
             offhours_outcomes/*
+            validation_status/*
           if-no-files-found: warn
           retention-days: 90
