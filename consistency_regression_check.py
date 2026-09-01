@@ -3080,8 +3080,9 @@ def test_analyzer_visual_snapshots_are_collapsible_and_contextual():
     assert "support_resistance_chart_spec(r,line_overlay=_sr_line)" in source
     assert "Close-line overlay" in source
     assert "Candlesticks are the primary chart" in source
-    assert "scroll/pinch = zoom date range" in source
-    assert "Option/Alt + scroll/pinch = expand/compress price scale" in source
+    assert "Chart controls: scroll/pinch = zoom · drag = pan · " in source
+    assert "Option/Alt + scroll/pinch" not in source
+    assert "Option/Alt + drag" not in source
     assert "double-click = reset" in source
 
 
