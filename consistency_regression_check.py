@@ -3105,7 +3105,12 @@ def test_combined_analyzer_timed_refresh_stays_fragment_scoped():
     assert "and not _combined_timed_refresh" in refresh_logic
     assert "not _COMBINED_WORKSPACE or _combined_timed_refresh" in refresh_logic
     assert refresh_logic.count('st.rerun(scope="app")') == 1
-    assert "if not combined:\n        _install_scroll_keeper()" in run_tail
+    assert "finishFragmentSwap" in bootstrap
+    assert ".st-key-analyzer_live_fragment" in bootstrap
+    assert "staleNode.isConnected" in bootstrap
+    assert "childList: true" in bootstrap
+    assert "_install_scroll_keeper()" in run_tail
+    assert "if not combined:\n        _install_scroll_keeper()" not in run_tail
 
 
 def test_analyzer_plotly_figures_render_candlesticks_and_levels():
