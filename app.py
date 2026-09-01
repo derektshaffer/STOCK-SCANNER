@@ -823,19 +823,11 @@ def _workspace_scanner_monitor():
             "Completed-daily Swing / Longer-Term discovery remains available."
         )
 
-    status_col, alerts_col = st.columns(
-        [5.2, 1.0],
-        gap="small",
-        vertical_alignment="center",
-    )
-    with status_col:
-        st.markdown(
-            '<div class="scanner-monitor-status">'
-            + html.escape(monitor_status)
-            + '</div>',
-            unsafe_allow_html=True,
-        )
-    with alerts_col:
+    # Keep the background scheduler visually silent. Re-rendering a status row
+    # every five seconds made the Scanner shell appear to blink and shift even
+    # when no scan result changed. Only surface something when there is a new
+    # actionable browser alert; normal cadence/status stays in session state.
+    if first_alert:
         _browser_alert_control(first_alert, first_alert_kind)
 
 
@@ -1373,7 +1365,9 @@ if view == "Momentum Scanner":
 
     _analyzer_launch_monitor()
 
-    @st.fragment(run_every=10)
+    _candidate_refresh_every = 30 if workspace_live else None
+
+    @st.fragment(run_every=_candidate_refresh_every)
     def _render_compact_scanner_candidates():
         offhours_mode = not workspace_live
         offhours_candidates = (
