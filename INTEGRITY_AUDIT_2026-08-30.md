@@ -23,7 +23,7 @@ A model or score is not considered trustworthy merely because a backtest passes.
 
 **Rules-based Scanner / Analyzer foundation: materially improved and generally well defended by regression tests.**
 
-**Predictive ML: not yet entitled to a broad production-valid claim.** The original validation-boundary findings were remediated in PR #53 and merged only after the integrity suite passed. Follow-up audit PRs #68-#73 closed additional forward-target parity, advisory-ML leakage, stale-schema/source-integrity, and final-contract fail-open gaps. Live forward evidence is still too sparse to make strong performance claims.
+**Predictive ML: not yet entitled to a broad production-valid claim.** The original validation-boundary findings were remediated in PR #53 and merged only after the integrity suite passed. Follow-up audit PRs #68-#74 closed additional forward-target parity, advisory-ML leakage, stale-schema/source-integrity, final-contract fail-open, and untrusted-calibration contamination gaps. Live forward evidence is still too sparse to make strong performance claims.
 
 The safest current interpretation is:
 
@@ -55,6 +55,7 @@ The current code already fixed multiple issues from earlier audits:
 - Missing `production_source_ok` metadata fails closed; legacy/stale ML payloads cannot be treated as consolidated-source production evidence.
 - Peer blending and ML trade-plan confidence adjustments require the same explicit source-integrity gate rather than trusting `gate_passed` alone.
 - The final Analyzer trade-plan contract treats missing live-data integrity evidence as untrusted, so omitted integrity metadata cannot preserve an actionable entry.
+- Analyzer calibration and forward-learning cohorts require explicit trusted live-data integrity; stale, non-consolidated, or legacy rows missing integrity metadata remain available for diagnostics but are excluded from calibration.
 
 ## Post-audit hardening completed 2026-08-31
 
@@ -78,7 +79,11 @@ Peer blending and trade-plan confidence adjustment previously checked `gate_pass
 
 The production Analyzer already passed a live-data integrity object into its final trade-plan contract, but the helper itself treated an omitted integrity object as trusted. Missing integrity evidence now blocks an otherwise actionable entry to `WAIT / DATA CHECK`, providing defense in depth for future or alternate callers.
 
-All five follow-up PRs (#68-#71 and #73) passed compilation, import checks, provider smoke tests, app-boundary checks, consistency regressions, learning regressions, and Phase 6 historical-challenge regressions before merge.
+### PR #74 — Calibration learns only from trusted live snapshots
+
+Regular-session Analyzer snapshots were durably recorded even when live-data integrity failed, while the calibration selectors previously filtered only by session/time. That meant a stale or non-consolidated snapshot could be blocked from trading but still teach later calibration. Prediction rows now record live-data integrity, consolidation state, trade/quote age, and integrity reasons. Intraday calibration, Swing/Longer-Term daily calibration, and live Swing research calibration all require explicit `live_data_integrity_ok=true`; legacy rows missing that field fail closed. Calibration schema version 9 invalidates older durable calibration under the stricter sampling contract. Untrusted rows remain available for diagnostics and outcome review but cannot teach score calibration.
+
+All six follow-up PRs (#68-#71 and #73-#74) passed compilation, import checks, provider smoke tests, app-boundary checks, consistency regressions, learning regressions, and Phase 6 historical-challenge regressions before merge.
 
 ## Critical findings and remediation
 
@@ -243,6 +248,6 @@ Do not optimize thresholds or add features until the integrity findings are reso
 
 ## Current gate status
 
-PR #53 and follow-up audit PRs #68-#71 and #73 were merged only after the required validation suites passed. The code-level integrity findings documented above are therefore remediated on `main`.
+PR #53 and follow-up audit PRs #68-#71 and #73-#74 were merged only after the required validation suites passed. The code-level integrity findings documented above are therefore remediated on `main`.
 
 This does **not** convert the remaining evidence gaps into validated performance claims. Analyzer live calibration, forward Swing/Longer-Term cohorts, survivorship limitations, and historical feature-parity limitations remain explicit blockers on stronger claims until their required evidence exists.
