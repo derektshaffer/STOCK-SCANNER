@@ -1,0 +1,131 @@
+{
+  "can_change_analyzer_trade_plan": false,
+  "can_change_scanner_rank": false,
+  "endpoint_model": {
+    "baseline_brier": 0.0428,
+    "historical_replay_independent_rows": 2671,
+    "historical_replay_raw_rows": 12848,
+    "historical_validated": true,
+    "live_confirmation_auc": null,
+    "live_confirmation_samples": 0,
+    "status": "replay_validated_waiting_live",
+    "target": ">= +3% at 60 minutes",
+    "validated": false,
+    "validation_samples": 1276,
+    "walk_forward_auc": 0.859,
+    "walk_forward_brier": 0.0373
+  },
+  "endpoint_source": {
+    "artifact_report_count": 12,
+    "historical_replay_samples": 12848,
+    "live_samples": 30,
+    "local_report_count": 3,
+    "observation_source_counts": {
+      "historical_replay": 12848,
+      "live_scan": 30
+    },
+    "observations_loaded": 12878,
+    "training_data_requirement": "consolidated live + consolidated historical only"
+  },
+  "generated_at_utc": "2026-09-01T12:59:58.726212+00:00",
+  "historical_replay": {
+    "endpoint_comparable_rows": 2477,
+    "endpoint_negatives_on_comparable": 2382,
+    "endpoint_path_disagreement_rate_pct": 5.29,
+    "endpoint_path_disagreements": 131,
+    "endpoint_positives_on_comparable": 95,
+    "path_independent_rows": 2477,
+    "path_negatives": 2269,
+    "path_positives": 208,
+    "path_raw_rows": 11845
+  },
+  "path_model": {
+    "baseline_accuracy_pct": 91.8,
+    "baseline_brier": 0.0751,
+    "can_change_analyzer_trade_plan": false,
+    "can_change_scanner_rank": false,
+    "effective_training_min_gap_seconds": 3600,
+    "effective_training_samples": 2499,
+    "historical_replay_samples": 11845,
+    "historical_validated": true,
+    "historical_validation_min_gap_seconds": 3600,
+    "historical_validation_negatives": 2269,
+    "historical_validation_positives": 208,
+    "historical_validation_raw_samples": 11845,
+    "historical_validation_samples": 2477,
+    "historical_validation_source": "historical_replay",
+    "historical_validation_trading_days": 20,
+    "historical_validation_unique_scans": 554,
+    "live_confirmation_after_replay_day": "2026-08-31",
+    "live_confirmation_days": 0,
+    "live_confirmation_min_days": 5,
+    "live_confirmation_min_gap_seconds": 3600,
+    "live_confirmation_min_samples": 100,
+    "live_confirmation_min_symbols": 15,
+    "live_confirmation_raw_samples": 0,
+    "live_confirmation_ready": false,
+    "live_confirmation_samples": 0,
+    "live_confirmation_symbols": 0,
+    "live_negatives": 0,
+    "live_positives": 0,
+    "live_samples": 30,
+    "live_trading_days": 1,
+    "model_type": "XGBoost",
+    "model_version": "scanner-path-shadow-v1",
+    "negatives": 10949,
+    "positives": 926,
+    "production_influence": false,
+    "research_only": true,
+    "samples": 11875,
+    "status": "replay_validated_waiting_live",
+    "target": ">= +3% within 60m before -3% failure stop",
+    "top_features": [
+      {
+        "feature": "live_bonus",
+        "share_pct": 48.1
+      },
+      {
+        "feature": "intraday_range_pct",
+        "share_pct": 15.5
+      },
+      {
+        "feature": "volume_pace",
+        "share_pct": 15.1
+      },
+      {
+        "feature": "time_fraction",
+        "share_pct": 10.9
+      },
+      {
+        "feature": "above_vwap",
+        "share_pct": 10.5
+      }
+    ],
+    "trading_days": 20,
+    "unique_scans": 601,
+    "validated": false,
+    "validation_samples": 1114,
+    "validation_split_unit": "trading_day",
+    "validation_target_horizon_minutes": 60,
+    "version": "scanner-ml-v2",
+    "walk_forward_accuracy_pct": 91.5,
+    "walk_forward_auc": 0.864,
+    "walk_forward_brier": 0.061
+  },
+  "path_model_version": "scanner-path-shadow-v1",
+  "path_source": {
+    "historical_replay_path_rows": 11845,
+    "observation_source_counts": {
+      "durable_scan_artifact": 30,
+      "historical_replay": 11845
+    },
+    "observations_loaded": 11875,
+    "production_influence": false,
+    "report_count": 1,
+    "target_description": ">= +3% within 60m before -3% failure stop"
+  },
+  "path_target": ">= +3% within 60m before -3% failure stop",
+  "production_influence": false,
+  "research_only": true,
+  "schema_version": 1
+}

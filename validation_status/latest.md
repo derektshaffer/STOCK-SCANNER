@@ -1,27 +1,29 @@
 # Forward Validation Status
 
-Generated: 2026-09-01T12:29:27.147879+00:00
+Generated: 2026-09-01T13:00:26.029824+00:00
 
 ## Scanner ML — independent live confirmation
-- **Samples:** 30/100 — 70 remaining
-- **Trading days:** 1/5 — 4 remaining
-- **Symbols:** 30/15 ✅
-- **Positive class:** 1/15 — 14 remaining
-- **Negative class:** 29/15 ✅
+- **Samples:** 0/100 — 100 remaining
+- **Trading days:** 0/5 — 5 remaining
+- **Symbols:** 0/15 — 15 remaining
+- **Positive class:** 0/15 — 15 remaining
+- **Negative class:** 0/15 — 15 remaining
 - **Count gate ready:** NO
-- Replay end day: 2026-08-28
+- Replay end day: 2026-08-31
 
 ## Scanner path target — shadow validation
 - Target: >= +3% within 60m before -3% failure stop
-- Historical replay: 0 independent rows across 0 days
-- Historical endpoint/path disagreement: 0/0 (—%)
-- Replay end day: —
-- **Independent live samples:** 30/100 — 70 remaining
-- **Trading days:** 1/5 — 4 remaining
-- **Symbols:** 30/15 ✅
-- **Positive class:** 3/15 — 12 remaining
-- **Negative class:** 27/15 ✅
-- Endpoint/path disagreements: 2/30 (6.7%)
+- Historical replay: 2477 independent rows across 20 days
+- Historical endpoint/path disagreement: 131/2477 (5.3%)
+- Replay end day: 2026-08-31
+- Path model historical status: replay_validated_waiting_live · AUC 0.864 · Brier 0.061
+- Endpoint model historical status: replay_validated_waiting_live · AUC 0.859 · Brier 0.0373
+- **Independent live samples:** 0/100 — 100 remaining
+- **Trading days:** 0/5 — 5 remaining
+- **Symbols:** 0/15 — 15 remaining
+- **Positive class:** 0/15 — 15 remaining
+- **Negative class:** 0/15 — 15 remaining
+- Endpoint/path disagreements: 0/0 (—%)
 - **Ready for endpoint-vs-path model comparison:** NO
 - Production influence: **OFF**
 
