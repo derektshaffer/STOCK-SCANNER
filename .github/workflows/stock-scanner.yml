@@ -104,7 +104,9 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           ANALYZER_GITHUB_REPO: ${{ github.repository }}
-          ANALYZER_GITHUB_BRANCH: main
+          # Runtime evidence must never be committed to the deployed branch;
+          # those commits make Streamlit Cloud redeploy the live app.
+          ANALYZER_GITHUB_BRANCH: learning-journal
           ANALYZER_SHADOW_MAX_SYMBOLS: "5"
           ANALYZER_THESIS_NAMESPACE: "shadow-forward-calibration"
           ANALYZER_PREDICTION_SOURCE: "shadow_sampler"
