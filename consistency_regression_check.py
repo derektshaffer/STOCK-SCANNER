@@ -4789,6 +4789,16 @@ def test_scanner_ui_accepts_tradier_without_alpaca_credentials():
     assert "No market-data provider is configured" in runtime_source
 
 
+def test_live_scanner_does_not_publish_empty_snapshot_after_provider_failure():
+    from pathlib import Path
+
+    source = Path("stock_scanner.py").read_text(encoding="utf-8")
+    main = source.split("def main():", 1)[1]
+    guard = main.split("enrich_delayed_sip_liquidity(rows, now_utc, now_et)", 1)[0]
+    assert "if is_active_market_session(now_et) and candidates and not rows:" in guard
+    assert "Preserving the previous scanner snapshot" in guard
+
+
 def test_premarket_tradier_scan_keeps_alpaca_daily_context_fallback():
     from pathlib import Path
 
@@ -8106,6 +8116,7 @@ if __name__ == "__main__":
         test_scanner_ui_accepts_tradier_without_alpaca_credentials,
         test_combined_analyze_button_has_no_obvious_help_popup_and_can_cancel,
         test_cancelable_analyzer_runtime_terminates_active_process,
+        test_live_scanner_does_not_publish_empty_snapshot_after_provider_failure,
         test_premarket_tradier_scan_keeps_alpaca_daily_context_fallback,
         test_live_scanner_matches_scheduled_tradier_discovery,
         test_discovery_universe_reserves_extreme_mover_rescue_slot,
