@@ -8022,7 +8022,7 @@ if __name__ == "__main__":
         test_analyzer_bounce_progress_and_plan_change_are_explicit,
         test_analyzer_exposes_same_evidence_bars_for_visual_snapshots,
         test_analyzer_visual_specs_show_real_pattern_markers,
-        test_analyzer_visual_ui_uses_safe_shared_chart_controls,
+        test_analyzer_visual_ui_uses_plotly_renderer,
         test_analyzer_visuals_use_dark_high_contrast_theme,
         test_analyzer_visual_snapshots_are_collapsible_and_contextual,
         test_analyzer_long_context_text_is_collapsible,
