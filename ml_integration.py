@@ -16,6 +16,16 @@ def _clamp(value, lo, hi):
     return max(lo, min(hi, value))
 
 
+def _production_gate_passed(ml):
+    """Fail closed unless the complete same-ticker production gate is proven."""
+    return bool(
+        isinstance(ml, dict)
+        and ml.get("status") == "ok"
+        and ml.get("gate_passed")
+        and ml.get("production_source_ok")
+    )
+
+
 def _validated_edge_only(ml):
     """Replace the headline ML edge with a validated-model-only consensus.
 
@@ -164,7 +174,7 @@ def install_ml_analysis(sa):
         # including impulse/retracement/bounce structure when those historical
         # replay features are available.
         same_ticker_edge = _num(ml.get("ml_edge_score"))
-        same_ticker_gate = bool(ml.get("gate_passed"))
+        same_ticker_gate = _production_gate_passed(ml)
         try:
             peer = predict_peer_ml(
                 symbol=symbol,
@@ -245,7 +255,7 @@ def install_ml_analysis(sa):
         # used here is now composed ONLY of validated models. ML v1 still never
         # overrides the rule-based entry/stop/target decision.
         plan = metrics.get("trade_plan") or {}
-        if plan and ml.get("status") == "ok" and ml.get("gate_passed"):
+        if plan and same_ticker_gate:
             edge = _num(ml.get("ml_edge_score"))
             if edge is not None:
                 adjustment = _clamp((edge - 50.0) * 0.16, -6.0, 6.0)
