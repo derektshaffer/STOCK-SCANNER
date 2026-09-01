@@ -323,6 +323,11 @@ def record_prediction(metrics, now=None, defer_remote=False):
         "bucket_key": key,
         "symbol": symbol,
         "timestamp": now.isoformat(),
+        "prediction_source": (
+            str(metrics.get("prediction_source") or "").strip()
+            or os.environ.get("ANALYZER_PREDICTION_SOURCE", "").strip()
+            or "interactive_analyzer"
+        ),
         "feature_version": (
             metrics.get("feature_version")
             or ANALYZER_FEATURE_VERSION

@@ -3160,6 +3160,7 @@ def test_prediction_tracker_logs_exact_final_plan_and_contract():
 
         metrics = {
             "symbol": "TEST",
+            "prediction_source": "shadow_sampler",
             "market_session": "regular",
             "price": 9.05,
             "trade_age_seconds": 15.0,
@@ -3210,6 +3211,7 @@ def test_prediction_tracker_logs_exact_final_plan_and_contract():
         assert result.get("recorded"), result
         assert captured, result
         row = captured[-1]
+        assert row.get("prediction_source") == "shadow_sampler", row
         assert row.get("plan_status") == "WAIT", row
         assert row.get("plan_action") == "WAIT — LIVE DATA INTEGRITY CHECK", row
         assert row.get("plan_entry_state") == "DATA CHECK", row
@@ -5887,6 +5889,38 @@ def test_scanner_replay_live_confirmation_gate_is_integrity_sized():
     assert sm.LIVE_CONFIRMATION_MIN_GAP_SECONDS >= 60 * 60
 
 
+def test_shadow_analyzer_sampler_is_stratified_and_fail_closed():
+    import analyzer_shadow_sampler as sampler
+
+    payload = {
+        "session_phase": "regular",
+        "data": {
+            "live_provider": "tradier",
+            "live_feed": "consolidated",
+        },
+        "candidates": [
+            {"rank": rank, "symbol": f"S{rank:02d}"}
+            for rank in range(1, 31)
+        ],
+    }
+    assert sampler.select_shadow_symbols(payload) == [
+        "S01", "S03", "S08", "S15", "S25"
+    ]
+
+    extended = dict(payload)
+    extended["session_phase"] = "afterhours"
+    assert sampler.select_shadow_symbols(extended) == []
+
+    untrusted = {
+        **payload,
+        "data": {
+            "live_provider": "alpaca",
+            "live_feed": "iex",
+        },
+    }
+    assert sampler.select_shadow_symbols(untrusted) == []
+
+
 def test_validation_workflow_runs_before_merge_on_pull_requests():
     from pathlib import Path
 
@@ -7618,6 +7652,7 @@ if __name__ == "__main__":
         test_scanner_historical_validation_excludes_live_confirmation_pool,
         test_scanner_replay_validation_decorrelates_overlapping_same_symbol_paths,
         test_scanner_replay_live_confirmation_gate_is_integrity_sized,
+        test_shadow_analyzer_sampler_is_stratified_and_fail_closed,
         test_validation_workflow_runs_before_merge_on_pull_requests,
         test_prediction_tracker_uses_first_post_horizon_bar_with_three_minute_cap,
         test_prediction_tracker_outcomes_start_strictly_after_observation,

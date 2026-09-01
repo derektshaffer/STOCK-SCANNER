@@ -122,6 +122,12 @@ The first explicit production evidence refresh establishes the following clean b
 
 This baseline should move only from newly earned forward evidence; the audit does not backfill old rows across version or integrity gates.
 
+### PR #81 — Automated shadow Analyzer forward calibration
+
+The clean Analyzer schema-v9 baseline exposed a collection bottleneck: forward calibration depended heavily on interactive Analyzer usage, so a quiet user session could leave the calibration sample at zero even while the cloud Scanner was running. The existing cloud Scanner evidence cadence now feeds a **shadow-only** Analyzer sample on its offset hourly regular-session run. Sampling is deterministic and stratified across Scanner ranks 1, 3, 8, 15, and 25 rather than cherry-picking only the strongest candidate. It runs only when the saved Scanner snapshot is regular-session, Tradier-sourced, and consolidated; otherwise it records nothing. Shadow analyses use a separate thesis namespace and are tagged `prediction_source=shadow_sampler`, so their results remain distinguishable from interactive Analyzer observations. The production Scanner rank, Analyzer decision logic, entry/exit thresholds, and validation gates are unchanged.
+
+The sampler passed compilation, provider smoke checks, the app-boundary gate, full consistency regressions (including extended/non-consolidated rejection and source tagging), learning regressions, and Phase 6 historical-challenge regressions before merge.
+
 ## Critical findings and remediation
 
 ### P0-1 — Replay survivorship could support a falsely strong peer-ML validation claim
