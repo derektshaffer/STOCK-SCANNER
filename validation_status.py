@@ -8,6 +8,10 @@ from pathlib import Path
 
 import analyzer_versions as versions
 import scanner_ml_ranker as scanner_ml
+from historical_listing_universe import (
+    load_cached_historical_universes,
+    target_replay_dates,
+)
 
 
 OUT_DIR = Path("validation_status")
@@ -168,6 +172,37 @@ def universe_coverage():
     }
 
 
+def historical_listing_coverage():
+    cached = load_cached_historical_universes()
+    targets = target_replay_dates()
+    target_set = set(targets)
+    covered = sorted(day for day in cached if day in target_set)
+    latest_backfill = _load(
+        Path("historical_universes/alpha_vantage/latest_backfill.json")
+    )
+    return {
+        "target_replay_dates": len(targets),
+        "exact_historical_snapshot_count": len(cached),
+        "covered_target_dates": len(covered),
+        "missing_target_dates": max(0, len(targets) - len(covered)),
+        "coverage_pct": (
+            round(len(covered) / len(targets) * 100.0, 1)
+            if targets else 0.0
+        ),
+        "first_covered_date": covered[0].isoformat() if covered else None,
+        "latest_covered_date": covered[-1].isoformat() if covered else None,
+        "latest_backfill_status": latest_backfill.get("status"),
+        "latest_backfill_fetched_dates": int(
+            latest_backfill.get("fetched_dates") or 0
+        ),
+        "note": (
+            "Exact historical-date listing membership is used only when a "
+            "cached snapshot exists for that same replay date. Missing dates "
+            "remain explicitly on prospective/current-universe fallback."
+        ),
+    }
+
+
 def build_status():
     sections = {
         "scanner_ml_live_confirmation": scanner_live_evidence(),
@@ -175,6 +210,7 @@ def build_status():
         "offhours_timeframe_forward": offhours_forward_evidence(),
         "swing_timeframe_ml": timeframe_ml_evidence(),
         "point_in_time_universe": universe_coverage(),
+        "historical_listing_universe": historical_listing_coverage(),
     }
     return {
         "schema_version": 1,
@@ -202,6 +238,7 @@ def render_markdown(payload):
     off = s["offhours_timeframe_forward"]
     tf = s["swing_timeframe_ml"]
     universe = s["point_in_time_universe"]
+    historical_listing = s["historical_listing_universe"]
 
     lines = [
         "# Forward Validation Status",
@@ -242,6 +279,15 @@ def render_markdown(payload):
         _progress_line("Replay-ready nightly snapshots", universe["activation_gate"]),
         f"- First capture: {universe.get('first_replay_ready_capture_date') or '—'}",
         f"- Latest capture: {universe.get('latest_replay_ready_capture_date') or '—'}",
+        "",
+        "## Historical listing-universe backfill",
+        f"- Exact replay dates covered: {historical_listing['covered_target_dates']}/"
+        f"{historical_listing['target_replay_dates']} "
+        f"({historical_listing['coverage_pct']}%)",
+        f"- Missing exact-date memberships: {historical_listing['missing_target_dates']}",
+        f"- First covered date: {historical_listing.get('first_covered_date') or '—'}",
+        f"- Latest covered date: {historical_listing.get('latest_covered_date') or '—'}",
+        f"- Latest backfill status: {historical_listing.get('latest_backfill_status') or 'not started'}",
         "",
         "## Interpretation",
         payload["production_claim"],
