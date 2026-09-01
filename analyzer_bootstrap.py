@@ -241,6 +241,8 @@ def _cleanup_combined_browser_helpers():
           if (scroll) {
             try { scroll.observer && scroll.observer.disconnect(); } catch (_) {}
             try { scroll.watcher && p.clearInterval(scroll.watcher); } catch (_) {}
+            try { scroll.lockFrame && p.cancelAnimationFrame(scroll.lockFrame); } catch (_) {}
+            try { scroll.releaseHeight && scroll.releaseHeight(); } catch (_) {}
             try { scroll.scroller && scroll.onScroll && scroll.scroller.removeEventListener('scroll', scroll.onScroll); } catch (_) {}
             try { scroll.onWindowScroll && p.removeEventListener('scroll', scroll.onWindowScroll); } catch (_) {}
           }
@@ -336,6 +338,8 @@ def _install_scroll_keeper():
           if (old) {
             try { old.observer && old.observer.disconnect(); } catch (_) {}
             try { old.watcher && p.clearInterval(old.watcher); } catch (_) {}
+            try { old.lockFrame && p.cancelAnimationFrame(old.lockFrame); } catch (_) {}
+            try { old.releaseHeight && old.releaseHeight(); } catch (_) {}
             try { old.scroller && old.onScroll && old.scroller.removeEventListener("scroll", old.onScroll); } catch (_) {}
             try { old.onWindowScroll && p.removeEventListener("scroll", old.onWindowScroll); } catch (_) {}
           }
@@ -358,6 +362,9 @@ def _install_scroll_keeper():
           let pendingY = null;
           let staleNode = null;
           let restoreScheduled = false;
+          let frozenHeight = null;
+          let frozenRoot = null;
+          let lockFrame = null;
           const onScroll = () => {
             if (p.__ssaRerunPending) return;
             savePosition();
@@ -369,18 +376,73 @@ def _install_scroll_keeper():
             if (restoreScheduled || !Number.isFinite(pendingY)) return;
             restoreScheduled = true;
             const y = pendingY;
-            p.requestAnimationFrame(() => restorePosition(y));
-            p.setTimeout(() => restorePosition(y), 60);
-            p.setTimeout(() => restorePosition(y), 180);
-            p.setTimeout(() => restorePosition(y), 450);
             p.setTimeout(() => {
-              restorePosition(y);
-              pendingY = null;
-              staleNode = null;
-              restoreScheduled = false;
-              p.__ssaRerunPending = false;
-              savePosition();
+              releaseHeight();
+              // Style removal and the final restoration happen in the same
+              // pre-paint frame. There is never a rendered frame between the
+              // frozen replacement and its natural settled height.
+              p.requestAnimationFrame(() => {
+                restorePosition(y);
+                if (lockFrame) p.cancelAnimationFrame(lockFrame);
+                lockFrame = null;
+                pendingY = null;
+                staleNode = null;
+                restoreScheduled = false;
+                p.__ssaRerunPending = false;
+                savePosition();
+              });
             }, 900);
+          }
+
+          function holdHeight() {
+            const root = d.querySelector('.st-key-analyzer_live_fragment');
+            if (!root) return;
+
+            if (!Number.isFinite(frozenHeight)) {
+              const rect = root.getBoundingClientRect();
+              if (rect.height > 0) frozenHeight = rect.height;
+            }
+            if (!Number.isFinite(frozenHeight)) return;
+
+            // The keyed container can itself be replaced. Apply the same
+            // frozen geometry to whichever copy is currently mounted.
+            if (frozenRoot && frozenRoot !== root) {
+              frozenRoot.style.removeProperty('height');
+              frozenRoot.style.removeProperty('min-height');
+              frozenRoot.style.removeProperty('max-height');
+              frozenRoot.style.removeProperty('overflow');
+              frozenRoot.style.removeProperty('contain');
+            }
+            frozenRoot = root;
+            const px = `${frozenHeight}px`;
+            root.style.setProperty('height', px, 'important');
+            root.style.setProperty('min-height', px, 'important');
+            root.style.setProperty('max-height', px, 'important');
+            root.style.setProperty('overflow', 'hidden', 'important');
+            root.style.setProperty('contain', 'layout paint', 'important');
+          }
+
+          function releaseHeight() {
+            if (frozenRoot) {
+              frozenRoot.style.removeProperty('height');
+              frozenRoot.style.removeProperty('min-height');
+              frozenRoot.style.removeProperty('max-height');
+              frozenRoot.style.removeProperty('overflow');
+              frozenRoot.style.removeProperty('contain');
+            }
+            frozenRoot = null;
+            frozenHeight = null;
+          }
+
+          function lockViewportBeforePaint() {
+            if (!p.__ssaRerunPending || !Number.isFinite(pendingY)) {
+              lockFrame = null;
+              return;
+            }
+            holdHeight();
+            restorePosition(pendingY);
+            lockFrame = p.requestAnimationFrame(lockViewportBeforePaint);
+            if (p.__ssaScrollKeeper) p.__ssaScrollKeeper.lockFrame = lockFrame;
           }
 
           function liveStaleNode() {
@@ -404,6 +466,11 @@ def _install_scroll_keeper():
             staleNode = node;
             restoreScheduled = false;
             p.__ssaRerunPending = true;
+            holdHeight();
+            // MutationObserver callbacks run before the browser paints the DOM
+            // mutation. Start a frame-by-frame lock here so no intermediate
+            // collapsed/expanded layout can ever become visible.
+            lockViewportBeforePaint();
             try {
               p.sessionStorage.setItem(
                 KEY,
@@ -453,10 +520,9 @@ def _install_scroll_keeper():
           }
 
           // Streamlit keeps the old subtree marked stale for several seconds
-          // while the deep calculation runs. During that window the browser
-          // can clamp stMain before the removal mutation arrives. Hold the
-          // saved position throughout the stale phase, then through ten short
-          // settling ticks after the replacement mounts.
+          // while the deep calculation runs. This low-frequency watcher only
+          // detects lifecycle state; the animation-frame loop above owns the
+          // actual pre-paint viewport and height lock.
           let settledTicks = 0;
           const watcher = p.setInterval(() => {
             const liveStale = liveStaleNode();
@@ -477,6 +543,8 @@ def _install_scroll_keeper():
           p.__ssaScrollKeeper = {
             observer,
             watcher,
+            lockFrame,
+            releaseHeight,
             scroller,
             onScroll,
             onWindowScroll: onScroll
