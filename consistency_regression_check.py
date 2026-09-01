@@ -4836,6 +4836,9 @@ def test_outcome_tracker_runs_after_extended_hours():
     source = Path(".github/workflows/outcome-tracker.yml").read_text(encoding="utf-8")
     assert "- cron: '30 1 * * 2-6'" in source
     assert "after the full 4:00 AM-8:00 PM ET extended session" in source
+    assert "Refresh forward evidence" in source
+    assert "python validation_status.py" in source
+    assert "github.event_name != 'push'" in source
 
 
 def test_scanner_table_volume_pace_formatter_matches_column():
