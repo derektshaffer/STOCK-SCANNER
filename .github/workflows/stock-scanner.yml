@@ -15,7 +15,8 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  # Shadow Analyzer samples durably merge prediction rows into analyzer_outcomes.
+  contents: write
   actions: read
 
 concurrency:
@@ -91,6 +92,24 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: python stock_scanner.py
 
+      - name: Run shadow Analyzer forward sample
+        if: (github.event_name == 'workflow_dispatch' || github.event.schedule == '17 14-20 * * 1-5') && steps.market_time.outputs.in_market_hours == 'true'
+        env:
+          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+          ALPACA_LIVE_FEED: ${{ secrets.ALPACA_LIVE_FEED }}
+          TRADIER_ACCESS_TOKEN: ${{ secrets.TRADIER_ACCESS_TOKEN }}
+          TRADIER_TOKEN: ${{ secrets.TRADIER_TOKEN }}
+          ANALYZER_GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          ANALYZER_GITHUB_REPO: ${{ github.repository }}
+          ANALYZER_GITHUB_BRANCH: main
+          ANALYZER_SHADOW_MAX_SYMBOLS: "5"
+          ANALYZER_THESIS_NAMESPACE: "shadow-forward-calibration"
+          ANALYZER_PREDICTION_SOURCE: "shadow_sampler"
+        run: python analyzer_shadow_sampler.py
+
       - name: Preserve scan logs
         if: always() && (github.event_name == 'workflow_dispatch' || steps.market_time.outputs.in_market_hours == 'true')
         uses: actions/upload-artifact@v4
@@ -99,5 +118,6 @@ jobs:
           path: |
             scan_logs/*.json
             scan_logs/*.csv
+            analysis_logs/*.json
           if-no-files-found: warn
           retention-days: 30
