@@ -83,8 +83,8 @@ def _render_visual_snapshot(label, spec_factory, caption=None, key=None):
         spec = spec_factory(overlay) if callable(spec_factory) else preview
         st.vega_lite_chart(spec=spec, use_container_width=True)
         st.caption(
-            "Chart controls: scroll/pinch = zoom · drag = pan · "
-            "double-click = reset."
+            "Chart rendering restored with the stable base renderer. "
+            "Interactive scale controls are temporarily disabled while the blank-chart issue is verified."
         )
         if caption:
             st.caption(caption)
@@ -1821,8 +1821,8 @@ with st.expander("Support & resistance levels", expanded=False):
     if _sr_visual:
         st.vega_lite_chart(spec=_sr_visual, use_container_width=True)
         st.caption(
-            "Chart controls: scroll/pinch = zoom · drag = pan · "
-            "double-click = reset."
+            "Chart rendering restored with the stable base renderer. "
+            "Interactive scale controls are temporarily disabled while the blank-chart issue is verified."
         )
         st.caption("Candlesticks show recent price action. Horizontal levels are the same nearby support/resistance levels listed below.")
     scol,rcol=st.columns(2)
