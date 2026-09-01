@@ -339,19 +339,20 @@ def main():
     print("HISTORICAL_LISTING_BACKFILL=" + json.dumps(result, sort_keys=True))
     if result.get("status") == "skipped_missing_key":
         return 0
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    (OUTPUT_DIR / "latest_backfill.json").write_text(
-        json.dumps(
-            {
-                **result,
-                "generated_at_utc": datetime.now(timezone.utc).isoformat(),
-            },
-            indent=2,
-            sort_keys=True,
+    if int(result.get("fetched_dates") or 0) > 0 or result.get("errors"):
+        OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+        (OUTPUT_DIR / "latest_backfill.json").write_text(
+            json.dumps(
+                {
+                    **result,
+                    "generated_at_utc": datetime.now(timezone.utc).isoformat(),
+                },
+                indent=2,
+                sort_keys=True,
+            )
+            + "\n",
+            encoding="utf-8",
         )
-        + "\n",
-        encoding="utf-8",
-    )
     return 0
 
 
