@@ -269,6 +269,9 @@ st.markdown(
 VIEWS = ("Momentum Scanner", "Stock Analyzer")
 if st.session_state.get("app_view") not in VIEWS:
     st.session_state["app_view"] = "Momentum Scanner"
+_pending_app_view = st.session_state.pop("_pending_app_view", None)
+if _pending_app_view in VIEWS:
+    st.session_state["app_view"] = _pending_app_view
 if "auto_scan_enabled" not in st.session_state:
     st.session_state["auto_scan_enabled"] = True
 if "last_auto_scan_at" not in st.session_state:
@@ -608,9 +611,13 @@ if view != previous_rendered_view:
             or st.session_state.get("_analyzer_launch_state")
             or {}
         )
-        launch_process = launch_state.get("process")
+        scanner_launch_symbol = str(
+            st.session_state.get("_analyzer_scanner_launch_pending") or ""
+        ).upper().strip()
         launched_from_scanner = bool(
-            launch_process is not None and launch_process.poll() is None
+            scanner_launch_symbol
+            and scanner_launch_symbol
+            == str(launch_state.get("symbol") or scanner_launch_symbol).upper().strip()
         )
         if not launched_from_scanner:
             st.session_state.pop("ticker_search_request", None)
@@ -1173,6 +1180,7 @@ def _cancel_analyzer_launch():
         st.session_state["_analyzer_cancel_notice"]=result.get("message")
     st.session_state["_analyzer_bootstrap_launch_state"]=None
     st.session_state["_analyzer_launch_state"]=None
+    st.session_state.pop("_analyzer_scanner_launch_pending",None)
     st.session_state["_analyzer_loading"]=False
     st.session_state.pop("_analyzer_background_request_symbol",None)
 
@@ -1245,12 +1253,17 @@ def _toggle_analyzer_launch(symbol):
 
     st.session_state["_analyzer_bootstrap_launch_state"]=launch
     st.session_state["_analyzer_launch_state"]=None
+    st.session_state["_analyzer_scanner_launch_pending"]=symbol
     st.session_state.pop("_analyzer_background_request_symbol",None)
     st.session_state["ticker"]=symbol
     st.session_state["ticker_search_request"]=symbol
     st.session_state["_analyzer_loading"]=True
     st.session_state.pop("ticker_picker",None)
-    st.session_state["app_view"]="Stock Analyzer"
+    st.session_state["_pending_app_view"]="Stock Analyzer"
+
+
+def _toggle_analyzer_and_navigate(symbol):
+    _toggle_analyzer_launch(symbol)
 
 
 def _poll_analyzer_launch():
@@ -1262,6 +1275,7 @@ def _poll_analyzer_launch():
         return
 
     st.session_state["_analyzer_launch_state"]=None
+    st.session_state.pop("_analyzer_scanner_launch_pending",None)
     if not outcome.get("ok"):
         st.session_state["_analyzer_launch_error"]=outcome.get("message") or "Analyzer failed."
         return
@@ -1364,7 +1378,7 @@ if view == "Momentum Scanner":
         st.error(f"Could not analyze the selected ticker: {launch_error}")
     cancel_notice = st.session_state.pop("_analyzer_cancel_notice", None)
     if cancel_notice:
-        st.toast(cancel_notice, icon="✕")
+        st.toast(cancel_notice, icon="❌")
 
     _analyzer_poll_every = 1 if st.session_state.get("_analyzer_launch_state") else None
 
@@ -1378,6 +1392,8 @@ if view == "Momentum Scanner":
 
     @st.fragment(run_every=_candidate_refresh_every)
     def _render_compact_scanner_candidates():
+        if st.session_state.get("_pending_app_view") in VIEWS:
+            st.rerun(scope="app")
         offhours_mode = not workspace_live
         offhours_candidates = (
             _offhours_timeframe_candidates()
@@ -1491,7 +1507,7 @@ if view == "Momentum Scanner":
                         _launch_active
                         and str(_launch_state.get("symbol") or "").upper()==symbol
                     )
-                    if st.button(
+                    st.button(
                         f"Cancel {symbol}" if _this_running else f"Analyze {symbol}",
                         key=f"combined_analyze_{idx}_{symbol}",
                         type="secondary" if _this_running else "primary",
@@ -1502,12 +1518,9 @@ if view == "Momentum Scanner":
                             if latest_scan_stale and not _this_running
                             else None
                         ),
-                    ):
-                        _toggle_analyzer_launch(symbol)
-                        # Candidate rows refresh in a fragment, but a deliberate
-                        # Scanner -> Analyzer navigation must rerun the parent app.
-                        # This is user-triggered only; background scans never do it.
-                        st.rerun(scope="app")
+                        on_click=_toggle_analyzer_and_navigate,
+                        args=(symbol,),
+                    )
         else:
             st.caption(
                 "No scanner candidates are available yet. Live momentum scanning runs "
