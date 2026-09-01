@@ -659,14 +659,14 @@ def _workspace_scanner_monitor():
                 scan_running = False
             else:
                 st.session_state["last_auto_scan_at"] = now_ts
-                # The candidate rows live outside this monitor fragment. Force
-                # one full-app rerun as soon as a fresh background scan lands
-                # so the visible Scanner actually loads the new snapshot.
+                # Keep the Scanner shell stable. The candidate/results fragments
+                # read the newly written snapshot independently, so a completed
+                # background scan must never tear down the full app.
                 scan_running = False
                 st.session_state["_scanner_flash_success"] = str(
                     poll.get("message") or "Fresh background scan complete."
                 )
-                st.rerun(scope="app")
+                st.session_state["_scanner_snapshot_refresh_at"] = now_ts
         else:
             scan_running = True
 
@@ -884,6 +884,18 @@ if view == "Momentum Scanner":
         .st-key-analyzer_live_fragment {
             display: none !important;
             pointer-events: none !important;
+        }
+
+        /* Live Scanner refreshes should be visually stable. Streamlit marks
+           outgoing fragment elements as stale while replacements are prepared;
+           keep the old snapshot fully visible instead of fading/blinking it. */
+        [data-stale="true"],
+        div[data-stale="true"],
+        .element-container[data-stale="true"] {
+            opacity: 1 !important;
+            filter: none !important;
+            transition: none !important;
+            animation: none !important;
         }
 
         /* Compact the combined one-click scanner section without affecting
@@ -1361,140 +1373,144 @@ if view == "Momentum Scanner":
 
     _analyzer_launch_monitor()
 
-    offhours_mode = not workspace_live
-    offhours_candidates = (
-        _offhours_timeframe_candidates()
-        if offhours_mode
-        else []
-    )
-    candidates = offhours_candidates or _latest_scan_candidates()
-    trade_horizon = st.session_state.get("scanner_trade_horizon", "ALL")
-    candidates = [
-        row for row in candidates
-        if _trade_horizon_matches(row, trade_horizon)
-    ]
-    latest_scan_age = _latest_scan_age_seconds()
-    # Auto-scan targets every two minutes. During a live session, allow a
-    # two-minute grace window and prevent one-click analysis of stale rows.
-    latest_scan_stale = bool(
-        workspace_live
-        and not offhours_candidates
-        and (
-            latest_scan_age is None
-            or latest_scan_age > 4 * 60
+    @st.fragment(run_every=10)
+    def _render_compact_scanner_candidates():
+        offhours_mode = not workspace_live
+        offhours_candidates = (
+            _offhours_timeframe_candidates()
+            if offhours_mode
+            else []
         )
-    )
-    if latest_scan_stale and candidates:
-        st.warning(
-            "The displayed scanner snapshot is stale ("
-            + _scan_age_text(latest_scan_age)
-            + "). A fresh scan is due; Analyze buttons are temporarily disabled "
-            "so an old setup cannot be mistaken for a current one."
+        candidates = offhours_candidates or _latest_scan_candidates()
+        trade_horizon = st.session_state.get("scanner_trade_horizon", "ALL")
+        candidates = [
+            row for row in candidates
+            if _trade_horizon_matches(row, trade_horizon)
+        ]
+        latest_scan_age = _latest_scan_age_seconds()
+        # Auto-scan targets every two minutes. During a live session, allow a
+        # two-minute grace window and prevent one-click analysis of stale rows.
+        latest_scan_stale = bool(
+            workspace_live
+            and not offhours_candidates
+            and (
+                latest_scan_age is None
+                or latest_scan_age > 4 * 60
+            )
         )
+        if latest_scan_stale and candidates:
+            st.warning(
+                "The displayed scanner snapshot is stale ("
+                + _scan_age_text(latest_scan_age)
+                + "). A fresh scan is due; Analyze buttons are temporarily disabled "
+                "so an old setup cannot be mistaken for a current one."
+            )
 
-    if offhours_mode and trade_horizon == "INTRADAY":
-        st.caption(
-            "Short term (intraday) candidates require live market data. "
-            "The completed-daily off-hours screen only contains medium-term "
-            "(swing) and long-term candidates."
-        )
-
-    if candidates:
-        if offhours_candidates:
+        if offhours_mode and trade_horizon == "INTRADAY":
             st.caption(
-                "Showing the latest completed-daily Swing / Longer-Term discovery. "
-                "These are research candidates, not live entry signals."
+                "Short term (intraday) candidates require live market data. "
+                "The completed-daily off-hours screen only contains medium-term "
+                "(swing) and long-term candidates."
             )
-        # Make each row useful at a glance: ticker, grade, score/review cue,
-        # today's completed move and volume context, with Analyze at the end.
-        for idx, row in enumerate(candidates):
-            symbol = row["symbol"]
-            grade = row.get("grade") or "—"
-            fit = str(row.get("timeframe_best_fit") or "—")
-            fit_display = "MULTIPLE TIMEFRAMES" if fit == "MIXED" else fit
-            grade_fit = f"{grade} · {fit_display}" if fit_display != "—" else grade
-            score_text = _fmt_num(row.get("score"), "{:.0f}")
-            score_label = (
-                "Trend Candidate Score"
-                if row.get("source_mode") == "offhours_daily_timeframe"
-                else "Score"
+
+        if candidates:
+            if offhours_candidates:
+                st.caption(
+                    "Showing the latest completed-daily Swing / Longer-Term discovery. "
+                    "These are research candidates, not live entry signals."
+                )
+            # Make each row useful at a glance: ticker, grade, score/review cue,
+            # today's completed move and volume context, with Analyze at the end.
+            for idx, row in enumerate(candidates):
+                symbol = row["symbol"]
+                grade = row.get("grade") or "—"
+                fit = str(row.get("timeframe_best_fit") or "—")
+                fit_display = "MULTIPLE TIMEFRAMES" if fit == "MIXED" else fit
+                grade_fit = f"{grade} · {fit_display}" if fit_display != "—" else grade
+                score_text = _fmt_num(row.get("score"), "{:.0f}")
+                score_label = (
+                    "Trend Candidate Score"
+                    if row.get("source_mode") == "offhours_daily_timeframe"
+                    else "Score"
+                )
+                action_text, action_cls, action_label = _action_display(row)
+                day_text = _fmt_num(row.get("day_pct"), "{:+.1f}%")
+                volume_text, volume_value = _volume_pace_display(row)
+                grade_cls = _grade_class(grade)
+                change_cls = _change_class(row.get("day_pct"))
+                volume_cls = _volume_class(volume_value)
+
+                left, right = st.columns([7.2, 1.55], vertical_alignment="center")
+                with left:
+                    st.markdown(
+                        f'<div class="combined-ticker-row">'
+                        f'  <div class="combined-ticker-symbol-wrap">'
+                        f'    <div class="combined-rank">{idx + 1}.</div>'
+                        f'    <div class="combined-ticker-symbol">{symbol}</div>'
+                        f'  </div>'
+                        f'  <div class="combined-stat" title="{html.escape(str(row.get("timeframe_fit_reason") or ""))}">'
+                        f'    <div class="combined-stat-label">Grade · Best Fit</div>'
+                        f'    <div class="combined-stat-value {grade_cls}">{html.escape(grade_fit)}</div>'
+                        f'  </div>'
+                        f'  <div class="combined-stat">'
+                        f'    <div class="combined-stat-label">{score_label}</div>'
+                        f'    <div class="combined-stat-value">{score_text}</div>'
+                        f'  </div>'
+                        f'  <div class="combined-stat" title="{html.escape(str(row.get("scanner_action_reason") or ""))}">'
+                        f'    <div class="combined-stat-label">{action_label}</div>'
+                        f'    <div class="combined-stat-value combined-action-value {action_cls}">{action_text}</div>'
+                        f'  </div>'
+                        f'  <div class="combined-stat">'
+                        f'    <div class="combined-stat-label">Today</div>'
+                        f'    <div class="combined-stat-value {change_cls}">{day_text}</div>'
+                        f'  </div>'
+                        f'  <div class="combined-stat">'
+                        f'    <div class="combined-stat-label">'
+                        f'{"Daily Vol / Avg" if row.get("source_mode") == "offhours_daily_timeframe" else "Volume Pace"}'
+                        f'</div>'
+                        f'    <div class="combined-stat-value {volume_cls}">{volume_text}</div>'
+                        f'  </div>'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
+                with right:
+                    _launch_state=(
+                        st.session_state.get("_analyzer_bootstrap_launch_state")
+                        or st.session_state.get("_analyzer_launch_state")
+                        or {}
+                    )
+                    _launch_process=_launch_state.get("process")
+                    _launch_active=bool(
+                        _launch_process is not None
+                        and _launch_process.poll() is None
+                    )
+                    _this_running=bool(
+                        _launch_active
+                        and str(_launch_state.get("symbol") or "").upper()==symbol
+                    )
+                    st.button(
+                        f"Cancel {symbol}" if _this_running else f"Analyze {symbol}",
+                        key=f"combined_analyze_{idx}_{symbol}",
+                        type="secondary" if _this_running else "primary",
+                        width="stretch",
+                        disabled=bool(latest_scan_stale and not _this_running),
+                        help=(
+                            "Waiting for a fresh scanner snapshot."
+                            if latest_scan_stale and not _this_running
+                            else None
+                        ),
+                        on_click=_toggle_analyzer_launch,
+                        args=(symbol,),
+                    )
+        else:
+            st.caption(
+                "No scanner candidates are available yet. Live momentum scanning runs "
+                "during supported market-data hours; the completed-daily Swing / "
+                "Longer-Term scan runs after each regular session."
             )
-            action_text, action_cls, action_label = _action_display(row)
-            day_text = _fmt_num(row.get("day_pct"), "{:+.1f}%")
-            volume_text, volume_value = _volume_pace_display(row)
-            grade_cls = _grade_class(grade)
-            change_cls = _change_class(row.get("day_pct"))
-            volume_cls = _volume_class(volume_value)
 
-            left, right = st.columns([7.2, 1.55], vertical_alignment="center")
-            with left:
-                st.markdown(
-                    f'<div class="combined-ticker-row">'
-                    f'  <div class="combined-ticker-symbol-wrap">'
-                    f'    <div class="combined-rank">{idx + 1}.</div>'
-                    f'    <div class="combined-ticker-symbol">{symbol}</div>'
-                    f'  </div>'
-                    f'  <div class="combined-stat" title="{html.escape(str(row.get("timeframe_fit_reason") or ""))}">'
-                    f'    <div class="combined-stat-label">Grade · Best Fit</div>'
-                    f'    <div class="combined-stat-value {grade_cls}">{html.escape(grade_fit)}</div>'
-                    f'  </div>'
-                    f'  <div class="combined-stat">'
-                    f'    <div class="combined-stat-label">{score_label}</div>'
-                    f'    <div class="combined-stat-value">{score_text}</div>'
-                    f'  </div>'
-                    f'  <div class="combined-stat" title="{html.escape(str(row.get("scanner_action_reason") or ""))}">'
-                    f'    <div class="combined-stat-label">{action_label}</div>'
-                    f'    <div class="combined-stat-value combined-action-value {action_cls}">{action_text}</div>'
-                    f'  </div>'
-                    f'  <div class="combined-stat">'
-                    f'    <div class="combined-stat-label">Today</div>'
-                    f'    <div class="combined-stat-value {change_cls}">{day_text}</div>'
-                    f'  </div>'
-                    f'  <div class="combined-stat">'
-                    f'    <div class="combined-stat-label">'
-                    f'{"Daily Vol / Avg" if row.get("source_mode") == "offhours_daily_timeframe" else "Volume Pace"}'
-                    f'</div>'
-                    f'    <div class="combined-stat-value {volume_cls}">{volume_text}</div>'
-                    f'  </div>'
-                    f'</div>',
-                    unsafe_allow_html=True,
-                )
-            with right:
-                _launch_state=(
-                    st.session_state.get("_analyzer_bootstrap_launch_state")
-                    or st.session_state.get("_analyzer_launch_state")
-                    or {}
-                )
-                _launch_process=_launch_state.get("process")
-                _launch_active=bool(
-                    _launch_process is not None
-                    and _launch_process.poll() is None
-                )
-                _this_running=bool(
-                    _launch_active
-                    and str(_launch_state.get("symbol") or "").upper()==symbol
-                )
-                st.button(
-                    f"Cancel {symbol}" if _this_running else f"Analyze {symbol}",
-                    key=f"combined_analyze_{idx}_{symbol}",
-                    type="secondary" if _this_running else "primary",
-                    use_container_width=True,
-                    disabled=bool(latest_scan_stale and not _this_running),
-                    help=(
-                        "Waiting for a fresh scanner snapshot."
-                        if latest_scan_stale and not _this_running
-                        else None
-                    ),
-                    on_click=_toggle_analyzer_launch,
-                    args=(symbol,),
-                )
-    else:
-        st.caption(
-            "No scanner candidates are available yet. Live momentum scanning runs "
-            "during supported market-data hours; the completed-daily Swing / "
-            "Longer-Term scan runs after each regular session."
-        )
 
+    _render_compact_scanner_candidates()
 
 # Both legacy child apps call st.set_page_config themselves. In the combined
 # shell we already configured the page above, so temporarily make those child
