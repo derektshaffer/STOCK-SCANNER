@@ -878,10 +878,16 @@ def main():
     candidates_per_day = max(5, min(DEFAULT_CANDIDATES, 50))
 
     seed_symbols, scanner_replay = _load_seed_symbols()
+    point_in_time_snapshots = load_point_in_time_universe_snapshots()
     historical_listing_snapshots = load_cached_historical_universes()
+    current_broad_symbols = set(seed_symbols)
+    if point_in_time_snapshots:
+        current_broad_symbols.update(
+            point_in_time_snapshots[-1][1].get("broad_common_stock_symbols") or []
+        )
     historical_listing_expansion = historical_listing_seed_candidates(
         historical_listing_snapshots,
-        exclude_symbols=seed_symbols,
+        exclude_symbols=current_broad_symbols,
         budget=HISTORICAL_LISTING_SEED_BUDGET,
     )
     benchmark_symbols = [
@@ -937,7 +943,6 @@ def main():
     if len(replay_dates) < 12:
         raise RuntimeError("Insufficient replay dates after warmup/stride filtering.")
 
-    point_in_time_snapshots = load_point_in_time_universe_snapshots()
     (
         staged,
         candidate_symbols,
