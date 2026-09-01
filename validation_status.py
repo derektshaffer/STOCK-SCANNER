@@ -87,7 +87,26 @@ def scanner_live_evidence():
 
 def scanner_path_target_evidence():
     rows, source = scanner_ml.load_path_research_observations()
-    independent = scanner_ml.independent_confirmation_rows(rows)
+    replay_rows = [
+        r for r in rows
+        if r.get("observation_source") == "historical_replay"
+    ]
+    live_rows = [
+        r for r in rows
+        if r.get("observation_source") != "historical_replay"
+    ]
+    replay_independent = scanner_ml.independent_confirmation_rows(replay_rows)
+    replay_days = sorted({
+        r.get("trading_date") for r in replay_independent if r.get("trading_date")
+    })
+    replay_end = replay_days[-1] if replay_days else None
+
+    live_after = [
+        r for r in live_rows
+        if not replay_end
+        or (r.get("trading_date") and r.get("trading_date") > replay_end)
+    ]
+    independent = scanner_ml.independent_confirmation_rows(live_after)
     days = sorted({r.get("trading_date") for r in independent if r.get("trading_date")})
     symbols = sorted({r.get("symbol") for r in independent if r.get("symbol")})
     positives = sum(int(r.get("label") or 0) for r in independent)
@@ -98,6 +117,14 @@ def scanner_path_target_evidence():
     ]
     disagreements = sum(
         bool(r.get("endpoint_path_disagreement")) for r in comparable
+    )
+    replay_comparable = [
+        r for r in replay_independent
+        if r.get("endpoint_label") in (0, 1)
+    ]
+    replay_disagreements = sum(
+        bool(r.get("endpoint_path_disagreement"))
+        for r in replay_comparable
     )
     gates = {
         "samples": _gate(len(independent), scanner_ml.MIN_LIVE_CONFIRMATION_SAMPLES),
@@ -110,6 +137,18 @@ def scanner_path_target_evidence():
         "target_description": scanner_ml.PATH_RESEARCH_TARGET_DESCRIPTION,
         "production_influence": False,
         "source": source,
+        "historical_replay_samples": len(replay_rows),
+        "historical_replay_independent_samples": len(replay_independent),
+        "historical_replay_days": len(replay_days),
+        "historical_replay_endpoint_comparable": len(replay_comparable),
+        "historical_replay_endpoint_path_disagreements": replay_disagreements,
+        "historical_replay_disagreement_rate_pct": (
+            round(replay_disagreements / len(replay_comparable) * 100.0, 1)
+            if replay_comparable else None
+        ),
+        "replay_end_day": replay_end,
+        "live_raw_samples": len(live_rows),
+        "live_confirmation_raw_samples": len(live_after),
         "independent_samples": len(independent),
         "days": len(days),
         "symbols": len(symbols),
@@ -124,9 +163,9 @@ def scanner_path_target_evidence():
         "gates": gates,
         "comparison_ready": all(g["passed"] for g in gates.values()),
         "note": (
-            "Research-only. Passing count gates means the path target has enough "
-            "independent evidence for model-vs-endpoint comparison; it does not "
-            "enable production influence."
+            "Historical replay can bootstrap research immediately, but promotion "
+            "still requires independent live path evidence strictly after the "
+            "replay period plus a later model-performance comparison."
         ),
     }
 
@@ -325,7 +364,14 @@ def render_markdown(payload):
         "",
         "## Scanner path target — shadow validation",
         f"- Target: {path_target['target_description']}",
-        _progress_line("Independent samples", path_target["gates"]["samples"]),
+        f"- Historical replay: {path_target['historical_replay_independent_samples']} independent rows "
+        f"across {path_target['historical_replay_days']} days",
+        f"- Historical endpoint/path disagreement: "
+        f"{path_target['historical_replay_endpoint_path_disagreements']}/"
+        f"{path_target['historical_replay_endpoint_comparable']} "
+        f"({path_target.get('historical_replay_disagreement_rate_pct') if path_target.get('historical_replay_disagreement_rate_pct') is not None else '—'}%)",
+        f"- Replay end day: {path_target.get('replay_end_day') or '—'}",
+        _progress_line("Independent live samples", path_target["gates"]["samples"]),
         _progress_line("Trading days", path_target["gates"]["days"]),
         _progress_line("Symbols", path_target["gates"]["symbols"]),
         _progress_line("Positive class", path_target["gates"]["positives"]),
