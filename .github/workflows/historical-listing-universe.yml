@@ -1,0 +1,67 @@
+name: Historical Listing Universe Backfill
+
+on:
+  schedule:
+    # Staged exact-date membership backfill. The script caps itself below the
+    # standard free Alpha Vantage daily request allowance.
+    - cron: '20 4 * * *'
+  workflow_dispatch:
+    inputs:
+      max_dates:
+        description: 'Maximum missing replay dates to fetch this run'
+        required: false
+        default: '20'
+        type: string
+  push:
+    branches: [main]
+    paths:
+      - "historical_listing_universe.py"
+      - ".github/workflows/historical-listing-universe.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: historical-listing-universe
+  cancel-in-progress: false
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Backfill exact-date listing universes
+        env:
+          ALPHA_VANTAGE_API_KEY: ${{ secrets.ALPHA_VANTAGE_API_KEY }}
+          HISTORICAL_LISTING_MAX_DATES_PER_RUN: ${{ inputs.max_dates }}
+        run: python historical_listing_universe.py
+
+      - name: Commit historical universe evidence
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add historical_universes/alpha_vantage/*.json 2>/dev/null || true
+          if git diff --cached --quiet; then
+            echo "No historical listing universe changes."
+          else
+            git commit -m "Add historical listing universe snapshots"
+            git pull --rebase origin "${GITHUB_REF_NAME}"
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+          fi
+
+      - name: Preserve backfill artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: historical-listing-universe-${{ github.run_id }}-${{ github.run_attempt }}
+          path: historical_universes/alpha_vantage/*
+          if-no-files-found: warn
+          retention-days: 90

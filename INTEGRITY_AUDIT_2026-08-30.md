@@ -128,6 +128,16 @@ The clean Analyzer schema-v9 baseline exposed a collection bottleneck: forward c
 
 The sampler passed compilation, provider smoke checks, the app-boundary gate, full consistency regressions (including extended/non-consolidated rejection and source tagging), learning regressions, and Phase 6 historical-challenge regressions before merge.
 
+### PR #82 — Exact historical listing-universe backfill
+
+The prospective nightly universe snapshots stop new survivorship bias from accumulating, but they cannot reconstruct which stocks existed on older 2021-2026 replay dates. PR #82 adds an optional exact-date historical membership layer using Alpha Vantage `LISTING_STATUS`. Backfill is staged conservatively (20 missing replay dates per run by default, hard cap 24), and a missing API key is a true no-op: no coverage is invented, no placeholder file is written, and replay remains on its explicitly labeled fallback.
+
+Historical universe precedence is now: **exact same-date historical membership → latest nightly snapshot captured strictly before the replay session → current-universe fallback**. A historical snapshot is never reused for a different date. Both intraday and Swing/Longer-Term replay reserve a bounded history-fetch budget for historical-only/no-longer-current names so delisted or transient symbols can actually enter candidate selection when the historical market-data provider returns their bars. Replay metadata separately reports exact-date membership coverage, fallback dates, the historical seed budget, and how many historical seed symbols actually produced daily history.
+
+This is an infrastructure and evidence-quality improvement, not a retroactive performance claim. Older survivorship bias remains unresolved on dates without cached exact membership, and even covered membership dates remain limited when Tradier does not return historical bars for a delisted symbol.
+
+PR #82 passed compilation, provider smoke checks, app-boundary checks, exact-date/CSV/common-stock regressions, learning regressions, and Phase 6 historical-challenge regressions before merge.
+
 ## Critical findings and remediation
 
 ### P0-1 — Replay survivorship could support a falsely strong peer-ML validation claim

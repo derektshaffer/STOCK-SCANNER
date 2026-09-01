@@ -1244,6 +1244,112 @@ def test_historical_replay_universe_uses_prior_days_only():
     assert selected == ["LIQUID"], (selected, metrics)
 
 
+def test_historical_listing_csv_filters_to_common_active_stocks():
+    from datetime import date
+    import historical_listing_universe as hlu
+
+    csv_text = """symbol,name,exchange,assetType,ipoDate,delistingDate,status
+AAA,Alpha Common Corp,NASDAQ,Stock,2020-01-01,null,Active
+ETF1,Index Fund,NYSE,ETF,2020-01-01,null,Active
+PREF,Example Preferred Stock,NYSE,Stock,2020-01-01,null,Active
+OTCX,OTC Common Corp,OTC,Stock,2020-01-01,null,Active
+OLD,Old Common Corp,NASDAQ,Stock,2010-01-01,2024-01-01,Delisted
+"""
+    parsed = hlu.parse_listing_status_csv(csv_text, date(2023, 6, 1))
+    assert parsed["symbols"] == ["AAA"], parsed
+    assert parsed["symbol_count"] == 1, parsed
+
+
+def test_historical_listing_membership_is_exact_date_only_and_expands_old_names():
+    from datetime import date, timedelta
+    import historical_listing_universe as hlu
+
+    day = date(2024, 6, 3)
+    snapshots = {
+        day: {
+            "source": "alpha_vantage_listing_status",
+            "as_of_date": day.isoformat(),
+            "symbol_count": 3,
+            "symbols": ["OLD1", "KEEP", "OLD2"],
+        },
+        day + timedelta(days=7): {
+            "source": "alpha_vantage_listing_status",
+            "as_of_date": (day + timedelta(days=7)).isoformat(),
+            "symbol_count": 2,
+            "symbols": ["OLD1", "NEWER"],
+        },
+    }
+    assert hlu.exact_historical_universe(day, snapshots)["symbols"] == [
+        "OLD1", "KEEP", "OLD2"
+    ]
+    assert hlu.exact_historical_universe(day + timedelta(days=1), snapshots) is None
+
+    expanded = hlu.history_seed_candidates(
+        snapshots,
+        exclude_symbols={"KEEP", "NEWER"},
+        budget=2,
+    )
+    assert "OLD1" in expanded, expanded
+    assert len(expanded) == 2, expanded
+    assert "KEEP" not in expanded, expanded
+
+
+def test_timeframe_replay_prefers_exact_listing_over_prior_snapshot():
+    from datetime import date, timedelta
+    import historical_timeframe_replay as htr
+
+    replay_day = date(2026, 8, 28)
+    days = [replay_day - timedelta(days=i) for i in range(24, 0, -1)]
+    def history(current_close):
+        rows = [
+            (day, {"o":10.0,"h":10.2,"l":9.8,"c":10.0,"v":1_000_000})
+            for day in days
+        ]
+        rows.append(
+            (
+                replay_day,
+                {
+                    "o": 10.0,
+                    "h": current_close + 0.2,
+                    "l": 9.9,
+                    "c": current_close,
+                    "v": 1_500_000,
+                },
+            )
+        )
+        return rows
+
+    daily_index = {
+        "EXACT": history(11.5),
+        "PROSPECT": history(12.0),
+    }
+    exact = {
+        replay_day: {
+            "source": "alpha_vantage_listing_status",
+            "symbol_count": 1,
+            "symbols": ["EXACT"],
+        }
+    }
+    prior = [
+        (
+            replay_day - timedelta(days=1),
+            {"replay_ready": True, "replay_seed_symbols": ["PROSPECT"]},
+        )
+    ]
+    staged, symbols, prospective_days, exact_days = htr._candidate_rows(
+        daily_index,
+        [replay_day],
+        10,
+        5,
+        point_in_time_snapshots=prior,
+        historical_listing_snapshots=exact,
+    )
+    assert [row["symbol"] for row in staged] == ["EXACT"], staged
+    assert symbols == {"EXACT"}, symbols
+    assert prospective_days == [], prospective_days
+    assert exact_days == [replay_day], exact_days
+
+
 def test_point_in_time_universe_snapshot_is_strictly_prior_and_filters_candidates():
     import historical_scanner_replay as replay
     from datetime import date, timedelta
@@ -7642,6 +7748,9 @@ if __name__ == "__main__":
         test_scanner_action_behavior_never_overrides_reject,
         test_scanner_ui_auto_surfaces_validated_ml,
         test_historical_replay_universe_uses_prior_days_only,
+        test_historical_listing_csv_filters_to_common_active_stocks,
+        test_historical_listing_membership_is_exact_date_only_and_expands_old_names,
+        test_timeframe_replay_prefers_exact_listing_over_prior_snapshot,
         test_point_in_time_universe_snapshot_is_strictly_prior_and_filters_candidates,
         test_forward_validation_scoreboard_fails_closed_on_missing_evidence,
         test_historical_replay_source_survives_ml_extraction,

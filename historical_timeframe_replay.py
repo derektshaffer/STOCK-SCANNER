@@ -41,6 +41,11 @@ from historical_scanner_replay import (
     point_in_time_seed_for_replay_day,
     select_daily_universe,
 )
+from historical_listing_universe import (
+    exact_historical_universe,
+    history_seed_candidates as historical_listing_seed_candidates,
+    load_cached_historical_universes,
+)
 from scanner_behavior import multi_session_behavior_features
 from market_regime import market_regime_features
 from timeframe_targets import (
@@ -58,6 +63,19 @@ DEFAULT_REPLAY_DAYS = int(os.environ.get("TIMEFRAME_REPLAY_TRADING_DAYS", "1250"
 DEFAULT_STRIDE = int(os.environ.get("TIMEFRAME_REPLAY_STRIDE_DAYS", "5") or 5)
 DEFAULT_UNIVERSE_SIZE = int(os.environ.get("TIMEFRAME_REPLAY_UNIVERSE_SIZE", "250") or 250)
 DEFAULT_CANDIDATES = int(os.environ.get("TIMEFRAME_REPLAY_CANDIDATES_PER_DAY", "25") or 25)
+HISTORICAL_LISTING_SEED_BUDGET = max(
+    0,
+    min(
+        int(
+            os.environ.get(
+                "TIMEFRAME_HISTORICAL_LISTING_SEED_BUDGET",
+                "250",
+            )
+            or 250
+        ),
+        600,
+    ),
+)
 DEFAULT_LOOKBACK_CALENDAR_DAYS = int(
     os.environ.get("TIMEFRAME_REPLAY_LOOKBACK_CALENDAR_DAYS", "2800") or 2800
 )
@@ -756,17 +774,26 @@ def _candidate_rows(
     universe_size,
     candidates_per_day,
     point_in_time_snapshots=None,
+    historical_listing_snapshots=None,
 ):
     staged = []
     candidate_symbols = set()
     snapshot_covered_dates = []
+    historical_listing_covered_dates = []
     for day_number, replay_day in enumerate(replay_dates, start=1):
+        exact_listing = exact_historical_universe(
+            replay_day,
+            historical_listing_snapshots or {},
+        )
         snapshot_match = point_in_time_seed_for_replay_day(
             replay_day,
             point_in_time_snapshots or [],
         )
         allowed_symbols = None
-        if snapshot_match is not None:
+        if exact_listing is not None:
+            allowed_symbols = exact_listing.get("symbols") or []
+            historical_listing_covered_dates.append(replay_day)
+        elif snapshot_match is not None:
             _captured, snapshot = snapshot_match
             allowed_symbols = snapshot.get("replay_seed_symbols") or []
             snapshot_covered_dates.append(replay_day)
@@ -836,7 +863,12 @@ def _candidate_rows(
             f"Timeframe replay day {day_number}/{len(replay_dates)} "
             f"{replay_day}: candidates={len(chosen)} cumulative={len(staged)}"
         )
-    return staged, candidate_symbols, snapshot_covered_dates
+    return (
+        staged,
+        candidate_symbols,
+        snapshot_covered_dates,
+        historical_listing_covered_dates,
+    )
 
 
 def main():
@@ -846,12 +878,26 @@ def main():
     candidates_per_day = max(5, min(DEFAULT_CANDIDATES, 50))
 
     seed_symbols, scanner_replay = _load_seed_symbols()
+    point_in_time_snapshots = load_point_in_time_universe_snapshots()
+    historical_listing_snapshots = load_cached_historical_universes()
+    current_broad_symbols = set(seed_symbols)
+    if point_in_time_snapshots:
+        current_broad_symbols.update(
+            point_in_time_snapshots[-1][1].get("broad_common_stock_symbols") or []
+        )
+    historical_listing_expansion = historical_listing_seed_candidates(
+        historical_listing_snapshots,
+        exclude_symbols=current_broad_symbols,
+        budget=HISTORICAL_LISTING_SEED_BUDGET,
+    )
     benchmark_symbols = [
         "SPY", "QQQ", "IWM",
         "XLE", "XLV", "XLF", "XLK", "XLC", "XLU",
         "XLRE", "XLP", "XLY", "XLI", "XLB",
     ]
-    fetch_symbols = sorted(set(seed_symbols + benchmark_symbols))
+    fetch_symbols = sorted(
+        set(seed_symbols + historical_listing_expansion + benchmark_symbols)
+    )
 
     now = datetime.now(timezone.utc)
     start = now - timedelta(days=max(900, DEFAULT_LOOKBACK_CALENDAR_DAYS))
@@ -897,13 +943,18 @@ def main():
     if len(replay_dates) < 12:
         raise RuntimeError("Insufficient replay dates after warmup/stride filtering.")
 
-    point_in_time_snapshots = load_point_in_time_universe_snapshots()
-    staged, candidate_symbols, snapshot_covered_dates = _candidate_rows(
+    (
+        staged,
+        candidate_symbols,
+        snapshot_covered_dates,
+        historical_listing_covered_dates,
+    ) = _candidate_rows(
         daily_index,
         replay_dates,
         universe_size,
         candidates_per_day,
         point_in_time_snapshots=point_in_time_snapshots,
+        historical_listing_snapshots=historical_listing_snapshots,
     )
     sec_payloads, sec_status = _sec_payloads(candidate_symbols)
 
@@ -1056,22 +1107,38 @@ def main():
             "candidates_per_day": candidates_per_day,
             "historical_feed": feed.upper(),
             "sec_point_in_time": sec_status,
+            "historical_listing_snapshot_count": len(historical_listing_snapshots),
+            "historical_listing_replay_dates": len(historical_listing_covered_dates),
+            "historical_listing_seed_budget": HISTORICAL_LISTING_SEED_BUDGET,
+            "historical_listing_seed_requested": len(historical_listing_expansion),
+            "historical_listing_seed_with_daily_history": sum(
+                symbol in daily_index for symbol in historical_listing_expansion
+            ),
             "point_in_time_snapshot_count": len(point_in_time_snapshots),
             "point_in_time_replay_dates": len(snapshot_covered_dates),
             "current_universe_fallback_dates": (
-                len(replay_dates) - len(snapshot_covered_dates)
+                len(replay_dates)
+                - len(historical_listing_covered_dates)
+                - len(snapshot_covered_dates)
             ),
-            "point_in_time_coverage_pct": round(
-                len(snapshot_covered_dates) / len(replay_dates) * 100.0,
+            "survivorship_mitigated_coverage_pct": round(
+                (
+                    len(historical_listing_covered_dates)
+                    + len(snapshot_covered_dates)
+                )
+                / len(replay_dates)
+                * 100.0,
                 1,
             ) if replay_dates else 0.0,
             "selection_note": (
                 "Replay-day ranking uses only information available on or before "
-                "each historical date. Where a prior dated universe snapshot "
-                "exists, candidate selection is additionally restricted to that "
-                "point-in-time seed. Older uncovered dates inherit the scanner "
-                "replay seed and retain survivorship risk. The multi-year replay "
-                "uses a weekly trading-day stride to reduce adjacent-day correlation."
+                "each historical date. Exact-date historical listing membership "
+                "takes precedence when cached; otherwise a prior nightly snapshot "
+                "is used, then the scanner replay seed as an explicit fallback. "
+                "A bounded historical-membership expansion is included in daily "
+                "history fetching so non-current names can enter the candidate pool. "
+                "The multi-year replay uses a weekly trading-day stride to reduce "
+                "adjacent-day correlation."
             ),
             "calendar_years_covered": sorted(
                 {
@@ -1086,7 +1153,8 @@ def main():
                 }
             ),
             "known_limitations": [
-                "current listed-stock survivorship bias remains for replay dates without prior point-in-time snapshot coverage",
+                "current listed-stock survivorship bias remains for replay dates without exact historical or prior prospective membership coverage",
+                "the market-history provider may not return bars for every delisted historical member; bounded expansion coverage is reported explicitly",
                 "historical catalyst/news sentiment is neutral rather than reconstructed",
                 "historical analog score omits its intraday VWAP-reclaim subcomponent",
                 "SEC dilution replay uses filing-form recency and does not re-download old filing text keywords",

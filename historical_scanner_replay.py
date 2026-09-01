@@ -40,6 +40,11 @@ from sequence_features import (
     SEQUENCE_MAX_BARS,
     build_causal_candle_sequence,
 )
+from historical_listing_universe import (
+    exact_historical_universe,
+    history_seed_candidates as historical_listing_seed_candidates,
+    load_cached_historical_universes,
+)
 
 REPLAY_VERSION = "historical-scanner-replay-v4.9-opportunity-challenge"
 ET = ZoneInfo("America/New_York")
@@ -55,6 +60,13 @@ DEFAULT_SCAN_STEP_MINUTES = int(
 MAX_UNION_SYMBOLS = int(os.environ.get("REPLAY_MAX_UNION_SYMBOLS", "450") or 450)
 MAX_HISTORY_SEED_SYMBOLS = int(
     os.environ.get("REPLAY_MAX_HISTORY_SEED_SYMBOLS", "1200") or 1200
+)
+HISTORICAL_LISTING_SEED_BUDGET = max(
+    0,
+    min(
+        int(os.environ.get("REPLAY_HISTORICAL_LISTING_SEED_BUDGET", "250") or 250),
+        MAX_HISTORY_SEED_SYMBOLS,
+    ),
 )
 UNIVERSE_SNAPSHOT_DIR = Path(
     os.environ.get("UNIVERSE_SNAPSHOT_DIR", "universe_snapshots")
@@ -1530,21 +1542,33 @@ def main():
         )
 
     point_in_time_snapshots = load_point_in_time_universe_snapshots()
+    historical_listing_snapshots = load_cached_historical_universes()
+
+    # Reserve a bounded slice of the history-fetch budget for symbols that were
+    # members of exact historical listing universes but are absent from today's
+    # public directory. This gives delisted/transient names a real chance to
+    # enter replay instead of using historical membership as metadata only.
+    historical_listing_seed = historical_listing_seed_candidates(
+        historical_listing_snapshots,
+        exclude_symbols=symbols,
+        budget=HISTORICAL_LISTING_SEED_BUDGET,
+    )
+
     snapshot_frequency = Counter()
     for _captured, snapshot in point_in_time_snapshots:
         snapshot_frequency.update(snapshot.get("replay_seed_symbols") or [])
 
-    # Daily-history fetching can be broader than the final intraday union. Give
-    # priority to symbols that repeatedly appeared in dated point-in-time
-    # snapshots, then fill with today's screened names. This preserves names
-    # that may later disappear from the current listing universe.
-    history_seed_symbols = [
-        symbol
-        for symbol, _count in snapshot_frequency.most_common(
-            max(0, MAX_HISTORY_SEED_SYMBOLS)
-        )
-    ]
+    history_seed_symbols = list(historical_listing_seed)
     history_seen = set(history_seed_symbols)
+    for symbol, _count in snapshot_frequency.most_common(
+        max(0, MAX_HISTORY_SEED_SYMBOLS)
+    ):
+        if symbol in history_seen:
+            continue
+        history_seen.add(symbol)
+        history_seed_symbols.append(symbol)
+        if len(history_seed_symbols) >= MAX_HISTORY_SEED_SYMBOLS:
+            break
     for symbol in current_seed_symbols:
         if symbol in history_seen:
             continue
@@ -1558,7 +1582,9 @@ def main():
         f"Tradier current replay seed: {len(current_seed_symbols)} stocks "
         f"from {quote_eligible} quote-eligible common stocks; "
         f"history seed={len(history_seed_symbols)} with "
-        f"{len(point_in_time_snapshots)} dated replay-ready snapshots."
+        f"{len(point_in_time_snapshots)} prospective snapshots and "
+        f"{len(historical_listing_snapshots)} exact historical listing snapshots "
+        f"({len(historical_listing_seed)} historical-only seed slots)."
     )
 
     now_et = datetime.now(ET)
@@ -1594,13 +1620,26 @@ def main():
     daily_universe_sources = {}
     frequency = Counter()
     snapshot_covered_dates = []
+    historical_listing_covered_dates = []
     for replay_day in replay_dates:
+        exact_listing = exact_historical_universe(
+            replay_day,
+            historical_listing_snapshots,
+        )
         snapshot_match = point_in_time_seed_for_replay_day(
             replay_day,
             point_in_time_snapshots,
         )
-        allowed_symbols = None
-        if snapshot_match is not None:
+        if exact_listing is not None:
+            allowed_symbols = exact_listing.get("symbols") or []
+            historical_listing_covered_dates.append(replay_day)
+            daily_universe_sources[replay_day] = {
+                "mode": "exact_historical_listing_snapshot",
+                "as_of_date": replay_day.isoformat(),
+                "source": exact_listing.get("source"),
+                "seed_count": len(allowed_symbols),
+            }
+        elif snapshot_match is not None:
             captured_date, snapshot = snapshot_match
             allowed_symbols = snapshot.get("replay_seed_symbols") or []
             snapshot_covered_dates.append(replay_day)
@@ -1610,6 +1649,9 @@ def main():
                 "seed_count": len(allowed_symbols),
             }
         else:
+            # Keep fallback semantics honest: only today's screened seed is
+            # eligible when no historical membership evidence exists.
+            allowed_symbols = current_seed_symbols
             daily_universe_sources[replay_day] = {
                 "mode": "current_universe_fallback",
                 "captured_date": None,
@@ -1732,13 +1774,27 @@ def main():
             "bar_resolution": "5Min",
             "historical_feed": "TRADIER CONSOLIDATED HISTORICAL",
             "asset_universe_source": asset_base,
+            "historical_listing_snapshot_count": len(historical_listing_snapshots),
+            "historical_listing_replay_dates": len(historical_listing_covered_dates),
+            "historical_listing_seed_budget": HISTORICAL_LISTING_SEED_BUDGET,
+            "historical_listing_seed_requested": len(historical_listing_seed),
+            "historical_listing_seed_with_daily_history": sum(
+                symbol in daily_index for symbol in historical_listing_seed
+            ),
             "point_in_time_snapshot_count": len(point_in_time_snapshots),
             "point_in_time_replay_dates": len(snapshot_covered_dates),
             "current_universe_fallback_dates": (
-                len(replay_dates) - len(snapshot_covered_dates)
+                len(replay_dates)
+                - len(historical_listing_covered_dates)
+                - len(snapshot_covered_dates)
             ),
-            "point_in_time_coverage_pct": round(
-                len(snapshot_covered_dates) / len(replay_dates) * 100.0,
+            "survivorship_mitigated_coverage_pct": round(
+                (
+                    len(historical_listing_covered_dates)
+                    + len(snapshot_covered_dates)
+                )
+                / len(replay_dates)
+                * 100.0,
                 1,
             ) if replay_dates else 0.0,
             "daily_universe_sources": {
@@ -1746,11 +1802,11 @@ def main():
                 for day in replay_dates
             },
             "universe_method": (
-                "For replay dates with coverage, restrict candidates to the "
-                "latest replay-ready universe snapshot captured strictly before "
-                "that session, then rank using only prior-day liquidity, "
-                "prior-day momentum and prior-day relative volume. Dates without "
-                "snapshot coverage explicitly fall back to the current screened universe."
+                "Universe precedence is exact historical-date listing membership "
+                "when cached, otherwise the latest replay-ready snapshot captured "
+                "strictly before the session, otherwise today's screened universe. "
+                "Within the eligible membership, ranking uses only prior-day "
+                "liquidity, prior-day momentum and prior-day relative volume."
             ),
             "known_limitations": (
                 [
@@ -1759,8 +1815,16 @@ def main():
                     "5-minute bars approximate live 1-minute momentum and impulse/retracement inputs",
                 ]
                 + (
-                    ["current listed/liquid stock survivorship bias remains on replay dates without a prior point-in-time snapshot"]
-                    if len(snapshot_covered_dates) < len(replay_dates)
+                    ["current listed/liquid stock survivorship bias remains on replay dates without exact historical or prior prospective membership coverage"]
+                    if (
+                        len(historical_listing_covered_dates)
+                        + len(snapshot_covered_dates)
+                    ) < len(replay_dates)
+                    else []
+                )
+                + (
+                    ["historical membership can include delisted symbols that the market-history provider may not return; coverage metadata reports how many bounded historical seed symbols actually produced daily history"]
+                    if historical_listing_covered_dates
                     else []
                 )
             ),
