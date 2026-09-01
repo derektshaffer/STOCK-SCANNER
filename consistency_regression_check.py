@@ -1260,6 +1260,26 @@ OLD,Old Common Corp,NASDAQ,Stock,2010-01-01,2024-01-01,Delisted
     assert parsed["symbol_count"] == 1, parsed
 
 
+def test_historical_listing_provider_status_is_explicit_and_secret_free():
+    import os
+    import historical_listing_universe as hlu
+
+    original = os.environ.pop("ALPHA_VANTAGE_API_KEY", None)
+    try:
+        missing = hlu.provider_status()
+        assert missing["status"] == "missing_key", missing
+        assert missing["api_key_configured"] is False, missing
+        assert "api_key" not in missing, missing
+
+        ready = hlu.provider_status("test-key")
+        assert ready["status"] == "ready", ready
+        assert ready["api_key_configured"] is True, ready
+        assert "test-key" not in str(ready), ready
+    finally:
+        if original is not None:
+            os.environ["ALPHA_VANTAGE_API_KEY"] = original
+
+
 def test_historical_listing_membership_is_exact_date_only_and_expands_old_names():
     from datetime import date, timedelta
     import historical_listing_universe as hlu
@@ -7749,6 +7769,7 @@ if __name__ == "__main__":
         test_scanner_ui_auto_surfaces_validated_ml,
         test_historical_replay_universe_uses_prior_days_only,
         test_historical_listing_csv_filters_to_common_active_stocks,
+        test_historical_listing_provider_status_is_explicit_and_secret_free,
         test_historical_listing_membership_is_exact_date_only_and_expands_old_names,
         test_timeframe_replay_prefers_exact_listing_over_prior_snapshot,
         test_point_in_time_universe_snapshot_is_strictly_prior_and_filters_candidates,
