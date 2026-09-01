@@ -3090,19 +3090,22 @@ def test_scanner_refreshes_results_without_full_page_flash():
     assert 'st.session_state["_scanner_snapshot_refresh_at"] = time.time()' in scanner
 
 
-def test_combined_analyzer_preserves_scroll_across_background_refresh():
+def test_combined_analyzer_timed_refresh_stays_fragment_scoped():
     from pathlib import Path
 
-    source = Path("analyzer_bootstrap.py").read_text(encoding="utf-8")
-    cleanup = source.split("def _cleanup_combined_browser_helpers", 1)[1].split(
-        "def _install_scroll_keeper", 1
+    core = Path("analyzer_ui_core.py").read_text(encoding="utf-8")
+    bootstrap = Path("analyzer_bootstrap.py").read_text(encoding="utf-8")
+    refresh_logic = core.split("_combined_timed_refresh = bool(", 1)[1].split(
+        'r=st.session_state["result"]', 1
     )[0]
-    run_tail = source.split("_render_live_analyzer()", 1)[1]
+    run_tail = bootstrap.split("_render_live_analyzer()", 1)[1]
 
-    assert "scroll.savePosition && scroll.savePosition()" in cleanup
-    assert "savePosition" in source.split("p.__ssaScrollKeeper = {", 1)[1]
-    assert "_install_scroll_keeper()" in run_tail
-    assert "if not combined:\n        _install_scroll_keeper()" not in run_tail
+    assert "and _refresh_due" in refresh_logic
+    assert "and not _interactive_analysis" in refresh_logic
+    assert "and not _combined_timed_refresh" in refresh_logic
+    assert "not _COMBINED_WORKSPACE or _combined_timed_refresh" in refresh_logic
+    assert refresh_logic.count('st.rerun(scope="app")') == 1
+    assert "if not combined:\n        _install_scroll_keeper()" in run_tail
 
 
 def test_analyzer_plotly_figures_render_candlesticks_and_levels():
@@ -5652,7 +5655,8 @@ def test_combined_analyzer_refresh_is_background_and_saved_stocks_follow_search(
 
     assert '"_render_combined_saved_stocks": _render_saved_stocks' in bootstrap
     assert "_render_saved_stock_toolbar" not in bootstrap
-    assert 'if _needs_analysis and not _COMBINED_WORKSPACE:' in core
+    assert "_combined_timed_refresh = bool(" in core
+    assert "not _COMBINED_WORKSPACE or _combined_timed_refresh" in core
     assert "_cancel_combined_loader" in bootstrap
     assert "You are already in Analyzer" in bootstrap
     assert '"_analyzer_background_request_symbol"' in core
@@ -8022,7 +8026,7 @@ if __name__ == "__main__":
         test_analyzer_white_tables_are_collapsible,
         test_analyzer_page_leads_with_actionable_decision_hierarchy,
         test_analyzer_shared_button_styles_live_in_bootstrap,
-        test_combined_analyzer_preserves_scroll_across_background_refresh,
+        test_combined_analyzer_timed_refresh_stays_fragment_scoped,
         test_scanner_aligned_volume_pace_matches_analyzer_baseline,
         test_scanner_action_avoids_chasing_extreme_mover,
         test_scanner_action_analyze_now_requires_aligned_conditions,

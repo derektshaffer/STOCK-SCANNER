@@ -725,12 +725,22 @@ _manual_request = bool(st.session_state.get("_manual_analyze_requested"))
 _needs_analysis = _manual_request or _initial_analysis or _ticker_changed or _refresh_due
 _interactive_analysis = _manual_request or _ticker_changed
 
-# In the combined workspace, NEVER execute the expensive deep Analyzer
-# calculation inside this UI fragment. Doing so leaves the old Scanner DOM
-# visible while Streamlit waits on network/history/ML work, which looks like
-# the mixed Scanner/Analyzer screen getting stuck. Delegate every deep refresh
-# (manual, ticker change, initial, or timed) to analyzer_bootstrap's existing
-# cancelable background worker and immediately rerun the lightweight shell.
+# A timed refresh already has a complete Analyzer page on screen. Keep that
+# refresh inside this fragment so Streamlit replaces only the Analyzer body;
+# a full-app rerun remounts stMain and sends the browser back to scrollTop 0.
+_combined_timed_refresh = bool(
+    _COMBINED_WORKSPACE
+    and _refresh_due
+    and not _interactive_analysis
+    and not _initial_analysis
+    and isinstance(_existing_result, dict)
+    and _existing_result
+)
+
+# In the combined workspace, delegate user-initiated analyses to the cancelable
+# background worker. Those requests may start from the Scanner or change the
+# selected ticker, so the shell must transition immediately. Automatic refresh
+# is deliberately excluded because the correct Analyzer is already mounted.
 _background_state = st.session_state.get("_analyzer_bootstrap_launch_state") or {}
 _background_process = _background_state.get("process")
 _background_active = bool(
@@ -738,16 +748,21 @@ _background_active = bool(
     and _background_process.poll() is None
 )
 
-if _COMBINED_WORKSPACE and _needs_analysis and not _background_active:
+if (
+    _COMBINED_WORKSPACE
+    and _needs_analysis
+    and not _background_active
+    and not _combined_timed_refresh
+):
     st.session_state["_analyzer_background_request_symbol"] = ticker
     st.session_state["_analyzer_loading"] = True
     st.session_state["_manual_analyze_requested"] = False
     st.rerun(scope="app")
 
-# Standalone Analyzer retains the original synchronous behavior. The combined
-# workspace must never fall through to analyze() while a background refresh is
-# active, otherwise the session blocks again.
-if _needs_analysis and not _COMBINED_WORKSPACE:
+# Standalone Analyzer retains its synchronous behavior. In the combined app,
+# only a timed refresh runs here, within the auto-refreshing fragment, so the
+# outer navigation and scroll container remain mounted.
+if _needs_analysis and (not _COMBINED_WORKSPACE or _combined_timed_refresh):
     try:
         # Never render a separate spinner/status line. Interactive analyses use
         # the actual Analyze button's "Analyzing..." state; timed deep refreshes
@@ -757,6 +772,12 @@ if _needs_analysis and not _COMBINED_WORKSPACE:
         st.session_state["ticker"] = ticker
         st.session_state["ticker_search_request"] = ticker
         st.session_state.pop("_analyzer_refresh_error", None)
+        if _combined_timed_refresh:
+            cache = st.session_state.setdefault("_analyzer_result_cache", {})
+            cache[ticker] = {
+                "result": _new_result,
+                "cached_at": time.time(),
+            }
     except Exception as e:
         # Keep the last good analysis visible if a background refresh fails.
         if _refresh_due and st.session_state.get("result"):

@@ -239,10 +239,6 @@ def _cleanup_combined_browser_helpers():
 
           const scroll = p.__ssaScrollKeeper;
           if (scroll) {
-            // A combined-app rerun can replace the page before the stale-node
-            // observer fires. Capture the viewport explicitly before retiring
-            // the previous listener so the next Analyzer render can restore it.
-            try { scroll.savePosition && scroll.savePosition(); } catch (_) {}
             try { scroll.observer && scroll.observer.disconnect(); } catch (_) {}
             try { scroll.scroller && scroll.onScroll && scroll.scroller.removeEventListener('scroll', scroll.onScroll); } catch (_) {}
             try { scroll.onWindowScroll && p.removeEventListener('scroll', scroll.onWindowScroll); } catch (_) {}
@@ -288,7 +284,7 @@ def _cleanup_combined_browser_helpers():
 
 
 def _install_scroll_keeper():
-    """Preserve the Analyzer viewport across full-app background refreshes."""
+    """Preserve viewport across full-app reruns in the standalone analyzer."""
     components.html(
         """
         <script>
@@ -392,8 +388,7 @@ def _install_scroll_keeper():
             observer,
             scroller,
             onScroll,
-            onWindowScroll: onScroll,
-            savePosition
+            onWindowScroll: onScroll
           };
 
           p.setTimeout(() => {
@@ -996,8 +991,5 @@ def run():
     _render_fast_live_tape()
     _render_live_analyzer()
 
-    # Deep Analyzer refreshes intentionally start and finish through two
-    # lightweight full-app reruns. Install the same viewport keeper in the
-    # combined workspace too, otherwise each completed refresh jumps the user
-    # back to the top of the page.
-    _install_scroll_keeper()
+    if not combined:
+        _install_scroll_keeper()
