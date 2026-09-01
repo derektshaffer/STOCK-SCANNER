@@ -305,6 +305,7 @@ def record_prediction(metrics, now=None, defer_remote=False):
     market = v2.get("market_context") or {}
     fundamental = v2.get("fundamental_context") or {}
     stream = v2.get("live_stream_status") or {}
+    live_integrity = v2.get("live_data_integrity") or {}
     sequence = metrics.get("bounce_sequence") or {}
     stair = metrics.get("stair_step") or {}
     repeat_plan = plan.get("repeat_bounce") or {}
@@ -348,6 +349,11 @@ def record_prediction(metrics, now=None, defer_remote=False):
         "live_feed": metrics.get("live_feed"),
         "stream_status": stream.get("status"),
         "stream_feed": stream.get("feed"),
+        "live_data_integrity_ok": live_integrity.get("ok") is True,
+        "live_data_consolidated": live_integrity.get("consolidated") is True,
+        "live_data_integrity_reasons": list(live_integrity.get("reasons") or []),
+        "trade_age_seconds": _num(metrics.get("trade_age_seconds")),
+        "quote_age_seconds": _num(metrics.get("quote_age_seconds")),
         "setup_score": _num(metrics.get("score")),
         "plan_confidence": _num(plan.get("confidence")),
         "plan_status": plan.get("status"),
@@ -989,11 +995,16 @@ def _row_market_session(row):
     return "closed"
 
 
+def _calibration_integrity_ok(row):
+    """Only trusted consolidated live snapshots may teach score calibration."""
+    return (row or {}).get("live_data_integrity_ok") is True
+
+
 def _independent_calibration_rows(rows):
-    """One regular-session observation per ticker per ET clock hour."""
+    """One trusted regular-session observation per ticker per ET clock hour."""
     chosen = {}
     for row in sorted(rows, key=lambda item: str(item.get("timestamp") or "")):
-        if _row_market_session(row) != "regular":
+        if _row_market_session(row) != "regular" or not _calibration_integrity_ok(row):
             continue
         symbol = str(row.get("symbol") or "").upper().strip()
         dt = _parse_dt(row.get("timestamp"))
@@ -1007,10 +1018,10 @@ def _independent_calibration_rows(rows):
 
 
 def _timeframe_daily_calibration_rows(rows):
-    """Latest regular-session observation per ticker per ET trading day."""
+    """Latest trusted regular-session observation per ticker per ET trading day."""
     chosen = {}
     for row in sorted(rows, key=lambda item: str(item.get("timestamp") or "")):
-        if _row_market_session(row) != "regular":
+        if _row_market_session(row) != "regular" or not _calibration_integrity_ok(row):
             continue
         symbol = str(row.get("symbol") or "").upper().strip()
         dt = _parse_dt(row.get("timestamp"))
@@ -1156,6 +1167,10 @@ def _swing_research_flag_summary(rows):
     excluded_context = 0
     for row in sorted(rows, key=lambda item: str(item.get("timestamp") or "")):
         if row.get("swing_research_flag_version") != SWING_RESEARCH_FLAG_VERSION:
+            continue
+        if not _calibration_integrity_ok(row):
+            if row.get("swing_research_flag_ids"):
+                excluded_context += 1
             continue
         if (
             row.get("swing_research_sampling_context") != "regular_intraday"
@@ -1335,6 +1350,11 @@ def tracker_summary(rows=None, symbol=None, current_metrics=None):
     # not score-band calibration.
     calibration_rows = _independent_calibration_rows(decision_rows)
     timeframe_daily_rows = _timeframe_daily_calibration_rows(decision_rows)
+    untrusted_integrity_rows_excluded = sum(
+        1 for row in decision_rows
+        if _row_market_session(row) == "regular"
+        and not _calibration_integrity_ok(row)
+    )
     resolved_60 = [
         r for r in calibration_rows
         if (r.get("outcomes") or {}).get("return_60m_pct") is not None
@@ -1410,7 +1430,10 @@ def tracker_summary(rows=None, symbol=None, current_metrics=None):
         "legacy_predictions_excluded": legacy_excluded,
         "legacy_decision_scores_excluded": legacy_decision_excluded,
         "calibration_rows": len(calibration_rows),
-        "calibration_sampling": "regular-session one observation per ticker per ET hour",
+        "untrusted_integrity_rows_excluded": untrusted_integrity_rows_excluded,
+        "calibration_sampling": (
+            "trusted consolidated regular-session one observation per ticker per ET hour"
+        ),
         "timeframe_calibration_sampling": (
             "Intraday: regular-session ticker-hour; Swing/Longer-term: "
             "latest regular-session observation per ticker per ET day"
