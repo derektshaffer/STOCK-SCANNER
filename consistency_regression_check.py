@@ -1950,6 +1950,91 @@ def test_ml_cannot_boost_live_scores_until_complete_production_gate_passes():
     assert legacy_ctx.get("production_source_ok") is False, legacy_ctx
 
 
+def test_ml_integration_requires_source_integrity_for_production_influence():
+    import copy
+    from zoneinfo import ZoneInfo
+    import ml_integration as mi
+
+    assert mi._production_gate_passed({
+        "status":"ok",
+        "gate_passed":True,
+        "production_source_ok":True,
+    }) is True
+    assert mi._production_gate_passed({
+        "status":"ok",
+        "gate_passed":True,
+    }) is False
+    assert mi._production_gate_passed({
+        "status":"ok",
+        "gate_passed":True,
+        "production_source_ok":False,
+    }) is False
+
+    class DummyAnalyzer:
+        ET = ZoneInfo("America/New_York")
+        def __init__(self):
+            self.analyze = self._base_analyze
+        def _base_analyze(self, _symbol):
+            return {
+                "score":60.0,
+                "trade_plan":{
+                    "confidence":60,
+                    "confidence_label":"MODERATE",
+                    "reasons":[],
+                },
+            }
+
+    original_predict_ml = mi.predict_ml
+    original_predict_peer_ml = mi.predict_peer_ml
+    try:
+        mi.predict_ml = lambda **_kwargs: {
+            "status":"ok",
+            "gate_passed":True,
+            # Intentionally missing production_source_ok: stale/legacy payload.
+            "models":{
+                "target_before_stop":{"status":"ok","validated":True,"probability_pct":90.0},
+                "higher_60":{"status":"ok","validated":True,"probability_pct":88.0},
+            },
+            "ml_edge_score":89.0,
+        }
+        mi.predict_peer_ml = lambda **_kwargs: {
+            "status":"validated",
+            "validated":True,
+            "probability_pct":90.0,
+            "peer_edge_score":88.0,
+        }
+        legacy = DummyAnalyzer()
+        mi.install_ml_analysis(legacy)
+        legacy_result = legacy.analyze("TEST")
+        legacy_ml = legacy_result.get("ml_prediction") or {}
+        legacy_plan = legacy_result.get("trade_plan") or {}
+        assert legacy_ml.get("peer_blend_weight_pct") == 0, legacy_ml
+        assert legacy_plan.get("confidence") == 60, legacy_plan
+        assert legacy_plan.get("ml_confidence_adjustment") is None, legacy_plan
+
+        mi.predict_ml = lambda **_kwargs: {
+            "status":"ok",
+            "gate_passed":True,
+            "production_source_ok":True,
+            "models":{
+                "target_before_stop":{"status":"ok","validated":True,"probability_pct":90.0},
+                "higher_60":{"status":"ok","validated":True,"probability_pct":88.0},
+            },
+            "ml_edge_score":89.0,
+        }
+        trusted = DummyAnalyzer()
+        mi.install_ml_analysis(trusted)
+        trusted_result = trusted.analyze("TEST")
+        trusted_ml = trusted_result.get("ml_prediction") or {}
+        trusted_plan = trusted_result.get("trade_plan") or {}
+        assert trusted_ml.get("peer_blend_weight_pct") == 30, trusted_ml
+        assert trusted_plan.get("confidence") > 60, trusted_plan
+        assert trusted_plan.get("ml_confidence_adjustment") is not None, trusted_plan
+    finally:
+        mi.predict_ml = original_predict_ml
+        mi.predict_peer_ml = original_predict_peer_ml
+
+
 def test_full_spectrum_ignores_unvalidated_ml_edge():
     import copy
     import analyzer_v2_integration as v2
@@ -7312,6 +7397,7 @@ if __name__ == "__main__":
         test_run_exhaustion_flags_rejected_mature_run,
         test_full_spectrum_exposes_all_scenarios,
         test_ml_cannot_boost_live_scores_until_complete_production_gate_passes,
+        test_ml_integration_requires_source_integrity_for_production_influence,
         test_full_spectrum_ignores_unvalidated_ml_edge,
         test_individual_ml_submodels_are_advisory_until_full_gate_passes,
         test_multi_bounce_detector_tracks_decay_and_lower_highs,
