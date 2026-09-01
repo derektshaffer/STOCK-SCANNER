@@ -4265,6 +4265,7 @@ def test_swing_research_calibration_excludes_wrong_context():
     rows = [
         {
             "symbol": "GOOD",
+            "live_data_integrity_ok": True,
             "timestamp": "2026-08-28T15:00:00+00:00",
             "swing_research_flag_version": srf.FLAG_VERSION,
             "swing_research_flag_ids": ["strong_momentum_day"],
@@ -4274,6 +4275,7 @@ def test_swing_research_calibration_excludes_wrong_context():
         },
         {
             "symbol": "AFTER",
+            "live_data_integrity_ok": True,
             "timestamp": "2026-08-28T21:00:00+00:00",
             "swing_research_flag_version": srf.FLAG_VERSION,
             "swing_research_flag_ids": ["strong_momentum_day"],
@@ -4283,6 +4285,7 @@ def test_swing_research_calibration_excludes_wrong_context():
         },
         {
             "symbol": "THIN",
+            "live_data_integrity_ok": True,
             "timestamp": "2026-08-28T15:05:00+00:00",
             "swing_research_flag_version": srf.FLAG_VERSION,
             "swing_research_flag_ids": ["strong_momentum_day"],
