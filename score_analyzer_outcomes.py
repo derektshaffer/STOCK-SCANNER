@@ -14,6 +14,7 @@ from timeframe_targets import (
 )
 from swing_research_flags import FLAG_VERSION as SWING_RESEARCH_FLAG_VERSION
 from tradier_live import get_history_bars, get_timesales_bars
+from prediction_tracker import _prediction_source_summary
 
 
 ET = ZoneInfo("America/New_York")
@@ -1034,6 +1035,9 @@ def _write_calibration():
         "legacy_prediction_rows_excluded": legacy_rows_excluded,
         "legacy_decision_rows_excluded": legacy_decision_rows_excluded,
         "calibration_rows": len(calibration_rows),
+        "calibration_by_prediction_source": _prediction_source_summary(
+            calibration_rows
+        ),
         "untrusted_integrity_rows_excluded": untrusted_integrity_rows_excluded,
         "calibration_sampling": (
             "trusted consolidated regular-session one observation per ticker per ET hour"
