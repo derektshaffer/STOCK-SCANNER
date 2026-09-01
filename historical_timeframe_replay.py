@@ -37,6 +37,8 @@ from historical_scanner_replay import (
     _daily_index,
     _fetch_tradier_daily_history,
     _num,
+    load_point_in_time_universe_snapshots,
+    point_in_time_seed_for_replay_day,
     select_daily_universe,
 )
 from scanner_behavior import multi_session_behavior_features
@@ -748,14 +750,31 @@ def _year_outcome_summary(rows):
     return out
 
 
-def _candidate_rows(daily_index, replay_dates, universe_size, candidates_per_day):
+def _candidate_rows(
+    daily_index,
+    replay_dates,
+    universe_size,
+    candidates_per_day,
+    point_in_time_snapshots=None,
+):
     staged = []
     candidate_symbols = set()
+    snapshot_covered_dates = []
     for day_number, replay_day in enumerate(replay_dates, start=1):
+        snapshot_match = point_in_time_seed_for_replay_day(
+            replay_day,
+            point_in_time_snapshots or [],
+        )
+        allowed_symbols = None
+        if snapshot_match is not None:
+            _captured, snapshot = snapshot_match
+            allowed_symbols = snapshot.get("replay_seed_symbols") or []
+            snapshot_covered_dates.append(replay_day)
         universe, prior_metrics = select_daily_universe(
             daily_index,
             replay_day,
             universe_size,
+            allowed_symbols=allowed_symbols,
         )
         rows = []
         for symbol in universe:
@@ -817,7 +836,7 @@ def _candidate_rows(daily_index, replay_dates, universe_size, candidates_per_day
             f"Timeframe replay day {day_number}/{len(replay_dates)} "
             f"{replay_day}: candidates={len(chosen)} cumulative={len(staged)}"
         )
-    return staged, candidate_symbols
+    return staged, candidate_symbols, snapshot_covered_dates
 
 
 def main():
@@ -878,11 +897,13 @@ def main():
     if len(replay_dates) < 12:
         raise RuntimeError("Insufficient replay dates after warmup/stride filtering.")
 
-    staged, candidate_symbols = _candidate_rows(
+    point_in_time_snapshots = load_point_in_time_universe_snapshots()
+    staged, candidate_symbols, snapshot_covered_dates = _candidate_rows(
         daily_index,
         replay_dates,
         universe_size,
         candidates_per_day,
+        point_in_time_snapshots=point_in_time_snapshots,
     )
     sec_payloads, sec_status = _sec_payloads(candidate_symbols)
 
@@ -1035,12 +1056,22 @@ def main():
             "candidates_per_day": candidates_per_day,
             "historical_feed": feed.upper(),
             "sec_point_in_time": sec_status,
+            "point_in_time_snapshot_count": len(point_in_time_snapshots),
+            "point_in_time_replay_dates": len(snapshot_covered_dates),
+            "current_universe_fallback_dates": (
+                len(replay_dates) - len(snapshot_covered_dates)
+            ),
+            "point_in_time_coverage_pct": round(
+                len(snapshot_covered_dates) / len(replay_dates) * 100.0,
+                1,
+            ) if replay_dates else 0.0,
             "selection_note": (
-                "Current listed-stock survivorship remains a known limitation. "
-                "Replay-day universe ranking uses only information available on "
-                "or before each historical date. The multi-year replay uses a "
-                "weekly trading-day stride to reduce adjacent-day correlation "
-                "while preserving multiple market environments."
+                "Replay-day ranking uses only information available on or before "
+                "each historical date. Where a prior dated universe snapshot "
+                "exists, candidate selection is additionally restricted to that "
+                "point-in-time seed. Older uncovered dates inherit the scanner "
+                "replay seed and retain survivorship risk. The multi-year replay "
+                "uses a weekly trading-day stride to reduce adjacent-day correlation."
             ),
             "calendar_years_covered": sorted(
                 {
@@ -1055,7 +1086,7 @@ def main():
                 }
             ),
             "known_limitations": [
-                "current listed-stock survivorship bias",
+                "current listed-stock survivorship bias remains for replay dates without prior point-in-time snapshot coverage",
                 "historical catalyst/news sentiment is neutral rather than reconstructed",
                 "historical analog score omits its intraday VWAP-reclaim subcomponent",
                 "SEC dilution replay uses filing-form recency and does not re-download old filing text keywords",
