@@ -23,7 +23,7 @@ A model or score is not considered trustworthy merely because a backtest passes.
 
 **Rules-based Scanner / Analyzer foundation: materially improved and generally well defended by regression tests.**
 
-**Predictive ML: not yet entitled to a broad production-valid claim.** The original validation-boundary findings were remediated in PR #53 and merged only after the integrity suite passed. Follow-up audit PRs #68-#71 closed additional forward-target parity, advisory-ML leakage, and stale-schema/source-integrity gaps. Live forward evidence is still too sparse to make strong performance claims.
+**Predictive ML: not yet entitled to a broad production-valid claim.** The original validation-boundary findings were remediated in PR #53 and merged only after the integrity suite passed. Follow-up audit PRs #68-#73 closed additional forward-target parity, advisory-ML leakage, stale-schema/source-integrity, and final-contract fail-open gaps. Live forward evidence is still too sparse to make strong performance claims.
 
 The safest current interpretation is:
 
@@ -54,6 +54,7 @@ The current code already fixed multiple issues from earlier audits:
 - Individually validated Analyzer reversal/bounce/new-high/stair ML submodels remain numerically advisory until the complete production ML gate passes.
 - Missing `production_source_ok` metadata fails closed; legacy/stale ML payloads cannot be treated as consolidated-source production evidence.
 - Peer blending and ML trade-plan confidence adjustments require the same explicit source-integrity gate rather than trusting `gate_passed` alone.
+- The final Analyzer trade-plan contract treats missing live-data integrity evidence as untrusted, so omitted integrity metadata cannot preserve an actionable entry.
 
 ## Post-audit hardening completed 2026-08-31
 
@@ -73,7 +74,11 @@ A legacy or stale ML payload with a missing `production_source_ok` field was pre
 
 Peer blending and trade-plan confidence adjustment previously checked `gate_passed` before the downstream production context was evaluated. They now require status OK, the validation gate, and explicit `production_source_ok=true`. A behavioral regression verifies that a legacy payload cannot change peer blend weight or plan confidence.
 
-All four follow-up PRs passed compilation, import checks, provider smoke tests, app-boundary checks, consistency regressions, learning regressions, and Phase 6 historical-challenge regressions before merge.
+### PR #73 — Final trade contract fails closed
+
+The production Analyzer already passed a live-data integrity object into its final trade-plan contract, but the helper itself treated an omitted integrity object as trusted. Missing integrity evidence now blocks an otherwise actionable entry to `WAIT / DATA CHECK`, providing defense in depth for future or alternate callers.
+
+All five follow-up PRs (#68-#71 and #73) passed compilation, import checks, provider smoke tests, app-boundary checks, consistency regressions, learning regressions, and Phase 6 historical-challenge regressions before merge.
 
 ## Critical findings and remediation
 
@@ -238,6 +243,6 @@ Do not optimize thresholds or add features until the integrity findings are reso
 
 ## Current gate status
 
-PR #53 and follow-up audit PRs #68-#71 were merged only after the required validation suites passed. The code-level integrity findings documented above are therefore remediated on `main`.
+PR #53 and follow-up audit PRs #68-#71 and #73 were merged only after the required validation suites passed. The code-level integrity findings documented above are therefore remediated on `main`.
 
 This does **not** convert the remaining evidence gaps into validated performance claims. Analyzer live calibration, forward Swing/Longer-Term cohorts, survivorship limitations, and historical feature-parity limitations remain explicit blockers on stronger claims until their required evidence exists.
