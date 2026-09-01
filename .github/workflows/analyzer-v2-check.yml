@@ -279,12 +279,11 @@ jobs:
           assert bool(meta.get("historical_validated")), meta
           assert meta.get("validation_split_unit") == "trading_day", meta
           PY
-      - name: Render Analyzer trade-plan chart smoke
+      - name: Render Analyzer Plotly chart smoke
         run: |
-          python -m pip install --disable-pip-version-check -q vl-convert-python
+          python -m pip install --disable-pip-version-check -q "plotly>=5.24"
           python - <<'PY'
           import analyzer_visuals as av
-          import vl_convert as vlc
 
           intraday = [
               {
@@ -311,11 +310,14 @@ jobs:
                   }
               },
           }
-          spec = av.trade_plan_chart_spec(result)
-          assert spec and spec.get("layer"), spec
-          svg = vlc.vegalite_to_svg(spec)
-          assert "<svg" in svg and ("rect" in svg or "path" in svg or "line" in svg), svg[:500]
-          print("ANALYZER_CHART_RENDER_SMOKE=passed")
+          fig = av.trade_plan_plotly_figure(result)
+          assert fig is not None
+          payload = fig.to_plotly_json()
+          traces = payload.get("data") or []
+          assert any(trace.get("type") == "candlestick" for trace in traces), traces
+          assert payload.get("layout", {}).get("shapes"), payload
+          assert len(fig.to_json()) > 1000
+          print("ANALYZER_PLOTLY_RENDER_SMOKE=passed")
           PY
       - name: Verify off-hours Swing target parity
         run: python offhours_outcome_regression_check.py
