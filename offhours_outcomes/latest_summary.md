@@ -1,6 +1,6 @@
 # Off-Hours Swing / Longer-Term Forward Outcomes
 
-Updated: 2026-09-01T02:45:01.492546+00:00
+Updated: 2026-09-01T06:19:47.472258+00:00
 
 Research-only. These cohorts do not change live Momentum Scanner ranking, ACTION, or ML.
 

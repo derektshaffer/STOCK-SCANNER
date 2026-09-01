@@ -1,10 +1,11 @@
 {
-  "generated_at_utc": "2026-09-01T02:45:21.173772+00:00",
+  "generated_at_utc": "2026-09-01T06:20:08.575847+00:00",
   "production_claim": "Rules-based Scanner/Analyzer decision support remains usable. Predictive ML and Swing/Longer-Term probability claims remain gated until their independent evidence requirements pass.",
   "schema_version": 1,
   "sections": {
     "analyzer_calibration_v9": {
       "artifact_found": true,
+      "calibration_by_prediction_source": {},
       "calibration_ready": false,
       "calibration_rows": 0,
       "early_read_gate": {
@@ -31,6 +32,20 @@
         "remaining": 100,
         "required": 100
       }
+    },
+    "historical_listing_universe": {
+      "api_key_configured": false,
+      "coverage_pct": 0.0,
+      "covered_target_dates": 0,
+      "exact_historical_snapshot_count": 0,
+      "first_covered_date": null,
+      "latest_backfill_fetched_dates": 0,
+      "latest_backfill_status": null,
+      "latest_covered_date": null,
+      "missing_target_dates": 267,
+      "note": "Exact historical-date listing membership is used only when a cached snapshot exists for that same replay date. Missing dates remain explicitly on prospective/current-universe fallback.",
+      "provider_status": "missing_key",
+      "target_replay_dates": 267
     },
     "offhours_timeframe_forward": {
       "cohort_count": 2,
