@@ -3109,6 +3109,10 @@ def test_combined_analyzer_timed_refresh_stays_fragment_scoped():
     assert ".st-key-analyzer_live_fragment" in bootstrap
     assert "staleNode.isConnected" in bootstrap
     assert "childList: true" in bootstrap
+    scroll_helper = bootstrap.split("def _install_scroll_keeper", 1)[1]
+    assert scroll_helper.index('[data-testid="stMain"]') < scroll_helper.index(
+        '[data-testid="stAppViewContainer"]'
+    )
     assert "_install_scroll_keeper()" in run_tail
     assert "if not combined:\n        _install_scroll_keeper()" not in run_tail
 
