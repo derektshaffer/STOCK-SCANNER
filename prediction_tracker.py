@@ -33,7 +33,20 @@ GITHUB_TOKEN = (
 GITHUB_REPO = os.environ.get(
     "ANALYZER_GITHUB_REPO", "derektshaffer/STOCK-SCANNER"
 ).strip()
-GITHUB_BRANCH = os.environ.get("ANALYZER_GITHUB_BRANCH", "main").strip() or "main"
+# Prediction/outcome rows are runtime data, not deployable application code.
+# Writing them to the Streamlit deployment branch makes every background sync
+# look like a new release and forces every open Scanner/Analyzer session to
+# reload.  Keep the journal on the existing non-deployment branch even when an
+# older Streamlit secret still says ``main``.
+_CONFIGURED_GITHUB_BRANCH = (
+    os.environ.get("ANALYZER_GITHUB_BRANCH", "learning-journal").strip()
+    or "learning-journal"
+)
+GITHUB_BRANCH = (
+    "learning-journal"
+    if _CONFIGURED_GITHUB_BRANCH.lower() in {"main", "master"}
+    else _CONFIGURED_GITHUB_BRANCH
+)
 REMOTE_DIR = os.environ.get("ANALYZER_OUTCOME_DIR", "analyzer_outcomes").strip() or "analyzer_outcomes"
 REMOTE_SYNC_SECONDS = max(
     300, int(os.environ.get("ANALYZER_REMOTE_SYNC_SECONDS", "900") or 900)
