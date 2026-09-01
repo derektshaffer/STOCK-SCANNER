@@ -4,7 +4,7 @@
   "current_feature_version": "scanner-features-v2-consolidated",
   "trading_date": "2026-08-31",
   "status": "complete",
-  "generated_at_utc": "2026-09-01T02:39:26.345983+00:00",
+  "generated_at_utc": "2026-09-01T02:44:55.047109+00:00",
   "measurement": {
     "return_basis": "scanner snapshot price to matched horizon bar close",
     "execution_adjusted": false,

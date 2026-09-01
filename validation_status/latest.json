@@ -1,5 +1,5 @@
 {
-  "generated_at_utc": "2026-09-01T02:40:19.752763+00:00",
+  "generated_at_utc": "2026-09-01T02:45:21.173772+00:00",
   "production_claim": "Rules-based Scanner/Analyzer decision support remains usable. Predictive ML and Swing/Longer-Term probability claims remain gated until their independent evidence requirements pass.",
   "schema_version": 1,
   "sections": {
@@ -13,7 +13,7 @@
         "remaining": 30,
         "required": 30
       },
-      "prediction_rows": 0,
+      "prediction_rows": 19,
       "required_schema_version": 9,
       "resolved_60m": 0,
       "schema_current": true,

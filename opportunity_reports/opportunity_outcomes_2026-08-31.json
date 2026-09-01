@@ -2,7 +2,7 @@
   "schema_version": 1,
   "version": "1.0",
   "trading_date": "2026-08-31",
-  "generated_at_utc": "2026-09-01T02:39:33.787436+00:00",
+  "generated_at_utc": "2026-09-01T02:44:57.941830+00:00",
   "production_influence": false,
   "purpose": "shadow opportunity/path learning",
   "market_data_source": "tradier_1min_all",
