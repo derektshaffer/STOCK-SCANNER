@@ -1788,25 +1788,27 @@ def _full_spectrum_analysis(metrics, sec, market, catalyst, turnover):
     ml_context=_production_ml_context(metrics)
     ml_edge=_num(ml_context.get("edge"))
     validated_edge_count=int(ml_context.get("validated_model_count") or 0)
-    # Defense in depth: the headline ML edge affects scenario context only
-    # after the complete production gate passes. Numeric advisory/cached edges
-    # are neutral even when individual submodels have validation badges.
+    production_ml_enabled=bool(ml_context.get("eligible"))
+    # Defense in depth: neither the composite edge nor any individual submodel
+    # may change a production-facing scenario/reversal score until the complete
+    # ML gate passes. Individually validated submodels remain displayable as
+    # advisory evidence while the gate is incomplete.
     ml_score=cap(ml_edge if ml_edge is not None else 50.0)
     reversal_model=(ml.get("models") or {}).get("reversal_30") or {}
     reversal_ml=_num(reversal_model.get("probability_pct"))
-    reversal_ml_valid=bool(reversal_model.get("validated"))
+    reversal_ml_valid=production_ml_enabled and bool(reversal_model.get("validated"))
     repeat_bounce_model=(ml.get("models") or {}).get("repeat_bounce_30") or {}
     repeat_bounce_ml=_num(repeat_bounce_model.get("probability_pct"))
-    repeat_bounce_valid=bool(repeat_bounce_model.get("validated"))
+    repeat_bounce_valid=production_ml_enabled and bool(repeat_bounce_model.get("validated"))
     new_high_model=(ml.get("models") or {}).get("new_high_60") or {}
     new_high_ml=_num(new_high_model.get("probability_pct"))
-    new_high_valid=bool(new_high_model.get("validated"))
+    new_high_valid=production_ml_enabled and bool(new_high_model.get("validated"))
     post_failure_model=(ml.get("models") or {}).get("post_bounce_failure_60") or {}
     post_failure_ml=_num(post_failure_model.get("probability_pct"))
-    post_failure_valid=bool(post_failure_model.get("validated"))
+    post_failure_valid=production_ml_enabled and bool(post_failure_model.get("validated"))
     stair_model=(ml.get("models") or {}).get("stair_reacceleration_60") or {}
     stair_ml=_num(stair_model.get("probability_pct"))
-    stair_ml_valid=bool(stair_model.get("validated"))
+    stair_ml_valid=production_ml_enabled and bool(stair_model.get("validated"))
 
     # 6) Catalyst / news.
     cat_score=cap(50.0+(_num(catalyst.get("score")) or 0.0)*4.0)
