@@ -3001,15 +3001,18 @@ def test_analyzer_visual_specs_show_real_pattern_markers():
     for spec in (trade,bounce,stair,impulse,sr):
         assert spec and spec.get("layer"), spec
         params = spec.get("params") or []
-        names = {str(row.get("name") or "") for row in params}
-        assert {"date_zoom", "price_zoom"} <= names, params
-        date_zoom = next(row for row in params if row.get("name") == "date_zoom")
-        price_zoom = next(row for row in params if row.get("name") == "price_zoom")
-        assert date_zoom.get("bind") == "scales", date_zoom
-        assert price_zoom.get("bind") == "scales", price_zoom
-        assert (date_zoom.get("select") or {}).get("encodings") == ["x"], date_zoom
-        assert (price_zoom.get("select") or {}).get("encodings") == ["y"], price_zoom
-        assert "event.altKey" in str((price_zoom.get("select") or {}).get("zoom")), price_zoom
+        assert len(params) == 1, params
+        zoom = params[0]
+        assert zoom.get("name") == "chart_zoom", zoom
+        assert zoom.get("bind") == "scales", zoom
+        select = zoom.get("select") or {}
+        assert select.get("type") == "interval", zoom
+        assert select.get("encodings") == ["x", "y"], zoom
+        assert select.get("clear") == "dblclick", zoom
+        # Keep the shared interaction spec intentionally simple and portable:
+        # no custom Vega event-stream expressions that can blank layered charts.
+        assert "translate" not in select, zoom
+        assert "zoom" not in select, zoom
 
     bounce_text=str(bounce)
     assert "Bounce #1 ✓" in bounce_text
@@ -3023,6 +3026,15 @@ def test_analyzer_visual_specs_show_real_pattern_markers():
     trade_text=str(trade)
     assert "Target 1" in trade_text
     assert "VWAP" in trade_text
+
+
+def test_analyzer_visual_ui_uses_safe_shared_chart_controls():
+    from pathlib import Path
+
+    source = Path("analyzer_ui_core.py").read_text(encoding="utf-8")
+    assert "Chart controls: scroll/pinch = zoom · drag = pan · " in source
+    assert "Option/Alt + scroll/pinch" not in source
+    assert "Option/Alt + drag" not in source
 
 
 def test_analyzer_visuals_use_dark_high_contrast_theme():
@@ -7911,6 +7923,7 @@ if __name__ == "__main__":
         test_analyzer_bounce_progress_and_plan_change_are_explicit,
         test_analyzer_exposes_same_evidence_bars_for_visual_snapshots,
         test_analyzer_visual_specs_show_real_pattern_markers,
+        test_analyzer_visual_ui_uses_safe_shared_chart_controls,
         test_analyzer_visuals_use_dark_high_contrast_theme,
         test_analyzer_visual_snapshots_are_collapsible_and_contextual,
         test_analyzer_long_context_text_is_collapsible,
