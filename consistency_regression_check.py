@@ -1244,6 +1244,94 @@ def test_historical_replay_universe_uses_prior_days_only():
     assert selected == ["LIQUID"], (selected, metrics)
 
 
+def test_point_in_time_universe_snapshot_is_strictly_prior_and_filters_candidates():
+    import historical_scanner_replay as replay
+    from datetime import date, timedelta
+
+    captured = date(2026, 8, 31)
+    snapshots = [
+        (
+            captured,
+            {
+                "replay_ready": True,
+                "replay_seed_symbols": ["KEEP"],
+            },
+        )
+    ]
+    assert replay.point_in_time_seed_for_replay_day(captured, snapshots) is None
+    match = replay.point_in_time_seed_for_replay_day(
+        captured + timedelta(days=1),
+        snapshots,
+    )
+    assert match is not None, match
+    assert match[0] == captured, match
+
+    replay_day = captured + timedelta(days=1)
+    prior_days = [replay_day - timedelta(days=i) for i in range(10, 0, -1)]
+    history = [
+        (day, {"c": 10.0, "v": 1_000_000})
+        for day in prior_days
+    ]
+    daily_index = {
+        "KEEP": list(history),
+        "DROP": list(history),
+    }
+    selected, _metrics = replay.select_daily_universe(
+        daily_index,
+        replay_day,
+        5,
+        allowed_symbols={"KEEP"},
+    )
+    assert selected == ["KEEP"], selected
+
+
+def test_forward_validation_scoreboard_fails_closed_on_missing_evidence():
+    import json
+    import tempfile
+    from pathlib import Path
+    import validation_status as vs
+
+    assert vs._gate(2, 3)["passed"] is False
+    assert vs._gate(3, 3)["passed"] is True
+
+    old_calibration = vs.ANALYZER_CALIBRATION
+    old_universe = vs.UNIVERSE_DIR
+    try:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            calibration = root / "calibration.json"
+            calibration.write_text(
+                json.dumps({
+                    "schema_version": 8,
+                    "resolved_60m": 999,
+                    "calibration_ready": True,
+                }),
+                encoding="utf-8",
+            )
+            universe = root / "universe"
+            universe.mkdir()
+            (universe / "universe_2026-08-31.json").write_text(
+                json.dumps({
+                    "captured_date_et": "2026-08-31",
+                    "replay_ready": True,
+                    "replay_seed_symbols": ["TEST"],
+                }),
+                encoding="utf-8",
+            )
+
+            vs.ANALYZER_CALIBRATION = calibration
+            vs.UNIVERSE_DIR = universe
+            analyzer = vs.analyzer_forward_evidence()
+            coverage = vs.universe_coverage()
+            assert analyzer["schema_current"] is False, analyzer
+            assert analyzer["resolved_60m"] == 999, analyzer
+            assert coverage["replay_ready_snapshot_count"] == 1, coverage
+            assert coverage["activation_gate"]["passed"] is False, coverage
+    finally:
+        vs.ANALYZER_CALIBRATION = old_calibration
+        vs.UNIVERSE_DIR = old_universe
+
+
 def test_historical_replay_source_survives_ml_extraction():
     import scanner_ml_ranker as sm
 
@@ -7493,6 +7581,8 @@ if __name__ == "__main__":
         test_scanner_action_behavior_never_overrides_reject,
         test_scanner_ui_auto_surfaces_validated_ml,
         test_historical_replay_universe_uses_prior_days_only,
+        test_point_in_time_universe_snapshot_is_strictly_prior_and_filters_candidates,
+        test_forward_validation_scoreboard_fails_closed_on_missing_evidence,
         test_historical_replay_source_survives_ml_extraction,
         test_replay_requires_live_confirmation_before_full_badge,
         test_analyzer_ml_walk_forward_never_splits_one_trading_day,
