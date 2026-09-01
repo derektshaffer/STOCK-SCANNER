@@ -53,6 +53,12 @@ DEFAULT_SCAN_STEP_MINUTES = int(
     os.environ.get("REPLAY_SCAN_STEP_MINUTES", "10") or 10
 )
 MAX_UNION_SYMBOLS = int(os.environ.get("REPLAY_MAX_UNION_SYMBOLS", "450") or 450)
+MAX_HISTORY_SEED_SYMBOLS = int(
+    os.environ.get("REPLAY_MAX_HISTORY_SEED_SYMBOLS", "1200") or 1200
+)
+UNIVERSE_SNAPSHOT_DIR = Path(
+    os.environ.get("UNIVERSE_SNAPSHOT_DIR", "universe_snapshots")
+)
 TRADIER_QUOTE_BATCH_SIZE = int(
     os.environ.get("REPLAY_TRADIER_QUOTE_BATCH_SIZE", "300") or 300
 )
@@ -345,6 +351,43 @@ def _select_seed_universe_from_tradier(symbols, token, target_size):
     return selected[:target_size], len(eligible)
 
 
+def load_point_in_time_universe_snapshots(directory=None):
+    """Load replay-ready universe snapshots in capture-date order."""
+    directory = Path(directory or UNIVERSE_SNAPSHOT_DIR)
+    rows = []
+    if not directory.exists():
+        return rows
+    for path in sorted(directory.glob("universe_????-??-??.json")):
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            captured = date.fromisoformat(str(payload.get("captured_date_et") or ""))
+        except Exception:
+            continue
+        if payload.get("replay_ready") is not True:
+            continue
+        seeds = [
+            str(symbol).upper().strip()
+            for symbol in payload.get("replay_seed_symbols") or []
+            if str(symbol).strip()
+        ]
+        if not seeds:
+            continue
+        rows.append((captured, {**payload, "replay_seed_symbols": seeds}))
+    rows.sort(key=lambda item: item[0])
+    return rows
+
+
+def point_in_time_seed_for_replay_day(replay_day, snapshots):
+    """Use only a snapshot captured strictly before the replay session."""
+    eligible = [
+        item for item in (snapshots or [])
+        if item[0] < replay_day
+    ]
+    if not eligible:
+        return None
+    return eligible[-1]
+
+
 def _fetch_tradier_daily_history(symbols, token, start, end):
     merged = {}
     total = len(symbols)
@@ -520,9 +563,16 @@ def _universe_metrics(rows, replay_day):
     }
 
 
-def select_daily_universe(daily_index, replay_day, size):
+def select_daily_universe(daily_index, replay_day, size, allowed_symbols=None):
     rows = []
+    allowed = (
+        {str(symbol).upper().strip() for symbol in allowed_symbols}
+        if allowed_symbols is not None
+        else None
+    )
     for symbol, history in daily_index.items():
+        if allowed is not None and symbol not in allowed:
+            continue
         metrics = _universe_metrics(history, replay_day)
         if metrics is not None:
             rows.append((symbol, metrics))
@@ -1469,25 +1519,53 @@ def main():
         MAX_UNION_SYMBOLS,
         max(universe_size, int(round(universe_size * 1.35))),
     )
-    seed_symbols, quote_eligible = _select_seed_universe_from_tradier(
+    current_seed_symbols, quote_eligible = _select_seed_universe_from_tradier(
         symbols,
         token,
         seed_size,
     )
-    if len(seed_symbols) < 100:
+    if len(current_seed_symbols) < 100:
         raise RuntimeError(
-            f"Tradier quote screening returned only {len(seed_symbols)} usable stocks."
+            f"Tradier quote screening returned only {len(current_seed_symbols)} usable stocks."
         )
+
+    point_in_time_snapshots = load_point_in_time_universe_snapshots()
+    snapshot_frequency = Counter()
+    for _captured, snapshot in point_in_time_snapshots:
+        snapshot_frequency.update(snapshot.get("replay_seed_symbols") or [])
+
+    # Daily-history fetching can be broader than the final intraday union. Give
+    # priority to symbols that repeatedly appeared in dated point-in-time
+    # snapshots, then fill with today's screened names. This preserves names
+    # that may later disappear from the current listing universe.
+    history_seed_symbols = [
+        symbol
+        for symbol, _count in snapshot_frequency.most_common(
+            max(0, MAX_HISTORY_SEED_SYMBOLS)
+        )
+    ]
+    history_seen = set(history_seed_symbols)
+    for symbol in current_seed_symbols:
+        if symbol in history_seen:
+            continue
+        history_seen.add(symbol)
+        history_seed_symbols.append(symbol)
+        if len(history_seed_symbols) >= MAX_HISTORY_SEED_SYMBOLS:
+            break
+    history_seed_symbols = history_seed_symbols[:MAX_HISTORY_SEED_SYMBOLS]
+
     print(
-        f"Tradier replay seed universe: {len(seed_symbols)} stocks "
-        f"from {quote_eligible} quote-eligible common stocks."
+        f"Tradier current replay seed: {len(current_seed_symbols)} stocks "
+        f"from {quote_eligible} quote-eligible common stocks; "
+        f"history seed={len(history_seed_symbols)} with "
+        f"{len(point_in_time_snapshots)} dated replay-ready snapshots."
     )
 
     now_et = datetime.now(ET)
     daily_start = now_et - timedelta(days=max(120, trading_days * 4 + 50))
     daily_end = now_et
     daily_bars = _fetch_tradier_daily_history(
-        seed_symbols,
+        history_seed_symbols,
         token,
         daily_start,
         daily_end,
@@ -1513,12 +1591,36 @@ def main():
 
     daily_universes = {}
     daily_metrics = {}
+    daily_universe_sources = {}
     frequency = Counter()
+    snapshot_covered_dates = []
     for replay_day in replay_dates:
+        snapshot_match = point_in_time_seed_for_replay_day(
+            replay_day,
+            point_in_time_snapshots,
+        )
+        allowed_symbols = None
+        if snapshot_match is not None:
+            captured_date, snapshot = snapshot_match
+            allowed_symbols = snapshot.get("replay_seed_symbols") or []
+            snapshot_covered_dates.append(replay_day)
+            daily_universe_sources[replay_day] = {
+                "mode": "point_in_time_snapshot",
+                "captured_date": captured_date.isoformat(),
+                "seed_count": len(allowed_symbols),
+            }
+        else:
+            daily_universe_sources[replay_day] = {
+                "mode": "current_universe_fallback",
+                "captured_date": None,
+                "seed_count": len(current_seed_symbols),
+            }
+
         selected, metrics = select_daily_universe(
             daily_index,
             replay_day,
             universe_size,
+            allowed_symbols=allowed_symbols,
         )
         daily_universes[replay_day] = selected
         daily_metrics[replay_day] = metrics
@@ -1630,17 +1732,38 @@ def main():
             "bar_resolution": "5Min",
             "historical_feed": "TRADIER CONSOLIDATED HISTORICAL",
             "asset_universe_source": asset_base,
-            "universe_method": (
-                "public exchange symbol directory narrowed by current Tradier "
-                "stock/liquidity metadata; each replay day then selected using "
-                "only prior-day liquidity, prior-day momentum and prior-day relative volume"
+            "point_in_time_snapshot_count": len(point_in_time_snapshots),
+            "point_in_time_replay_dates": len(snapshot_covered_dates),
+            "current_universe_fallback_dates": (
+                len(replay_dates) - len(snapshot_covered_dates)
             ),
-            "known_limitations": [
-                "current listed/liquid stock survivorship bias",
-                "historical bid/ask spread not reconstructed",
-                "historical news/catalyst score not reconstructed",
-                "5-minute bars approximate live 1-minute momentum and impulse/retracement inputs",
-            ],
+            "point_in_time_coverage_pct": round(
+                len(snapshot_covered_dates) / len(replay_dates) * 100.0,
+                1,
+            ) if replay_dates else 0.0,
+            "daily_universe_sources": {
+                day.isoformat(): daily_universe_sources.get(day)
+                for day in replay_dates
+            },
+            "universe_method": (
+                "For replay dates with coverage, restrict candidates to the "
+                "latest replay-ready universe snapshot captured strictly before "
+                "that session, then rank using only prior-day liquidity, "
+                "prior-day momentum and prior-day relative volume. Dates without "
+                "snapshot coverage explicitly fall back to the current screened universe."
+            ),
+            "known_limitations": (
+                [
+                    "historical bid/ask spread not reconstructed",
+                    "historical news/catalyst score not reconstructed",
+                    "5-minute bars approximate live 1-minute momentum and impulse/retracement inputs",
+                ]
+                + (
+                    ["current listed/liquid stock survivorship bias remains on replay dates without a prior point-in-time snapshot"]
+                    if len(snapshot_covered_dates) < len(replay_dates)
+                    else []
+                )
+            ),
         },
         "summary": {
             "observations": len(observations),
