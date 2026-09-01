@@ -180,7 +180,12 @@ def historical_listing_coverage():
     latest_backfill = _load(
         Path("historical_universes/alpha_vantage/latest_backfill.json")
     )
+    provider = _load(
+        Path("historical_universes/alpha_vantage/provider_status.json")
+    )
     return {
+        "provider_status": provider.get("status") or "unknown",
+        "api_key_configured": bool(provider.get("api_key_configured")),
         "target_replay_dates": len(targets),
         "exact_historical_snapshot_count": len(cached),
         "covered_target_dates": len(covered),
@@ -281,6 +286,8 @@ def render_markdown(payload):
         f"- Latest capture: {universe.get('latest_replay_ready_capture_date') or '—'}",
         "",
         "## Historical listing-universe backfill",
+        f"- Provider: {historical_listing.get('provider_status') or 'unknown'} "
+        f"({'key configured' if historical_listing.get('api_key_configured') else 'key missing'})",
         f"- Exact replay dates covered: {historical_listing['covered_target_dates']}/"
         f"{historical_listing['target_replay_dates']} "
         f"({historical_listing['coverage_pct']}%)",
