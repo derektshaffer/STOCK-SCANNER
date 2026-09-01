@@ -3034,6 +3034,33 @@ def test_analyzer_visual_ui_uses_plotly_renderer():
 
 
 
+
+def test_scanner_analyze_button_navigates_out_of_candidate_fragment():
+    from pathlib import Path
+
+    source = Path("app.py").read_text(encoding="utf-8")
+    fragment = source.split("def _render_compact_scanner_candidates():", 1)[1].split(
+        "_render_compact_scanner_candidates()", 1
+    )[0]
+    assert 'f"Analyze {symbol}"' in fragment
+    assert "_toggle_analyzer_launch(symbol)" in fragment
+    assert 'st.rerun(scope="app")' in fragment
+    assert "on_click=_toggle_analyzer_launch" not in fragment
+
+
+def test_combined_scanner_defers_heavy_duplicate_dashboard_by_default():
+    from pathlib import Path
+
+    source = Path("scanner_app.py").read_text(encoding="utf-8")
+    results = source.split("def render_scanner_results():", 1)[1]
+    quick_gate = results.split("payload = load_scan()", 2)[0]
+    assert "if combined_monitor_active:" in quick_gate
+    assert '"Show detailed scanner data"' in quick_gate
+    assert "value=False" in quick_gate
+    assert "if not show_details:" in results
+    assert "Quick mode" in results
+    assert "return" in results
+
 def test_scanner_refreshes_results_without_full_page_flash():
     from pathlib import Path
 
