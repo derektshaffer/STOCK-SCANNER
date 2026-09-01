@@ -3020,15 +3020,97 @@ def test_analyzer_visual_specs_show_real_pattern_markers():
     assert "VWAP" in trade_text
 
 
-def test_analyzer_visual_ui_uses_safe_shared_chart_controls():
+def test_analyzer_visual_ui_uses_plotly_renderer():
     from pathlib import Path
 
     source = Path("analyzer_ui_core.py").read_text(encoding="utf-8")
-    assert "Chart rendering restored with the stable base renderer." in source
-    assert "Interactive scale controls are temporarily disabled" in source
-    assert "Option/Alt + scroll/pinch" not in source
-    assert "Option/Alt + drag" not in source
+    assert "st.plotly_chart(" in source
+    assert '"displayModeBar": False' in source
+    assert '"scrollZoom": True' in source
+    assert '"doubleClick": "reset"' in source
+    assert "st.vega_lite_chart(" not in source
 
+
+
+
+def test_analyzer_plotly_figures_render_candlesticks_and_levels():
+    import analyzer_visuals as av
+
+    intraday = [
+        {
+            "t": f"2026-08-31T14:{30+i:02d}:00Z",
+            "o": 10.0 + i * 0.05,
+            "h": 10.15 + i * 0.05,
+            "l": 9.90 + i * 0.05,
+            "c": 10.05 + i * 0.05,
+            "v": 1000 + i * 100,
+        }
+        for i in range(8)
+    ]
+    daily = [
+        {"t":"2026-08-26","o":8,"h":8.5,"l":7.8,"c":8.2,"v":1000},
+        {"t":"2026-08-27","o":8.2,"h":10.2,"l":8.1,"c":10.0,"v":4000},
+        {"t":"2026-08-28","o":10.0,"h":10.4,"l":9.8,"c":10.2,"v":1500},
+        {"t":"2026-08-31","o":10.3,"h":12.0,"l":10.2,"c":11.8,"v":5000},
+    ]
+    result = {
+        "chart_data": {"intraday": intraday, "daily": daily},
+        "vwap": 10.18,
+        "trade_plan": {
+            "selected": {
+                "entry_low": 10.10,
+                "entry_high": 10.20,
+                "stop": 9.85,
+                "target1": 10.55,
+                "target2": 10.80,
+                "stretch_target": 11.10,
+            },
+            "pullback": {"entry_low": 10.10, "entry_high": 10.20},
+        },
+        "impulse_pullback": {
+            "detected": True,
+            "impulse_low": 9.95,
+            "impulse_high": 10.45,
+            "bounce_confirmed": True,
+        },
+        "bounce_sequence": {
+            "detected": True,
+            "next_bounce_number": 2,
+            "current_leg": "BOUNCING",
+            "bounces": [{
+                "number": 1,
+                "pullback_low": 10.0,
+                "pullback_low_index": 1,
+                "bounce_peak": 10.35,
+                "bounce_peak_index": 5,
+            }],
+        },
+        "stair_step": {
+            "detected": True,
+            "reaccelerating": True,
+            "current_plateau_center": 10.2,
+            "current_plateau_range_pct": 2.0,
+            "steps": [{"date":"2026-08-27","step_close":10.0,"step_pct":22.0}],
+        },
+        "supports": [{"price": 9.9}],
+        "resistances": [{"price": 10.8}],
+    }
+
+    figures = (
+        av.trade_plan_plotly_figure(result),
+        av.impulse_pullback_plotly_figure(result),
+        av.multi_bounce_plotly_figure(result),
+        av.stair_step_plotly_figure(result),
+        av.support_resistance_plotly_figure(result),
+    )
+    for fig in figures:
+        assert fig is not None
+        payload = fig.to_plotly_json()
+        traces = payload.get("data") or []
+        assert any(trace.get("type") == "candlestick" for trace in traces), traces
+
+    trade = figures[0].to_plotly_json()
+    assert trade.get("layout", {}).get("shapes"), trade
 
 def test_analyzer_visuals_use_dark_high_contrast_theme():
     import analyzer_visuals as av
@@ -3066,17 +3148,15 @@ def test_analyzer_visual_snapshots_are_collapsible_and_contextual():
     ):
         assert label in source, label
 
-    assert "trade_plan_chart_spec(r, line_overlay=overlay)" in source
-    assert "multi_bounce_chart_spec(r, line_overlay=overlay)" in source
-    assert "stair_step_chart_spec(r, line_overlay=overlay)" in source
-    assert "impulse_pullback_chart_spec(r, line_overlay=overlay)" in source
-    assert "support_resistance_chart_spec(r,line_overlay=_sr_line)" in source
+    assert "trade_plan_plotly_figure(r, line_overlay=overlay)" in source
+    assert "multi_bounce_plotly_figure(r, line_overlay=overlay)" in source
+    assert "stair_step_plotly_figure(r, line_overlay=overlay)" in source
+    assert "impulse_pullback_plotly_figure(r, line_overlay=overlay)" in source
+    assert "support_resistance_plotly_figure(r,line_overlay=_sr_line)" in source
     assert "Close-line overlay" in source
     assert "Candlesticks are the primary chart" in source
-    assert "Chart rendering restored with the stable base renderer." in source
-    assert "Interactive scale controls are temporarily disabled" in source
-    assert "Option/Alt + scroll/pinch" not in source
-    assert "Option/Alt + drag" not in source
+    assert "st.plotly_chart(" in source
+    assert "Drag to pan · scroll/trackpad to zoom · double-click to reset." in source
 
 
 def test_analyzer_long_context_text_is_collapsible():
