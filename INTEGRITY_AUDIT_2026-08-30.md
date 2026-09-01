@@ -23,7 +23,7 @@ A model or score is not considered trustworthy merely because a backtest passes.
 
 **Rules-based Scanner / Analyzer foundation: materially improved and generally well defended by regression tests.**
 
-**Predictive ML: not yet entitled to a broad production-valid claim.** The audit found several validation-boundary problems that can overstate historical evidence. Those problems are being corrected in PR #53. Live forward evidence is still too sparse to make strong performance claims.
+**Predictive ML: not yet entitled to a broad production-valid claim.** The original validation-boundary findings were remediated in PR #53 and merged only after the integrity suite passed. Follow-up audit PRs #68-#74 closed additional forward-target parity, advisory-ML leakage, stale-schema/source-integrity, final-contract fail-open, and untrusted-calibration contamination gaps. Live forward evidence is still too sparse to make strong performance claims.
 
 The safest current interpretation is:
 
@@ -50,6 +50,40 @@ The current code already fixed multiple issues from earlier audits:
 - Closed/off-hours Analyzer observations are excluded from intraday calibration.
 - Scanner stale snapshots are explicitly marked and cannot silently masquerade as fresh handoffs.
 - Swing / Longer-Term timeframe-fit scores are kept separate from production intraday rank.
+- Off-hours 5-day Swing forward outcomes now use the exact same shared +5% before -4% target as historical Swing ML; same-day target/stop touches remain ambiguous rather than guessed.
+- Individually validated Analyzer reversal/bounce/new-high/stair ML submodels remain numerically advisory until the complete production ML gate passes.
+- Missing `production_source_ok` metadata fails closed; legacy/stale ML payloads cannot be treated as consolidated-source production evidence.
+- Peer blending and ML trade-plan confidence adjustments require the same explicit source-integrity gate rather than trusting `gate_passed` alone.
+- The final Analyzer trade-plan contract treats missing live-data integrity evidence as untrusted, so omitted integrity metadata cannot preserve an actionable entry.
+- Analyzer calibration and forward-learning cohorts require explicit trusted live-data integrity; stale, non-consolidated, or legacy rows missing integrity metadata remain available for diagnostics but are excluded from calibration.
+
+## Post-audit hardening completed 2026-08-31
+
+### PR #68 — Forward Swing target parity
+
+The off-hours Swing tracker previously measured multi-day return/MFE/MAE but did not resolve the exact +5% before -4% within 5 sessions target used by historical Swing ML. Forward cohorts now use the shared `timeframe_targets.resolve_swing_path_from_bars` definition, backfill older 5-day rows, and report ambiguous same-day target/stop touches separately.
+
+### PR #69 — Advisory individual ML isolation
+
+The Analyzer's composite ML edge was correctly gated, but individually validated reversal, repeat-bounce, new-high, mature-bounce-failure, and stair-reacceleration submodels could still change full-spectrum scenario or reversal math while the overall ML gate was advisory. Those submodels may still be displayed, but their numeric production influence is now disabled until the complete gate passes.
+
+### PR #70 — Missing source-integrity metadata fails closed
+
+A legacy or stale ML payload with a missing `production_source_ok` field was previously treated as source-trusted by the downstream production context. Missing source-integrity evidence now evaluates as false.
+
+### PR #71 — Earlier ML integration uses the same fail-closed gate
+
+Peer blending and trade-plan confidence adjustment previously checked `gate_passed` before the downstream production context was evaluated. They now require status OK, the validation gate, and explicit `production_source_ok=true`. A behavioral regression verifies that a legacy payload cannot change peer blend weight or plan confidence.
+
+### PR #73 — Final trade contract fails closed
+
+The production Analyzer already passed a live-data integrity object into its final trade-plan contract, but the helper itself treated an omitted integrity object as trusted. Missing integrity evidence now blocks an otherwise actionable entry to `WAIT / DATA CHECK`, providing defense in depth for future or alternate callers.
+
+### PR #74 — Calibration learns only from trusted live snapshots
+
+Regular-session Analyzer snapshots were durably recorded even when live-data integrity failed, while the calibration selectors previously filtered only by session/time. That meant a stale or non-consolidated snapshot could be blocked from trading but still teach later calibration. Prediction rows now record live-data integrity, consolidation state, trade/quote age, and integrity reasons. Intraday calibration, Swing/Longer-Term daily calibration, and live Swing research calibration all require explicit `live_data_integrity_ok=true`; legacy rows missing that field fail closed. Calibration schema version 9 invalidates older durable calibration under the stricter sampling contract. Untrusted rows remain available for diagnostics and outcome review but cannot teach score calibration.
+
+All six follow-up PRs (#68-#71 and #73-#74) passed compilation, import checks, provider smoke tests, app-boundary checks, consistency regressions, learning regressions, and Phase 6 historical-challenge regressions before merge.
 
 ## Critical findings and remediation
 
@@ -212,6 +246,8 @@ Specifically inspect:
 
 Do not optimize thresholds or add features until the integrity findings are resolved and regression validation passes.
 
-## Merge condition
+## Current gate status
 
-PR #53 should **not** merge merely because the fixes are conceptually correct. It should merge only after the current PR head passes compilation, provider smoke tests, app-boundary checks, and the full consistency regression suite.
+PR #53 and follow-up audit PRs #68-#71 and #73-#74 were merged only after the required validation suites passed. The code-level integrity findings documented above are therefore remediated on `main`.
+
+This does **not** convert the remaining evidence gaps into validated performance claims. Analyzer live calibration, forward Swing/Longer-Term cohorts, survivorship limitations, and historical feature-parity limitations remain explicit blockers on stronger claims until their required evidence exists.
