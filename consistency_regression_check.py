@@ -1943,6 +1943,12 @@ def test_ml_cannot_boost_live_scores_until_complete_production_gate_passes():
     bad_source["ml_prediction"]["production_source_ok"] = False
     assert v2._production_ml_context(bad_source).get("eligible") is False
 
+    legacy_missing_source = copy.deepcopy(eligible)
+    legacy_missing_source["ml_prediction"].pop("production_source_ok", None)
+    legacy_ctx = v2._production_ml_context(legacy_missing_source)
+    assert legacy_ctx.get("eligible") is False, legacy_ctx
+    assert legacy_ctx.get("production_source_ok") is False, legacy_ctx
+
 
 def test_full_spectrum_ignores_unvalidated_ml_edge():
     import copy
