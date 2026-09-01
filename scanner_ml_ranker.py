@@ -16,6 +16,7 @@ MODEL_VERSION = "scanner-ml-v2"
 CURRENT_FEATURE_VERSION = "scanner-features-v2-consolidated"
 MODEL_TYPE = "XGBoost"
 TARGET_DESCRIPTION = ">= +3% at 60 minutes"
+PATH_RESEARCH_TARGET_DESCRIPTION = ">= +3% within 60m before -3% failure stop"
 
 REPORT_DIR = Path(
     os.environ.get("OUTCOME_REPORT_DIR", "outcome_reports").strip()
@@ -326,6 +327,120 @@ def _extract_observations(payload):
             }
         )
     return out
+
+
+def _extract_path_research_observations(payload):
+    """Extract shadow path-target rows without changing production ML labels.
+
+    These rows are used only to measure whether a path-aware target is worth
+    promoting later. The production loader above intentionally remains on the
+    established 60-minute endpoint target until independent validation passes.
+    """
+    if not isinstance(payload, dict):
+        return []
+
+    out = []
+    for row in payload.get("observations") or []:
+        if row.get("feature_version") != CURRENT_FEATURE_VERSION:
+            continue
+        if not _production_regular_session(row, payload):
+            continue
+        if not _consolidated_observation_source(row, payload):
+            continue
+        if row.get("research_horizon_60m_complete") is not True:
+            continue
+
+        path_label = row.get("research_path_success_60m")
+        if path_label not in (0, 1):
+            continue
+
+        scan_time = row.get("scan_time_et")
+        dt = _parse_dt(scan_time)
+        if dt is None:
+            continue
+
+        feature_row = dict(row.get("signal_snapshot") or {})
+        feature_row.update(
+            {
+                key: value
+                for key, value in row.items()
+                if value is not None and key != "signal_snapshot"
+            }
+        )
+        features = _feature_dict(feature_row, scan_time)
+        if any(
+            features.get(name) is None
+            for name in ("momentum_5m", "momentum_15m", "volume_pace")
+        ):
+            continue
+
+        endpoint_label = row.get("research_endpoint_success_60m")
+        if endpoint_label not in (0, 1):
+            endpoint_label = None
+
+        out.append(
+            {
+                "observation_id": (
+                    row.get("observation_id")
+                    or f"{row.get('scan_id')}:{row.get('symbol')}:path"
+                ),
+                "timestamp": dt.timestamp(),
+                "scan_time_et": scan_time,
+                "trading_date": dt.date().isoformat(),
+                "scan_id": row.get("scan_id"),
+                "symbol": str(row.get("symbol") or "").upper().strip(),
+                "entry_price": _num(row.get("entry_price")),
+                "observation_source": (
+                    row.get("observation_source")
+                    or payload.get("source")
+                    or "shadow_opportunity"
+                ),
+                "session_phase": row.get("session_phase") or "regular",
+                "sample_role": row.get("sample_role"),
+                "rank": _num(row.get("rank")),
+                "label": int(path_label),
+                "endpoint_label": endpoint_label,
+                "endpoint_path_disagreement": bool(
+                    endpoint_label is not None
+                    and int(endpoint_label) != int(path_label)
+                ),
+                "mfe_60m_pct": _num(row.get("research_mfe_60m_pct")),
+                "mae_60m_pct": _num(row.get("research_mae_60m_pct")),
+                "time_to_peak_60m": _num(
+                    row.get("research_time_to_peak_60m")
+                ),
+                "features": features,
+            }
+        )
+    return out
+
+
+def load_path_research_observations(report_dir=Path("opportunity_reports")):
+    """Load deduplicated path-aware shadow rows from durable opportunity reports."""
+    rows = {}
+    report_count = 0
+    directory = Path(report_dir)
+    if not directory.exists():
+        return [], {"report_count": 0, "observations_loaded": 0}
+
+    for path in sorted(directory.glob("opportunity_outcomes_*.json")):
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        report_count += 1
+        for row in _extract_path_research_observations(payload):
+            key = row.get("observation_id")
+            if key:
+                rows[key] = row
+
+    ordered = sorted(rows.values(), key=lambda row: row["timestamp"])
+    return ordered, {
+        "report_count": report_count,
+        "observations_loaded": len(ordered),
+        "target_description": PATH_RESEARCH_TARGET_DESCRIPTION,
+        "production_influence": False,
+    }
 
 
 def _read_local_reports():
