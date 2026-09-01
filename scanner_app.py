@@ -1005,9 +1005,13 @@ scanner_return_grace_until = float(
 )
 scanner_return_grace_active = scanner_return_grace_until > time.time()
 auto_run_every = (
-    3 if st.session_state["auto_scan_enabled"] and scanner_return_grace_active
-    else AUTO_STATUS_REFRESH_SECONDS if st.session_state["auto_scan_enabled"]
-    else None
+    None
+    if combined_monitor_active
+    else (
+        3 if st.session_state["auto_scan_enabled"] and scanner_return_grace_active
+        else AUTO_STATUS_REFRESH_SECONDS if st.session_state["auto_scan_enabled"]
+        else None
+    )
 )
 
 
@@ -1122,7 +1126,9 @@ status_context = status_mount.container() if status_mount is not None else st.co
 with status_context:
     auto_scan_controller()
 
-@st.fragment(run_every=10)
+_results_refresh_every = None if combined_monitor_active else 10
+
+@st.fragment(run_every=_results_refresh_every)
 def render_scanner_results():
     if combined_monitor_active:
         show_details = st.toggle(
