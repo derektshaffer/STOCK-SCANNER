@@ -77,10 +77,16 @@ def _interactive_params():
 
 
 def _interactive_chart(layers, *, height, resolve=None):
+    """Return a conservative layered Vega-Lite spec that reliably renders in Streamlit.
+
+    Scale-bound interval params have repeatedly produced blank chart bodies in the
+    Streamlit Cloud Vega runtime. Rendering the chart is more important than
+    fragile in-chart zoom bindings, so keep the base spec interaction-free here.
+    """
     spec = {
+        "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
         "height": height,
         "layer": layers,
-        "params": _interactive_params(),
         "config": _config(),
     }
     if resolve:
