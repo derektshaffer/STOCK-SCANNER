@@ -14,6 +14,7 @@ on:
       - "score_analyzer_outcomes.py"
       - "analyzer_bootstrap.py"
       - "analyzer_ui_core.py"
+      - "analyzer_visuals.py"
       - "ml_ui.py"
       - "historical_ui.py"
       - "historical_integration.py"
@@ -94,7 +95,7 @@ jobs:
           python-version: "3.12"
       - name: Compile Analyzer v2
         run: |
-          python -m py_compile analyzer_v2_integration.py analyzer_v2_ui.py prediction_tracker.py analyzer_shadow_sampler.py analyzer_runtime_context.py strategy_thesis.py timeframe_thesis.py score_analyzer_outcomes.py analyzer_bootstrap.py analyzer_ui_core.py ml_ui.py historical_ui.py historical_integration.py analyzer_history_cache.py analyzer_context_cache.py historical_patterns.py ml_predictor.py multi_bounce.py stair_step.py trading_research_agent.py ml_integration.py peer_ml_predictor.py analyzer_app.py analyzer_app_fixed.py app.py glass_theme.py scanner_app.py scanner_expand.py scanner_single_open.py alpaca_live_stream.py tradier_live_stream.py live_market_stream.py live_tape_ui.py float_data.py stock_analyzer.py stock_scanner.py scanner_discovery.py scanner_ml_ranker.py scanner_behavior.py scanner_timeframe_fit.py scanner_runtime.py momentum_alerts.py offhours_timeframe_scan.py offhours_outcome_tracker.py historical_scanner_replay.py historical_listing_universe.py universe_snapshot.py validation_status.py historical_hypothesis_challenge.py historical_hypothesis_regression_check.py historical_timeframe_replay.py timeframe_ml_ranker.py timeframe_targets.py market_regime.py swing_feature_research.py swing_research_flags.py offhours_outcome_regression_check.py score_outcomes.py score_opportunity_outcomes.py learning_system_audit.py learning_system_regression_check.py tradier_live.py position_exit.py consistency_regression_check.py
+          python -m py_compile analyzer_v2_integration.py analyzer_v2_ui.py prediction_tracker.py analyzer_shadow_sampler.py analyzer_runtime_context.py strategy_thesis.py timeframe_thesis.py score_analyzer_outcomes.py analyzer_bootstrap.py analyzer_ui_core.py analyzer_visuals.py ml_ui.py historical_ui.py historical_integration.py analyzer_history_cache.py analyzer_context_cache.py historical_patterns.py ml_predictor.py multi_bounce.py stair_step.py trading_research_agent.py ml_integration.py peer_ml_predictor.py analyzer_app.py analyzer_app_fixed.py app.py glass_theme.py scanner_app.py scanner_expand.py scanner_single_open.py alpaca_live_stream.py tradier_live_stream.py live_market_stream.py live_tape_ui.py float_data.py stock_analyzer.py stock_scanner.py scanner_discovery.py scanner_ml_ranker.py scanner_behavior.py scanner_timeframe_fit.py scanner_runtime.py momentum_alerts.py offhours_timeframe_scan.py offhours_outcome_tracker.py historical_scanner_replay.py historical_listing_universe.py universe_snapshot.py validation_status.py historical_hypothesis_challenge.py historical_hypothesis_regression_check.py historical_timeframe_replay.py timeframe_ml_ranker.py timeframe_targets.py market_regime.py swing_feature_research.py swing_research_flags.py offhours_outcome_regression_check.py score_outcomes.py score_opportunity_outcomes.py learning_system_audit.py learning_system_regression_check.py tradier_live.py position_exit.py consistency_regression_check.py
       - name: Import standalone v2 modules
         run: |
           python - <<'PY'
@@ -277,6 +278,44 @@ jobs:
           print("SCANNER_LIVE_CONFIRMATION_SAMPLES=" + str(meta.get("live_confirmation_samples")))
           assert bool(meta.get("historical_validated")), meta
           assert meta.get("validation_split_unit") == "trading_day", meta
+          PY
+      - name: Render Analyzer trade-plan chart smoke
+        run: |
+          python -m pip install --disable-pip-version-check -q vl-convert-python
+          python - <<'PY'
+          import analyzer_visuals as av
+          import vl_convert as vlc
+
+          intraday = [
+              {
+                  "t": f"2026-08-31T14:{30+i:02d}:00Z",
+                  "o": 10.0 + i * 0.05,
+                  "h": 10.15 + i * 0.05,
+                  "l": 9.90 + i * 0.05,
+                  "c": 10.05 + i * 0.05,
+                  "v": 1000 + i * 100,
+              }
+              for i in range(8)
+          ]
+          result = {
+              "chart_data": {"intraday": intraday},
+              "vwap": 10.18,
+              "trade_plan": {
+                  "selected": {
+                      "entry_low": 10.10,
+                      "entry_high": 10.20,
+                      "stop": 9.85,
+                      "target1": 10.55,
+                      "target2": 10.80,
+                      "stretch_target": 11.10,
+                  }
+              },
+          }
+          spec = av.trade_plan_chart_spec(result)
+          assert spec and spec.get("layer"), spec
+          svg = vlc.vegalite_to_svg(spec)
+          assert "<svg" in svg and ("rect" in svg or "path" in svg or "line" in svg), svg[:500]
+          print("ANALYZER_CHART_RENDER_SMOKE=passed")
           PY
       - name: Verify off-hours Swing target parity
         run: python offhours_outcome_regression_check.py
