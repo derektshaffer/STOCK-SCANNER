@@ -1488,7 +1488,7 @@ if view == "Momentum Scanner":
                         _launch_active
                         and str(_launch_state.get("symbol") or "").upper()==symbol
                     )
-                    st.button(
+                    if st.button(
                         f"Cancel {symbol}" if _this_running else f"Analyze {symbol}",
                         key=f"combined_analyze_{idx}_{symbol}",
                         type="secondary" if _this_running else "primary",
@@ -1499,9 +1499,12 @@ if view == "Momentum Scanner":
                             if latest_scan_stale and not _this_running
                             else None
                         ),
-                        on_click=_toggle_analyzer_launch,
-                        args=(symbol,),
-                    )
+                    ):
+                        _toggle_analyzer_launch(symbol)
+                        # Candidate rows refresh in a fragment, but a deliberate
+                        # Scanner -> Analyzer navigation must rerun the parent app.
+                        # This is user-triggered only; background scans never do it.
+                        st.rerun(scope="app")
         else:
             st.caption(
                 "No scanner candidates are available yet. Live momentum scanning runs "
