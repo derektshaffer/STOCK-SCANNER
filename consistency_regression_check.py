@@ -3106,6 +3106,11 @@ def test_combined_analyzer_timed_refresh_stays_fragment_scoped():
     assert "not _COMBINED_WORKSPACE or _combined_timed_refresh" in refresh_logic
     assert refresh_logic.count('st.rerun(scope="app")') == 1
     assert "finishFragmentSwap" in bootstrap
+    assert "liveStaleNode" in bootstrap
+    assert "beginFragmentSwap" in bootstrap
+    assert "const watcher = p.setInterval" in bootstrap
+    assert "restorePosition(pendingY)" in bootstrap
+    assert "settledTicks >= 10" in bootstrap
     assert ".st-key-analyzer_live_fragment" in bootstrap
     assert "staleNode.isConnected" in bootstrap
     assert "childList: true" in bootstrap
