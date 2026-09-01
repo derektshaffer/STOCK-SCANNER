@@ -888,7 +888,6 @@ def run():
                     st.rerun(scope="app")
                     return
 
-
             _render_combined_analysis_loader()
 
             # If this is a refresh of the stock already on screen, keep the
