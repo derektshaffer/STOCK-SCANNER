@@ -1,0 +1,148 @@
+{
+  "generated_at_utc": "2026-09-01T02:36:12.538309+00:00",
+  "production_claim": "Rules-based Scanner/Analyzer decision support remains usable. Predictive ML and Swing/Longer-Term probability claims remain gated until their independent evidence requirements pass.",
+  "schema_version": 1,
+  "sections": {
+    "analyzer_calibration_v9": {
+      "artifact_found": true,
+      "calibration_ready": false,
+      "calibration_rows": 0,
+      "early_read_gate": {
+        "current": 0,
+        "passed": false,
+        "remaining": 30,
+        "required": 30
+      },
+      "prediction_rows": 142,
+      "required_schema_version": 9,
+      "resolved_60m": 0,
+      "schema_current": false,
+      "schema_version": 7,
+      "stronger_sample_gate": {
+        "current": 0,
+        "passed": false,
+        "remaining": 300,
+        "required": 300
+      },
+      "untrusted_integrity_rows_excluded": 0,
+      "useful_gate": {
+        "current": 0,
+        "passed": false,
+        "remaining": 100,
+        "required": 100
+      }
+    },
+    "offhours_timeframe_forward": {
+      "cohort_count": 1,
+      "longer_20d_resolved": 0,
+      "longer_early_read_gate": {
+        "current": 0,
+        "passed": false,
+        "remaining": 30,
+        "required": 30
+      },
+      "longer_useful_gate": {
+        "current": 0,
+        "passed": false,
+        "remaining": 100,
+        "required": 100
+      },
+      "swing_5d_resolved": 0,
+      "swing_early_read_gate": {
+        "current": 0,
+        "passed": false,
+        "remaining": 30,
+        "required": 30
+      },
+      "swing_useful_gate": {
+        "current": 0,
+        "passed": false,
+        "remaining": 100,
+        "required": 100
+      }
+    },
+    "point_in_time_universe": {
+      "activation_gate": {
+        "current": 1,
+        "passed": false,
+        "remaining": 2,
+        "required": 3
+      },
+      "first_replay_ready_capture_date": "2026-08-31",
+      "latest_replay_ready_capture_date": "2026-08-31",
+      "minimum_snapshots_for_point_in_time_replay": 3,
+      "note": "A snapshot captured after a session may only be used for later sessions, never the same replay date.",
+      "replay_ready_snapshot_count": 1,
+      "snapshot_count": 1
+    },
+    "scanner_ml_live_confirmation": {
+      "evidence_gate_ready": false,
+      "gates": {
+        "days": {
+          "current": 0,
+          "passed": false,
+          "remaining": 5,
+          "required": 5
+        },
+        "negatives": {
+          "current": 0,
+          "passed": false,
+          "remaining": 15,
+          "required": 15
+        },
+        "positives": {
+          "current": 0,
+          "passed": false,
+          "remaining": 15,
+          "required": 15
+        },
+        "samples": {
+          "current": 0,
+          "passed": false,
+          "remaining": 100,
+          "required": 100
+        },
+        "symbols": {
+          "current": 0,
+          "passed": false,
+          "remaining": 15,
+          "required": 15
+        }
+      },
+      "historical_replay_samples": 12752,
+      "live_confirmation_days": 0,
+      "live_confirmation_raw_samples": 0,
+      "live_confirmation_samples": 0,
+      "live_confirmation_symbols": 0,
+      "live_negatives": 0,
+      "live_positives": 0,
+      "live_samples": 0,
+      "note": "Passing these count gates only makes the independent live holdout large enough to evaluate. Production validation still requires the live AUC/Brier performance gate to pass.",
+      "replay_end_day": "2026-08-28",
+      "training_source": {
+        "artifact_report_count": 12,
+        "historical_replay_samples": 12752,
+        "live_samples": 0,
+        "local_report_count": 2,
+        "observation_source_counts": {
+          "historical_replay": 12752
+        },
+        "observations_loaded": 12752,
+        "training_data_requirement": "consolidated live + consolidated historical only"
+      }
+    },
+    "swing_timeframe_ml": {
+      "artifact_found": true,
+      "hand_score_auc": 0.5191,
+      "historical_validated": false,
+      "model_auc": 0.513,
+      "model_version": "swing-timeframe-ml-v4-confirmed-multisession-shadow",
+      "production_enabled": false,
+      "samples": 5331,
+      "status": "experimental_not_validated",
+      "top_decile_target_rate_lift_pp": -4.2,
+      "unique_dates": 250,
+      "unique_symbols": 386
+    }
+  }
+}
