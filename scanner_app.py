@@ -993,10 +993,9 @@ if clicked:
         st.session_state["last_auto_scan_at"] = time.time()
         st.session_state["last_auto_message"] = "Manual scan completed."
         st.session_state["_scanner_flash_success"] = msg
-        # The combined app renders its compact one-click candidate list before
-        # scanner_app.py runs. Refresh once so that list immediately reads the
-        # newly written latest_scan.json instead of staying one scan behind.
-        st.rerun()
+        # The compact list and detailed results refresh independently.
+        # Do not rebuild the full Scanner after a completed manual scan.
+        st.session_state["_scanner_snapshot_refresh_at"] = time.time()
     else:
         st.error(msg)
 
@@ -1102,468 +1101,438 @@ def auto_scan_controller():
             st.session_state["last_auto_scan_at"] = time.time()
             st.session_state["last_auto_message"] = msg
             if ok:
-                st.rerun()
+                st.session_state["_scanner_snapshot_refresh_at"] = time.time()
             else:
                 st.error(f"Automatic scan failed: {msg}")
             return
 
-    # Keep the actual scan controller lightweight, but let the browser update
-    # the visible countdown every second without rerunning the Streamlit app.
+    # Native Streamlit status avoids recreating an HTML iframe on every
+    # status-fragment tick, which caused visible blinking in the Scanner.
     initial_remaining = max(0, int(round(remaining)))
-    components.html(
-        f"""
-        <div class="auto-box auto-on">
-          <b>🟢 AUTO SCAN ON</b><br>
-          <span class="sub">Next fresh scan in <span id="live-countdown">--:--</span>.
-          The dashboard refreshes itself after each scan.</span>
-        </div>
-        <style>
-          html,body{{margin:0;padding:0;background:transparent;color:#f4f8ff;
-            font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;}}
-          .auto-box{{box-sizing:border-box;width:100%;
-            background:linear-gradient(145deg,rgba(12,29,48,.92),rgba(7,20,34,.86));
-            border:1px solid rgba(105,151,197,.24);border-left:3px solid #37ef79;
-            border-radius:10px;padding:7px 11px;margin:1px 0 5px;
-            box-shadow:inset 0 1px 0 rgba(255,255,255,.035),0 8px 24px rgba(0,0,0,.12);}}
-          b{{font-size:12px;font-weight:900;letter-spacing:.02em;color:#eff8ff;}}
-          .sub{{display:inline-block;color:#91a9c5;font-size:11px;margin-top:2px;}}
-          #live-countdown{{font-variant-numeric:tabular-nums;font-weight:900;color:#76f7a5;}}
-        </style>
-        <script>
-          (() => {{
-            const countdown = document.getElementById('live-countdown');
-            const deadline = performance.now() + ({initial_remaining} * 1000);
-            function tick() {{
-              const msLeft = Math.max(0, deadline - performance.now());
-              const total = Math.max(0, Math.ceil(msLeft / 1000));
-              const mins = Math.floor(total / 60);
-              const secs = total % 60;
-              countdown.textContent = `${{mins}}:${{String(secs).padStart(2, '0')}}`;
-              if (total <= 0) {{
-                countdown.textContent = '0:00 — scan starting…';
-              }}
-            }}
-            tick();
-            setInterval(tick, 250);
-          }})();
-        </script>
-        """,
-        height=54,
-        scrolling=False,
+    mins, secs = divmod(initial_remaining, 60)
+    st.markdown(
+        '<div class="auto-box auto-on"><b>🟢 AUTO SCAN ON</b><br>'
+        f'<span class="sub">Next fresh scan in ~{mins}:{secs:02d}. '
+        'Results update in place when the scan finishes.</span></div>',
+        unsafe_allow_html=True,
     )
-
 
 status_mount = st.session_state.get("_scanner_status_mount")
 status_context = status_mount.container() if status_mount is not None else st.container(key="scanner_auto_status_top")
 with status_context:
     auto_scan_controller()
 
-payload = load_scan()
-offhours_payload = load_offhours_timeframe_scan()
-current_phase = market_session_phase(datetime.now(ZoneInfo("America/New_York")))
+@st.fragment(run_every=10)
+def render_scanner_results():
+    payload = load_scan()
+    offhours_payload = load_offhours_timeframe_scan()
+    current_phase = market_session_phase(datetime.now(ZoneInfo("America/New_York")))
 
-if current_phase == "closed":
-    render_offhours_timeframe_panel(offhours_payload)
-    if payload is not None:
-        st.markdown("### Last live momentum snapshot")
+    if current_phase == "closed":
+        render_offhours_timeframe_panel(offhours_payload)
+        if payload is not None:
+            st.markdown("### Last live momentum snapshot")
 
-if payload is None:
+    if payload is None:
+        st.markdown(
+            '<div class="header"><div class="title">Momentum Scanner</div>'
+            '<div class="sub">The dashboard is ready, but it does not have a scan to display yet.</div></div>',
+            unsafe_allow_html=True,
+        )
+        if current_phase == "closed" and offhours_payload:
+            st.caption(
+                "No live momentum snapshot is available yet. The completed-daily "
+                "Swing / Longer-Term list above is still usable for off-hours research."
+            )
+        else:
+            st.info(
+                "Click **Run Fresh Scan**. Automatic live scanning starts during "
+                "supported pre-market, regular-hours, and after-hours windows."
+            )
+        return
+
+    mode = payload.get("mode", "off_hours_test")
+    session_phase = str(payload.get("session_phase") or "")
+    live = mode in {"regular_market_session", "extended_market_session"}
+    scan_et = payload.get("scan_time_et")
+
+    scan_age_seconds = None
+    try:
+        scan_dt = datetime.fromisoformat(str(scan_et).replace("Z", "+00:00"))
+        if scan_dt.tzinfo is None:
+            scan_dt = scan_dt.replace(tzinfo=ET)
+        scan_age_seconds = max(
+            0.0,
+            (datetime.now(ET) - scan_dt.astimezone(ET)).total_seconds(),
+        )
+        when = scan_dt.astimezone(ET).strftime("%a %b %d · %I:%M:%S %p ET")
+    except Exception:
+        when = scan_et or "Unknown"
+
+    _market_open_for_stale_check, _now_et_for_stale_check = market_is_open()
+    scan_is_stale = bool(
+        _market_open_for_stale_check
+        and (scan_age_seconds is None or scan_age_seconds > 4 * 60)
+    )
+    if scan_is_stale:
+        age_text = (
+            "unknown age"
+            if scan_age_seconds is None
+            else (
+                f"{scan_age_seconds / 60.0:.1f} minutes old"
+                if scan_age_seconds < 3600
+                else f"{scan_age_seconds / 3600.0:.1f} hours old"
+            )
+        )
+        st.warning(
+            "⚠️ **STALE SCAN — do not treat these rankings as current.** "
+            f"The displayed snapshot is {age_text}. A fresh scan is due; use "
+            "**Run Fresh Scan** or wait for auto-scan to complete."
+        )
+
+    if session_phase == "premarket":
+        pill_cls = "blue"
+        pill_text = "● PRE-MARKET SESSION"
+    elif session_phase == "afterhours":
+        pill_cls = "blue"
+        pill_text = "● AFTER-HOURS SESSION"
+    elif mode == "regular_market_session":
+        pill_cls = "green"
+        pill_text = "● REGULAR MARKET SESSION"
+    elif mode == "extended_data_unavailable":
+        pill_cls = "amber"
+        feed_name = str((payload.get("data") or {}).get("live_feed") or "iex").upper()
+        pill_text = f"● EXTENDED HOURS · {feed_name} LIVE DATA UNAVAILABLE"
+    else:
+        pill_cls = "amber"
+        pill_text = "● MARKET CLOSED / PREVIEW"
+
+    payload_summary = payload.get("summary") or {}
+    data_meta = payload.get("data") or {}
+    live_provider = str(data_meta.get("live_provider") or "alpaca").lower()
+    if live_provider == "tradier":
+        live_data_pill = "LIVE DATA · TRADIER CONSOLIDATED"
+        live_data_pill_cls = "green"
+    else:
+        live_data_pill = f"LIVE DATA · ALPACA {str(data_meta.get('live_feed') or 'iex').upper()}"
+        live_data_pill_cls = "blue"
+
+    ml_model = payload_summary.get("ml_model") or {}
+    ml_status = str(ml_model.get("status") or "learning")
+    ml_samples = int(ml_model.get("samples") or 0)
+    ml_days = int(ml_model.get("trading_days") or 0)
+    ml_auc = ml_model.get("walk_forward_auc")
+
+    if ml_model.get("validated"):
+        ml_pill_cls = "green"
+        ml_pill_text = f"ML VALIDATED · AUC {ml_auc if ml_auc is not None else '—'} · n={ml_samples}"
+    elif ml_status == "failed_validation":
+        ml_pill_cls = "amber"
+        ml_pill_text = f"ML NOT VALIDATED · AUC {ml_auc if ml_auc is not None else '—'} · n={ml_samples}"
+    elif ml_status == "paused_extended_hours":
+        ml_pill_cls = "amber"
+        ml_pill_text = "ML REGULAR-HOURS MODEL PAUSED"
+    elif ml_status == "extended_live_data_unavailable":
+        ml_pill_cls = "amber"
+        ml_pill_text = "ML PAUSED · extended live data unavailable"
+    elif ml_status in {"skipped_off_hours", "skipped_market_closed"}:
+        ml_pill_cls = "amber"
+        ml_pill_text = "ML PAUSED · market closed"
+    else:
+        ml_pill_cls = "blue"
+        ml_pill_text = f"ML LEARNING · {ml_days}/3 days · n={ml_samples}"
+
+    stale_pill_html = (
+        '<span class="pill amber">⚠ STALE SNAPSHOT</span>'
+        if scan_is_stale else ''
+    )
     st.markdown(
-        '<div class="header"><div class="title">Momentum Scanner</div>'
-        '<div class="sub">The dashboard is ready, but it does not have a scan to display yet.</div></div>',
+        f'<div class="header"><div class="title">Momentum Scanner</div>'
+        '<div class="sub">Readable ranking of momentum, liquidity, VWAP position, '
+        'catalysts, historical context, timeframe fit, and validated ML continuation.</div>'
+        f'<span class="pill {pill_cls}">{pill_text}</span>'
+        f'<span class="pill {live_data_pill_cls}">{html.escape(live_data_pill)}</span>'
+        f'<span class="pill {ml_pill_cls}">{html.escape(ml_pill_text)}</span>'
+        f'{stale_pill_html}'
+        f'<div class="sub">Last scan: {html.escape(str(when))} · '
+        f'Scanner v{html.escape(str(payload.get("scanner_version","—")))}</div></div>',
         unsafe_allow_html=True,
     )
-    if current_phase == "closed" and offhours_payload:
+
+    summary = payload_summary
+    records = payload.get("candidates") or []
+    grades = summary.get("grade_counts") or {}
+
+    timeframe_filter = st.session_state.get("scanner_trade_horizon", "ALL")
+
+    def _matches_timeframe(row, selected):
+        if selected == "ALL":
+            return True
+        if str(row.get("timeframe_best_fit") or "") == selected:
+            return True
+        return selected in (row.get("timeframe_fit_horizons") or [])
+
+    filtered_records = [
+        row for row in records
+        if _matches_timeframe(row, timeframe_filter)
+    ]
+    display_records = filtered_records[:15]
+    full_table_records = filtered_records[:30]
+
+    if timeframe_filter != "ALL":
         st.caption(
-            "No live momentum snapshot is available yet. The completed-daily "
-            "Swing / Longer-Term list above is still usable for off-hours research."
-        )
-    else:
-        st.info(
-            "Click **Run Fresh Scan**. Automatic live scanning starts during "
-            "supported pre-market, regular-hours, and after-hours windows."
-        )
-    st.stop()
-
-mode = payload.get("mode", "off_hours_test")
-session_phase = str(payload.get("session_phase") or "")
-live = mode in {"regular_market_session", "extended_market_session"}
-scan_et = payload.get("scan_time_et")
-
-scan_age_seconds = None
-try:
-    scan_dt = datetime.fromisoformat(str(scan_et).replace("Z", "+00:00"))
-    if scan_dt.tzinfo is None:
-        scan_dt = scan_dt.replace(tzinfo=ET)
-    scan_age_seconds = max(
-        0.0,
-        (datetime.now(ET) - scan_dt.astimezone(ET)).total_seconds(),
-    )
-    when = scan_dt.astimezone(ET).strftime("%a %b %d · %I:%M:%S %p ET")
-except Exception:
-    when = scan_et or "Unknown"
-
-_market_open_for_stale_check, _now_et_for_stale_check = market_is_open()
-scan_is_stale = bool(
-    _market_open_for_stale_check
-    and (scan_age_seconds is None or scan_age_seconds > 4 * 60)
-)
-if scan_is_stale:
-    age_text = (
-        "unknown age"
-        if scan_age_seconds is None
-        else (
-            f"{scan_age_seconds / 60.0:.1f} minutes old"
-            if scan_age_seconds < 3600
-            else f"{scan_age_seconds / 3600.0:.1f} hours old"
-        )
-    )
-    st.warning(
-        "⚠️ **STALE SCAN — do not treat these rankings as current.** "
-        f"The displayed snapshot is {age_text}. A fresh scan is due; use "
-        "**Run Fresh Scan** or wait for auto-scan to complete."
-    )
-
-if session_phase == "premarket":
-    pill_cls = "blue"
-    pill_text = "● PRE-MARKET SESSION"
-elif session_phase == "afterhours":
-    pill_cls = "blue"
-    pill_text = "● AFTER-HOURS SESSION"
-elif mode == "regular_market_session":
-    pill_cls = "green"
-    pill_text = "● REGULAR MARKET SESSION"
-elif mode == "extended_data_unavailable":
-    pill_cls = "amber"
-    feed_name = str((payload.get("data") or {}).get("live_feed") or "iex").upper()
-    pill_text = f"● EXTENDED HOURS · {feed_name} LIVE DATA UNAVAILABLE"
-else:
-    pill_cls = "amber"
-    pill_text = "● MARKET CLOSED / PREVIEW"
-
-payload_summary = payload.get("summary") or {}
-data_meta = payload.get("data") or {}
-live_provider = str(data_meta.get("live_provider") or "alpaca").lower()
-if live_provider == "tradier":
-    live_data_pill = "LIVE DATA · TRADIER CONSOLIDATED"
-    live_data_pill_cls = "green"
-else:
-    live_data_pill = f"LIVE DATA · ALPACA {str(data_meta.get('live_feed') or 'iex').upper()}"
-    live_data_pill_cls = "blue"
-
-ml_model = payload_summary.get("ml_model") or {}
-ml_status = str(ml_model.get("status") or "learning")
-ml_samples = int(ml_model.get("samples") or 0)
-ml_days = int(ml_model.get("trading_days") or 0)
-ml_auc = ml_model.get("walk_forward_auc")
-
-if ml_model.get("validated"):
-    ml_pill_cls = "green"
-    ml_pill_text = f"ML VALIDATED · AUC {ml_auc if ml_auc is not None else '—'} · n={ml_samples}"
-elif ml_status == "failed_validation":
-    ml_pill_cls = "amber"
-    ml_pill_text = f"ML NOT VALIDATED · AUC {ml_auc if ml_auc is not None else '—'} · n={ml_samples}"
-elif ml_status == "paused_extended_hours":
-    ml_pill_cls = "amber"
-    ml_pill_text = "ML REGULAR-HOURS MODEL PAUSED"
-elif ml_status == "extended_live_data_unavailable":
-    ml_pill_cls = "amber"
-    ml_pill_text = "ML PAUSED · extended live data unavailable"
-elif ml_status in {"skipped_off_hours", "skipped_market_closed"}:
-    ml_pill_cls = "amber"
-    ml_pill_text = "ML PAUSED · market closed"
-else:
-    ml_pill_cls = "blue"
-    ml_pill_text = f"ML LEARNING · {ml_days}/3 days · n={ml_samples}"
-
-stale_pill_html = (
-    '<span class="pill amber">⚠ STALE SNAPSHOT</span>'
-    if scan_is_stale else ''
-)
-st.markdown(
-    f'<div class="header"><div class="title">Momentum Scanner</div>'
-    '<div class="sub">Readable ranking of momentum, liquidity, VWAP position, '
-    'catalysts, historical context, timeframe fit, and validated ML continuation.</div>'
-    f'<span class="pill {pill_cls}">{pill_text}</span>'
-    f'<span class="pill {live_data_pill_cls}">{html.escape(live_data_pill)}</span>'
-    f'<span class="pill {ml_pill_cls}">{html.escape(ml_pill_text)}</span>'
-    f'{stale_pill_html}'
-    f'<div class="sub">Last scan: {html.escape(str(when))} · '
-    f'Scanner v{html.escape(str(payload.get("scanner_version","—")))}</div></div>',
-    unsafe_allow_html=True,
-)
-
-summary = payload_summary
-records = payload.get("candidates") or []
-grades = summary.get("grade_counts") or {}
-
-timeframe_filter = st.session_state.get("scanner_trade_horizon", "ALL")
-
-def _matches_timeframe(row, selected):
-    if selected == "ALL":
-        return True
-    if str(row.get("timeframe_best_fit") or "") == selected:
-        return True
-    return selected in (row.get("timeframe_fit_horizons") or [])
-
-filtered_records = [
-    row for row in records
-    if _matches_timeframe(row, timeframe_filter)
-]
-display_records = filtered_records[:15]
-full_table_records = filtered_records[:30]
-
-if timeframe_filter != "ALL":
-    st.caption(
-        f"Showing {len(filtered_records)} of {len(records)} ranked momentum candidates "
-        f"for {TRADE_HORIZON_LABELS.get(timeframe_filter, timeframe_filter)}. "
-        "Ranking itself is unchanged."
-    )
-
-vals = [
-    ("ANALYZED", summary.get("candidates_analyzed", len(records)), "Common-stock mover candidates"),
-    ("BASE PASSES", summary.get("base_filter_passes", 0), "Passed every base filter"),
-    ("NEAR MISSES", grades.get("C", 0), "Grade C: one filter short"),
-    ("EXCLUDED", len(summary.get("excluded_non_common_symbols") or []), "Likely warrants / rights / units"),
-]
-
-cols = st.columns(4)
-for col, (k, v, n) in zip(cols, vals):
-    with col:
-        st.markdown(
-            f'<div class="stat"><div class="stat-k">{k}</div>'
-            f'<div class="stat-v">{v}</div><div class="stat-n">{n}</div></div>',
-            unsafe_allow_html=True,
+            f"Showing {len(filtered_records)} of {len(records)} ranked momentum candidates "
+            f"for {TRADE_HORIZON_LABELS.get(timeframe_filter, timeframe_filter)}. "
+            "Ranking itself is unchanged."
         )
 
-top = [
-    c
-    for c in display_records
-    if c.get("setup_grade") in {"A", "B"} and c.get("passed_base_filters")
-]
-if not top:
-    top = [c for c in display_records if c.get("setup_grade") in {"A", "B"}]
-top = top[:4]
+    vals = [
+        ("ANALYZED", summary.get("candidates_analyzed", len(records)), "Common-stock mover candidates"),
+        ("BASE PASSES", summary.get("base_filter_passes", 0), "Passed every base filter"),
+        ("NEAR MISSES", grades.get("C", 0), "Grade C: one filter short"),
+        ("EXCLUDED", len(summary.get("excluded_non_common_symbols") or []), "Likely warrants / rights / units"),
+    ]
 
-st.markdown(
-    '<div class="section top-candidates-section">🔥 Top Candidates</div>',
-    unsafe_allow_html=True,
-)
+    cols = st.columns(4)
+    for col, (k, v, n) in zip(cols, vals):
+        with col:
+            st.markdown(
+                f'<div class="stat"><div class="stat-k">{k}</div>'
+                f'<div class="stat-v">{v}</div><div class="stat-n">{n}</div></div>',
+                unsafe_allow_html=True,
+            )
 
-if top:
-    for i in range(0, len(top), 2):
-        pair = st.columns(2)
-        for j, c in enumerate(top[i : i + 2]):
-            with pair[j]:
-                st.markdown(card(c), unsafe_allow_html=True)
-else:
-    st.warning("No A/B candidates are available in this scan.")
+    top = [
+        c
+        for c in display_records
+        if c.get("setup_grade") in {"A", "B"} and c.get("passed_base_filters")
+    ]
+    if not top:
+        top = [c for c in display_records if c.get("setup_grade") in {"A", "B"}]
+    top = top[:4]
 
-st.markdown(
-    """
-<div class="legend-box">
-  <div class="legend-title">Quick metric guide</div>
-  <div class="legend-grid">
-    <div class="legend-item">
-      <div class="legend-term">Setup Score — 0 to 100</div>
-      <div class="legend-def">
-        This is a rules-based <b>setup-quality ranking score</b>, not a probability of profit and not an entry command. A high score means the stock matches more of the scanner's momentum-quality conditions. The separate <b>ACTION</b> field tells you whether the current price behavior is actually suitable for Analyzer review now. A stock can therefore have a very high Setup Score and still say <b>WAIT PULLBACK</b>, <b>CAUTION</b>, or <b>NO TRADE</b>.
-      </div>
-    </div>
-    <div class="legend-item">
-      <div class="legend-term">Best Fit — Intraday / Swing / Longer-Term</div>
-      <div class="legend-def">
-        This is a separate horizon classification, not a buy signal. <b>Intraday</b> emphasizes same-day momentum, VWAP, volume and execution. <b>Swing</b> emphasizes roughly 2–10 trading days of continuation and multi-session structure. <b>Longer-Term</b> is a technical screen for roughly 2–8 weeks and should be confirmed in Analyzer with fundamentals, dilution/filings and catalyst durability. <b>Multiple Timeframes</b> means two horizons scored similarly. This label does not change the scanner's momentum ranking or ACTION.
-      </div>
-    </div>
-    <div class="legend-item">
-      <div class="legend-term">VWAP — Volume-Weighted Average Price</div>
-      <div class="legend-def">
-        VWAP is the stock's average traded price for the current session, but it gives more weight to prices where more shares actually traded. That makes it more useful than a simple average for judging where most of the day's trading activity has occurred.<br><br>
-        <b>Price above VWAP:</b> buyers are generally controlling the session and the stock is trading above the average price paid today. For a momentum trade, holding above VWAP is usually constructive.<br><br>
-        <b>Price below VWAP:</b> the stock is trading below the day's volume-weighted average. That can mean momentum is weakening or sellers have taken control, so the scanner treats it as a warning.<br><br>
-        <b>VWAP can act like support or resistance:</b> a strong stock may pull back toward VWAP, hold it, and bounce. A weak stock may rally into VWAP and get rejected.<br><br>
-        <b>Distance matters:</b> being above VWAP is good, but being far above it can mean the stock is extended and more vulnerable to a pullback. A cleaner momentum entry is often a stock above VWAP without being excessively stretched away from it.<br><br>
-        Example: if VWAP is <b>$10.00</b> and the stock is <b>$10.30</b>, it is about 3% above VWAP. If it is <b>$12.00</b>, it is 20% above VWAP — much stronger, but also much more extended and potentially riskier to chase.
-      </div>
-    </div>
-    <div class="legend-item">
-      <div class="legend-term">Liquidity</div>
-      <div class="legend-def">
-        <b>Higher liquidity:</b> easier entry/exit, tighter spreads, less slippage, and generally more reliable price action.<br><br>
-        <b>Lower liquidity:</b> harder exits, wider spreads, more violent swings, and a greater chance of getting stuck in a position.<br><br>
-        <b>Very high liquidity + strong volume pace:</b> usually a better-quality momentum setup because there is real participation behind the move.<br><br>
-        High liquidity by itself does not make a stock bullish. The combination the scanner prefers is <b>strong price momentum + high liquidity + rising volume pace + a tight spread</b>.
-      </div>
-    </div>
-    <div class="legend-item">
-      <div class="legend-term">Time-of-Day Volume Pace</div>
-      <div class="legend-def">This now uses the stock's <b>own recent intraday volume pattern</b>, not a straight-line assumption. The scanner looks at recent completed sessions and estimates what percentage of a normal day's volume this ticker usually has traded by the current clock time. That automatically accounts for the fact that volume is normally much heavier near the open and often quieter in the middle of the day.<br><br><b>1.00x:</b> about normal for this ticker at this exact time. <b>2.00x:</b> about twice the volume normally expected by now. <b>Normal Vol by Now %</b> shows the historical percentage of a typical day's volume usually completed by this time. The scanner uses a median-based baseline so one unusually huge prior day does not distort the comparison. If a ticker does not yet have enough intraday history, it temporarily falls back to the older linear calculation.</div>
-    </div>
-    <div class="legend-item">
-      <div class="legend-term">IEX Spread</div>
-      <div class="legend-def">The percentage gap between the current IEX bid and ask. A smaller spread generally means cleaner entries/exits and less immediate slippage. A wide spread can make a trade expensive even when the chart looks good. This reflects IEX quotes, not the full consolidated SIP market.</div>
-    </div>
-  </div>
-</div>
-""",
-    unsafe_allow_html=True,
-)
-
-near = [c for c in display_records if c.get("setup_grade") == "C"][:8]
-st.markdown(
-    '<div class="section">🟡 Near Misses</div>'
-    '<div class="section-sub">Close enough to watch, but one base rule still failed.</div>',
-    unsafe_allow_html=True,
-)
-if near:
-    st.dataframe(
-        styled(to_df(near)),
-        use_container_width=True,
-        hide_index=True,
-        height=min(300, 38 + 30 * len(near)),
-    )
-else:
-    st.info("No Grade C near misses in this scan.")
-
-st.markdown(
-    '<div class="section">📊 Full Ranked Table</div>'
-    '<div class="section-sub">Top 30 ranked scanner results.</div>',
-    unsafe_allow_html=True,
-)
-df = to_df(full_table_records)
-if not df.empty:
-    df.insert(0, "#", range(1, len(df) + 1))
-    st.dataframe(
-        styled(df),
-        use_container_width=True,
-        hide_index=True,
-        height=min(520, 38 + 30 * len(df)),
-    )
-else:
-    st.info("No ranked candidates were logged.")
-
-rej = Counter(r for c in display_records for r in (c.get("failed_filters") or []))
-st.markdown(
-    '<div class="section">🚫 Rejection Pattern</div>'
-    '<div class="section-sub">Counts below come from the candidates saved in this dashboard snapshot.</div>',
-    unsafe_allow_html=True,
-)
-if rej:
-    m = max(rej.values())
-    for reason, count in rej.most_common(8):
-        w = max(6, int(count / m * 100))
-        st.markdown(
-            f'<div class="bar-row"><div class="bar-head"><span>{html.escape(reason)}</span>'
-            f'<span>{count}</span></div><div class="bar-track">'
-            f'<div class="bar-fill" style="width:{w}%"></div></div></div>',
-            unsafe_allow_html=True,
-        )
-else:
-    st.success("No rejection reasons were logged for the displayed candidates.")
-
-with st.expander("Tradier vs Alpaca IEX diagnostics"):
-    tradier_token = get_tradier_token()
-    if not tradier_token:
-        st.caption(
-            "Tradier live comparison is ready, but TRADIER_ACCESS_TOKEN is not configured yet. "
-            "A live Tradier Brokerage token is required for real-time consolidated data."
-        )
-    else:
-        st.caption(
-            "The scanner now uses Tradier consolidated data for live ranking inputs. "
-            "This diagnostic compares those values with Alpaca IEX for reference."
-        )
-        if st.button(
-            "Run Tradier vs IEX comparison",
-            key="run_tradier_compare",
-            use_container_width=False,
-        ):
-            os.environ["TRADIER_ACCESS_TOKEN"] = tradier_token
-            os.environ["ALPACA_API_KEY"] = secret("ALPACA_API_KEY")
-            os.environ["ALPACA_SECRET_KEY"] = secret("ALPACA_SECRET_KEY")
-
-            from tradier_compare import run_provider_comparison
-
-            compare_symbols = [
-                str(row.get("symbol") or "").upper().strip()
-                for row in display_records[:15]
-                if row.get("symbol")
-            ]
-            with st.spinner("Comparing Tradier consolidated data with Alpaca IEX…"):
-                st.session_state["provider_compare_result"] = run_provider_comparison(
-                    compare_symbols
-                )
-
-        comparison = st.session_state.get("provider_compare_result")
-        if comparison:
-            status = comparison.get("status")
-            if status != "ok":
-                st.warning(comparison.get("message") or f"Comparison status: {status}")
-            else:
-                summary_cmp = comparison.get("summary") or {}
-                c1, c2, c3 = st.columns(3)
-                c1.metric(
-                    "Symbols compared",
-                    summary_cmp.get("symbols_compared", 0),
-                )
-                volume_mult = summary_cmp.get(
-                    "avg_consolidated_to_iex_session_volume_multiple"
-                )
-                c2.metric(
-                    "Tradier / IEX volume",
-                    "—" if volume_mult is None else f"{volume_mult:.2f}x",
-                )
-                spread_gain = summary_cmp.get("avg_spread_improvement_pct_points")
-                c3.metric(
-                    "Avg spread difference",
-                    "—" if spread_gain is None else f"{spread_gain:+.3f} pts",
-                )
-
-                rows_cmp = []
-                for item in comparison.get("rows") or []:
-                    t = item.get("tradier") or {}
-                    a = item.get("alpaca_iex") or {}
-                    d = item.get("difference") or {}
-                    rows_cmp.append(
-                        {
-                            "Ticker": item.get("symbol"),
-                            "Tradier Price": t.get("price"),
-                            "IEX Price": a.get("price"),
-                            "Price Δ %": d.get("price_diff_pct"),
-                            "Tradier Vol": t.get("session_volume_70m"),
-                            "IEX Vol": a.get("session_volume_70m"),
-                            "Vol Δ %": d.get("session_volume_diff_pct"),
-                            "Tradier Spread %": t.get("spread_pct"),
-                            "IEX Spread %": a.get("spread_pct"),
-                            "Tradier 5m %": t.get("momentum_5m"),
-                            "IEX 5m %": a.get("momentum_5m"),
-                            "Tradier 15m %": t.get("momentum_15m"),
-                            "IEX 15m %": a.get("momentum_15m"),
-                        }
-                    )
-
-                if rows_cmp:
-                    st.dataframe(
-                        pd.DataFrame(rows_cmp),
-                        use_container_width=True,
-                        hide_index=True,
-                    )
-                if comparison.get("errors"):
-                    st.caption(
-                        f"{len(comparison['errors'])} symbol(s) could not be compared."
-                    )
-
-with st.expander("What the colors mean"):
     st.markdown(
-        "**Green — strong/pass.**  **Blue — watch/neutral.**  "
-        "**Amber — caution/near miss.**  **Red — reject/risk.**\n\n"
-        "Color is never the only cue; labels such as **PASS**, **WATCH**, "
-        "**ABOVE VWAP**, and **REJECT** are shown too."
+        '<div class="section top-candidates-section">🔥 Top Candidates</div>',
+        unsafe_allow_html=True,
     )
 
-with st.expander("Scanner technical output"):
-    if st.session_state.get("scanner_out"):
-        st.code(st.session_state["scanner_out"])
+    if top:
+        for i in range(0, len(top), 2):
+            pair = st.columns(2)
+            for j, c in enumerate(top[i : i + 2]):
+                with pair[j]:
+                    st.markdown(card(c), unsafe_allow_html=True)
     else:
-        st.caption("Run a fresh scan from this page to capture the console output here.")
+        st.warning("No A/B candidates are available in this scan.")
+
+    st.markdown(
+        """
+    <div class="legend-box">
+      <div class="legend-title">Quick metric guide</div>
+      <div class="legend-grid">
+        <div class="legend-item">
+          <div class="legend-term">Setup Score — 0 to 100</div>
+          <div class="legend-def">
+            This is a rules-based <b>setup-quality ranking score</b>, not a probability of profit and not an entry command. A high score means the stock matches more of the scanner's momentum-quality conditions. The separate <b>ACTION</b> field tells you whether the current price behavior is actually suitable for Analyzer review now. A stock can therefore have a very high Setup Score and still say <b>WAIT PULLBACK</b>, <b>CAUTION</b>, or <b>NO TRADE</b>.
+          </div>
+        </div>
+        <div class="legend-item">
+          <div class="legend-term">Best Fit — Intraday / Swing / Longer-Term</div>
+          <div class="legend-def">
+            This is a separate horizon classification, not a buy signal. <b>Intraday</b> emphasizes same-day momentum, VWAP, volume and execution. <b>Swing</b> emphasizes roughly 2–10 trading days of continuation and multi-session structure. <b>Longer-Term</b> is a technical screen for roughly 2–8 weeks and should be confirmed in Analyzer with fundamentals, dilution/filings and catalyst durability. <b>Multiple Timeframes</b> means two horizons scored similarly. This label does not change the scanner's momentum ranking or ACTION.
+          </div>
+        </div>
+        <div class="legend-item">
+          <div class="legend-term">VWAP — Volume-Weighted Average Price</div>
+          <div class="legend-def">
+            VWAP is the stock's average traded price for the current session, but it gives more weight to prices where more shares actually traded. That makes it more useful than a simple average for judging where most of the day's trading activity has occurred.<br><br>
+            <b>Price above VWAP:</b> buyers are generally controlling the session and the stock is trading above the average price paid today. For a momentum trade, holding above VWAP is usually constructive.<br><br>
+            <b>Price below VWAP:</b> the stock is trading below the day's volume-weighted average. That can mean momentum is weakening or sellers have taken control, so the scanner treats it as a warning.<br><br>
+            <b>VWAP can act like support or resistance:</b> a strong stock may pull back toward VWAP, hold it, and bounce. A weak stock may rally into VWAP and get rejected.<br><br>
+            <b>Distance matters:</b> being above VWAP is good, but being far above it can mean the stock is extended and more vulnerable to a pullback. A cleaner momentum entry is often a stock above VWAP without being excessively stretched away from it.<br><br>
+            Example: if VWAP is <b>$10.00</b> and the stock is <b>$10.30</b>, it is about 3% above VWAP. If it is <b>$12.00</b>, it is 20% above VWAP — much stronger, but also much more extended and potentially riskier to chase.
+          </div>
+        </div>
+        <div class="legend-item">
+          <div class="legend-term">Liquidity</div>
+          <div class="legend-def">
+            <b>Higher liquidity:</b> easier entry/exit, tighter spreads, less slippage, and generally more reliable price action.<br><br>
+            <b>Lower liquidity:</b> harder exits, wider spreads, more violent swings, and a greater chance of getting stuck in a position.<br><br>
+            <b>Very high liquidity + strong volume pace:</b> usually a better-quality momentum setup because there is real participation behind the move.<br><br>
+            High liquidity by itself does not make a stock bullish. The combination the scanner prefers is <b>strong price momentum + high liquidity + rising volume pace + a tight spread</b>.
+          </div>
+        </div>
+        <div class="legend-item">
+          <div class="legend-term">Time-of-Day Volume Pace</div>
+          <div class="legend-def">This now uses the stock's <b>own recent intraday volume pattern</b>, not a straight-line assumption. The scanner looks at recent completed sessions and estimates what percentage of a normal day's volume this ticker usually has traded by the current clock time. That automatically accounts for the fact that volume is normally much heavier near the open and often quieter in the middle of the day.<br><br><b>1.00x:</b> about normal for this ticker at this exact time. <b>2.00x:</b> about twice the volume normally expected by now. <b>Normal Vol by Now %</b> shows the historical percentage of a typical day's volume usually completed by this time. The scanner uses a median-based baseline so one unusually huge prior day does not distort the comparison. If a ticker does not yet have enough intraday history, it temporarily falls back to the older linear calculation.</div>
+        </div>
+        <div class="legend-item">
+          <div class="legend-term">IEX Spread</div>
+          <div class="legend-def">The percentage gap between the current IEX bid and ask. A smaller spread generally means cleaner entries/exits and less immediate slippage. A wide spread can make a trade expensive even when the chart looks good. This reflects IEX quotes, not the full consolidated SIP market.</div>
+        </div>
+      </div>
+    </div>
+    """,
+        unsafe_allow_html=True,
+    )
+
+    near = [c for c in display_records if c.get("setup_grade") == "C"][:8]
+    st.markdown(
+        '<div class="section">🟡 Near Misses</div>'
+        '<div class="section-sub">Close enough to watch, but one base rule still failed.</div>',
+        unsafe_allow_html=True,
+    )
+    if near:
+        st.dataframe(
+            styled(to_df(near)),
+            width="stretch",
+            hide_index=True,
+            height=min(300, 38 + 30 * len(near)),
+        )
+    else:
+        st.info("No Grade C near misses in this scan.")
+
+    st.markdown(
+        '<div class="section">📊 Full Ranked Table</div>'
+        '<div class="section-sub">Top 30 ranked scanner results.</div>',
+        unsafe_allow_html=True,
+    )
+    df = to_df(full_table_records)
+    if not df.empty:
+        df.insert(0, "#", range(1, len(df) + 1))
+        st.dataframe(
+            styled(df),
+            width="stretch",
+            hide_index=True,
+            height=min(520, 38 + 30 * len(df)),
+        )
+    else:
+        st.info("No ranked candidates were logged.")
+
+    rej = Counter(r for c in display_records for r in (c.get("failed_filters") or []))
+    st.markdown(
+        '<div class="section">🚫 Rejection Pattern</div>'
+        '<div class="section-sub">Counts below come from the candidates saved in this dashboard snapshot.</div>',
+        unsafe_allow_html=True,
+    )
+    if rej:
+        m = max(rej.values())
+        for reason, count in rej.most_common(8):
+            w = max(6, int(count / m * 100))
+            st.markdown(
+                f'<div class="bar-row"><div class="bar-head"><span>{html.escape(reason)}</span>'
+                f'<span>{count}</span></div><div class="bar-track">'
+                f'<div class="bar-fill" style="width:{w}%"></div></div></div>',
+                unsafe_allow_html=True,
+            )
+    else:
+        st.success("No rejection reasons were logged for the displayed candidates.")
+
+    with st.expander("Tradier vs Alpaca IEX diagnostics"):
+        tradier_token = get_tradier_token()
+        if not tradier_token:
+            st.caption(
+                "Tradier live comparison is ready, but TRADIER_ACCESS_TOKEN is not configured yet. "
+                "A live Tradier Brokerage token is required for real-time consolidated data."
+            )
+        else:
+            st.caption(
+                "The scanner now uses Tradier consolidated data for live ranking inputs. "
+                "This diagnostic compares those values with Alpaca IEX for reference."
+            )
+            if st.button(
+                "Run Tradier vs IEX comparison",
+                key="run_tradier_compare",
+                width="content",
+            ):
+                os.environ["TRADIER_ACCESS_TOKEN"] = tradier_token
+                os.environ["ALPACA_API_KEY"] = secret("ALPACA_API_KEY")
+                os.environ["ALPACA_SECRET_KEY"] = secret("ALPACA_SECRET_KEY")
+
+                from tradier_compare import run_provider_comparison
+
+                compare_symbols = [
+                    str(row.get("symbol") or "").upper().strip()
+                    for row in display_records[:15]
+                    if row.get("symbol")
+                ]
+                with st.spinner("Comparing Tradier consolidated data with Alpaca IEX…"):
+                    st.session_state["provider_compare_result"] = run_provider_comparison(
+                        compare_symbols
+                    )
+
+            comparison = st.session_state.get("provider_compare_result")
+            if comparison:
+                status = comparison.get("status")
+                if status != "ok":
+                    st.warning(comparison.get("message") or f"Comparison status: {status}")
+                else:
+                    summary_cmp = comparison.get("summary") or {}
+                    c1, c2, c3 = st.columns(3)
+                    c1.metric(
+                        "Symbols compared",
+                        summary_cmp.get("symbols_compared", 0),
+                    )
+                    volume_mult = summary_cmp.get(
+                        "avg_consolidated_to_iex_session_volume_multiple"
+                    )
+                    c2.metric(
+                        "Tradier / IEX volume",
+                        "—" if volume_mult is None else f"{volume_mult:.2f}x",
+                    )
+                    spread_gain = summary_cmp.get("avg_spread_improvement_pct_points")
+                    c3.metric(
+                        "Avg spread difference",
+                        "—" if spread_gain is None else f"{spread_gain:+.3f} pts",
+                    )
+
+                    rows_cmp = []
+                    for item in comparison.get("rows") or []:
+                        t = item.get("tradier") or {}
+                        a = item.get("alpaca_iex") or {}
+                        d = item.get("difference") or {}
+                        rows_cmp.append(
+                            {
+                                "Ticker": item.get("symbol"),
+                                "Tradier Price": t.get("price"),
+                                "IEX Price": a.get("price"),
+                                "Price Δ %": d.get("price_diff_pct"),
+                                "Tradier Vol": t.get("session_volume_70m"),
+                                "IEX Vol": a.get("session_volume_70m"),
+                                "Vol Δ %": d.get("session_volume_diff_pct"),
+                                "Tradier Spread %": t.get("spread_pct"),
+                                "IEX Spread %": a.get("spread_pct"),
+                                "Tradier 5m %": t.get("momentum_5m"),
+                                "IEX 5m %": a.get("momentum_5m"),
+                                "Tradier 15m %": t.get("momentum_15m"),
+                                "IEX 15m %": a.get("momentum_15m"),
+                            }
+                        )
+
+                    if rows_cmp:
+                        st.dataframe(
+                            pd.DataFrame(rows_cmp),
+                            width="stretch",
+                            hide_index=True,
+                        )
+                    if comparison.get("errors"):
+                        st.caption(
+                            f"{len(comparison['errors'])} symbol(s) could not be compared."
+                        )
+
+    with st.expander("What the colors mean"):
+        st.markdown(
+            "**Green — strong/pass.**  **Blue — watch/neutral.**  "
+            "**Amber — caution/near miss.**  **Red — reject/risk.**\n\n"
+            "Color is never the only cue; labels such as **PASS**, **WATCH**, "
+            "**ABOVE VWAP**, and **REJECT** are shown too."
+        )
+
+    with st.expander("Scanner technical output"):
+        if st.session_state.get("scanner_out"):
+            st.code(st.session_state["scanner_out"])
+        else:
+            st.caption("Run a fresh scan from this page to capture the console output here.")
+
+
+render_scanner_results()
