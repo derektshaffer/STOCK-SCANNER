@@ -317,6 +317,39 @@ def test_path_target_captures_interim_winner_without_changing_endpoint_ml():
     assert shadow[0]["endpoint_path_disagreement"] is True, shadow
 
 
+def test_historical_replay_path_fields_enter_shadow_loader():
+    row = {
+        "feature_version": "scanner-features-v2-consolidated",
+        "observation_source": "historical_replay",
+        "observation_id": "replay:synthetic:path",
+        "scan_id": "historical-replay:2026-08-28:1000",
+        "scan_time_et": "2026-08-28T10:00:00-04:00",
+        "symbol": "SYNTH",
+        "entry_price": 100.0,
+        "return_60m_pct": 1.0,
+        "momentum_5m": 1.0,
+        "momentum_15m": 2.0,
+        "volume_pace": 2.0,
+        "opportunity_horizon_60m_complete": True,
+        "opportunity_up_3_60m_hit": True,
+        "opportunity_up_3_60m_before_stop": True,
+        "opportunity_mfe_60m_pct": 5.0,
+        "opportunity_mae_60m_pct": -1.0,
+        "opportunity_time_to_peak_60m": 18.0,
+    }
+    payload = {
+        "source": "historical_scanner_replay",
+        "replay": {"historical_feed": "TRADIER CONSOLIDATED HISTORICAL"},
+        "observations": [row],
+    }
+    shadow = _extract_path_research_observations(payload)
+    assert len(shadow) == 1, shadow
+    assert shadow[0]["label"] == 1, shadow
+    assert shadow[0]["endpoint_label"] == 0, shadow
+    assert shadow[0]["endpoint_path_disagreement"] is True, shadow
+    assert shadow[0]["mfe_60m_pct"] == 5.0, shadow
+
+
 def test_path_target_excludes_incomplete_horizons():
     row = {
         "feature_version": "scanner-features-v2-consolidated",
@@ -461,6 +494,7 @@ def main():
     test_production_scanner_ml_is_regular_session_gated()
     test_opportunity_path_keeps_full_mfe_and_order()
     test_path_target_captures_interim_winner_without_changing_endpoint_ml()
+    test_historical_replay_path_fields_enter_shadow_loader()
     test_path_target_excludes_incomplete_horizons()
     test_live_journal_keeps_strongest_state_and_controls()
     test_extended_provider_uses_all_sessions()
