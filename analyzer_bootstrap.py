@@ -295,8 +295,8 @@ def _install_scroll_keeper():
 
           function findScroller() {
             const selectors = [
-              '[data-testid="stAppViewContainer"]',
               '[data-testid="stMain"]',
+              '[data-testid="stAppViewContainer"]',
               'section.main'
             ];
             for (const selector of selectors) {
