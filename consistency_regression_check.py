@@ -5168,8 +5168,10 @@ def test_manual_scanner_refreshes_combined_candidates_after_success():
 
     source = Path("scanner_app.py").read_text(encoding="utf-8")
     assert 'st.session_state["_scanner_flash_success"] = msg' in source
-    assert "newly written latest_scan.json" in source
-    assert "st.rerun()" in source
+    assert 'st.session_state["_scanner_snapshot_refresh_at"] = time.time()' in source
+    manual_success = source.split('if clicked:', 1)[1].split('scanner_return_grace_until', 1)[0]
+    assert "st.rerun()" not in manual_success
+    assert "def render_scanner_results():" in source
 
 
 def test_v2_skips_alpaca_sip_probe_when_tradier_primary():
