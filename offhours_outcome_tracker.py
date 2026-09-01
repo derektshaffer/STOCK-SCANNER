@@ -17,6 +17,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from tradier_live import get_history_bars
+from timeframe_targets import resolve_swing_path_from_bars
 
 
 ET = ZoneInfo("America/New_York")
@@ -27,7 +28,7 @@ TRADIER_TOKEN = (
     or os.environ.get("TRADIER_TOKEN", "").strip()
 )
 HORIZONS = (1, 2, 3, 5, 10, 20, 40)
-TRACKER_VERSION = "offhours-timeframe-outcome-v1"
+TRACKER_VERSION = "offhours-timeframe-outcome-v2-shared-swing-target"
 
 
 def _num(value):
@@ -131,7 +132,7 @@ def _horizon_outcome(signal_price, sessions, horizon):
     lows = [_num(row.get("l")) for row in window]
     highs = [x for x in highs if x is not None]
     lows = [x for x in lows if x is not None]
-    return {
+    outcome = {
         "return_pct": _pct(close, signal_price),
         "mfe_pct": _pct(max(highs), signal_price) if highs else None,
         "mae_pct": _pct(min(lows), signal_price) if lows else None,
@@ -139,6 +140,27 @@ def _horizon_outcome(signal_price, sessions, horizon):
             _bar_day(window[-1]).isoformat() if _bar_day(window[-1]) else None
         ),
     }
+    if horizon == 5:
+        # Use the exact shared Swing ML target definition so live forward
+        # evidence measures the same event as historical replay.
+        outcome.update(
+            resolve_swing_path_from_bars(
+                signal_price,
+                window,
+                horizon_sessions=5,
+            )
+        )
+    return outcome
+
+
+def _needs_horizon(row, horizon):
+    outcome = (row.get("outcomes") or {}).get(str(horizon))
+    if not isinstance(outcome, dict):
+        return True
+    if horizon == 5 and "swing_target_before_stop_5d" not in outcome:
+        # Backfill older v1 5D rows with the shared target label.
+        return True
+    return False
 
 
 def _benchmark_outcomes(spy_sessions, signal_price):
@@ -260,6 +282,9 @@ def _summary_rows(rows, horizon):
             "avg_mfe_pct": None,
             "avg_mae_pct": None,
             "avg_excess_vs_spy_pct": None,
+            "swing_target_resolved": 0 if horizon == 5 else None,
+            "swing_target_before_stop_rate_pct": None,
+            "swing_ambiguous_same_day": 0 if horizon == 5 else None,
         }
     returns = [ret for _row, ret, _outcome in resolved]
     mfes = [_num(outcome.get("mfe_pct")) for _row, _ret, outcome in resolved]
@@ -268,6 +293,15 @@ def _summary_rows(rows, horizon):
         _num(outcome.get("excess_vs_spy_pct"))
         for _row, _ret, outcome in resolved
     ]
+    swing_labels = []
+    swing_ambiguous = 0
+    if horizon == 5:
+        for _row, _ret, outcome in resolved:
+            label = outcome.get("swing_target_before_stop_5d")
+            if label in {0, 1}:
+                swing_labels.append(int(label))
+            if bool(outcome.get("swing_ambiguous_same_day_5d")):
+                swing_ambiguous += 1
     mfes = [x for x in mfes if x is not None]
     maes = [x for x in maes if x is not None]
     excess = [x for x in excess if x is not None]
@@ -282,6 +316,15 @@ def _summary_rows(rows, horizon):
         "avg_mae_pct": round(statistics.fmean(maes), 3) if maes else None,
         "avg_excess_vs_spy_pct": (
             round(statistics.fmean(excess), 3) if excess else None
+        ),
+        "swing_target_resolved": len(swing_labels) if horizon == 5 else None,
+        "swing_target_before_stop_rate_pct": (
+            round(100.0 * sum(swing_labels) / len(swing_labels), 1)
+            if horizon == 5 and swing_labels
+            else None
+        ),
+        "swing_ambiguous_same_day": (
+            swing_ambiguous if horizon == 5 else None
         ),
     }
 
@@ -335,8 +378,8 @@ def _markdown_report(cohorts):
         "",
         "Research-only. These cohorts do not change live Momentum Scanner ranking, ACTION, or ML.",
         "",
-        "| Signal date | Candidates | Sessions elapsed | 5D resolved | 5D avg | 5D up | 20D resolved | 20D avg | 20D up |",
-        "|---|---:|---:|---:|---:|---:|---:|---:|---:|",
+        "| Signal date | Candidates | Sessions elapsed | 5D resolved | 5D avg | 5D up | 5D +5/-4 resolved | Target-first | Ambiguous | 20D resolved | 20D avg | 20D up |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for cohort in sorted(cohorts, key=lambda x: x.get("signal_date") or "", reverse=True):
         summary = cohort.get("summary") or {}
@@ -345,13 +388,16 @@ def _markdown_report(cohorts):
         def fmt(value, suffix="%"):
             return "—" if value is None else f"{value:.2f}{suffix}"
         lines.append(
-            "| {date} | {n} | {elapsed} | {r5} | {a5} | {u5} | {r20} | {a20} | {u20} |".format(
+            "| {date} | {n} | {elapsed} | {r5} | {a5} | {u5} | {rt5} | {t5} | {amb5} | {r20} | {a20} | {u20} |".format(
                 date=cohort.get("signal_date") or "—",
                 n=len(cohort.get("candidates") or []),
                 elapsed=cohort.get("elapsed_trading_sessions") or 0,
                 r5=h5.get("resolved") or 0,
                 a5=fmt(h5.get("avg_return_pct")),
                 u5=fmt(h5.get("higher_rate_pct")),
+                rt5=h5.get("swing_target_resolved") or 0,
+                t5=fmt(h5.get("swing_target_before_stop_rate_pct")),
+                amb5=h5.get("swing_ambiguous_same_day") or 0,
                 r20=h20.get("resolved") or 0,
                 a20=fmt(h20.get("avg_return_pct")),
                 u20=fmt(h20.get("higher_rate_pct")),
@@ -360,6 +406,7 @@ def _markdown_report(cohorts):
     lines += [
         "",
         "Primary comparison horizons: Swing = 5 trading sessions; Longer-Term = 20 trading sessions.",
+        "The 5D Swing target-first metric uses the same shared target as historical Swing ML: +5% before -4% within 5 trading sessions. Same-day target/stop touches are ambiguous and excluded from that rate.",
         "Additional 1/2/3/10/40-session outcomes plus MFE, MAE, SPY return, and excess return are stored in each cohort JSON.",
         "",
     ]
@@ -447,7 +494,7 @@ def run():
                     continue
                 missing_due = [
                     h for h in due_horizons
-                    if str(h) not in (row.get("outcomes") or {})
+                    if _needs_horizon(row, h)
                 ]
                 if not missing_due:
                     continue
@@ -459,7 +506,7 @@ def run():
                 sessions = _session_rows(bars, signal_day, today)
                 outcomes = dict(row.get("outcomes") or {})
                 for horizon in HORIZONS:
-                    if elapsed < horizon or str(horizon) in outcomes:
+                    if elapsed < horizon or not _needs_horizon(row, horizon):
                         continue
                     item = _horizon_outcome(signal_price, sessions, horizon)
                     if item is None:

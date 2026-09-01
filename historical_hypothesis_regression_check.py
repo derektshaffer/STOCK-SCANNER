@@ -89,7 +89,7 @@ def test_path_target_can_pass_only_with_all_gates():
     assert result["gates"]["stability"] is True, result
 
 
-def test_path_target_rejects_unstable_result():
+def test_path_target_blocks_without_stability_coverage():
     rows = []
     for day in range(3, 13):
         for i in range(20):
@@ -113,9 +113,48 @@ def test_path_target_rejects_unstable_result():
             "model_top_decile_lift_pp": 18.0,
             "stability": {
                 "eligible_days": 6,
-                "positive_lift_day_fraction": 0.33,
+                "positive_lift_day_fraction": 0.67,
                 "selected_distinct_symbols": 4,
-                "selected_top_symbol_share_pct": 40.0,
+                "selected_top_symbol_share_pct": 15.0,
+                "regimes_represented": 2,
+            },
+        }
+        result = hh._path_target_challenge(rows)
+    finally:
+        hh._walk_forward_model = old
+
+    assert result["decision"] == "blocked_insufficient_stability_coverage", result
+    assert result["gates"]["stability_coverage"] is False, result
+    assert result["gates"]["regime_coverage"] is True, result
+
+
+def test_path_target_blocks_without_regime_coverage():
+    rows = []
+    for day in range(3, 13):
+        for i in range(20):
+            rows.append(
+                _row(
+                    day,
+                    f"S{i:02d}",
+                    0,
+                    path=True if i < 10 else False,
+                    endpoint=False if i < 3 else True,
+                )
+            )
+
+    old = hh._walk_forward_model
+    try:
+        hh._walk_forward_model = lambda _rows, _label: {
+            "status": "complete",
+            "model_auc": 0.66,
+            "model_brier": 0.18,
+            "naive_brier": 0.24,
+            "model_top_decile_lift_pp": 18.0,
+            "stability": {
+                "eligible_days": 6,
+                "positive_lift_day_fraction": 0.67,
+                "selected_distinct_symbols": 12,
+                "selected_top_symbol_share_pct": 15.0,
                 "regimes_represented": 1,
             },
         }
@@ -124,7 +163,8 @@ def test_path_target_rejects_unstable_result():
         hh._walk_forward_model = old
 
     assert result["decision"] == "blocked_insufficient_regime_coverage", result
-    assert result["gates"]["stability_coverage"] is False or result["gates"]["regime_coverage"] is False, result
+    assert result["gates"]["stability_coverage"] is True, result
+    assert result["gates"]["regime_coverage"] is False, result
 
 
 def test_score_monotonicity_requires_out_of_sample_repeat():
@@ -244,7 +284,8 @@ def test_standing_path_hypothesis_is_challenged():
 def main():
     test_same_symbol_horizon_dedup()
     test_path_target_can_pass_only_with_all_gates()
-    test_path_target_rejects_unstable_result()
+    test_path_target_blocks_without_stability_coverage()
+    test_path_target_blocks_without_regime_coverage()
     test_score_monotonicity_requires_out_of_sample_repeat()
     test_session_hypothesis_blocks_without_extended_history()
     test_empirical_hypothesis_uses_only_pre_evidence_replay()
