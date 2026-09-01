@@ -55,42 +55,24 @@ def _config():
 
 
 def _interactive_params():
-    """Trading-chart-like independent horizontal and vertical scale controls.
+    """Use one Vega-Lite scale-bound interval for reliable chart rendering.
 
-    Normal wheel/pinch + drag manipulates the date axis. Holding Option/Alt
-    switches the same gestures to the price axis, so small price moves can be
-    expanded without changing the visible date window. Double-click clears
-    both bound-scale selections and restores the full chart.
+    The previous two-selection implementation bound separate x/y intervals to
+    the same layered chart and used custom event-stream expressions. That can
+    fail validation/rendering in the Vega-Lite runtime used by Streamlit,
+    leaving every Analyzer chart blank. One standard scale-bound interval keeps
+    wheel/drag interaction while remaining portable across all layered specs.
     """
     return [
         {
-            "name": "date_zoom",
+            "name": "chart_zoom",
             "select": {
                 "type": "interval",
-                "encodings": ["x"],
-                "translate": (
-                    "[mousedown[!event.altKey], window:mouseup] "
-                    "> window:mousemove!"
-                ),
-                "zoom": "wheel![!event.altKey]",
+                "encodings": ["x", "y"],
                 "clear": "dblclick",
             },
             "bind": "scales",
-        },
-        {
-            "name": "price_zoom",
-            "select": {
-                "type": "interval",
-                "encodings": ["y"],
-                "translate": (
-                    "[mousedown[event.altKey], window:mouseup] "
-                    "> window:mousemove!"
-                ),
-                "zoom": "wheel![event.altKey]",
-                "clear": "dblclick",
-            },
-            "bind": "scales",
-        },
+        }
     ]
 
 
