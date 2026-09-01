@@ -3277,6 +3277,16 @@ def main():
         refresh_quality(c)
         rows.append(c)
 
+    # A live scan that discovered symbols but could not build even one market
+    # row is a provider/data-integrity failure, not a legitimate "zero ideas"
+    # result. Fail before writing latest_scan.json so the UI keeps the prior
+    # usable snapshot instead of replacing it with an empty dashboard.
+    if is_active_market_session(now_et) and candidates and not rows:
+        raise RuntimeError(
+            "Live scanner discovered symbols but could not build any market rows. "
+            "Preserving the previous scanner snapshot instead of publishing zero candidates."
+        )
+
     # Tradier rows already carry consolidated live liquidity. Alpaca fallback
     # rows still use the delayed-SIP enrichment path when it is available.
     enrich_delayed_sip_liquidity(rows, now_utc, now_et)
