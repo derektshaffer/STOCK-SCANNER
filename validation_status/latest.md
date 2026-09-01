@@ -1,18 +1,18 @@
 # Forward Validation Status
 
-Generated: 2026-09-01T02:36:12.538309+00:00
+Generated: 2026-09-01T02:40:19.752763+00:00
 
 ## Scanner ML — independent live confirmation
-- **Samples:** 0/100 — 100 remaining
-- **Trading days:** 0/5 — 5 remaining
-- **Symbols:** 0/15 — 15 remaining
-- **Positive class:** 0/15 — 15 remaining
-- **Negative class:** 0/15 — 15 remaining
+- **Samples:** 30/100 — 70 remaining
+- **Trading days:** 1/5 — 4 remaining
+- **Symbols:** 30/15 ✅
+- **Positive class:** 1/15 — 14 remaining
+- **Negative class:** 29/15 ✅
 - **Count gate ready:** NO
 - Replay end day: 2026-08-28
 
 ## Analyzer calibration
-- Schema: 7 / required 9 ⚠️
+- Schema: 9 / required 9 ✅
 - **Resolved 60m rows — early read:** 0/30 — 30 remaining
 - **Resolved 60m rows — useful:** 0/100 — 100 remaining
 - Untrusted rows excluded: 0
