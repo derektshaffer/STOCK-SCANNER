@@ -18,7 +18,11 @@ from learning_system_audit import (
     build_hypotheses,
     load_outcome_observations,
 )
-from scanner_ml_ranker import _production_regular_session
+from scanner_ml_ranker import (
+    _extract_observations,
+    _extract_path_research_observations,
+    _production_regular_session,
+)
 import score_outcomes as so
 import score_opportunity_outcomes as soo
 import scanner_live_journal as slj
@@ -255,6 +259,87 @@ def test_opportunity_path_keeps_full_mfe_and_order():
     assert result["up_20_hit"] is False, result
 
 
+def test_path_target_captures_interim_winner_without_changing_endpoint_ml():
+    et = ZoneInfo("America/New_York")
+    scan_time = datetime(2026, 8, 31, 10, 0, tzinfo=et)
+    bars = [
+        {"time": datetime(2026, 8, 31, 10, 5, tzinfo=et), "high": 104.0, "low": 99.5, "close": 103.0},
+        {"time": datetime(2026, 8, 31, 10, 30, tzinfo=et), "high": 105.0, "low": 101.0, "close": 104.0},
+        {"time": datetime(2026, 8, 31, 11, 0, tzinfo=et), "high": 102.0, "low": 99.0, "close": 101.0},
+    ]
+    indexed = {
+        "bars": bars,
+        "times": [row["time"] for row in bars],
+        "prices": [row["close"] for row in bars],
+    }
+    path = soo.opportunity_path_metrics(
+        indexed,
+        scan_time,
+        datetime(2026, 8, 31, 20, 0, tzinfo=et),
+        100.0,
+        horizon_minutes=60,
+    )
+    assert soo.path_success_label(path) == 1, path
+
+    base = {
+        "feature_version": "scanner-features-v2-consolidated",
+        "observation_id": "synthetic:path",
+        "scan_id": "synthetic",
+        "scan_time_et": scan_time.isoformat(),
+        "session_phase": "regular",
+        "market_provider": "tradier",
+        "live_feed": "consolidated",
+        "symbol": "SYNTH",
+        "entry_price": 100.0,
+        "momentum_5m": 1.0,
+        "momentum_15m": 2.0,
+        "volume_pace": 2.0,
+        "return_60m_pct": 1.0,
+        "research_horizon_60m_complete": True,
+        "research_path_success_60m": 1,
+        "research_endpoint_success_60m": 0,
+        "research_mfe_60m_pct": 5.0,
+        "research_mae_60m_pct": -1.0,
+    }
+    production = _extract_observations({"source": "live_scan", "observations": [base]})
+    shadow = _extract_path_research_observations(
+        {
+            "production_influence": False,
+            "source": "shadow_opportunity",
+            "observations": [base],
+        }
+    )
+    assert len(production) == 1, production
+    assert production[0]["label"] == 0, production
+    assert len(shadow) == 1, shadow
+    assert shadow[0]["label"] == 1, shadow
+    assert shadow[0]["endpoint_label"] == 0, shadow
+    assert shadow[0]["endpoint_path_disagreement"] is True, shadow
+
+
+def test_path_target_excludes_incomplete_horizons():
+    row = {
+        "feature_version": "scanner-features-v2-consolidated",
+        "observation_id": "synthetic:incomplete",
+        "scan_id": "synthetic",
+        "scan_time_et": "2026-08-31T15:30:00-04:00",
+        "session_phase": "regular",
+        "market_provider": "tradier",
+        "live_feed": "consolidated",
+        "symbol": "SYNTH",
+        "entry_price": 100.0,
+        "momentum_5m": 1.0,
+        "momentum_15m": 2.0,
+        "volume_pace": 2.0,
+        "research_horizon_60m_complete": False,
+        "research_path_success_60m": 1,
+    }
+    shadow = _extract_path_research_observations(
+        {"production_influence": False, "observations": [row]}
+    )
+    assert shadow == [], shadow
+
+
 def test_live_journal_keeps_strongest_state_and_controls():
     et = ZoneInfo("America/New_York")
     now = datetime(2026, 8, 31, 15, 2, tzinfo=et)
@@ -276,8 +361,9 @@ def test_live_journal_keeps_strongest_state_and_controls():
     symbols = {row["symbol"] for row in selected}
     assert "T001" in symbols, selected
     assert "T012" in symbols, selected
+    assert "T015" in symbols, selected
     assert "T030" in symbols, selected
-    assert "T060" in symbols, selected
+    assert "T045" in symbols, selected
 
     first = {
         "bucket_key": "2026-08-31T15:00:00-04:00:TEST",
@@ -374,6 +460,8 @@ def main():
     test_hypothesis_generation_excludes_historical_replay()
     test_production_scanner_ml_is_regular_session_gated()
     test_opportunity_path_keeps_full_mfe_and_order()
+    test_path_target_captures_interim_winner_without_changing_endpoint_ml()
+    test_path_target_excludes_incomplete_horizons()
     test_live_journal_keeps_strongest_state_and_controls()
     test_extended_provider_uses_all_sessions()
     print("LEARNING_SYSTEM_REGRESSIONS=passed")
