@@ -2005,6 +2005,106 @@ def test_full_spectrum_ignores_unvalidated_ml_edge():
     assert a["scenarios"] == b["scenarios"], (a, b)
 
 
+def test_individual_ml_submodels_are_advisory_until_full_gate_passes():
+    import copy
+    import analyzer_v2_integration as v2
+
+    base = {
+        "price":10.0,
+        "day_pct":18.0,
+        "vwap_position":"ABOVE",
+        "vwap_extension_pct":3.0,
+        "momentum_5m":0.8,
+        "momentum_15m":1.4,
+        "momentum_30m":1.8,
+        "volume_pace":1.7,
+        "from_high_pct":3.0,
+        "spread_pct":0.7,
+        "score":68.0,
+        "liquidity":{"label":"HIGH"},
+        "impulse_pullback":{
+            "detected":True,
+            "current_retracement_pct":38.0,
+            "max_retracement_pct":42.0,
+            "bounce_recovery_pct":6.0,
+            "bounce_confirmed":True,
+            "pullback_volume_ratio":0.8,
+        },
+        "bounce_sequence":{
+            "completed_bounces":2,
+            "bounce_decay_ratio":0.85,
+            "lower_high_streak":0,
+            "sequence_health_score":64.0,
+        },
+        "stair_step":{
+            "detected":True,
+            "structure_score":62.0,
+            "reaccelerating":True,
+            "breakdown":False,
+        },
+        "run_exhaustion":{"score":35.0},
+        "historical_setup":{},
+        "decision_v2":{"potential_score":66.0},
+        "market_provider":"tradier",
+        "live_feed":"TRADIER CONSOLIDATED",
+    }
+    models = {
+        "reversal_30":{"probability_pct":92.0,"validated":True},
+        "repeat_bounce_30":{"probability_pct":88.0,"validated":True},
+        "new_high_60":{"probability_pct":90.0,"validated":True},
+        "post_bounce_failure_60":{"probability_pct":86.0,"validated":True},
+        "stair_reacceleration_60":{"probability_pct":91.0,"validated":True},
+    }
+    args = (
+        {"status":"ok","dilution_risk":"NONE FOUND"},
+        {"label":"MIXED","broad_market_avg_pct":0.0,"sector_move_pct":0.0},
+        {"score":0.0},
+        {"float_turnover":0.5},
+    )
+
+    neutral = copy.deepcopy(base)
+    neutral["ml_prediction"] = {
+        "status":"ok",
+        "gate_passed":False,
+        "production_source_ok":True,
+        "validated_edge_model_count":0,
+        "ml_edge_score":None,
+        "models":{},
+    }
+
+    advisory = copy.deepcopy(base)
+    advisory["ml_prediction"] = {
+        "status":"ok",
+        "gate_passed":False,
+        "production_source_ok":True,
+        "validated_edge_model_count":5,
+        "ml_edge_score":90.0,
+        "models":copy.deepcopy(models),
+    }
+
+    neutral_fs = v2._full_spectrum_analysis(neutral, *args)
+    advisory_fs = v2._full_spectrum_analysis(advisory, *args)
+    assert advisory_fs["categories"]["validated_ml"]["production_influence"] is False, advisory_fs
+    assert advisory_fs["scenarios"] == neutral_fs["scenarios"], (advisory_fs, neutral_fs)
+    assert advisory_fs["reversal_risk_score"] == neutral_fs["reversal_risk_score"], (
+        advisory_fs,
+        neutral_fs,
+    )
+
+    eligible = copy.deepcopy(base)
+    eligible["ml_prediction"] = {
+        "status":"ok",
+        "gate_passed":True,
+        "production_source_ok":True,
+        "validated_edge_model_count":5,
+        "ml_edge_score":50.0,
+        "models":copy.deepcopy(models),
+    }
+    eligible_fs = v2._full_spectrum_analysis(eligible, *args)
+    assert eligible_fs["categories"]["validated_ml"]["production_influence"] is True, eligible_fs
+    assert eligible_fs["scenarios"] != neutral_fs["scenarios"], (eligible_fs, neutral_fs)
+
+
 def test_multi_bounce_detector_tracks_decay_and_lower_highs():
     from multi_bounce import detect_bounce_sequence, bounce_feature_values
 
@@ -7207,6 +7307,7 @@ if __name__ == "__main__":
         test_full_spectrum_exposes_all_scenarios,
         test_ml_cannot_boost_live_scores_until_complete_production_gate_passes,
         test_full_spectrum_ignores_unvalidated_ml_edge,
+        test_individual_ml_submodels_are_advisory_until_full_gate_passes,
         test_multi_bounce_detector_tracks_decay_and_lower_highs,
         test_multi_bounce_ignores_micro_wiggles_and_waits_for_distinct_second_swing,
         test_multi_bounce_recognizes_dpro_large_rebound_and_smaller_later_bounce,
