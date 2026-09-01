@@ -284,7 +284,7 @@ def _cleanup_combined_browser_helpers():
 
 
 def _install_scroll_keeper():
-    """Preserve viewport across full-app reruns in the standalone analyzer."""
+    """Preserve viewport while Streamlit replaces the Analyzer fragment."""
     components.html(
         """
         <script>
@@ -353,12 +353,33 @@ def _install_scroll_keeper():
           }
 
           const scroller = findScroller();
+          let pendingY = null;
+          let staleNode = null;
+          let restoreScheduled = false;
           const onScroll = () => {
             if (p.__ssaRerunPending) return;
             savePosition();
           };
           if (scroller) scroller.addEventListener("scroll", onScroll, { passive: true });
           p.addEventListener("scroll", onScroll, { passive: true });
+
+          function finishFragmentSwap() {
+            if (restoreScheduled || !Number.isFinite(pendingY)) return;
+            restoreScheduled = true;
+            const y = pendingY;
+            p.requestAnimationFrame(() => restorePosition(y));
+            p.setTimeout(() => restorePosition(y), 60);
+            p.setTimeout(() => restorePosition(y), 180);
+            p.setTimeout(() => restorePosition(y), 450);
+            p.setTimeout(() => {
+              restorePosition(y);
+              pendingY = null;
+              staleNode = null;
+              restoreScheduled = false;
+              p.__ssaRerunPending = false;
+              savePosition();
+            }, 900);
+          }
 
           const observer = new MutationObserver((mutations) => {
             for (const m of mutations) {
@@ -368,17 +389,41 @@ def _install_scroll_keeper():
                 m.target &&
                 m.target.getAttribute("data-stale") === "true"
               ) {
-                if (!p.__ssaRerunPending) {
-                  savePosition();
+                const liveRoot = d.querySelector('.st-key-analyzer_live_fragment');
+                const liveFragment = liveRoot && (
+                  m.target === liveRoot ||
+                  (m.target.contains && m.target.contains(liveRoot)) ||
+                  (liveRoot.contains && liveRoot.contains(m.target))
+                );
+                if (liveFragment && !p.__ssaRerunPending) {
+                  pendingY = getY();
+                  staleNode = m.target;
                   p.__ssaRerunPending = true;
+                  try {
+                    p.sessionStorage.setItem(
+                      KEY,
+                      JSON.stringify({ y: pendingY, t: Date.now() })
+                    );
+                  } catch (_) {}
                 }
-                break;
               }
+            }
+
+            // Streamlit removes or unmarks the stale fragment when its new
+            // delta is mounted. Restore repeatedly while charts and expanders
+            // settle so the temporary height collapse cannot move the reader.
+            if (
+              p.__ssaRerunPending &&
+              staleNode &&
+              (!staleNode.isConnected || staleNode.getAttribute("data-stale") !== "true")
+            ) {
+              finishFragmentSwap();
             }
           });
           if (d.body) {
             observer.observe(d.body, {
               subtree: true,
+              childList: true,
               attributes: true,
               attributeFilter: ["data-stale"]
             });
@@ -991,5 +1036,4 @@ def run():
     _render_fast_live_tape()
     _render_live_analyzer()
 
-    if not combined:
-        _install_scroll_keeper()
+    _install_scroll_keeper()
