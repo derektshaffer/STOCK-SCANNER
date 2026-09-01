@@ -23,7 +23,7 @@ A model or score is not considered trustworthy merely because a backtest passes.
 
 **Rules-based Scanner / Analyzer foundation: materially improved and generally well defended by regression tests.**
 
-**Predictive ML: not yet entitled to a broad production-valid claim.** The original validation-boundary findings were remediated in PR #53 and merged only after the integrity suite passed. Follow-up audit PRs #68-#76 closed additional forward-target parity, advisory-ML leakage, stale-schema/source-integrity, final-contract fail-open, untrusted-calibration contamination, stale position-advice, and forward-universe evidence gaps. Live forward evidence is still too sparse to make strong performance claims.
+**Predictive ML: not yet entitled to a broad production-valid claim.** The original validation-boundary findings were remediated in PR #53 and merged only after the integrity suite passed. Follow-up audit/validation PRs #68-#79 closed additional forward-target parity, advisory-ML leakage, stale-schema/source-integrity, final-contract fail-open, untrusted-calibration contamination, stale position-advice, forward-universe evidence, feature-version drift, and cloud evidence-collection reliability gaps. Live forward evidence is still too sparse to make strong performance claims.
 
 The safest current interpretation is:
 
@@ -96,7 +96,31 @@ Forward validation previously existed across several artifacts but had no single
 
 This is a **prospective** survivorship-bias fix. It does not invent delisted-stock membership for 2021-2026, so older replay dates remain explicitly biased until an independent historical listing source is available.
 
-All eight follow-up PRs (#68-#71 and #73-#76) passed compilation, import checks, provider smoke tests, app-boundary checks, consistency regressions, learning regressions, and Phase 6 historical-challenge regressions before merge.
+### PR #77 — Intentional post-close evidence refresh
+
+The nightly outcome workflow remains protected from ordinary push-triggered rescoring, but now accepts an explicit `Refresh forward evidence` merge marker. This allows Scanner outcomes, Analyzer outcomes, off-hours cohorts, and the validation scoreboard to be recomputed on an exact production head after close without turning every code push into an expensive market-data job.
+
+### PR #78 — One canonical Analyzer feature-version contract
+
+The live Analyzer emitted `analyzer-features-v10-confirmed-multisession` while the central calibration compatibility contract still expected `analyzer-features-v7-integrity-contract`. That would have rejected every future current-engine row even after schema-v9 integrity logging was fixed. The canonical contract now matches v10, `stock_analyzer.py` imports that shared constant instead of defining its own copy, and regression coverage requires the live engine, prediction tracker, and calibration contract to agree exactly.
+
+### PR #79 — Reliable cloud Scanner evidence collection
+
+The Aug. 31 regular-session cloud Scanner successfully persisted its evidence files, then failed only while printing a diagnostic watchlist because a nested datetime was not JSON serializable. Diagnostic output is now datetime-safe and cannot convert a successfully persisted scan into a failed workflow. A second offset hourly regular-session cron was also added as redundancy because only two scheduled Scanner jobs fired on Aug. 31 despite the primary 30-minute cadence. The existing 60-minute same-symbol de-correlation gate remains unchanged, so extra captures cannot inflate independent evidence counts.
+
+All eleven follow-up PRs (#68-#71 and #73-#79) passed compilation, import checks, provider smoke tests, app-boundary checks, consistency regressions, learning regressions, and Phase 6 historical-challenge regressions before merge.
+
+## Forward-evidence baseline after August 31, 2026 close
+
+The first explicit production evidence refresh establishes the following clean baseline:
+
+- **Scanner ML live confirmation:** 30/100 independent samples, 1/5 trading days, 30/15 symbols, 1/15 positive-class examples, and 29/15 negative-class examples. The sample, day, and positive-class gates remain open. Passing count gates later will still require independent live AUC/Brier performance to pass.
+- **Analyzer calibration:** schema 9, feature contract `analyzer-features-v10-confirmed-multisession`, decision contract `decision-v2.8-integrity-gated`. There are 19 current-contract Aug. 31 prediction rows, but all 19 are after-hours and predate the trusted live-integrity metadata field, so calibration correctly has 0 trusted regular-session rows and 0 resolved 60-minute rows.
+- **Swing / Longer-Term forward cohorts:** two cohorts are being tracked (Aug. 28 and Aug. 31). The Aug. 28 cohort has 30 resolved 1-session outcomes but still 0 resolved 5-session Swing targets; 20-session Longer-Term outcomes are also 0, as expected this early.
+- **Point-in-time universe:** the first replay-ready snapshot was captured for Aug. 31 with 6,102 broad common-stock symbols, 3,624 quote-eligible names, and a 450-symbol liquidity-screened replay seed. It is usable only for strictly later replay dates. Coverage is 1/3 snapshots toward the initial scoreboard activation milestone.
+- **Swing timeframe ML:** remains `experimental_not_validated` with model AUC 0.513 versus hand-score AUC 0.5191 and -4.2 percentage-point top-decile target-rate lift. It remains shadow-only.
+
+This baseline should move only from newly earned forward evidence; the audit does not backfill old rows across version or integrity gates.
 
 ## Critical findings and remediation
 
@@ -261,6 +285,6 @@ Do not optimize thresholds or add features until the integrity findings are reso
 
 ## Current gate status
 
-PR #53 and follow-up audit PRs #68-#71 and #73-#76 were merged only after the required validation suites passed. The code-level integrity findings documented above are therefore remediated on `main`.
+PR #53 and follow-up audit/validation PRs #68-#71 and #73-#79 were merged only after the required validation suites passed. The code-level integrity findings documented above are therefore remediated on `main`.
 
 This does **not** convert the remaining evidence gaps into validated performance claims. Analyzer live calibration, forward Swing/Longer-Term cohorts, survivorship limitations, and historical feature-parity limitations remain explicit blockers on stronger claims until their required evidence exists.
