@@ -4068,6 +4068,7 @@ def test_live_swing_research_calibration_dedupes_ticker_day():
     rows = [
         {
             "symbol": "TEST",
+            "live_data_integrity_ok": True,
             "timestamp": "2026-08-24T14:00:00+00:00",
             "swing_research_flag_version": srf.FLAG_VERSION,
             "swing_research_flag_ids": ["reversal_ignition"],
@@ -4081,6 +4082,7 @@ def test_live_swing_research_calibration_dedupes_ticker_day():
         },
         {
             "symbol": "TEST",
+            "live_data_integrity_ok": True,
             "timestamp": "2026-08-24T14:05:00+00:00",
             "swing_research_flag_version": srf.FLAG_VERSION,
             "swing_research_flag_ids": ["reversal_ignition"],
@@ -4094,6 +4096,7 @@ def test_live_swing_research_calibration_dedupes_ticker_day():
         },
         {
             "symbol": "NEXT",
+            "live_data_integrity_ok": True,
             "timestamp": "2026-08-24T15:00:00+00:00",
             "swing_research_flag_version": srf.FLAG_VERSION,
             "swing_research_flag_ids": ["reversal_ignition"],
