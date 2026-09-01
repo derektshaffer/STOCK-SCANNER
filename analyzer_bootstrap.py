@@ -360,7 +360,7 @@ def _install_scroll_keeper():
           if (scroller) scroller.addEventListener("scroll", onScroll, { passive: true });
           p.addEventListener("scroll", onScroll, { passive: true });
 
-          const observer = new MutationObserver((mutations) => {
+          const observer = new p.MutationObserver((mutations) => {
             for (const m of mutations) {
               if (
                 m.type === "attributes" &&
@@ -803,10 +803,45 @@ def run():
                     )
                 st.session_state[launch_key] = None
                 st.session_state["_analyzer_launch_state"] = None
+                st.session_state.pop("_analyzer_scanner_launch_pending", None)
                 st.session_state["_analyzer_loading"] = False
                 st.session_state["_manual_analyze_requested"] = False
                 st.session_state.pop("_analyzer_background_request_symbol", None)
                 st.session_state["app_view"] = "Momentum Scanner"
+
+            # Paint the Analyzer landing state in the full-app run. A fragment
+            # created only after the Scanner view disappears is not guaranteed
+            # to contribute its first deltas before the browser applies the
+            # full rerun, which previously left only the workspace bar visible.
+            # Keep the recurring fragment below limited to non-blocking polling.
+            st.markdown(
+                f'<div class="hero"><div class="title">Single Stock Analyzer</div>'
+                f'<div class="sub">Loading deep analysis for '
+                f'{requested_ticker}…</div></div>',
+                unsafe_allow_html=True,
+            )
+            _loader_elapsed = max(
+                0.0,
+                __import__("time").time()
+                - float((launch_state or {}).get("started_at") or 0.0),
+            )
+            _loader_status_col, _loader_cancel_col = st.columns(
+                [4.5, 1.2],
+                vertical_alignment="center",
+            )
+            with _loader_status_col:
+                st.info(
+                    f"Analyzing {requested_ticker} in the background… "
+                    f"{_loader_elapsed:.0f}s elapsed. You are already in Analyzer; "
+                    "the full analysis will appear here as soon as it finishes."
+                )
+            with _loader_cancel_col:
+                st.button(
+                    f"Cancel {requested_ticker}",
+                    key=f"cancel_combined_loader_{requested_ticker}",
+                    use_container_width=True,
+                    on_click=_cancel_combined_loader,
+                )
 
             @st.fragment(run_every="1s")
             def _render_combined_analysis_loader():
@@ -814,17 +849,13 @@ def run():
                 if not state:
                     return
 
-                st.markdown(
-                    f'<div class="hero"><div class="title">Single Stock Analyzer</div>'
-                    f'<div class="sub">Loading deep analysis for '
-                    f'{requested_ticker}…</div></div>',
-                    unsafe_allow_html=True,
-                )
-
                 outcome = poll_analyzer_process(state)
                 if outcome.get("done"):
                     st.session_state[launch_key] = None
                     if not outcome.get("ok"):
+                        st.session_state.pop(
+                            "_analyzer_scanner_launch_pending", None
+                        )
                         st.session_state["_analyzer_loading"] = False
                         st.session_state["_manual_analyze_requested"] = False
                         st.session_state.pop("_analyzer_background_request_symbol", None)
@@ -846,6 +877,9 @@ def run():
                     _start_async_prediction_sync()
                     st.session_state["ticker"] = symbol
                     st.session_state["ticker_search_request"] = symbol
+                    st.session_state.pop(
+                        "_analyzer_scanner_launch_pending", None
+                    )
                     st.session_state["_analyzer_loading"] = False
                     st.session_state["_manual_analyze_requested"] = False
                     st.session_state.pop("_analyzer_background_request_symbol", None)
@@ -853,25 +887,6 @@ def run():
                     st.session_state.pop("saved_stock_loading", None)
                     st.rerun(scope="app")
                     return
-
-                elapsed = float(outcome.get("runtime_seconds") or 0.0)
-                status_col, cancel_col = st.columns(
-                    [4.5, 1.2],
-                    vertical_alignment="center",
-                )
-                with status_col:
-                    st.info(
-                        f"Analyzing {requested_ticker} in the background… "
-                        f"{elapsed:.0f}s elapsed. You are already in Analyzer; "
-                        "the full analysis will appear here as soon as it finishes."
-                    )
-                with cancel_col:
-                    st.button(
-                        f"Cancel {requested_ticker}",
-                        key=f"cancel_combined_loader_{requested_ticker}",
-                        use_container_width=True,
-                        on_click=_cancel_combined_loader,
-                    )
 
             _render_combined_analysis_loader()
 
