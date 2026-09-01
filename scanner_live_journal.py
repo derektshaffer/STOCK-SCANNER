@@ -16,6 +16,12 @@ REMOTE_SYNC_SECONDS = max(
     int(os.environ.get("SCANNER_LIVE_JOURNAL_SYNC_SECONDS", "1800") or 1800),
 )
 MAX_DAILY_ROWS = 750
+# Keep the journal bounded while deliberately sampling below the top-30 durable
+# artifact cutoff. The scanner's discovery pool is currently capped near 50,
+# so rank 45 gives us a meaningful missed-winner/control sample.
+CORE_TOP_RANKS = 5
+EXTRA_VALUE_ROWS = 3
+CONTROL_RANKS = (15, 30, 45)
 LOCAL_DIR = Path(
     os.environ.get("SCANNER_LIVE_JOURNAL_DIR", "scanner_live_journal").strip()
     or "scanner_live_journal"
@@ -184,12 +190,14 @@ def select_observations(rows, now_et):
             selected[symbol] = row
 
     # Core live candidates.
-    for rank, candidate in indexed[:6]:
+    for rank, candidate in indexed[:CORE_TOP_RANKS]:
         add(rank, candidate, "top")
 
-    # High-value/actionable rows slightly deeper in the ranking.
+    # High-value/actionable rows deeper in the ranking. Search the entire
+    # available scanner pool instead of stopping around rank 35 so a late-ranked
+    # breakout can still enter the shadow dataset.
     extras = 0
-    for rank, candidate in indexed[6:35]:
+    for rank, candidate in indexed[CORE_TOP_RANKS:]:
         score = _num(candidate.get("opportunity_score"))
         if score is None:
             score = _num(candidate.get("score"))
@@ -197,12 +205,14 @@ def select_observations(rows, now_et):
         if actionable or (score is not None and score >= 75.0):
             add(rank, candidate, "actionable" if actionable else "high_score")
             extras += 1
-            if extras >= 3:
+            if extras >= EXTRA_VALUE_ROWS:
                 break
 
     # Deterministic below-cutoff controls for missed-winner / false-negative
-    # research. These never influence production ranking.
-    for control_rank in (30, 60):
+    # research. Rank 45 deliberately reaches beyond SCAN_LOG_TOP=30. The total
+    # selected rows stays bounded at 11 per bucket (5 + 3 + 3), so a full
+    # 4am-8pm session remains below MAX_DAILY_ROWS.
+    for control_rank in CONTROL_RANKS:
         if len(indexed) >= control_rank:
             rank, candidate = indexed[control_rank - 1]
             add(rank, candidate, "control")
