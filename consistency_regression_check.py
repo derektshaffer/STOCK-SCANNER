@@ -176,6 +176,7 @@ def test_analyzer_calibration_version_gate():
         "timestamp": "2026-08-27T14:00:00+00:00",
         "feature_version": pt.ANALYZER_FEATURE_VERSION,
         "decision_score_version": pt.DECISION_SCORE_VERSION,
+        "live_data_integrity_ok": True,
         "potential_score": 75,
         "entry_readiness": 65,
         "outcomes": {"return_60m_pct": 3.0},
