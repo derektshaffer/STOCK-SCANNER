@@ -838,8 +838,9 @@ _workspace_scanner_monitor()
 # these later, but their position is fixed here directly under the workspace
 # selector, before the one-click candidate list or any other scanner content.
 if view == "Momentum Scanner":
-    st.session_state["_scanner_controls_mount"] = st.empty()
-    st.session_state["_scanner_status_mount"] = st.empty()
+    with st.container(key="scanner_top_mounts"):
+        st.session_state["_scanner_controls_mount"] = st.empty()
+        st.session_state["_scanner_status_mount"] = st.empty()
 
 
 if view == "Stock Analyzer":
@@ -888,6 +889,14 @@ if view == "Momentum Scanner":
             filter: none !important;
             transition: none !important;
             animation: none !important;
+        }
+
+        /* Reserve the control/status footprint before scanner_app.py fills
+           those mounts later in the same run. This prevents the ranked rows
+           from jumping downward after they have already painted. */
+        .st-key-scanner_top_mounts {
+            min-height: 92px !important;
+            contain: layout paint !important;
         }
 
         /* Compact the combined one-click scanner section without affecting
