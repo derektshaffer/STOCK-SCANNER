@@ -1379,10 +1379,9 @@ def tracker_summary(rows=None, symbol=None, current_metrics=None):
         or durable.get("feature_version") != ANALYZER_FEATURE_VERSION
         or durable.get("decision_score_version") != DECISION_SCORE_VERSION
     ):
-        # Schema 8 preserves the causal sampling from schema 7 and adds a
-        # conservative same-bar ambiguity policy: target+stop inside one OHLC
-        # bar counts as failure in calibration rather than being silently
-        # dropped from the denominator.
+        # Schema 9 preserves the causal/same-bar ambiguity policy and adds
+        # a strict live-data-integrity requirement: only explicitly trusted,
+        # consolidated regular-session snapshots may teach calibration.
         durable = {}
     durable_timeframe = (
         durable
