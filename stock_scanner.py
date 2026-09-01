@@ -3518,7 +3518,10 @@ def main():
             print(f"WARN live learning journal failed: {exc}")
 
     print("\nJSON RESULTS - TOP WATCHLIST")
-    print(json.dumps(rows[:WATCHLIST_SIZE], indent=2))
+    # Console output is diagnostic only and must never turn a successfully
+    # persisted scan into a failed workflow because a nested field contains a
+    # datetime/date object.
+    print(json.dumps(rows[:WATCHLIST_SIZE], indent=2, default=str))
 
 
 if __name__ == "__main__":
