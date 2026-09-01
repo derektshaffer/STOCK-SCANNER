@@ -686,8 +686,9 @@ def _production_ml_context(metrics):
     edge = _num(ml.get("ml_edge_score"))
     status_ok = str(ml.get("status") or "") == "ok"
     gate_ok = bool(ml.get("gate_passed"))
-    source_ok = ml.get("production_source_ok")
-    source_ok = True if source_ok is None else bool(source_ok)
+    # Fail closed on legacy/stale payloads. A missing source-integrity field
+    # is not evidence that consolidated live + historical inputs were used.
+    source_ok = bool(ml.get("production_source_ok"))
     eligible = bool(
         status_ok
         and gate_ok
