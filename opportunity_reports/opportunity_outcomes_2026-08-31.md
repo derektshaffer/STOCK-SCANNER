@@ -10,6 +10,9 @@
 - After-hours observations: **72**
 - >= +10% MFE within 60m: **0**
 - MFE >= +5% but 60m endpoint < +3%: **1**
+- Path-labeled 60m observations: **46**
+- +3% before -3% path successes: **3**
+- Endpoint/path label disagreements: **2**
 
 ## Largest 60-minute favorable excursions
 

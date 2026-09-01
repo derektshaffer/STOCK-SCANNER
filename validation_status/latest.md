@@ -1,6 +1,6 @@
 # Forward Validation Status
 
-Generated: 2026-09-01T06:20:08.575847+00:00
+Generated: 2026-09-01T12:29:27.147879+00:00
 
 ## Scanner ML — independent live confirmation
 - **Samples:** 30/100 — 70 remaining
@@ -10,6 +10,20 @@ Generated: 2026-09-01T06:20:08.575847+00:00
 - **Negative class:** 29/15 ✅
 - **Count gate ready:** NO
 - Replay end day: 2026-08-28
+
+## Scanner path target — shadow validation
+- Target: >= +3% within 60m before -3% failure stop
+- Historical replay: 0 independent rows across 0 days
+- Historical endpoint/path disagreement: 0/0 (—%)
+- Replay end day: —
+- **Independent live samples:** 30/100 — 70 remaining
+- **Trading days:** 1/5 — 4 remaining
+- **Symbols:** 30/15 ✅
+- **Positive class:** 3/15 — 12 remaining
+- **Negative class:** 27/15 ✅
+- Endpoint/path disagreements: 2/30 (6.7%)
+- **Ready for endpoint-vs-path model comparison:** NO
+- Production influence: **OFF**
 
 ## Analyzer calibration
 - Schema: 9 / required 9 ✅
