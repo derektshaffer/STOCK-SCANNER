@@ -7,6 +7,11 @@ on:
     # offset from common clock boundaries to reduce schedule queue delays.
     - cron: '7,37 8-23 * * 1-5'
     - cron: '7,37 0-1 * * 2-6'
+    # Redundant regular-session evidence capture. GitHub scheduled events can
+    # occasionally be delayed/skipped; this offset hourly cadence adds another
+    # chance to collect independent live evidence without changing the model's
+    # 60-minute same-symbol de-correlation gate.
+    - cron: '17 14-20 * * 1-5'
   workflow_dispatch:
 
 permissions:
