@@ -1,0 +1,31 @@
+name: Path Learning Branch Check
+
+on:
+  push:
+    branches:
+      - research/path-aware-learning-20260901
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Compile changed learning modules
+        run: >-
+          python -m py_compile
+          scanner_live_journal.py
+          score_opportunity_outcomes.py
+          scanner_ml_ranker.py
+          validation_status.py
+          learning_system_audit.py
+          learning_system_regression_check.py
+      - name: Run learning regressions
+        run: python learning_system_regression_check.py
+      - name: Build validation status
+        run: python validation_status.py
