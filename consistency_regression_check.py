@@ -398,6 +398,7 @@ def test_live_price_fallback_and_unavailable_states_are_explicit_in_ui():
     scanner_ui = Path("scanner_app.py").read_text(encoding="utf-8")
     combined_ui = Path("app.py").read_text(encoding="utf-8")
     live_tape = Path("live_tape_ui.py").read_text(encoding="utf-8")
+    analyzer_bootstrap = Path("analyzer_bootstrap.py").read_text(encoding="utf-8")
     analyzer_engine = Path("stock_analyzer.py").read_text(encoding="utf-8")
     v2_ui = Path("analyzer_v2_ui.py").read_text(encoding="utf-8")
     assert 'startswith("LIVE PRICE UNAVAILABLE")' in analyzer_ui
@@ -412,6 +413,10 @@ def test_live_price_fallback_and_unavailable_states_are_explicit_in_ui():
     assert '"REFERENCE CLOSE"' in analyzer_ui
     assert '"LIVE TRADING","DISABLED"' in analyzer_ui
     assert '"ENTRY READINESS",\n            "UNAVAILABLE"' in v2_ui
+    assert 'result.get("research_only") is True' in analyzer_bootstrap
+    assert '== "after_hours_research"' in analyzer_bootstrap
+    assert "overlay = get_live_overlay(result)" in analyzer_bootstrap
+    assert analyzer_bootstrap.index('result.get("research_only") is True') < analyzer_bootstrap.index("overlay = get_live_overlay(result)")
 
 
 def test_live_price_validator_rejects_future_and_missing_symbol_timestamps():
