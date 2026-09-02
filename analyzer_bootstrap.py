@@ -786,6 +786,31 @@ def run():
                 unsafe_allow_html=True,
             )
 
+            launch_error = st.session_state.get("_analyzer_launch_error")
+            failed_symbol = str(
+                st.session_state.get("_analyzer_failed_symbol") or ""
+            ).upper().strip()
+            if launch_error:
+                st.error(str(launch_error))
+
+                def _retry_failed_analysis():
+                    if not failed_symbol:
+                        return
+                    st.session_state.pop("_analyzer_launch_error", None)
+                    st.session_state.pop("_analyzer_failed_symbol", None)
+                    st.session_state.pop("_analyzer_live_price_unavailable", None)
+                    st.session_state["ticker"] = failed_symbol
+                    st.session_state["ticker_search_request"] = failed_symbol
+                    st.session_state["_analyzer_loading"] = True
+
+                if failed_symbol:
+                    st.button(
+                        f"Retry {failed_symbol}",
+                        key=f"retry_failed_analysis_{failed_symbol}",
+                        type="primary",
+                        on_click=_retry_failed_analysis,
+                    )
+
             def _start_landing_analysis():
                 raw = str(
                     st.session_state.get("analyzer_landing_ticker") or ""
@@ -793,6 +818,9 @@ def run():
                 symbol = raw.split(" — ", 1)[0].upper().strip()
                 if not symbol:
                     return
+                st.session_state.pop("_analyzer_launch_error", None)
+                st.session_state.pop("_analyzer_failed_symbol", None)
+                st.session_state.pop("_analyzer_live_price_unavailable", None)
                 st.session_state["ticker"] = symbol
                 st.session_state["ticker_search_request"] = symbol
                 st.session_state["_analyzer_loading"] = True
@@ -975,29 +1003,6 @@ def run():
                 f'{requested_ticker}…</div></div>',
                 unsafe_allow_html=True,
             )
-            _loader_elapsed = max(
-                0.0,
-                __import__("time").time()
-                - float((launch_state or {}).get("started_at") or 0.0),
-            )
-            _loader_status_col, _loader_cancel_col = st.columns(
-                [4.5, 1.2],
-                vertical_alignment="center",
-            )
-            with _loader_status_col:
-                st.info(
-                    f"Analyzing {requested_ticker} in the background… "
-                    f"{_loader_elapsed:.0f}s elapsed. You are already in Analyzer; "
-                    "the full analysis will appear here as soon as it finishes."
-                )
-            with _loader_cancel_col:
-                st.button(
-                    f"Cancel {requested_ticker}",
-                    key=f"cancel_combined_loader_{requested_ticker}",
-                    use_container_width=True,
-                    on_click=_cancel_combined_loader,
-                )
-
             @st.fragment(run_every="1s")
             def _render_combined_analysis_loader():
                 state = st.session_state.get(launch_key)
@@ -1015,6 +1020,22 @@ def run():
                         st.session_state["_analyzer_loading"] = False
                         st.session_state["_manual_analyze_requested"] = False
                         st.session_state.pop("_analyzer_background_request_symbol", None)
+                        # A terminal worker failure must leave the loader page.
+                        # Previously the polling fragment cleared the process
+                        # and briefly rendered an error inside itself, while
+                        # the full page remained permanently on the old loader.
+                        # Clear the automatic request before rerunning so the
+                        # failed job is not immediately launched again.
+                        st.session_state["_analyzer_launch_error"] = (
+                            "Analyzer could not complete "
+                            + requested_ticker
+                            + ": "
+                            + failure_message
+                        )
+                        st.session_state["_analyzer_failed_symbol"] = requested_ticker
+                        st.session_state.pop("ticker_search_request", None)
+                        st.session_state.pop("ticker", None)
+                        st.session_state.pop("result", None)
                         if failure_message.startswith("LIVE PRICE UNAVAILABLE"):
                             cache=st.session_state.get("_analyzer_result_cache") or {}
                             cache.pop(requested_ticker,None)
@@ -1023,10 +1044,7 @@ def run():
                             if str(current_result.get("symbol") or "").upper().strip()==requested_ticker:
                                 st.session_state.pop("result",None)
                             st.session_state["_analyzer_live_price_unavailable"]=failure_message
-                        st.error(
-                            "Analyzer failed: "
-                            + failure_message
-                        )
+                        st.rerun(scope="app")
                         return
 
                     symbol = str(
@@ -1051,6 +1069,35 @@ def run():
                     st.session_state.pop("saved_stock_loading", None)
                     st.rerun(scope="app")
                     return
+
+                # Keep the only changing loader UI inside this fragment.  The
+                # previous implementation rendered the visible elapsed time
+                # outside the polling fragment, so it stayed at ``0s`` even
+                # while the worker was alive.  That made a healthy launch look
+                # permanently frozen and encouraged repeated Analyze clicks.
+                # This fragment has a stable two-column footprint, so its
+                # one-second updates do not rerun or move the surrounding page.
+                _loader_elapsed = max(
+                    0.0,
+                    float(outcome.get("runtime_seconds") or 0.0),
+                )
+                _loader_status_col, _loader_cancel_col = st.columns(
+                    [4.5, 1.2],
+                    vertical_alignment="center",
+                )
+                with _loader_status_col:
+                    st.info(
+                        f"Analyzing {requested_ticker} in the background… "
+                        f"{_loader_elapsed:.0f}s elapsed. You are already in Analyzer; "
+                        "the full analysis will appear here as soon as it finishes."
+                    )
+                with _loader_cancel_col:
+                    st.button(
+                        f"Cancel {requested_ticker}",
+                        key=f"cancel_combined_loader_{requested_ticker}",
+                        use_container_width=True,
+                        on_click=_cancel_combined_loader,
+                    )
 
 
             _render_combined_analysis_loader()
