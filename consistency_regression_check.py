@@ -226,6 +226,7 @@ def test_analyzer_live_price_unavailable_stops_before_scores_or_plan():
     }
     old_score = sa.score_setup
     old_plan = sa.build_trade_plan
+    old_phase = sa.market_session_phase
     calls = {"score": 0, "plan": 0}
 
     def forbidden_score(metrics):
@@ -238,6 +239,9 @@ def test_analyzer_live_price_unavailable_stops_before_scores_or_plan():
 
     sa.score_setup = forbidden_score
     sa.build_trade_plan = forbidden_plan
+    # Active-session integrity failures must still stop completely. Completed-
+    # session research is allowed only when the market is fully closed.
+    sa.market_session_phase = lambda current: "regular"
     try:
         try:
             sa.analyze("TEST")
@@ -247,7 +251,78 @@ def test_analyzer_live_price_unavailable_stops_before_scores_or_plan():
     finally:
         sa.score_setup = old_score
         sa.build_trade_plan = old_plan
+        sa.market_session_phase = old_phase
     assert calls == {"score": 0, "plan": 0}, calls
+
+
+def test_market_closed_uses_completed_daily_reference_without_live_plan():
+    _install_common_analyzer_stubs()
+    now = datetime.now(timezone.utc)
+    stale = now - timedelta(hours=6)
+    stale_ms = int(stale.timestamp() * 1000)
+    stale_bars = _fresh_intraday_bars(5.0, stale)
+    daily = _daily_bars()
+    daily[-2].update({"c": 15.50, "h": 15.80, "l": 15.20})
+    daily[-1].update({"c": 16.25, "h": 16.60, "l": 15.70})
+
+    sa.get_tradier_quotes = lambda symbols, token: {
+        "TEST": {
+            "symbol": "TEST",
+            "last": 5.08,
+            "close": 5.08,
+            "bid": 5.07,
+            "ask": 5.09,
+            "prevclose": 5.0,
+            "trade_date": stale_ms,
+            "bid_date": stale_ms,
+            "ask_date": stale_ms,
+        }
+    }
+    sa._tradier_regular_session_bars = lambda symbol, current: stale_bars
+    sa.snapshot = lambda symbol, feed=None: {
+        "symbol": "TEST",
+        "latestTrade": {"p": 5.08, "t": _iso(stale)},
+        "latestQuote": {"bp": 5.07, "ap": 5.09, "t": _iso(stale)},
+        "dailyBar": {"c": 5.08, "h": 5.2, "l": 4.8, "v": 50_000},
+        "prevDailyBar": {"c": 5.0},
+    }
+    sa.try_sip_delayed_bars = (
+        lambda symbol, timeframe, start, end, limit=1000: (
+            daily,
+            "Tradier consolidated daily",
+        )
+    )
+
+    old_phase = sa.market_session_phase
+    old_plan = sa.build_trade_plan
+    calls = {"plan": 0}
+
+    def forbidden_live_plan(metrics, current):
+        calls["plan"] += 1
+        raise AssertionError("research price reached live trade-plan construction")
+
+    sa.market_session_phase = lambda current: "closed"
+    sa.build_trade_plan = forbidden_live_plan
+    try:
+        result = sa.analyze("TEST")
+    finally:
+        sa.market_session_phase = old_phase
+        sa.build_trade_plan = old_plan
+
+    assert result["analysis_mode"] == "after_hours_research", result
+    assert result["research_only"] is True, result
+    assert result["live_price_available"] is False, result
+    assert result["price"] == 16.25, result
+    assert result["price"] != 5.08, result
+    assert result["reference_price_source"] == "Tradier consolidated daily", result
+    assert result["live_price_source"] is None, result
+    assert result["vwap"] is None, result
+    assert result["day_high"] == 16.6, result
+    assert result["chart_data"]["intraday"] == [], result
+    assert result["trade_plan"]["status"] == "NO TRADE", result
+    assert result["trade_plan"]["research_only"] is True, result
+    assert result["trade_plan"]["selected"] == {}, result
+    assert calls == {"plan": 0}, calls
 
 
 def test_scanner_stale_tradier_price_uses_fresh_labeled_alpaca_fallback():
@@ -323,12 +398,20 @@ def test_live_price_fallback_and_unavailable_states_are_explicit_in_ui():
     scanner_ui = Path("scanner_app.py").read_text(encoding="utf-8")
     combined_ui = Path("app.py").read_text(encoding="utf-8")
     live_tape = Path("live_tape_ui.py").read_text(encoding="utf-8")
+    analyzer_engine = Path("stock_analyzer.py").read_text(encoding="utf-8")
+    v2_ui = Path("analyzer_v2_ui.py").read_text(encoding="utf-8")
     assert 'startswith("LIVE PRICE UNAVAILABLE")' in analyzer_ui
     assert 'st.session_state.pop("result",None)' in analyzer_ui
     assert "LIVE PRICE FALLBACK" in analyzer_ui
     assert "LIVE PRICE FALLBACK" in scanner_ui
     assert "LIVE PRICE FALLBACK" in combined_ui
     assert 'else "UNAVAILABLE"' in live_tape
+    assert 'analysis_mode="after_hours_research"' in analyzer_engine
+    assert '"research_only":True' in analyzer_engine
+    assert "MARKET CLOSED — AFTER-HOURS RESEARCH MODE" in analyzer_ui
+    assert '"REFERENCE CLOSE"' in analyzer_ui
+    assert '"LIVE TRADING","DISABLED"' in analyzer_ui
+    assert '"ENTRY READINESS",\n            "UNAVAILABLE"' in v2_ui
 
 
 def test_live_price_validator_rejects_future_and_missing_symbol_timestamps():
@@ -8305,6 +8388,7 @@ if __name__ == "__main__":
         test_analyzer_falls_back_cleanly,
         test_analyzer_rejects_stale_tradier_last_and_uses_fresh_quote_midpoint,
         test_analyzer_live_price_unavailable_stops_before_scores_or_plan,
+        test_market_closed_uses_completed_daily_reference_without_live_plan,
         test_scanner_stale_tradier_price_uses_fresh_labeled_alpaca_fallback,
         test_scanner_rejects_stale_or_wrong_symbol_price_before_features,
         test_live_price_fallback_and_unavailable_states_are_explicit_in_ui,

@@ -1,5 +1,6 @@
 import html, os, subprocess, sys, json, urllib.request, urllib.error, time
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 import pandas as pd
 import streamlit as st
 
@@ -54,7 +55,7 @@ def _load_streamlit_secrets_into_env():
 
 _load_streamlit_secrets_into_env()
 
-from stock_analyzer import analyze
+from stock_analyzer import analyze, market_session_phase
 from analyzer_v2_ui import render_v2_decision
 from position_exit import build_position_exit_plan, merge_live_position_metrics
 from live_market_stream import get_live_overlay
@@ -67,6 +68,12 @@ from analyzer_visuals import (
 )
 
 AUTO_REFRESH_SECONDS = max(30, int(os.environ.get("ANALYZER_REFRESH_SECONDS", "60") or 60))
+_market_closed_for_ui = (
+    market_session_phase(
+        datetime.now(timezone.utc).astimezone(ZoneInfo("America/New_York"))
+    )
+    == "closed"
+)
 
 
 def _render_visual_snapshot(label, figure_factory, caption=None, key=None):
@@ -639,7 +646,17 @@ with st.container(key="analyzer_controls"):
             on_click=_request_manual_analysis,
         )
     with c3:
-        st.toggle("Auto-refresh", value=True, key="auto_refresh_enabled")
+        st.toggle(
+            "Auto-refresh",
+            value=True,
+            key="auto_refresh_enabled",
+            disabled=_market_closed_for_ui,
+            help=(
+                "Live refresh resumes automatically when the market-data window reopens."
+                if _market_closed_for_ui
+                else None
+            ),
+        )
         if not _COMBINED_WORKSPACE:
             st.caption(f"Refresh every {AUTO_REFRESH_SECONDS}s · use `ALPACA_LIVE_FEED=\"sip\"` for consolidated real-time data when your Alpaca plan supports SIP.")
 
@@ -674,12 +691,19 @@ if _position_cost_key not in st.session_state:
 if _position_shares_key not in st.session_state:
     st.session_state[_position_shares_key] = float(_position_saved.get("shares") or 0.0)
 
-_position_enabled = st.toggle(
+_position_requested = st.toggle(
     "I already own this stock",
     key=_position_toggle_key,
+    disabled=_market_closed_for_ui,
+    help=(
+        "Live position-exit guidance is unavailable while the market is closed."
+        if _market_closed_for_ui
+        else None
+    ),
     on_change=_save_position_input,
     args=(ticker, "enabled", _position_toggle_key),
 )
+_position_enabled = bool(_position_requested and not _market_closed_for_ui)
 _position_avg_cost = float(st.session_state.get(_position_cost_key) or 0.0)
 _position_shares = float(st.session_state.get(_position_shares_key) or 0.0)
 
@@ -715,6 +739,7 @@ _existing_result=st.session_state.get("result")
 _result_age=_result_age_seconds(_existing_result)
 _refresh_due=(
     st.session_state.get("auto_refresh_enabled", True)
+    and not _market_closed_for_ui
     and _result_age is not None
     and _result_age >= max(1, AUTO_REFRESH_SECONDS-1)
 )
@@ -808,6 +833,15 @@ if _needs_analysis and (not _COMBINED_WORKSPACE or _combined_timed_refresh):
         st.rerun(scope="fragment")
 
 r=st.session_state["result"]
+_research_only=bool(r.get("research_only"))
+if _research_only:
+    st.warning(
+        "**MARKET CLOSED — AFTER-HOURS RESEARCH MODE**  \n"
+        "Charts, completed-session structure, support/resistance, catalysts, and "
+        "swing/longer-term context remain available. Live entry readiness, stops, "
+        "targets, and position-exit instructions are disabled until a fresh "
+        "symbol-matched quote is available."
+    )
 
 # Compact glossary/AI tool rendered into the top control row.
 with term_tool_col.popover("📘 Terms / Ask AI"):
@@ -903,7 +937,44 @@ if not plan:
     )
     st.stop()
 
-if not _position_enabled:
+if _research_only:
+    _research_v2=r.get("decision_v2") or {}
+    _research_timeframe=_research_v2.get("timeframe_analysis") or {}
+    _research_best_fit=str(
+        _research_timeframe.get("stable_best_fit")
+        or _research_timeframe.get("best_fit")
+        or "MIXED"
+    )
+    _reference_day=str(r.get("reference_price_timestamp") or "")[:10] or "latest session"
+    _research_potential=_research_v2.get("potential_score")
+    st.markdown(
+        '<div class="section">Research first '
+        '<span style="font-size:12px;color:#91a7c2">completed-session context · not a live trade signal</span></div>',
+        unsafe_allow_html=True,
+    )
+    _rc=st.columns(6)
+    card(_rc[0],"DATA MODE","RESEARCH ONLY","market closed","warn")
+    card(
+        _rc[1],
+        "REFERENCE CLOSE",
+        money(r.get("price")),
+        f'{_reference_day} · {r.get("reference_price_source") or "completed daily history"}',
+    )
+    card(_rc[2],"SESSION MOVE",pp(r.get("day_pct")),"latest completed session")
+    card(
+        _rc[3],
+        "UPSIDE RESEARCH",
+        f'{float(_research_potential):.0f} / 100' if _research_potential is not None else "—",
+        "research score · not a probability",
+        "good" if (_research_potential or 0)>=72 else "warn",
+    )
+    card(_rc[4],"BEST FIT",_research_best_fit,"swing / longer-term context")
+    card(_rc[5],"LIVE TRADING","DISABLED","fresh quote required","bad")
+    st.info(
+        "The Analyzer will automatically return to live decision mode when its "
+        "normal refresh sees a fresh market price."
+    )
+elif not _position_enabled:
     _v2_top=r.get("decision_v2") or {}
     _integrity=_v2_top.get("live_data_integrity") or {}
     _integrity_ok=bool(_integrity.get("ok"))
@@ -1183,7 +1254,7 @@ def _render_position_exit_plan():
 if _position_enabled:
     _render_position_exit_plan()
 
-if not _position_enabled:
+if not _position_enabled and not _research_only:
     selected=plan.get("selected") or {}
     status=plan.get("status") or "WAIT"
 
@@ -1386,23 +1457,49 @@ if not _position_enabled:
 
 
 st.markdown(
-    '<div class="section">Live market snapshot '
-    '<span style="font-size:12px;color:#91a7c2">supporting context</span></div>',
+    (
+        '<div class="section">Completed-session research snapshot '
+        '<span style="font-size:12px;color:#91a7c2">historical context · not live</span></div>'
+        if _research_only
+        else '<div class="section">Live market snapshot '
+        '<span style="font-size:12px;color:#91a7c2">supporting context</span></div>'
+    ),
     unsafe_allow_html=True,
 )
 with st.container(key="analyzer_metrics_top"):
     cols=st.columns(6)
-    _price_source=str(r.get("live_price_source") or r.get("live_feed") or "unknown")
-    _price_note=f'{pp(r.get("day_pct"))} · {_age_text(r.get("live_price_age_seconds"))} · {_price_source}'
-    if r.get("live_price_is_fallback") and r.get("live_price_fallback_reason"):
-        _price_note="FALLBACK · "+_price_note
-    card(cols[0],"LIVE PRICE",money(r.get("price")),_price_note,"good" if (r.get("day_pct") or 0)>=0 else "bad")
-    card(cols[1],"VWAP",money(r.get("vwap")),f'{r.get("vwap_position")} · {pp(r.get("vwap_extension_pct"))}',"good" if r.get("vwap_position")=="ABOVE" else "bad")
+    if _research_only:
+        _price_source=str(r.get("reference_price_source") or "completed daily history")
+        _price_note=(
+            f'{pp(r.get("day_pct"))} · '
+            f'{str(r.get("reference_price_timestamp") or "latest session")[:10]} · '
+            f'{_price_source}'
+        )
+        _price_label="REFERENCE CLOSE"
+    else:
+        _price_source=str(r.get("live_price_source") or r.get("live_feed") or "unknown")
+        _price_note=f'{pp(r.get("day_pct"))} · {_age_text(r.get("live_price_age_seconds"))} · {_price_source}'
+        if r.get("live_price_is_fallback") and r.get("live_price_fallback_reason"):
+            _price_note="FALLBACK · "+_price_note
+        _price_label="LIVE PRICE"
+    card(cols[0],_price_label,money(r.get("price")),_price_note,"good" if (r.get("day_pct") or 0)>=0 else "bad")
+    card(cols[1],"SESSION VWAP" if _research_only else "VWAP",money(r.get("vwap")),f'{r.get("vwap_position")} · {pp(r.get("vwap_extension_pct"))}',"good" if r.get("vwap_position")=="ABOVE" else "bad")
     card(cols[2],"DAY RANGE",f'{money(r.get("day_low"))}–{money(r.get("day_high"))}',f'{r.get("from_high_pct",0):.1f}% below high')
-    card(cols[3],"VOL PACE",multiple(r.get("volume_pace")),f'{r.get("volume",0):,.0f} shown · {r.get("volume_source")}')
-    card(cols[4],"SETUP SCORE",f'{r.get("score"):.1f} / 100',f'Grade {r.get("grade")}',"good" if r.get("grade") in ("A","B") else "warn")
-    card(cols[5],"BASE SETUP",r.get("entry_quality"),f'Live feed: {r.get("live_feed")}',"good" if r.get("entry_quality")=="FAVORABLE" else "warn")
-    if r.get("live_price_is_fallback"):
+    card(
+        cols[3],
+        "SESSION VOLUME" if _research_only else "VOL PACE",
+        f'{r.get("volume",0):,.0f}' if _research_only else multiple(r.get("volume_pace")),
+        str(r.get("volume_source") or "—") if _research_only else f'{r.get("volume",0):,.0f} shown · {r.get("volume_source")}',
+    )
+    card(cols[4],"RESEARCH SCORE" if _research_only else "SETUP SCORE",f'{r.get("score"):.1f} / 100',f'Grade {r.get("grade")}',"good" if r.get("grade") in ("A","B") else "warn")
+    card(
+        cols[5],
+        "RESEARCH STATUS" if _research_only else "BASE SETUP",
+        r.get("entry_quality"),
+        "Live decisions disabled" if _research_only else f'Live feed: {r.get("live_feed")}',
+        "warn" if _research_only else "good" if r.get("entry_quality")=="FAVORABLE" else "warn",
+    )
+    if r.get("live_price_is_fallback") and not _research_only:
         st.warning(
             "**LIVE PRICE FALLBACK** — "
             + str(
@@ -1448,14 +1545,22 @@ if _impulse.get("detected"):
     )
     card(
         _ic[2],
-        "PREFERRED PULLBACK",
-        f'{money(_zone_low)}–{money(_zone_high)}' if _zone_low is not None and _zone_high is not None else "—",
+        "SESSION PHASE" if _research_only else "PREFERRED PULLBACK",
         (
-            f'Live 33–50% impulse zone · historical median {_hist_retrace:.0f}% shown for reference only'
+            str(_impulse.get("phase") or "COMPLETED")
+            if _research_only
+            else f'{money(_zone_low)}–{money(_zone_high)}'
+            if _zone_low is not None and _zone_high is not None
+            else "—"
+        ),
+        (
+            "completed-session structure only; no live entry zone"
+            if _research_only
+            else f'Live 33–50% impulse zone · historical median {_hist_retrace:.0f}% shown for reference only'
             if _hist_retrace is not None
             else "Live 33–50% impulse zone"
         ),
-        "good",
+        "warn" if _research_only else "good",
     )
     card(
         _ic[3],
@@ -1474,14 +1579,22 @@ if _impulse.get("detected"):
     _render_visual_snapshot(
         "📈 Impulse / pullback visual",
         lambda overlay: impulse_pullback_plotly_figure(r, line_overlay=overlay),
-        "Candlesticks show the actual intraday path, detected impulse low/high, the live pullback entry band, and reclaim confirmation when present.",
+        (
+            "Candlesticks show the latest completed regular-session path and detected structure. No live entry band is produced."
+            if _research_only
+            else "Candlesticks show the actual intraday path, detected impulse low/high, the live pullback entry band, and reclaim confirmation when present."
+        ),
         key="impulse_pullback_visual",
     )
 
     with st.expander("Impulse / pullback context", expanded=False):
         st.caption(
-            "The analyzer measures the pullback as a fraction of the preceding impulse. "
-            "A touch of the preferred zone is not an automatic entry; the trade plan waits for a hold/bounce/reclaim."
+            (
+                "The analyzer measures the completed-session pullback as a fraction of the preceding impulse for research only."
+                if _research_only
+                else "The analyzer measures the pullback as a fraction of the preceding impulse. "
+                "A touch of the preferred zone is not an automatic entry; the trade plan waits for a hold/bounce/reclaim."
+            )
         )
 
 
@@ -1738,8 +1851,13 @@ _full = ((r.get("decision_v2") or {}).get("full_spectrum") or {})
 _exhaust = r.get("run_exhaustion") or {}
 if _full:
     st.markdown(
-        '<div class="section">Full-spectrum trader view '
-        '<span style="font-size:12px;color:#91a7c2">continuation · bounce · stair-step · reversal · chop</span></div>',
+        (
+            '<div class="section">Full-spectrum research view '
+            '<span style="font-size:12px;color:#91a7c2">completed-session scenarios · not live instructions</span></div>'
+            if _research_only
+            else '<div class="section">Full-spectrum trader view '
+            '<span style="font-size:12px;color:#91a7c2">continuation · bounce · stair-step · reversal · chop</span></div>'
+        ),
         unsafe_allow_html=True,
     )
     _scenarios = _full.get("scenarios") or {}
@@ -1824,7 +1942,11 @@ if _full:
             )
 
 
-if _trade_age is not None and float(_trade_age) > max(30, AUTO_REFRESH_SECONDS*2):
+if (
+    not _research_only
+    and _trade_age is not None
+    and float(_trade_age) > max(30, AUTO_REFRESH_SECONDS*2)
+):
     feed_name=str(r.get("live_feed") or "").upper()
     provider=str(r.get("market_provider") or r.get("live_provider") or "alpaca").lower()
     if provider=="tradier":
@@ -1940,10 +2062,20 @@ else: st.caption("No recent Alpaca news returned.")
 
 # Plain-English rule-based readout.
 score=r.get("score") or 0; pos=r.get("vwap_position"); fp=r.get("from_high_pct") or 0; day=r.get("day_pct") or 0
-if r.get("entry_quality")=="FAVORABLE": verdict="The setup is currently favorable by the analyzer's momentum/risk rules, but still requires risk control."
+if _research_only: verdict="The latest completed session provides useful trend and structure context, but no live entry, exit, stop, or target is available while the market is closed."
+elif r.get("entry_quality")=="FAVORABLE": verdict="The setup is currently favorable by the analyzer's momentum/risk rules, but still requires risk control."
 elif day>40 and (r.get("vwap_extension_pct") or 0)>8: verdict="Momentum is strong, but the stock is extended. The analyzer favors waiting for a pullback/hold or a confirmed breakout rather than chasing."
 elif pos=="BELOW": verdict="The setup has weakened because price is below VWAP. A VWAP reclaim would improve the intraday picture."
 else: verdict="The setup is mixed. Watch the nearest support/resistance and require confirmation before treating the move as high quality."
 st.markdown(f'<div class="callout"><b>{html.escape(ticker)} read:</b> {html.escape(verdict)}<br><span class="sub">This is a trading-analysis aid, not a guarantee of future price movement.</span></div>',unsafe_allow_html=True)
 
-st.caption(f'Analysis as of {r.get("as_of")} · Latest trade={r.get("latest_trade_time") or "—"} ({_age_text(r.get("trade_age_seconds"))}) · Latest quote={r.get("latest_quote_time") or "—"} ({_age_text(r.get("quote_age_seconds"))}) · Live={r.get("live_feed")} · Historical/liquidity={r.get("historical_feed")} · Engine={r.get("engine_version") or "unknown"} · UI=live-refresh-v5.0')
+if _research_only:
+    st.caption(
+        f'Research generated {r.get("as_of")} · Reference close date='
+        f'{str(r.get("reference_price_timestamp") or "—")[:10]} · '
+        f'Reference source={r.get("reference_price_source") or "—"} · '
+        f'Historical/liquidity={r.get("historical_feed")} · '
+        f'Engine={r.get("engine_version") or "unknown"} · UI=live-refresh-v5.0'
+    )
+else:
+    st.caption(f'Analysis as of {r.get("as_of")} · Latest trade={r.get("latest_trade_time") or "—"} ({_age_text(r.get("trade_age_seconds"))}) · Latest quote={r.get("latest_quote_time") or "—"} ({_age_text(r.get("quote_age_seconds"))}) · Live={r.get("live_feed")} · Historical/liquidity={r.get("historical_feed")} · Engine={r.get("engine_version") or "unknown"} · UI=live-refresh-v5.0')

@@ -1743,6 +1743,108 @@ def analyze(symbol):
     live_price_is_fallback=False
     live_price_fallback_reason=None
     live_price_rejections=[]
+    analysis_mode="live"
+    research_only=False
+    reference_price_source=None
+    reference_price_timestamp=None
+    reference_price_reason=None
+    daily_full_prefetched=None
+    daysrc_prefetched=None
+    tradier_intraday=None
+
+    def _activate_closed_research(failure_reason, preferred_intraday=None):
+        """Use completed-session history for research, never for live decisions."""
+        nonlocal analysis_mode, research_only
+        nonlocal price, prev_close, bid, ask, intraday
+        nonlocal provider_day_high, provider_day_low
+        nonlocal live_provider, live_feed_label
+        nonlocal live_price_source, live_price_timestamp, live_price_age_seconds
+        nonlocal live_price_is_fallback, live_price_fallback_reason
+        nonlocal reference_price_source, reference_price_timestamp
+        nonlocal reference_price_reason, daily_full_prefetched, daysrc_prefetched
+
+        if market_session_phase(now_et) != "closed":
+            return False
+
+        try:
+            daily_rows, daily_source = try_sip_delayed_bars(
+                symbol,
+                "1Day",
+                now-timedelta(days=600),
+                now,
+                420,
+            )
+        except Exception:
+            return False
+
+        today_key=now_et.date().isoformat()
+        completed=[]
+        for row in daily_rows or []:
+            if not isinstance(row,dict):
+                continue
+            close=fnum(row.get("c"))
+            day_key=str(row.get("t") or row.get("date") or "")[:10]
+            if close is None or close <= 0 or not day_key or day_key > today_key:
+                continue
+            completed.append((day_key,row,close))
+        completed.sort(key=lambda item:item[0])
+        if not completed:
+            return False
+
+        reference_day,reference_bar,reference_close=completed[-1]
+        previous_close=completed[-2][2] if len(completed)>=2 else None
+        try:
+            research_bars=list(preferred_intraday or latest_session_bars(symbol,now) or [])
+        except Exception:
+            research_bars=[]
+        aligned_bars=[]
+        for bar in research_bars:
+            bar_dt=_bar_time_et(bar)
+            bar_close=fnum(bar.get("c")) if isinstance(bar,dict) else None
+            if (
+                bar_dt is not None
+                and bar_dt.date().isoformat()==reference_day
+                and bar_close is not None
+                and bar_close > 0
+            ):
+                aligned_bars.append(bar)
+        aligned_close=(
+            fnum(aligned_bars[-1].get("c"))
+            if aligned_bars
+            else None
+        )
+        if (
+            aligned_close is None
+            or abs(aligned_close/reference_close-1) > 0.05
+        ):
+            aligned_bars=[]
+
+        analysis_mode="after_hours_research"
+        research_only=True
+        price=reference_close
+        prev_close=previous_close
+        bid=None
+        ask=None
+        intraday=aligned_bars
+        provider_day_high=fnum(reference_bar.get("h")) or reference_close
+        provider_day_low=fnum(reference_bar.get("l")) or reference_close
+        live_provider="research"
+        live_feed_label="COMPLETED SESSION RESEARCH — NOT LIVE"
+        live_price_source=None
+        live_price_timestamp=None
+        live_price_age_seconds=None
+        live_price_is_fallback=False
+        live_price_fallback_reason=None
+        reference_price_source=str(daily_source or "completed daily history")
+        reference_price_timestamp=(
+            reference_bar.get("t")
+            or reference_bar.get("date")
+            or reference_day
+        )
+        reference_price_reason=str(failure_reason or "No fresh live price")[:500]
+        daily_full_prefetched=list(daily_rows or [])
+        daysrc_prefetched=daily_source
+        return True
 
     def _load_alpaca_snapshot(fallback_reason=None):
         nonlocal snap, trade, quote, day, prev
@@ -1803,7 +1905,15 @@ def analyze(symbol):
         )
 
     if not USE_TRADIER:
-        _load_alpaca_snapshot()
+        try:
+            _load_alpaca_snapshot()
+        except Exception as exc:
+            alpaca_snapshot_error=str(exc)[:180]
+            if not _activate_closed_research(alpaca_snapshot_error):
+                raise RuntimeError(
+                    "LIVE PRICE UNAVAILABLE — no fresh, symbol-matched quote/trade. "
+                    f"Alpaca: {alpaca_snapshot_error}"
+                ) from exc
 
     if USE_TRADIER:
         try:
@@ -1876,15 +1986,22 @@ def analyze(symbol):
                 _load_alpaca_snapshot(fallback_reason=live_provider_error)
             except Exception as alpaca_exc:
                 alpaca_snapshot_error=str(alpaca_exc)[:180]
-                raise RuntimeError(
-                    "LIVE PRICE UNAVAILABLE — no fresh, symbol-matched quote/trade. "
+                failure_detail=(
                     f"Tradier: {live_provider_error}; Alpaca: {alpaca_snapshot_error}"
-                ) from alpaca_exc
+                )
+                if not _activate_closed_research(
+                    failure_detail,
+                    preferred_intraday=tradier_intraday,
+                ):
+                    raise RuntimeError(
+                        "LIVE PRICE UNAVAILABLE — no fresh, symbol-matched quote/trade. "
+                        + failure_detail
+                    ) from alpaca_exc
 
     if intraday is None:
         intraday=latest_session_bars(symbol,now)
 
-    if not price or live_price_timestamp is None:
+    if not price or (not research_only and live_price_timestamp is None):
         raise RuntimeError(
             "LIVE PRICE UNAVAILABLE — no fresh, symbol-matched quote/trade was returned."
         )
@@ -1915,9 +2032,12 @@ def analyze(symbol):
     # Fetch one consolidated daily history and reuse it for average volume,
     # ATR/support-resistance, same-ticker daily analogs and slower timeframe
     # context. The previous path made several overlapping daily API requests.
-    daily_full,daysrc=try_sip_delayed_bars(
-        symbol,"1Day",now-timedelta(days=600),now,420
-    )
+    if daily_full_prefetched is not None:
+        daily_full,daysrc=daily_full_prefetched,daysrc_prefetched
+    else:
+        daily_full,daysrc=try_sip_delayed_bars(
+            symbol,"1Day",now-timedelta(days=600),now,420
+        )
     try:
         avgvol,volsrc=avg_daily_volume(
             symbol,now,daily_bars=daily_full,source=daysrc
@@ -1928,7 +2048,10 @@ def analyze(symbol):
         avgvol,volsrc=avg_daily_volume(symbol,now)
     session_phase=market_session_phase(now_et)
     session_volume=sum((fnum(x.get("v")) or 0) for x in intraday)
-    if live_provider=="tradier":
+    if research_only:
+        today_volume=session_volume
+        volume_source="COMPLETED REGULAR SESSION"
+    elif live_provider=="tradier":
         today_volume=session_volume
         volume_source=(
             "TRADIER CONSOLIDATED"
@@ -1989,14 +2112,18 @@ def analyze(symbol):
     current_open=fnum(intraday[0].get("o")) if intraday else price
     stair=detect_stair_step(
         daily,
-        current_day={
-            "date":now_et.date().isoformat(),
-            "o":current_open or price,
-            "h":high,
-            "l":low,
-            "c":price,
-            "v":today_volume,
-        },
+        current_day=(
+            None
+            if research_only
+            else {
+                "date":now_et.date().isoformat(),
+                "o":current_open or price,
+                "h":high,
+                "l":low,
+                "c":price,
+                "v":today_volume,
+            }
+        ),
         atr_pct=atr14_pct,
     )
     impulse=impulse_pullback_context(intraday,price,atr14_pct)
@@ -2008,19 +2135,24 @@ def analyze(symbol):
         "feature_version":ANALYZER_FEATURE_VERSION,
         "symbol":symbol,
         "as_of":now_et.isoformat(),
+        "analysis_mode":analysis_mode,
+        "research_only":bool(research_only),
         "market_session":session_phase,
         "market_provider":live_provider,
         "live_provider":live_provider,
         "live_feed":live_feed_label,
         "live_provider_error":live_provider_error,
         "alpaca_fallback_error":alpaca_snapshot_error,
-        "live_price_available":True,
+        "live_price_available":not research_only,
         "live_price_source":live_price_source,
         "live_price_timestamp":live_price_timestamp,
         "live_price_age_seconds":round(live_price_age_seconds,2) if live_price_age_seconds is not None else None,
         "live_price_is_fallback":bool(live_price_is_fallback),
         "live_price_fallback_reason":live_price_fallback_reason,
         "live_price_rejections":live_price_rejections[:8],
+        "reference_price_source":reference_price_source,
+        "reference_price_timestamp":reference_price_timestamp,
+        "reference_price_reason":reference_price_reason,
         "historical_provider":(
             "tradier"
             if "tradier" in str(daysrc or "").lower()
@@ -2064,14 +2196,14 @@ def analyze(symbol):
         "chart_data":{
             "intraday":_chart_bars(intraday,420),
             "daily":_chart_bars(
-                list(daily or []) + [{
+                list(daily or []) + ([] if research_only else [{
                     "t":now_et.date().isoformat(),
                     "o":current_open or price,
                     "h":high,
                     "l":low,
                     "c":price,
                     "v":today_volume,
-                }],
+                }]),
                 90,
             ),
         },
@@ -2082,8 +2214,41 @@ def analyze(symbol):
         "news":arts,
     }
     score,grade,entry,reasons=score_setup(metrics)
-    metrics.update({"score":score,"grade":grade,"entry_quality":entry,"score_reasons":reasons})
-    metrics["trade_plan"]=build_trade_plan(metrics,now)
+    metrics.update({
+        "score":score,
+        "grade":grade,
+        "entry_quality":"RESEARCH ONLY" if research_only else entry,
+        "score_reasons":reasons,
+    })
+    if research_only:
+        metrics["trade_plan"]={
+            "status":"NO TRADE",
+            "action":"RESEARCH ONLY — MARKET CLOSED",
+            "entry_state":"LIVE TRADING DISABLED",
+            "entry_instruction":(
+                "No live entry, stop, target, or position-exit instruction is "
+                "available while the market is closed. Recheck when a fresh "
+                "symbol-matched quote is available."
+            ),
+            "preferred_plan":"research_only",
+            "selected":{},
+            "reasons":[
+                "This page uses the latest completed session for research context only."
+            ],
+            "confidence":0,
+            "confidence_label":"NOT APPLICABLE",
+            "research_only":True,
+            "plan_selection_note":(
+                "Live plan construction is intentionally disabled in after-hours "
+                "research mode."
+            ),
+            "method_note":(
+                "Completed-session price structure may be reviewed, but it is not "
+                "a live trading instruction."
+            ),
+        }
+    else:
+        metrics["trade_plan"]=build_trade_plan(metrics,now)
     return metrics
 
 if __name__=="__main__":

@@ -2066,25 +2066,44 @@ def install_v2_analysis(sa):
         metrics = base_analyze(symbol)
         now = datetime.now(timezone.utc)
         live_data_integrity = _analyzer_live_data_integrity(metrics)
+        research_only = bool(metrics.get("research_only"))
 
         # Apply the accepted intraday thesis before readiness/evidence scoring.
         # New/switching geometry may only be anchored from trusted live data;
         # stale/incomplete snapshots can keep an existing thesis on watch but
         # cannot create or replace one.
-        thesis_context = prepare_intraday_thesis(
-            metrics,
-            now=now,
-            evidence_trusted=bool(live_data_integrity.get("ok")),
-            # Stage continuity updates in memory. They are committed only after
-            # the complete final decision exists, so a cancelled/timed-out
-            # Analyzer launch cannot advance or replace a thesis invisibly.
-            persist=False,
-        )
+        if research_only:
+            thesis_context = {
+                "status":"RESEARCH ONLY",
+                "change_reason":(
+                    "The market is closed; completed-session research cannot "
+                    "create or modify a live execution thesis."
+                ),
+                "committed":False,
+            }
+        else:
+            thesis_context = prepare_intraday_thesis(
+                metrics,
+                now=now,
+                evidence_trusted=bool(live_data_integrity.get("ok")),
+                # Stage continuity updates in memory. They are committed only after
+                # the complete final decision exists, so a cancelled/timed-out
+                # Analyzer launch cannot advance or replace a thesis invisibly.
+                persist=False,
+            )
 
         background_worker = (
             os.environ.get("ANALYZER_BACKGROUND_WORKER", "").strip() == "1"
         )
-        if background_worker:
+        if research_only:
+            stream_status = {
+                "status":"research_only",
+                "provider":"completed_session_history",
+                "feed":metrics.get("historical_feed"),
+                "background_worker":background_worker,
+            }
+            live_overlay = {}
+        elif background_worker:
             # The short-lived launch subprocess must not consume another
             # Tradier websocket session. It already has fresh snapshot data;
             # the persistent UI process owns live streaming.
@@ -2119,6 +2138,13 @@ def install_v2_analysis(sa):
             metrics, sec, market, catalyst
         )
         readiness, blockers, entry_components = _entry_readiness(metrics)
+        if research_only:
+            readiness = 0.0
+            blockers = [
+                "LIVE ENTRY TIMING DISABLED — market closed",
+                "Recheck when a fresh symbol-matched quote is available.",
+            ]
+            entry_components = {"base":0.0}
         evidence, evidence_reasons = _evidence_strength(metrics, sec, market, catalyst)
         timeframe = _timeframe_analysis(
             sa,
@@ -2145,6 +2171,7 @@ def install_v2_analysis(sa):
         ) or raw_best_fit
         timeframe["continuity"] = horizon_continuity
         timeframe["production_influence"] = False
+        timeframe["research_only"] = research_only
         swing_research = evaluate_swing_research_flags(metrics, timeframe)
         timeframe["swing_research_flags"] = swing_research
 
@@ -2237,7 +2264,7 @@ def install_v2_analysis(sa):
             "potential_score": potential,
             "potential_label": _label(potential, 72, 52),
             "entry_readiness": readiness,
-            "entry_label": _label(readiness, 72, 52),
+            "entry_label": "UNAVAILABLE" if research_only else _label(readiness, 72, 52),
             "evidence_strength": evidence,
             "evidence_label": _label(evidence, 72, 52),
             "potential_reasons": potential_reasons,
@@ -2261,12 +2288,13 @@ def install_v2_analysis(sa):
         }
         # Commit after the complete decision object exists so the thesis history
         # records the exact readiness/evidence/potential values shown to users.
-        commit_intraday_thesis(
-            metrics,
-            thesis_context,
-            now=now,
-        )
-        commit_timeframe_thesis(horizon_continuity)
+        if not research_only:
+            commit_intraday_thesis(
+                metrics,
+                thesis_context,
+                now=now,
+            )
+            commit_timeframe_thesis(horizon_continuity)
         plan = metrics.get("trade_plan") or {}
         thesis_context = plan.get("thesis_continuity") or thesis_context
         metrics["decision_v2"]["thesis_continuity"] = thesis_context
