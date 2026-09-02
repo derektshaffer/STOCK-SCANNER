@@ -13,6 +13,13 @@ from statistics import median
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+from live_price_quality import (
+    MAX_FUTURE_CLOCK_SKEW_SECONDS,
+    MAX_LIVE_PRICE_AGE_SECONDS,
+    parse_market_timestamp,
+    select_freshest_live_price,
+)
+
 try:
     from scanner_ml_ranker import apply_scanner_ml
 except Exception:
@@ -1202,6 +1209,27 @@ def _scanner_data_integrity(c, now_et):
         )
 
     now_utc = now_et.astimezone(timezone.utc)
+    if c.get("live_price_available") is False:
+        reasons.append("live price is unavailable")
+    price_dt=parse_timestamp(
+        c.get("live_price_timestamp") or c.get("latest_trade_time")
+    )
+    if price_dt is None:
+        reasons.append("live price timestamp is missing")
+    else:
+        price_future=(price_dt.astimezone(timezone.utc)-now_utc).total_seconds()
+        if price_future > MAX_FUTURE_CLOCK_SKEW_SECONDS:
+            c["live_price_age_seconds"]=None
+            reasons.append(f"live price timestamp is {price_future:.0f}s in the future")
+            price_dt=None
+    if price_dt is not None:
+        price_age=max(
+            0.0,(now_utc-price_dt.astimezone(timezone.utc)).total_seconds()
+        )
+        c["live_price_age_seconds"]=round(price_age,2)
+        if price_age > MAX_ACTIONABLE_MARKET_DATA_AGE_SECONDS:
+            reasons.append(f"live price is stale ({price_age:.0f}s old)")
+
     for label, key in (
         ("trade", "latest_trade_time"),
         ("quote", "latest_quote_time"),
@@ -1211,9 +1239,13 @@ def _scanner_data_integrity(c, now_et):
             reasons.append(f"latest {label} timestamp is missing")
             continue
         age = max(
-            0.0,
-            (now_utc - dt.astimezone(timezone.utc)).total_seconds(),
+            0.0,(now_utc-dt.astimezone(timezone.utc)).total_seconds()
         )
+        future_seconds=(dt.astimezone(timezone.utc)-now_utc).total_seconds()
+        if future_seconds > MAX_FUTURE_CLOCK_SKEW_SECONDS:
+            c[f"{label}_age_seconds"] = None
+            reasons.append(f"latest {label} timestamp is {future_seconds:.0f}s in the future")
+            continue
         c[f"{label}_age_seconds"] = round(age, 2)
         if age > MAX_ACTIONABLE_MARKET_DATA_AGE_SECONDS:
             reasons.append(f"latest {label} is stale ({age:.0f}s old)")
@@ -1417,10 +1449,12 @@ def enrich_delayed_sip_liquidity(rows, now_utc, now_et):
         refresh_quality(c)
 
 
-def analyze_snapshot(symbol, tradier_quote=None, alpaca_snapshot=None):
+def analyze_snapshot(symbol, tradier_quote=None, alpaca_snapshot=None, now_utc=None):
     # Alpaca remains the discovery/history/news source. Broad scans pass a
     # batched snapshot here so this function does not create one HTTP request
     # per ticker. Extended-hours Tradier rows can skip Alpaca snapshots entirely.
+    now_utc=(now_utc or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    symbol=str(symbol or "").upper().strip()
     snap = (
         get_snapshot(symbol)
         if alpaca_snapshot is None
@@ -1431,34 +1465,138 @@ def analyze_snapshot(symbol, tradier_quote=None, alpaca_snapshot=None):
     daily = snap.get("dailyBar") or {}
     prev = snap.get("prevDailyBar") or {}
 
-    price = float(trade.get("p") or 0)
+    price = 0.0
     prev_close = float(prev.get("c") or 0)
     volume = float(daily.get("v") or 0)
     high = float(daily.get("h") or 0)
     low = float(daily.get("l") or 0)
     vwap = float(daily.get("vw") or 0)
-    bid = float(quote.get("bp") or 0)
-    ask = float(quote.get("ap") or 0)
+    bid = 0.0
+    ask = 0.0
     live_quote_source = f"alpaca_{LIVE_FEED}"
     liquidity_source = "iex_estimate"
     quote_avg_volume = None
     latest_trade_time = trade.get("t")
     latest_quote_time = quote.get("t")
+    live_price_source = None
+    live_price_timestamp = None
+    live_price_age_seconds = None
+    live_price_is_fallback = False
+    live_price_fallback_reason = None
+    price_rejections = []
 
+    def quote_midpoint(bid_value, ask_value):
+        try:
+            bid_value=float(bid_value); ask_value=float(ask_value)
+        except (TypeError, ValueError):
+            return None
+        if bid_value <= 0 or ask_value <= 0 or ask_value < bid_value:
+            return None
+        return (bid_value+ask_value)/2.0
+
+    def newest_timestamp(*values):
+        parsed=[parse_market_timestamp(value) for value in values]
+        parsed=[value for value in parsed if value is not None]
+        if not parsed:
+            return None
+        return max(parsed).isoformat().replace("+00:00","Z")
+
+    tradier_selected=None
+    tradier_quote_selected=None
     if tradier_quote:
+        tradier_symbol=str(tradier_quote.get("symbol") or "").upper().strip()
+        tradier_candidates=[
+            {
+                "symbol":tradier_symbol,
+                "price":tradier_quote.get("last"),
+                "timestamp":tradier_quote.get("trade_date") or tradier_quote.get("timestamp"),
+                "source":"tradier_consolidated_trade",
+                "kind":"trade",
+            },
+            {
+                "symbol":tradier_symbol,
+                "price":quote_midpoint(tradier_quote.get("bid"),tradier_quote.get("ask")),
+                "timestamp":newest_timestamp(
+                    tradier_quote.get("bid_date"),tradier_quote.get("ask_date")
+                ) or tradier_quote.get("timestamp"),
+                "source":"tradier_consolidated_quote_midpoint",
+                "kind":"quote_midpoint",
+            },
+        ]
+        tradier_selected,rejected=select_freshest_live_price(
+            symbol,
+            tradier_candidates,
+            now=now_utc,
+            max_age_seconds=MAX_LIVE_PRICE_AGE_SECONDS,
+        )
+        price_rejections.extend(rejected)
+        tradier_quote_selected,_=select_freshest_live_price(
+            symbol,
+            [row for row in tradier_candidates if row.get("kind")=="quote_midpoint"],
+            now=now_utc,
+            max_age_seconds=MAX_LIVE_PRICE_AGE_SECONDS,
+        )
+
+    snap_symbol=str(snap.get("symbol") or symbol).upper().strip()
+    alpaca_candidates=[
+        {
+            "symbol":trade.get("symbol") or trade.get("S") or snap_symbol,
+            "price":trade.get("p"),
+            "timestamp":trade.get("t"),
+            "source":f"alpaca_{LIVE_FEED}_trade",
+            "kind":"trade",
+        },
+        {
+            "symbol":quote.get("symbol") or quote.get("S") or snap_symbol,
+            "price":quote_midpoint(quote.get("bp"),quote.get("ap")),
+            "timestamp":quote.get("t"),
+            "source":f"alpaca_{LIVE_FEED}_quote_midpoint",
+            "kind":"quote_midpoint",
+        },
+    ]
+    alpaca_selected=None
+    alpaca_quote_selected=None
+    if not tradier_selected:
+        alpaca_selected,rejected=select_freshest_live_price(
+            symbol,
+            alpaca_candidates,
+            now=now_utc,
+            max_age_seconds=MAX_LIVE_PRICE_AGE_SECONDS,
+        )
+        price_rejections.extend(rejected)
+        alpaca_quote_selected,_=select_freshest_live_price(
+            symbol,
+            [row for row in alpaca_candidates if row.get("kind")=="quote_midpoint"],
+            now=now_utc,
+            max_age_seconds=MAX_LIVE_PRICE_AGE_SECONDS,
+        )
+
+    selected=tradier_selected or alpaca_selected
+    if not selected:
+        return None
+
+    price=selected["price"]
+    live_price_source=selected.get("source")
+    live_price_timestamp=selected.get("timestamp")
+    live_price_age_seconds=selected.get("age_seconds")
+    live_price_is_fallback=bool(
+        selected.get("kind") != "trade"
+        or (tradier_quote and not tradier_selected)
+    )
+
+    if tradier_selected:
         def tnum(name):
             try:
                 return float(tradier_quote.get(name) or 0)
             except (TypeError, ValueError):
                 return 0.0
 
-        price = tnum("last") or tnum("close") or price
         prev_close = tnum("prevclose") or prev_close
         volume = tnum("volume") or volume
         high = tnum("high") or high
         low = tnum("low") or low
-        bid = tnum("bid") or bid
-        ask = tnum("ask") or ask
+        bid = tnum("bid") if tradier_quote_selected else 0.0
+        ask = tnum("ask") if tradier_quote_selected else 0.0
         quote_avg_volume = tnum("average_volume") or None
         live_quote_source = "tradier_consolidated"
         liquidity_source = "tradier_consolidated"
@@ -1467,15 +1605,39 @@ def analyze_snapshot(symbol, tradier_quote=None, alpaca_snapshot=None):
             or tradier_quote.get("timestamp")
         )
         latest_quote_time = (
-            tradier_quote.get("ask_date")
-            or tradier_quote.get("bid_date")
+            newest_timestamp(
+                tradier_quote.get("ask_date"),tradier_quote.get("bid_date")
+            )
             or tradier_quote.get("timestamp")
             or latest_trade_time
         )
+        if selected.get("kind") == "quote_midpoint":
+            live_price_fallback_reason=(
+                "Tradier last trade was stale or older than the selected fresh "
+                "consolidated quote midpoint."
+            )
+    elif tradier_quote:
+        bid=float(quote.get("bp") or 0) if alpaca_quote_selected else 0.0
+        ask=float(quote.get("ap") or 0) if alpaca_quote_selected else 0.0
+        live_quote_source=f"alpaca_{LIVE_FEED}_fallback"
+        liquidity_source="iex_estimate" if LIVE_FEED == "iex" else "sip"
+        live_price_fallback_reason=(
+            "Tradier returned no fresh symbol-matched price; using the fresh "
+            f"Alpaca {LIVE_FEED.upper()} {str(selected.get('kind') or 'price').replace('_',' ')}."
+        )
+    elif selected.get("kind") == "quote_midpoint":
+        bid=float(quote.get("bp") or 0) if alpaca_quote_selected else 0.0
+        ask=float(quote.get("ap") or 0) if alpaca_quote_selected else 0.0
+        live_price_fallback_reason=(
+            "The latest trade was unavailable; using the fresh quote midpoint."
+        )
+    else:
+        bid=float(quote.get("bp") or 0) if alpaca_quote_selected else 0.0
+        ask=float(quote.get("ap") or 0) if alpaca_quote_selected else 0.0
 
     daily_ts = daily.get("t")
     session_date = None
-    if tradier_quote:
+    if tradier_selected:
         session_date = datetime.now(ZoneInfo("America/New_York")).date().isoformat()
     elif daily_ts:
         try:
@@ -1525,6 +1687,13 @@ def analyze_snapshot(symbol, tradier_quote=None, alpaca_snapshot=None):
         "liquidity_source": liquidity_source,
         "liquidity_dollar_volume": round(liquidity_dollar_volume, 2),
         "live_quote_source": live_quote_source,
+        "live_price_available": True,
+        "live_price_source": live_price_source,
+        "live_price_timestamp": live_price_timestamp,
+        "live_price_age_seconds": live_price_age_seconds,
+        "live_price_is_fallback": live_price_is_fallback,
+        "live_price_fallback_reason": live_price_fallback_reason,
+        "live_price_rejections": price_rejections[:8],
         "latest_trade_time": (
             parse_timestamp(latest_trade_time).isoformat()
             if parse_timestamp(latest_trade_time) is not None
@@ -1937,7 +2106,14 @@ def get_live_bars(symbol, timeframe, start, end, limit=10000):
     )
 
 
-def current_session_live_metrics(symbol, now_utc, now_et, current_price):
+def current_session_live_metrics(
+    symbol,
+    now_utc,
+    now_et,
+    current_price,
+    current_price_timestamp=None,
+    current_price_source=None,
+):
     """Get momentum and session stats from one intraday request per ticker."""
     phase = market_session_mode(now_et)
     if phase == "closed":
@@ -1960,6 +2136,47 @@ def current_session_live_metrics(symbol, now_utc, now_et, current_price):
     if not bars:
         return None
 
+    symbol=str(symbol or "").upper().strip()
+    bars=[
+        bar for bar in bars
+        if str(bar.get("symbol") or bar.get("S") or symbol).upper().strip()==symbol
+    ]
+    fresh_bar,rejections=select_freshest_live_price(
+        symbol,
+        [
+            {
+                "symbol":bar.get("symbol") or bar.get("S") or symbol,
+                "price":bar.get("c") or bar.get("price"),
+                "timestamp":bar.get("t") or bar.get("timestamp"),
+                "source":f"{'tradier_consolidated' if USE_TRADIER else 'alpaca_'+LIVE_FEED}_intraday_bar",
+                "kind":"bar",
+            }
+            for bar in bars[-3:]
+        ],
+        now=now_utc,
+        max_age_seconds=MAX_LIVE_PRICE_AGE_SECONDS,
+    )
+    if not fresh_bar:
+        return None
+
+    freshest_price,_=select_freshest_live_price(
+        symbol,
+        [
+            fresh_bar,
+            {
+                "symbol":symbol,
+                "price":current_price,
+                "timestamp":current_price_timestamp,
+                "source":current_price_source or "scanner_snapshot_price",
+                "kind":"trade",
+            },
+        ],
+        now=now_utc,
+        max_age_seconds=MAX_LIVE_PRICE_AGE_SECONDS,
+    )
+    if not freshest_price:
+        return None
+
     high = None
     low = None
     volume = 0.0
@@ -1980,8 +2197,8 @@ def current_session_live_metrics(symbol, now_utc, now_et, current_price):
     if high is None or low is None:
         return None
 
-    last_price = float(bars[-1].get("c") or 0) if bars else 0.0
-    reference_price = float(current_price or 0) or last_price
+    last_price = float(freshest_price["price"])
+    reference_price = last_price
     m5 = None
     m15 = None
     if len(bars) >= 6 and bars[-6].get("c"):
@@ -2011,6 +2228,9 @@ def current_session_live_metrics(symbol, now_utc, now_et, current_price):
         "open": float(bars[0].get("o") or reference_price) if bars else reference_price,
         "vwap": (dollar / volume) if volume > 0 else None,
         "last_price": last_price or None,
+        "last_price_source": freshest_price.get("source"),
+        "last_price_timestamp": freshest_price.get("timestamp"),
+        "last_price_age_seconds": freshest_price.get("age_seconds"),
         "momentum_5m": m5,
         "momentum_15m": m15,
         "behavior_features": behavior,
@@ -2108,6 +2328,8 @@ def enrich_live(c, now_utc, now_et):
             now_utc,
             now_et,
             c.get("price"),
+            c.get("live_price_timestamp"),
+            c.get("live_price_source"),
         )
     except Exception as exc:
         c["intraday_enrichment_error"] = str(exc)
@@ -2179,6 +2401,11 @@ def enrich_live(c, now_utc, now_et):
 
         if session_last:
             c["price"] = round(float(session_last), 4)
+            c["live_price_available"] = True
+            c["live_price_source"] = session_stats.get("last_price_source")
+            c["live_price_timestamp"] = session_stats.get("last_price_timestamp")
+            c["live_price_age_seconds"] = session_stats.get("last_price_age_seconds")
+            c["latest_trade_time"] = session_stats.get("last_price_timestamp")
             if c.get("prev_close"):
                 c["day_pct"] = round(
                     pct_change(c["price"], float(c["prev_close"])) or 0.0,
@@ -2703,6 +2930,12 @@ def candidate_log_record(c, rank):
         "liquidity_dollar_volume": c.get("liquidity_dollar_volume"),
         "live_quote_source": c.get("live_quote_source"),
         "live_intraday_source": c.get("live_intraday_source"),
+        "live_price_available": c.get("live_price_available") is True,
+        "live_price_source": c.get("live_price_source"),
+        "live_price_timestamp": c.get("live_price_timestamp"),
+        "live_price_age_seconds": c.get("live_price_age_seconds"),
+        "live_price_is_fallback": bool(c.get("live_price_is_fallback")),
+        "live_price_fallback_reason": c.get("live_price_fallback_reason"),
         "live_dollar_volume": c.get("dollar_volume"),
         "live_spread_pct": c.get("spread_pct"),
         # Legacy fields remain populated so the existing validated ML feature
@@ -3283,7 +3516,8 @@ def main():
     # usable snapshot instead of replacing it with an empty dashboard.
     if is_active_market_session(now_et) and candidates and not rows:
         raise RuntimeError(
-            "Live scanner discovered symbols but could not build any market rows. "
+            "LIVE PRICE UNAVAILABLE — the scanner discovered symbols but could not "
+            "validate any fresh, symbol-matched market prices. "
             "Preserving the previous scanner snapshot instead of publishing zero candidates."
         )
 

@@ -1410,6 +1410,14 @@ def _analyzer_live_data_integrity(metrics):
     if not consolidated:
         reasons.append("live market data is not consolidated")
 
+    if metrics.get("live_price_available") is False:
+        reasons.append("live price is unavailable")
+    live_price_age=_num(metrics.get("live_price_age_seconds"))
+    if live_price_age is None:
+        reasons.append("live price freshness is unknown")
+    elif live_price_age > MAX_ACTIONABLE_MARKET_DATA_AGE_SECONDS:
+        reasons.append(f"live price is stale ({live_price_age:.0f}s old)")
+
     for label, key in (
         ("trade", "trade_age_seconds"),
         ("quote", "quote_age_seconds"),

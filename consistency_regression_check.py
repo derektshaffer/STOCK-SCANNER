@@ -133,9 +133,271 @@ def test_analyzer_falls_back_cleanly():
 
     result = sa.analyze("TEST")
     assert result["market_provider"] == "alpaca", result
-    assert result["live_feed"] == sa.LIVE_FEED.upper(), result
+    assert result["live_feed"] == f"{sa.LIVE_FEED.upper()} FALLBACK", result
     assert result["live_provider_error"], result
     assert abs(result["price"] - 9.0) < 1e-9, result
+    assert result["live_price_is_fallback"] is True, result
+    assert "FALLBACK" in result["live_feed"], result
+
+
+def _fresh_intraday_bars(center, now=None):
+    now = now or datetime.now(timezone.utc)
+    rows = []
+    for index in range(45):
+        stamp = now - timedelta(minutes=44 - index)
+        price = float(center) + index * 0.001
+        rows.append({
+            "symbol": "TEST",
+            "t": _iso(stamp),
+            "o": price - 0.01,
+            "h": price + 0.02,
+            "l": price - 0.02,
+            "c": price,
+            "v": 2_000 + index,
+            "vw": price,
+        })
+    return rows
+
+
+def test_analyzer_rejects_stale_tradier_last_and_uses_fresh_quote_midpoint():
+    _install_common_analyzer_stubs()
+    now = datetime.now(timezone.utc)
+    now_ms = int(now.timestamp() * 1000)
+    stale_ms = int((now - timedelta(hours=2.4)).timestamp() * 1000)
+    bars = _fresh_intraday_bars(15.95, now)
+
+    sa.get_tradier_quotes = lambda symbols, token: {
+        "TEST": {
+            "symbol": "TEST",
+            "last": 5.08,
+            "close": 5.08,
+            "bid": 15.99,
+            "ask": 16.01,
+            "prevclose": 15.50,
+            "high": 16.20,
+            "low": 15.20,
+            "trade_date": stale_ms,
+            "bid_date": now_ms,
+            "ask_date": now_ms,
+        }
+    }
+    sa._tradier_regular_session_bars = lambda symbol, current: bars
+
+    result = sa.analyze("TEST")
+    assert 15.98 <= result["price"] <= 16.01, result
+    assert result["price"] != 5.08, result
+    assert result["live_price_source"] in {
+        "tradier_consolidated_quote_midpoint",
+        "tradier_consolidated_timesales_bar",
+    }, result
+    assert result["live_price_is_fallback"] is True, result
+    assert result["live_price_age_seconds"] <= 2.0, result
+    assert abs(result["vwap_extension_pct"]) < 1.0, result
+    assert result["trade_plan"], result
+
+
+def test_analyzer_live_price_unavailable_stops_before_scores_or_plan():
+    _install_common_analyzer_stubs()
+    now = datetime.now(timezone.utc)
+    stale = now - timedelta(hours=2.4)
+    stale_ms = int(stale.timestamp() * 1000)
+    stale_bars = _fresh_intraday_bars(5.0, stale)
+    sa.get_tradier_quotes = lambda symbols, token: {
+        "TEST": {
+            "symbol": "WRONG",
+            "last": 5.08,
+            "bid": 5.07,
+            "ask": 5.09,
+            "prevclose": 5.0,
+            "high": 5.2,
+            "low": 4.8,
+            "trade_date": stale_ms,
+            "bid_date": stale_ms,
+            "ask_date": stale_ms,
+        }
+    }
+    sa._tradier_regular_session_bars = lambda symbol, current: stale_bars
+    sa.snapshot = lambda symbol, feed=None: {
+        "symbol": "TEST",
+        "latestTrade": {"p": 5.08, "t": _iso(stale)},
+        "latestQuote": {"bp": 5.07, "ap": 5.09, "t": _iso(stale)},
+        "dailyBar": {"c": 5.08, "h": 5.2, "l": 4.8, "v": 50_000},
+        "prevDailyBar": {"c": 5.0},
+    }
+    old_score = sa.score_setup
+    old_plan = sa.build_trade_plan
+    calls = {"score": 0, "plan": 0}
+
+    def forbidden_score(metrics):
+        calls["score"] += 1
+        raise AssertionError("stale price reached setup scoring")
+
+    def forbidden_plan(metrics, current):
+        calls["plan"] += 1
+        raise AssertionError("stale price reached trade-plan construction")
+
+    sa.score_setup = forbidden_score
+    sa.build_trade_plan = forbidden_plan
+    try:
+        try:
+            sa.analyze("TEST")
+            raise AssertionError("expected LIVE PRICE UNAVAILABLE")
+        except RuntimeError as exc:
+            assert str(exc).startswith("LIVE PRICE UNAVAILABLE"), exc
+    finally:
+        sa.score_setup = old_score
+        sa.build_trade_plan = old_plan
+    assert calls == {"score": 0, "plan": 0}, calls
+
+
+def test_scanner_stale_tradier_price_uses_fresh_labeled_alpaca_fallback():
+    import stock_scanner as ss
+
+    now = datetime.now(timezone.utc)
+    stale_ms = int((now - timedelta(hours=2.4)).timestamp() * 1000)
+    snapshot = {
+        "symbol": "TEST",
+        "latestTrade": {"p": 16.0, "t": _iso(now - timedelta(seconds=2))},
+        "latestQuote": {
+            "bp": 15.99,
+            "ap": 16.01,
+            "t": _iso(now - timedelta(seconds=1)),
+        },
+        "dailyBar": {"t": _iso(now), "h": 16.2, "l": 15.2, "v": 1_000_000, "vw": 15.8},
+        "prevDailyBar": {"c": 15.5},
+    }
+    stale_tradier = {
+        "symbol": "TEST",
+        "last": 5.08,
+        "close": 5.08,
+        "bid": 5.07,
+        "ask": 5.09,
+        "prevclose": 5.0,
+        "high": 5.2,
+        "low": 4.8,
+        "trade_date": stale_ms,
+        "bid_date": stale_ms,
+        "ask_date": stale_ms,
+    }
+    result = ss.analyze_snapshot("TEST", stale_tradier, snapshot, now_utc=now)
+    assert result["price"] == 16.0, result
+    assert result["price"] != 5.08, result
+    assert result["live_quote_source"] == f"alpaca_{ss.LIVE_FEED}_fallback", result
+    assert result["live_price_is_fallback"] is True, result
+    assert "Tradier returned no fresh" in result["live_price_fallback_reason"], result
+
+
+def test_scanner_rejects_stale_or_wrong_symbol_price_before_features():
+    import stock_scanner as ss
+
+    now = datetime.now(timezone.utc)
+    stale = now - timedelta(hours=2.4)
+    stale_ms = int(stale.timestamp() * 1000)
+    result = ss.analyze_snapshot(
+        "TEST",
+        {
+            "symbol": "WRONG",
+            "last": 5.08,
+            "bid": 5.07,
+            "ask": 5.09,
+            "trade_date": stale_ms,
+            "bid_date": stale_ms,
+            "ask_date": stale_ms,
+        },
+        {
+            "symbol": "TEST",
+            "latestTrade": {"p": 5.08, "t": _iso(stale)},
+            "latestQuote": {"bp": 5.07, "ap": 5.09, "t": _iso(stale)},
+            "dailyBar": {"h": 5.2, "l": 4.8, "v": 50_000, "vw": 5.0},
+            "prevDailyBar": {"c": 5.0},
+        },
+        now_utc=now,
+    )
+    assert result is None, result
+
+
+def test_live_price_fallback_and_unavailable_states_are_explicit_in_ui():
+    from pathlib import Path
+
+    analyzer_ui = Path("analyzer_ui_core.py").read_text(encoding="utf-8")
+    scanner_ui = Path("scanner_app.py").read_text(encoding="utf-8")
+    combined_ui = Path("app.py").read_text(encoding="utf-8")
+    live_tape = Path("live_tape_ui.py").read_text(encoding="utf-8")
+    assert 'startswith("LIVE PRICE UNAVAILABLE")' in analyzer_ui
+    assert 'st.session_state.pop("result",None)' in analyzer_ui
+    assert "LIVE PRICE FALLBACK" in analyzer_ui
+    assert "LIVE PRICE FALLBACK" in scanner_ui
+    assert "LIVE PRICE FALLBACK" in combined_ui
+    assert 'else "UNAVAILABLE"' in live_tape
+
+
+def test_live_price_validator_rejects_future_and_missing_symbol_timestamps():
+    from live_price_quality import select_freshest_live_price
+
+    now=datetime.now(timezone.utc)
+    selected,reasons=select_freshest_live_price(
+        "TEST",
+        [
+            {
+                "symbol":"TEST",
+                "price":16.0,
+                "timestamp":_iso(now+timedelta(minutes=2)),
+                "source":"future_trade",
+                "kind":"trade",
+            },
+            {
+                "symbol":"WRONG",
+                "price":16.0,
+                "timestamp":_iso(now),
+                "source":"wrong_symbol_quote",
+                "kind":"quote_midpoint",
+            },
+        ],
+        now=now,
+    )
+    assert selected is None, selected
+    assert any("in the future" in reason for reason in reasons), reasons
+    assert any("symbol mismatch" in reason for reason in reasons), reasons
+
+
+def test_tradier_live_overlay_cannot_reuse_stale_or_wrong_symbol_price():
+    import tradier_live_stream as tls
+
+    now=datetime.now(timezone.utc)
+    stale=_iso(now-timedelta(hours=2.4))
+    fresh=_iso(now-timedelta(seconds=1))
+    metrics={
+        "symbol":"TEST",
+        "market_provider":"tradier",
+        "live_feed":"TRADIER CONSOLIDATED",
+        "price":5.08,
+        "live_price_timestamp":stale,
+        "live_price_source":"tradier_consolidated_trade",
+        "trade_plan":{},
+    }
+    old_get_state=tls.get_live_state
+    try:
+        tls.get_live_state=lambda symbol=None: {
+            "symbol":"WRONG",
+            "status":"streaming",
+            "last_trade":{"price":5.08,"timestamp":fresh},
+            "last_quote":{"bid":15.99,"ask":16.01,"timestamp":fresh},
+        }
+        unavailable=tls.get_live_overlay(metrics)
+        assert unavailable["live_price_available"] is False, unavailable
+        assert unavailable["price"] is None, unavailable
+
+        tls.get_live_state=lambda symbol=None: {
+            "symbol":"TEST",
+            "status":"streaming",
+            "last_trade":{"price":5.08,"timestamp":stale},
+            "last_quote":{"bid":15.99,"ask":16.01,"timestamp":fresh},
+        }
+        recovered=tls.get_live_overlay(metrics)
+        assert recovered["price"] == 16.0, recovered
+        assert recovered["live_price_source"] == "tradier_stream_quote_midpoint", recovered
+    finally:
+        tls.get_live_state=old_get_state
 
 
 def test_scanner_ml_version_gate():
@@ -853,11 +1115,10 @@ def test_position_exit_fails_closed_on_stale_or_missing_live_overlay():
         quote_age_seconds=181.0,
     )
     stale_plan = build_position_exit_plan(stale, 8.50)
-    assert stale_plan["status"] == "ok", stale_plan
-    assert stale_plan["read"] == "DATA CHECK", stale_plan
-    assert "DATA CHECK" in stale_plan["action"], stale_plan
-    assert stale_plan["protective_exit"] is not None, stale_plan
-    assert stale_plan["live_data_integrity"]["ok"] is False, stale_plan
+    assert stale_plan["status"] == "unavailable", stale_plan
+    assert str(stale_plan["error"]).startswith("LIVE PRICE UNAVAILABLE"), stale_plan
+    assert "protective_exit" not in stale_plan, stale_plan
+    assert stale_plan["live_integrity"]["ok"] is False, stale_plan
 
     frozen = _position_metrics()
     merged = merge_live_position_metrics(frozen, {})
@@ -865,8 +1126,9 @@ def test_position_exit_fails_closed_on_stale_or_missing_live_overlay():
     assert merged["trade_age_seconds"] is None, merged
     assert merged["quote_age_seconds"] is None, merged
     missing_plan = build_position_exit_plan(merged, 8.50)
-    assert missing_plan["read"] == "DATA CHECK", missing_plan
-    assert missing_plan["live_data_integrity"]["ok"] is False, missing_plan
+    assert missing_plan["status"] == "unavailable", missing_plan
+    assert "protective_exit" not in missing_plan, missing_plan
+    assert missing_plan["live_integrity"]["ok"] is False, missing_plan
 
 
 def test_position_live_overlay_recomputes_derived_fields():
@@ -6624,6 +6886,8 @@ def test_analyzer_entries_fail_closed_on_data_integrity():
         "live_feed": "TRADIER CONSOLIDATED",
         "trade_age_seconds": 20,
         "quote_age_seconds": 10,
+        "live_price_available": True,
+        "live_price_age_seconds": 10,
         "price": 10.0,
         "vwap": 9.9,
         "momentum_5m": 1.0,
@@ -8014,6 +8278,13 @@ if __name__ == "__main__":
         test_analyzer_reports_actual_historical_provider,
         test_analyzer_prefers_tradier,
         test_analyzer_falls_back_cleanly,
+        test_analyzer_rejects_stale_tradier_last_and_uses_fresh_quote_midpoint,
+        test_analyzer_live_price_unavailable_stops_before_scores_or_plan,
+        test_scanner_stale_tradier_price_uses_fresh_labeled_alpaca_fallback,
+        test_scanner_rejects_stale_or_wrong_symbol_price_before_features,
+        test_live_price_fallback_and_unavailable_states_are_explicit_in_ui,
+        test_live_price_validator_rejects_future_and_missing_symbol_timestamps,
+        test_tradier_live_overlay_cannot_reuse_stale_or_wrong_symbol_price,
         test_scanner_ml_version_gate,
         test_analyzer_calibration_version_gate,
         test_scanner_outcome_metadata,

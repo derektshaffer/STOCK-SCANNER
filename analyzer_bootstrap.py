@@ -931,6 +931,7 @@ def run():
                 launch_active = False
 
             if not launch_state:
+                st.session_state.pop("_analyzer_live_price_unavailable",None)
                 launch_state = start_analyzer_process(
                     requested_ticker,
                     alpaca_key=os.environ.get("ALPACA_API_KEY", ""),
@@ -1007,15 +1008,24 @@ def run():
                 if outcome.get("done"):
                     st.session_state[launch_key] = None
                     if not outcome.get("ok"):
+                        failure_message=str(outcome.get("message") or "unknown error")
                         st.session_state.pop(
                             "_analyzer_scanner_launch_pending", None
                         )
                         st.session_state["_analyzer_loading"] = False
                         st.session_state["_manual_analyze_requested"] = False
                         st.session_state.pop("_analyzer_background_request_symbol", None)
+                        if failure_message.startswith("LIVE PRICE UNAVAILABLE"):
+                            cache=st.session_state.get("_analyzer_result_cache") or {}
+                            cache.pop(requested_ticker,None)
+                            st.session_state["_analyzer_result_cache"]=cache
+                            current_result=st.session_state.get("result") or {}
+                            if str(current_result.get("symbol") or "").upper().strip()==requested_ticker:
+                                st.session_state.pop("result",None)
+                            st.session_state["_analyzer_live_price_unavailable"]=failure_message
                         st.error(
                             "Analyzer failed: "
-                            + str(outcome.get("message") or "unknown error")
+                            + failure_message
                         )
                         return
 
@@ -1044,6 +1054,11 @@ def run():
 
 
             _render_combined_analysis_loader()
+
+            _live_price_error=st.session_state.get("_analyzer_live_price_unavailable")
+            if _live_price_error:
+                st.error(str(_live_price_error))
+                return
 
             # If this is a refresh of the stock already on screen, keep the
             # complete Analyzer page rendered from the last good result while

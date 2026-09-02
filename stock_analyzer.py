@@ -13,6 +13,12 @@ from stair_step import detect_stair_step
 from zoneinfo import ZoneInfo
 
 from analyzer_versions import ANALYZER_FEATURE_VERSION
+from live_price_quality import (
+    MAX_FUTURE_CLOCK_SKEW_SECONDS,
+    MAX_LIVE_PRICE_AGE_SECONDS,
+    parse_market_timestamp,
+    select_freshest_live_price,
+)
 
 try:
     from tradier_live import get_history_bars as get_tradier_history_bars
@@ -81,35 +87,16 @@ def snapshot(symbol, feed=None):
     return get_json(f"{DATA_BASE}/v2/stocks/{urllib.parse.quote(symbol)}/snapshot?{q}")
 
 def _parse_market_timestamp(value):
-    if not value:
-        return None
-    try:
-        # Alpaca timestamps may include nanoseconds; Python's parser accepts
-        # microseconds, so trim fractional precision safely before parsing.
-        raw=str(value).strip().replace("Z", "+00:00")
-        if "." in raw:
-            head, tail = raw.split(".", 1)
-            frac, suffix = tail, ""
-            for marker in ("+", "-"):
-                pos = frac.find(marker)
-                if pos > 0:
-                    suffix = frac[pos:]
-                    frac = frac[:pos]
-                    break
-            frac = frac[:6]
-            raw = f"{head}.{frac}{suffix}" if frac else f"{head}{suffix}"
-        dt=datetime.fromisoformat(raw)
-        if dt.tzinfo is None:
-            dt=dt.replace(tzinfo=timezone.utc)
-        return dt.astimezone(timezone.utc)
-    except Exception:
-        return None
+    return parse_market_timestamp(value)
 
 def _market_age_seconds(value, now):
     dt=_parse_market_timestamp(value)
     if dt is None:
         return None
-    return max(0.0, (now-dt).total_seconds())
+    age=(now-dt).total_seconds()
+    if age < -MAX_FUTURE_CLOCK_SKEW_SECONDS:
+        return None
+    return max(0.0,age)
 
 def news(symbol, now, hours=96, limit=50):
     q=urllib.parse.urlencode({"symbols":symbol,"start":_iso(now-timedelta(hours=hours)),"end":_iso(now),"sort":"desc","limit":limit,"include_content":"false"})
@@ -468,8 +455,12 @@ def _tradier_timestamp(value):
 
 def _tradier_quote_timestamp(quote):
     values=[]
-    for key in ("bid_date", "ask_date", "trade_date", "timestamp"):
+    for key in ("bid_date", "ask_date"):
         parsed=_parse_market_timestamp(_tradier_timestamp((quote or {}).get(key)))
+        if parsed is not None:
+            values.append(parsed)
+    if not values:
+        parsed=_parse_market_timestamp(_tradier_timestamp((quote or {}).get("timestamp")))
         if parsed is not None:
             values.append(parsed)
     if not values:
@@ -483,6 +474,70 @@ def _tradier_trade_timestamp(quote):
         if parsed:
             return parsed
     return None
+
+
+def _quote_midpoint(bid, ask):
+    bid=fnum(bid); ask=fnum(ask)
+    if bid is None or ask is None or bid <= 0 or ask <= 0 or ask < bid:
+        return None
+    return (bid+ask)/2.0
+
+
+def _provider_price_candidates(symbol, trade, quote, *, provider, feed):
+    """Build request-scoped Alpaca trade/quote candidates with symbol checks."""
+    trade=trade or {}; quote=quote or {}
+    trade_symbol=(
+        trade.get("symbol") or trade.get("S") or symbol
+    )
+    quote_symbol=(
+        quote.get("symbol") or quote.get("S") or symbol
+    )
+    return [
+        {
+            "symbol":trade_symbol,
+            "price":trade.get("p"),
+            "timestamp":trade.get("t"),
+            "source":f"{provider}_{feed}_trade",
+            "kind":"trade",
+        },
+        {
+            "symbol":quote_symbol,
+            "price":_quote_midpoint(quote.get("bp"),quote.get("ap")),
+            "timestamp":quote.get("t"),
+            "source":f"{provider}_{feed}_quote_midpoint",
+            "kind":"quote_midpoint",
+        },
+    ]
+
+
+def _tradier_price_candidates(symbol, quote, intraday):
+    quote=quote or {}
+    observed_symbol=quote.get("symbol")
+    candidates=[
+        {
+            "symbol":observed_symbol,
+            "price":quote.get("last"),
+            "timestamp":_tradier_trade_timestamp(quote),
+            "source":"tradier_consolidated_trade",
+            "kind":"trade",
+        },
+        {
+            "symbol":observed_symbol,
+            "price":_quote_midpoint(quote.get("bid"),quote.get("ask")),
+            "timestamp":_tradier_quote_timestamp(quote),
+            "source":"tradier_consolidated_quote_midpoint",
+            "kind":"quote_midpoint",
+        },
+    ]
+    for bar in list(intraday or [])[-3:]:
+        candidates.append({
+            "symbol":bar.get("symbol") or bar.get("S") or symbol,
+            "price":bar.get("c") or bar.get("price"),
+            "timestamp":bar.get("t") or bar.get("timestamp"),
+            "source":"tradier_consolidated_timesales_bar",
+            "kind":"bar",
+        })
+    return candidates
 
 
 def _tradier_regular_session_bars(symbol, now):
@@ -1682,21 +1737,70 @@ def analyze(symbol):
     intraday=None
     provider_day_high=None
     provider_day_low=None
+    live_price_source=None
+    live_price_timestamp=None
+    live_price_age_seconds=None
+    live_price_is_fallback=False
+    live_price_fallback_reason=None
+    live_price_rejections=[]
 
-    def _load_alpaca_snapshot():
+    def _load_alpaca_snapshot(fallback_reason=None):
         nonlocal snap, trade, quote, day, prev
         nonlocal trade_ts, quote_ts, price, prev_close, bid, ask
+        nonlocal live_provider, live_feed_label
+        nonlocal live_price_source, live_price_timestamp, live_price_age_seconds
+        nonlocal live_price_is_fallback, live_price_fallback_reason
         snap=snapshot(symbol,LIVE_FEED)
+        snap_symbol=str(snap.get("symbol") or symbol).upper().strip()
+        if snap_symbol != symbol:
+            raise RuntimeError(
+                f"Alpaca snapshot symbol mismatch ({snap_symbol or 'missing'} != {symbol})"
+            )
         trade=snap.get("latestTrade") or {}
         quote=snap.get("latestQuote") or {}
         day=snap.get("dailyBar") or {}
         prev=snap.get("prevDailyBar") or {}
         trade_ts=trade.get("t")
         quote_ts=quote.get("t")
-        price=fnum(trade.get("p")) or fnum(day.get("c"))
+        alpaca_candidates=_provider_price_candidates(
+            symbol,trade,quote,provider="alpaca",feed=LIVE_FEED
+        )
+        selected,rejections=select_freshest_live_price(
+            symbol,
+            alpaca_candidates,
+            now=now,
+            max_age_seconds=MAX_LIVE_PRICE_AGE_SECONDS,
+        )
+        live_price_rejections.extend(rejections)
+        if not selected:
+            detail="; ".join(rejections[:3]) or "no trade or two-sided quote"
+            raise RuntimeError(f"Alpaca returned no fresh live price ({detail})")
+        price=selected["price"]
         prev_close=fnum(prev.get("c"))
-        bid=fnum(quote.get("bp"))
-        ask=fnum(quote.get("ap"))
+        fresh_quote,_=select_freshest_live_price(
+            symbol,
+            [row for row in alpaca_candidates if row.get("kind")=="quote_midpoint"],
+            now=now,
+            max_age_seconds=MAX_LIVE_PRICE_AGE_SECONDS,
+        )
+        bid=fnum(quote.get("bp")) if fresh_quote else None
+        ask=fnum(quote.get("ap")) if fresh_quote else None
+        live_provider="alpaca"
+        live_feed_label=(
+            f"{LIVE_FEED.upper()} FALLBACK" if fallback_reason else LIVE_FEED.upper()
+        )
+        live_price_source=selected.get("source")
+        live_price_timestamp=selected.get("timestamp")
+        live_price_age_seconds=selected.get("age_seconds")
+        live_price_is_fallback=bool(fallback_reason) or selected.get("kind") != "trade"
+        live_price_fallback_reason=(
+            fallback_reason
+            or (
+                "Alpaca trade was unavailable; using the fresh quote midpoint."
+                if selected.get("kind") == "quote_midpoint"
+                else None
+            )
+        )
 
     if not USE_TRADIER:
         _load_alpaca_snapshot()
@@ -1713,42 +1817,77 @@ def analyze(symbol):
                     f"Tradier returned no {session_phase} Time & Sales bars"
                 )
 
-            tprice=(
-                fnum(tradier_quote.get("last"))
-                or fnum(tradier_quote.get("close"))
-                or (fnum(tradier_intraday[-1].get("c")) if tradier_intraday else None)
+            tradier_candidates=_tradier_price_candidates(
+                symbol,tradier_quote,tradier_intraday
             )
-            if not tprice:
-                raise RuntimeError("Tradier returned no current price")
+            selected,rejections=select_freshest_live_price(
+                symbol,
+                tradier_candidates,
+                now=now,
+                max_age_seconds=MAX_LIVE_PRICE_AGE_SECONDS,
+            )
+            live_price_rejections.extend(rejections)
+            if not selected:
+                detail="; ".join(rejections[:4]) or "no trade, quote, or Time & Sales bar"
+                raise RuntimeError(f"Tradier returned no fresh live price ({detail})")
 
-            price=tprice
+            fresh_trade,_=select_freshest_live_price(
+                symbol,
+                [row for row in tradier_candidates if row.get("kind") in {"trade","bar"}],
+                now=now,
+                max_age_seconds=MAX_LIVE_PRICE_AGE_SECONDS,
+            )
+            fresh_quote,_=select_freshest_live_price(
+                symbol,
+                [row for row in tradier_candidates if row.get("kind")=="quote_midpoint"],
+                now=now,
+                max_age_seconds=MAX_LIVE_PRICE_AGE_SECONDS,
+            )
+
+            price=selected["price"]
             prev_close=fnum(tradier_quote.get("prevclose"))
-            bid=fnum(tradier_quote.get("bid"))
-            ask=fnum(tradier_quote.get("ask"))
+            bid=fnum(tradier_quote.get("bid")) if fresh_quote else None
+            ask=fnum(tradier_quote.get("ask")) if fresh_quote else None
             provider_day_high=fnum(tradier_quote.get("high"))
             provider_day_low=fnum(tradier_quote.get("low"))
             intraday=tradier_intraday
-            trade_ts=_tradier_trade_timestamp(tradier_quote)
+            trade_ts=(fresh_trade or {}).get("timestamp") or _tradier_trade_timestamp(tradier_quote)
             quote_ts=_tradier_quote_timestamp(tradier_quote)
             live_provider="tradier"
             live_feed_label="TRADIER CONSOLIDATED"
+            live_price_source=selected.get("source")
+            live_price_timestamp=selected.get("timestamp")
+            live_price_age_seconds=selected.get("age_seconds")
+            live_price_is_fallback=selected.get("kind") != "trade"
+            if live_price_is_fallback:
+                live_price_fallback_reason=(
+                    "Tradier last trade was stale or older than the selected fresh "
+                    + (
+                        "consolidated quote midpoint."
+                        if selected.get("kind") == "quote_midpoint"
+                        else "Time & Sales bar close."
+                    )
+                )
         except Exception as exc:
             # Explicit fallback keeps the Analyzer usable during a Tradier
             # outage while making the source change visible in the metrics.
             live_provider_error=str(exc)[:180]
             try:
-                _load_alpaca_snapshot()
+                _load_alpaca_snapshot(fallback_reason=live_provider_error)
             except Exception as alpaca_exc:
                 alpaca_snapshot_error=str(alpaca_exc)[:180]
                 raise RuntimeError(
-                    "Both live market-data providers failed. "
+                    "LIVE PRICE UNAVAILABLE — no fresh, symbol-matched quote/trade. "
                     f"Tradier: {live_provider_error}; Alpaca: {alpaca_snapshot_error}"
                 ) from alpaca_exc
 
     if intraday is None:
         intraday=latest_session_bars(symbol,now)
 
-    if not price: raise RuntimeError("No current price returned")
+    if not price or live_price_timestamp is None:
+        raise RuntimeError(
+            "LIVE PRICE UNAVAILABLE — no fresh, symbol-matched quote/trade was returned."
+        )
     day_pct=pct(price,prev_close) if prev_close else None
 
     spread_pct=None
@@ -1875,6 +2014,13 @@ def analyze(symbol):
         "live_feed":live_feed_label,
         "live_provider_error":live_provider_error,
         "alpaca_fallback_error":alpaca_snapshot_error,
+        "live_price_available":True,
+        "live_price_source":live_price_source,
+        "live_price_timestamp":live_price_timestamp,
+        "live_price_age_seconds":round(live_price_age_seconds,2) if live_price_age_seconds is not None else None,
+        "live_price_is_fallback":bool(live_price_is_fallback),
+        "live_price_fallback_reason":live_price_fallback_reason,
+        "live_price_rejections":live_price_rejections[:8],
         "historical_provider":(
             "tradier"
             if "tradier" in str(daysrc or "").lower()

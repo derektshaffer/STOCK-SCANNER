@@ -29,9 +29,6 @@ def render_live_tape(st, overlay):
     trade_age = overlay.get("trade_age_seconds")
     quote_age = overlay.get("quote_age_seconds")
 
-    if status in {"idle", "disabled"} and not overlay.get("price"):
-        return
-
     if status == "streaming":
         dot = "#35e06f"
         label = f"{feed} LIVE"
@@ -68,8 +65,13 @@ def render_live_tape(st, overlay):
     breakout = str(overlay.get("breakout_state") or "—")
     vwap_pos = str(overlay.get("vwap_position") or "N/A")
 
+    live_price_value=(
+        _money(overlay.get("price"))
+        if overlay.get("live_price_available") is not False and overlay.get("price") is not None
+        else "UNAVAILABLE"
+    )
     cells = [
-        ("LIVE PRICE", _money(overlay.get("price")), label),
+        ("LIVE PRICE", live_price_value, label),
         ("BID / ASK", f"{bid} / {ask}", "streaming quote"),
         ("SPREAD", _pct(overlay.get("spread_pct")), "live quote spread"),
         ("LIVE VWAP", _money(overlay.get("vwap")), vwap_pos),
