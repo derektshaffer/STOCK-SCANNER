@@ -30,8 +30,14 @@ jobs:
           echo "5130bca9da0dc107fb7d296a9dcfe39900c443518411777a5ff249e19bcbdfd9  /tmp/full-market.patch" | sha256sum --check
           git apply --check /tmp/full-market.patch
           git apply --index /tmp/full-market.patch
+
+          # GITHUB_TOKEN cannot push commits that create/update workflow files.
+          # Preserve every workflow exactly as it exists on this branch; the
+          # connector will make any intended workflow cleanup/config changes
+          # after the validated implementation commit lands.
+          git restore --source=HEAD --staged --worktree .github/workflows
+
           rm -f codex-full-market.patch.ready codex-full-market.patch.part.*
-          rm -f .github/workflows/apply-full-market-radar.yml
           git add -A
 
       - name: Set up Python
@@ -55,11 +61,6 @@ jobs:
           python historical_hypothesis_regression_check.py
           python offhours_outcome_regression_check.py
 
-          # consistency_regression_check.py contains a deliberately tight
-          # nonblocking latency assertion. Hosted-runner scheduling jitter can
-          # occasionally push it over the threshold even when the scanner code
-          # is unchanged. Require a clean pass, but allow two additional fresh
-          # attempts before treating it as a real regression.
           consistency_ok=0
           for attempt in 1 2 3; do
             echo "Consistency regression attempt ${attempt}/3"
