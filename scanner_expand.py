@@ -82,6 +82,17 @@ def _load_details() -> dict[str, dict]:
             "day": _f(row.get("day_pct"), 1, "%"),
             "day_positive": float(row.get("day_pct") or 0) >= 0,
             "score": _f(row.get("score"), 0),
+            "explosion_score": _f(
+                row.get("explosion_score")
+                if row.get("explosion_score") is not None
+                else row.get("score"),
+                0,
+            ),
+            "tradeability_score": _f(row.get("tradeability_score"), 0),
+            "risk_lane": str(row.get("risk_lane") or "$1-$50"),
+            "radar_3m": _f(row.get("radar_change_3m_pct"), 2, "%"),
+            "radar_5m": _f(row.get("radar_change_5m_pct"), 2, "%"),
+            "radar_velocity": _f(row.get("radar_volume_velocity_ratio"), 2, "x"),
             "grade": str(row.get("setup_grade") or "REJECT"),
             "label": str(row.get("setup_label") or ""),
             "passed": bool(row.get("passed_base_filters")),
@@ -220,13 +231,19 @@ def install_scanner_expander() -> None:
                 <div><div class="sid-symbol">${{esc(x.symbol)}}</div>
                   <div class="sid-price">${{esc(x.price)}} <span class="${{dayCls}}">${{esc(x.day)}} today</span></div>
                 </div>
-                <div class="sid-score">${{esc(x.score)}}<small>SCORE / 100</small></div>
+                <div class="sid-score">${{esc(x.explosion_score)}}<small>EXPLOSION SCORE / 100</small></div>
               </div>
               <div class="sid-badges">
                 <span class="sid-badge sid-good">GRADE ${{esc(x.grade)}} · ${{esc(x.label)}}</span>
+                <span class="sid-badge ${{x.risk_lane === 'SUB-$1' ? 'sid-bad' : 'sid-warn'}}">${{esc(x.risk_lane)}} LANE</span>
+                <span class="sid-badge sid-warn">TRADEABILITY ${{esc(x.tradeability_score)}}/100</span>
                 ${{passBadge}}${{alertBadge}}${{vwapBadge}}
               </div>
               <div class="sid-grid">
+                ${{metric('SETUP SCORE', x.score)}}
+                ${{metric('RADAR 3 MIN', x.radar_3m, Number.parseFloat(x.radar_3m) > 0)}}
+                ${{metric('RADAR 5 MIN', x.radar_5m, Number.parseFloat(x.radar_5m) > 0)}}
+                ${{metric('VOL VELOCITY', x.radar_velocity, Number.parseFloat(x.radar_velocity) >= 4)}}
                 ${{metric('5 MIN', x.momentum_5m, Number.parseFloat(x.momentum_5m) > 0)}}
                 ${{metric('15 MIN', x.momentum_15m, Number.parseFloat(x.momentum_15m) > 0)}}
                 ${{metric('TOD VOL PACE', x.volume_pace, Number.parseFloat(x.volume_pace) >= 1.5)}}

@@ -35,9 +35,13 @@ except Exception:
     get_tradier_timesales_bars = None
 
 try:
-    from scanner_discovery import discover_tradier_candidates
+    from scanner_discovery import (
+        discover_tradier_candidates,
+        get_last_discovery_meta,
+    )
 except Exception:
     discover_tradier_candidates = None
+    get_last_discovery_meta = None
 
 try:
     from scanner_timeframe_fit import (
@@ -106,17 +110,23 @@ WATCHLIST_SIZE = 15
 ENRICH_TOP = WATCHLIST_SIZE
 EXTENDED_ENRICH_TOP = WATCHLIST_SIZE + 5
 REGULAR_ENRICH_POOL_MAX = 40
-EXTENDED_ENRICH_POOL_MAX = 30
+EXTENDED_ENRICH_POOL_MAX = 34
+EXPLOSIVE_ENRICH_RESERVE = 20
+FULL_MARKET_CANDIDATE_TOP = 180
 MAX_ENRICH_WORKERS = 6
 MAX_HISTORY_WORKERS = 5
 NEWS_TOP = REGULAR_ENRICH_POOL_MAX
 HISTORICAL_TOP = 5
 
-MIN_PRICE = 1.00
-MAX_PRICE = 50.00
+MIN_DETECTION_PRICE = 0.10
+SUB_DOLLAR_CUTOFF = 1.00
+SMALL_ACCOUNT_MAX_PRICE = 50.00
+MIN_PRICE = MIN_DETECTION_PRICE  # compatibility alias used by older replays
 MIN_DAY_PCT = 3.0
 MIN_TOTAL_DOLLAR_VOLUME = 5_000_000
 MIN_EXTENDED_DOLLAR_VOLUME = 1_000_000
+MIN_SUB_DOLLAR_DOLLAR_VOLUME = 500_000
+MIN_SUB_DOLLAR_EXTENDED_DOLLAR_VOLUME = 150_000
 MIN_RAW_IEX_DOLLAR_VOLUME_FALLBACK = 25_000
 IEX_MARKET_SHARE_ESTIMATE = 0.025
 SIP_LIQUIDITY_DELAY_MINUTES = 16
@@ -153,9 +163,9 @@ EXTENDED_VOLUME_PROFILE_MIN_SESSIONS = 3
 TRADIER_VOLUME_PROFILE_LOOKBACK_DAYS = 39
 
 SCAN_LOG_DIR = os.environ.get("SCAN_LOG_DIR", "scan_logs").strip() or "scan_logs"
-SCAN_LOG_TOP = 30
-SCANNER_VERSION = "3.2"
-SCANNER_FEATURE_VERSION = "scanner-features-v2-consolidated"
+SCAN_LOG_TOP = 60
+SCANNER_VERSION = "3.3"
+SCANNER_FEATURE_VERSION = "scanner-features-v3-full-market-radar"
 
 API_KEY = os.environ.get("ALPACA_API_KEY", "").strip()
 API_SECRET = os.environ.get("ALPACA_SECRET_KEY", "").strip()
@@ -459,56 +469,36 @@ def _alpaca_rescue_candidates(phase):
 
 
 def get_candidate_universe(now_et):
-    """Discover momentum candidates without a hard Alpaca dependency.
-
-    Scheduled durable-learning runs can explicitly use Tradier discovery. The
-    interactive app keeps the existing Alpaca screener behavior unless Tradier
-    discovery is forced or Alpaca credentials are absent.
-    """
+    """Discover momentum candidates, preferring the full-market Tradier radar."""
     phase = market_session_mode(now_et)
 
-    if (
-        USE_TRADIER
-        and discover_tradier_candidates is not None
-        and (FORCE_TRADIER_DISCOVERY or not ALPACA_CONFIGURED)
-    ):
+    if USE_TRADIER and discover_tradier_candidates is not None:
         try:
             rows, meta = discover_tradier_candidates(
                 TRADIER_TOKEN,
                 likely_common_stock,
-                top=100,
+                top=FULL_MARKET_CANDIDATE_TOP,
             )
+            print(
+                "Full-market radar: "
+                f"checked {meta.get('quotes_received', 0)}/"
+                f"{meta.get('requested_symbols', meta.get('symbols', '?'))} symbols "
+                f"({meta.get('coverage_pct', 0):.1f}% coverage); "
+                f"returned {meta.get('candidates_returned', len(rows))} ignition candidates; "
+                f"sub-$1 eligible={meta.get('sub_dollar_eligible', 0)}."
+            )
+            for warning in meta.get("warnings") or []:
+                print("WARN full-market radar: " + str(warning))
             if rows:
-                print(
-                    "Tradier discovery: "
-                    f"{meta.get('candidates_returned', len(rows))} candidates "
-                    f"from {meta.get('symbols', '?')} cached-universe symbols "
-                    f"(cache_hit={meta.get('cache_hit')})."
-                )
-                rescue = []
-                try:
-                    rescue = _alpaca_rescue_candidates(phase)
-                except Exception as exc:
-                    print(f"WARN live mover rescue discovery failed: {exc}")
-                merged = _merge_candidate_rows(rows, rescue, limit=180)
-                if rescue:
-                    added = len({
-                        str(row.get("symbol") or "").upper().strip()
-                        for row in merged
-                    } - {
-                        str(row.get("symbol") or "").upper().strip()
-                        for row in rows
-                    })
-                    print(
-                        f"Live mover rescue: {len(rescue)} supplemental rows, "
-                        f"{added} unique symbols added."
-                    )
-                return merged
+                return rows
+            raise RuntimeError("full-market radar returned no candidates")
         except Exception as exc:
-            print(f"WARN Tradier discovery failed: {exc}")
+            print(f"WARN full-market Tradier radar failed: {exc}")
             if not ALPACA_CONFIGURED:
                 raise
 
+    # Provider-degraded fallback. This preserves the older Alpaca discovery
+    # path but it is explicitly not equivalent to full-market coverage.
     if phase == "regular":
         return get_movers()
 
@@ -523,9 +513,6 @@ def get_candidate_universe(now_et):
                         merged[symbol] = {"symbol": symbol}
             except Exception as exc:
                 errors.append(str(exc))
-
-        # After the regular open, today's movers are still useful context and
-        # can catch a sharp post-market mover not yet near the activity leaders.
         if phase == "afterhours":
             try:
                 for row in get_movers():
@@ -534,11 +521,8 @@ def get_candidate_universe(now_et):
                         merged[symbol] = {"symbol": symbol}
             except Exception as exc:
                 errors.append(str(exc))
-
         if merged:
             return list(merged.values())[:100]
-
-        # Graceful fallback if the most-active screener is unavailable.
         if errors:
             print("WARN extended-hours discovery: " + " | ".join(errors[:2]))
         return get_movers()
@@ -732,20 +716,103 @@ def analyzer_aligned_volume_pace(session_volume, avg_daily_volume_value, now_et)
     return session_volume / expected
 
 
+def risk_lane_for_price(price):
+    try:
+        value = float(price)
+    except (TypeError, ValueError):
+        return "UNKNOWN"
+    if value < SUB_DOLLAR_CUTOFF:
+        return "SUB-$1"
+    if value <= SMALL_ACCOUNT_MAX_PRICE:
+        return "$1-$50"
+    return "ABOVE-$50"
+
+
+def liquidity_floor_for(c):
+    """Execution-quality floor; it never controls radar visibility."""
+    phase = c.get("market_session") or "regular"
+    sub_dollar = risk_lane_for_price(c.get("price")) == "SUB-$1"
+    if sub_dollar:
+        return (
+            MIN_SUB_DOLLAR_EXTENDED_DOLLAR_VOLUME
+            if phase in {"premarket", "afterhours"}
+            else MIN_SUB_DOLLAR_DOLLAR_VOLUME
+        )
+    return (
+        MIN_EXTENDED_DOLLAR_VOLUME
+        if phase in {"premarket", "afterhours"}
+        else MIN_TOTAL_DOLLAR_VOLUME
+    )
+
+
+def refresh_tradeability_score(c):
+    """Refresh the separate execution score after deeper live enrichment."""
+    score = 0.0
+    price = c.get("price")
+    lane = c.get("risk_lane") or risk_lane_for_price(price)
+    c["risk_lane"] = lane
+    c["sub_dollar"] = lane == "SUB-$1"
+
+    if c.get("live_price_available") is True:
+        score += 25.0
+    try:
+        age = float(c.get("live_price_age_seconds"))
+    except (TypeError, ValueError):
+        age = None
+    if age is not None and age <= MAX_ACTIONABLE_MARKET_DATA_AGE_SECONDS:
+        score += 5.0
+
+    try:
+        spread = float(c.get("spread_pct"))
+    except (TypeError, ValueError):
+        spread = None
+    if spread is not None:
+        if spread <= 0.5:
+            score += 25.0
+        elif spread <= 1.0:
+            score += 22.0
+        elif spread <= 2.0:
+            score += 17.0
+        elif spread <= 4.0:
+            score += 10.0
+        elif spread <= 8.0:
+            score += 4.0
+
+    liquidity = max(0.0, float(c.get("liquidity_dollar_volume") or 0.0))
+    if liquidity > 0:
+        import math
+        score += scale(math.log10(max(1.0, liquidity)), 4.5, 7.3, 25.0)
+
+    try:
+        pace = float(
+            c.get("volume_pace_display")
+            if c.get("volume_pace_display") is not None
+            else c.get("volume_pace")
+        )
+    except (TypeError, ValueError):
+        pace = None
+    score += scale(pace, 0.2, 4.0, 12.0)
+    score += 8.0 if lane == "$1-$50" else 6.0 if lane == "ABOVE-$50" else 2.0
+    c["tradeability_score"] = round(max(0.0, min(100.0, score)), 1)
+    return c["tradeability_score"]
+
+
 def base_quality_score(c):
     score = 0.0
-    if MIN_PRICE <= c["price"] <= MAX_PRICE:
-        score += 5.0
+    price = float(c.get("price") or 0.0)
+    lane = c.get("risk_lane") or risk_lane_for_price(price)
+    c["risk_lane"] = lane
+    c["sub_dollar"] = lane == "SUB-$1"
+    if price >= MIN_DETECTION_PRICE:
+        score += 5.0 if lane == "$1-$50" else 3.0
     score += scale(c.get("day_pct"), 0.0, 20.0, 15.0)
-    score += scale(c.get("liquidity_dollar_volume"), 1_000_000, 50_000_000, 12.0)
+    score += scale(c.get("liquidity_dollar_volume"), 250_000, 50_000_000, 12.0)
     score += scale(c.get("intraday_range_pct"), 1.0, 12.0, 8.0)
     d = c.get("distance_from_high_pct")
     if d is not None:
         score += clamp((12.0 - d) / 12.0) * 10.0
 
-    # IEX is one exchange, not the consolidated NBBO. A tight IEX spread can
-    # add confidence, but a wide/missing IEX quote is handled as a warning
-    # rather than a hard rejection.
+    # Consolidated spread quality is execution evidence, not a discovery gate.
     s = c.get("spread_pct")
     if s is not None:
         score += clamp((MAX_IEX_SPREAD_WARNING_PCT - s) / MAX_IEX_SPREAD_WARNING_PCT) * 10.0
@@ -764,24 +831,19 @@ def live_bonus_score(c):
 
 
 def critical_fail_count(c):
-    """Count strongest price/liquidity failures with an extended-hours threshold."""
+    """Count execution failures without making risky names invisible."""
     count = 0
-    price = c.get("price") or 0
-    if price < MIN_PRICE or price > MAX_PRICE:
+    price = float(c.get("price") or 0.0)
+    if price < MIN_DETECTION_PRICE:
         count += 1
 
-    phase = c.get("market_session") or "regular"
-    liquidity_floor = (
-        MIN_EXTENDED_DOLLAR_VOLUME
-        if phase in {"premarket", "afterhours"}
-        else MIN_TOTAL_DOLLAR_VOLUME
-    )
-
+    liquidity_floor = liquidity_floor_for(c)
     if c.get("liquidity_source") in {
         "delayed_sip",
         "tradier_consolidated",
         "tradier_extended",
         "historical_tradier_replay",
+        "live_sip_extended",
     }:
         if c.get("liquidity_dollar_volume", 0) < liquidity_floor:
             count += 1
@@ -797,43 +859,77 @@ GRADE_RANK = {"A": 4, "B": 3, "C": 2, "REJECT": 1}
 
 
 def ranking_key(c):
-    """
-    Rank tradability before excitement. Once setup grades exist, grade comes first.
-    """
+    """Keep true explosions visible, then rank execution quality within them."""
+    explosion = float(c.get("explosion_score") or 0.0)
+    tradeability = float(c.get("tradeability_score") or 0.0)
     return (
+        1 if explosion >= 65.0 else 0,
+        explosion,
         GRADE_RANK.get(c.get("setup_grade"), 0),
         1 if c.get("passed_base_filters") else 0,
+        tradeability,
         -c.get("critical_fail_count", critical_fail_count(c)),
         -c.get("failed_count", 99),
         -c.get("warning_count", 99),
         -len(c.get("setup_flags", [])),
-        c.get("opportunity_score", c.get("score", 0)),
-        c.get("score", 0),
+        c.get("opportunity_score", c.get("score", 0)) or 0,
+        c.get("score", 0) or 0,
         c.get("day_pct") or -999,
     )
 
 
 def select_enrichment_targets(rows, phase):
-    """Enrich a broad plausible pool before final live ranking.
+    """Deep-enrich explosions first, then the best conventional setups.
 
-    Price/liquidity critical failures cannot be repaired by momentum/news
-    enrichment, so they are excluded. Other candidates get a fair chance up
-    to a cadence-conscious pool cap instead of being cut at display size.
+    Price/liquidity failures still control *actionability*, but they no longer
+    prevent a low-priced or early-stage ignition from receiving Time & Sales,
+    VWAP and momentum confirmation.
     """
     limit = (
         EXTENDED_ENRICH_POOL_MAX
         if phase in {"premarket", "afterhours"}
         else REGULAR_ENRICH_POOL_MAX
     )
-    plausible = [
+    by_explosion = sorted(
+        rows,
+        key=lambda c: (
+            float(c.get("explosion_score") or 0.0),
+            float(c.get("tradeability_score") or 0.0),
+        ),
+        reverse=True,
+    )
+    explosive = [
+        c for c in by_explosion
+        if float(c.get("explosion_score") or 0.0) >= 45.0
+        or c.get("radar_quiet_to_active")
+    ][: min(EXPLOSIVE_ENRICH_RESERVE, limit)]
+
+    conventional = [
         c for c in rows
         if c.get("critical_fail_count", critical_fail_count(c)) == 0
     ]
-    return plausible[:limit]
+
+    selected = []
+    seen = set()
+    for pool in (explosive, conventional, by_explosion):
+        for c in pool:
+            symbol = str(c.get("symbol") or "").upper()
+            if not symbol or symbol in seen:
+                continue
+            selected.append(c)
+            seen.add(symbol)
+            if len(selected) >= limit:
+                return selected
+    return selected
 
 
 def setup_risk_flags(c):
     flags = []
+    lane = c.get("risk_lane") or risk_lane_for_price(c.get("price"))
+    c["risk_lane"] = lane
+    c["sub_dollar"] = lane == "SUB-$1"
+    if lane == "SUB-$1":
+        flags.append("sub-$1 extreme volatility / slippage risk")
     dist_vwap = c.get("distance_from_vwap_pct")
     if dist_vwap is not None and dist_vwap >= MAX_VWAP_EXTENSION_PCT:
         flags.append(f"extended > {MAX_VWAP_EXTENSION_PCT:.0f}% above VWAP")
@@ -920,6 +1016,20 @@ def assign_setup_grade(c, now_et):
             if severe_negative_news:
                 reasons.append("negative catalyst risk")
 
+    explosion = float(c.get("explosion_score") or 0.0)
+    lane = c.get("risk_lane") or risk_lane_for_price(c.get("price"))
+    if lane == "SUB-$1":
+        if grade == "REJECT" and explosion >= 55:
+            label = "SUB-$1 EXPLOSIVE / NOT TRADEABLE"
+        elif grade in {"A", "B"}:
+            grade = "B"
+            label = "SUB-$1 EXTREME-RISK WATCH"
+        elif grade == "C":
+            label = "SUB-$1 HIGH-RISK NEAR MISS"
+        reasons.append("sub-$1 lane is never treated as a normal-risk setup")
+    elif grade == "REJECT" and explosion >= 65:
+        label = "EXPLOSIVE / NOT TRADEABLE"
+
     c["setup_grade"] = grade
     c["setup_label"] = label
     c["grade_reasons"] = reasons
@@ -986,6 +1096,16 @@ def scanner_action_signal(c, now_et=None, *, use_behavior=False):
     m5 = num(m5)
     m15 = num(m15)
     pace = num(pace)
+    explosion = num(c.get("explosion_score")) or 0.0
+    tradeability = num(c.get("tradeability_score")) or 0.0
+    lane = c.get("risk_lane") or risk_lane_for_price(c.get("price"))
+
+    if c.get("radar_only"):
+        return {
+            "label": "DATA CHECK",
+            "tier": "blocked",
+            "reason": "Full-market radar detected the move, but deeper live bars have not yet confirmed an actionable price, VWAP and spread.",
+        }
 
     failed_breakout = bool(num(c.get("failed_breakout")) or 0) if use_behavior else False
     vwap_rejection = bool(num(c.get("vwap_rejection")) or 0) if use_behavior else False
@@ -997,10 +1117,30 @@ def scanner_action_signal(c, now_et=None, *, use_behavior=False):
     pullback_quality = num(c.get("pullback_quality_score")) if use_behavior else None
 
     if phase != "regular":
+        if explosion >= 65.0:
+            label = "SUB-$1 EXPLOSIVE WATCH" if lane == "SUB-$1" else "EXPLOSIVE WATCH"
+            return {
+                "label": label,
+                "tier": "caution" if lane == "SUB-$1" else "watch",
+                "reason": "The full-market radar detected strong extended-hours ignition. Confirm consolidated spread, live bars and a non-chasing entry in Analyzer.",
+            }
         return {
             "label": "EXTENDED WATCH",
             "tier": "watch",
             "reason": "Extended-hours conditions require extra confirmation.",
+        }
+
+    if lane == "SUB-$1" and explosion >= 55.0:
+        if critical == 0 and failed <= 1 and tradeability >= 65.0 and (spread is None or spread <= 3.0):
+            return {
+                "label": "HIGH-RISK REVIEW",
+                "tier": "caution",
+                "reason": "Sub-$1 ignition is strong and execution metrics are comparatively favorable, but this remains an extreme-risk setup; use Analyzer before any decision.",
+            }
+        return {
+            "label": "SUB-$1 EXPLOSIVE WATCH",
+            "tier": "caution",
+            "reason": "A sub-$1 explosion was detected, but liquidity, spread or confirmation is not strong enough for a normal actionable signal.",
         }
 
     if grade == "REJECT" or critical > 0 or failed >= 2:
@@ -1008,6 +1148,12 @@ def scanner_action_signal(c, now_et=None, *, use_behavior=False):
             (c.get("failed_filters") or [None])[0]
             or "Scanner safety filters reject the setup."
         )
+        if explosion >= 65.0:
+            return {
+                "label": "EXPLOSIVE / NO TRADE",
+                "tier": "avoid",
+                "reason": "The move is real enough to display, but execution-quality filters reject an entry: " + reason,
+            }
         return {"label": "NO TRADE", "tier": "avoid", "reason": reason}
 
     if spread is not None and spread > 4.5:
@@ -1292,32 +1438,36 @@ def assign_scanner_actions(rows, now_et):
 
 def evaluate_base_filters(c):
     reasons = []
-    if c["price"] < MIN_PRICE:
-        reasons.append("price < $1")
-    if c["price"] > MAX_PRICE:
-        reasons.append("price > $50")
+    price = float(c.get("price") or 0.0)
+    lane = c.get("risk_lane") or risk_lane_for_price(price)
+    c["risk_lane"] = lane
+    c["sub_dollar"] = lane == "SUB-$1"
+
+    if price < MIN_DETECTION_PRICE:
+        reasons.append(f"price < ${MIN_DETECTION_PRICE:.2f} detection floor")
     if c.get("day_pct") is None or c["day_pct"] < MIN_DAY_PCT:
         reasons.append("day gain < 3%")
 
     phase = c.get("market_session") or "regular"
-    liquidity_floor = (
-        MIN_EXTENDED_DOLLAR_VOLUME
-        if phase in {"premarket", "afterhours"}
-        else MIN_TOTAL_DOLLAR_VOLUME
+    liquidity_floor = liquidity_floor_for(c)
+    liquidity_label = (
+        f"${liquidity_floor / 1_000_000:.2f}M"
+        if liquidity_floor < 1_000_000
+        else f"${liquidity_floor / 1_000_000:.0f}M"
     )
-    liquidity_label = "$1M" if liquidity_floor == MIN_EXTENDED_DOLLAR_VOLUME else "$5M"
 
     if c.get("liquidity_source") in {
         "delayed_sip",
         "tradier_consolidated",
         "tradier_extended",
         "historical_tradier_replay",
+        "live_sip_extended",
     }:
         if c.get("liquidity_dollar_volume", 0) < liquidity_floor:
             source_label = (
                 "Tradier consolidated dollar volume"
                 if str(c.get("liquidity_source") or "").startswith("tradier")
-                else "delayed SIP dollar volume"
+                else "consolidated dollar volume"
             )
             reasons.append(f"{source_label} < {liquidity_label}")
     else:
@@ -1337,6 +1487,12 @@ def evaluate_base_filters(c):
 
 def evaluate_tradability_warnings(c):
     warnings = []
+    lane = c.get("risk_lane") or risk_lane_for_price(c.get("price"))
+    if lane == "SUB-$1":
+        warnings.append("SUB-$1 EXTREME RISK: elevated volatility, slippage, dilution and manipulation risk")
+    elif lane == "ABOVE-$50":
+        warnings.append("above the small-account $1-$50 focus lane")
+
     spread = c.get("spread_pct")
     source = str(c.get("live_quote_source") or "")
     spread_label = "consolidated spread" if source.startswith("tradier") else "IEX spread"
@@ -1344,11 +1500,15 @@ def evaluate_tradability_warnings(c):
         warnings.append(f"{spread_label} unavailable")
     elif spread > MAX_IEX_SPREAD_WARNING_PCT:
         warnings.append(f"{spread_label} > {MAX_IEX_SPREAD_WARNING_PCT:.0f}%")
+    elif lane == "SUB-$1" and spread > 3.0:
+        warnings.append("sub-$1 spread > 3%")
     return warnings
 
 
 def refresh_quality(c):
-    """Recompute filters and scoring after better liquidity data arrives."""
+    """Recompute execution filters without altering radar visibility."""
+    c["risk_lane"] = c.get("risk_lane") or risk_lane_for_price(c.get("price"))
+    c["sub_dollar"] = c["risk_lane"] == "SUB-$1"
     reasons = evaluate_base_filters(c)
     warnings = evaluate_tradability_warnings(c)
     c["failed_filters"] = reasons
@@ -1362,6 +1522,7 @@ def refresh_quality(c):
         max(0.0, min(100.0, c["base_score"] + c.get("live_bonus", 0) + c.get("news_bonus", 0))),
         1,
     )
+    refresh_tradeability_score(c)
     return c
 
 
@@ -1728,6 +1889,84 @@ def analyze_snapshot(symbol, tradier_quote=None, alpaca_snapshot=None, now_utc=N
     c["news_bonus"] = 0.0
     refresh_quality(c)
     return c
+
+
+def merge_radar_fields(candidate, radar_row):
+    """Attach full-market detection evidence without copying raw provider data."""
+    if not candidate or not radar_row:
+        return candidate
+    if radar_row.get("tradeability_score") is not None:
+        candidate["radar_tradeability_score"] = radar_row.get("tradeability_score")
+    for key, value in radar_row.items():
+        if key in {"symbol", "_tradier_quote", "tradeability_score"}:
+            continue
+        candidate[key] = value
+    candidate["risk_lane"] = radar_row.get("risk_lane") or risk_lane_for_price(
+        candidate.get("price")
+    )
+    candidate["sub_dollar"] = candidate["risk_lane"] == "SUB-$1"
+    return candidate
+
+
+def radar_only_candidate(radar_row, quote, now_utc):
+    """Keep a detected explosion visible when deep price context is incomplete."""
+    if not radar_row:
+        return None
+    explosion = float(radar_row.get("explosion_score") or 0.0)
+    if explosion < 28.0 and not radar_row.get("radar_quote_fresh"):
+        return None
+
+    price = float(radar_row.get("discovery_price") or 0.0)
+    prev_close = float(radar_row.get("discovery_prev_close") or 0.0)
+    high = float((quote or {}).get("high") or price or 0.0)
+    low = float((quote or {}).get("low") or price or 0.0)
+    volume = float(radar_row.get("discovery_volume") or 0.0)
+    spread = radar_row.get("radar_spread_pct")
+    quote_time = radar_row.get("radar_quote_timestamp")
+    quote_age = radar_row.get("radar_quote_age_seconds")
+    fresh = bool(radar_row.get("radar_quote_fresh"))
+
+    if price < MIN_DETECTION_PRICE:
+        return None
+    intraday_range = pct_change(high, low) if high and low else None
+    from_high = ((high - price) / high) * 100.0 if high else None
+    dollar_volume = price * volume
+    candidate = {
+        "symbol": str(radar_row.get("symbol") or "").upper(),
+        "price": round(price, 4),
+        "prev_close": round(prev_close, 4) if prev_close else None,
+        "day_pct": radar_row.get("discovery_change_pct"),
+        "volume": int(volume),
+        "dollar_volume": round(dollar_volume, 2),
+        "estimated_total_dollar_volume": round(dollar_volume, 2),
+        "liquidity_source": "tradier_consolidated",
+        "liquidity_dollar_volume": round(dollar_volume, 2),
+        "live_quote_source": "tradier_consolidated_radar",
+        "live_price_available": fresh,
+        "live_price_source": "tradier_full_market_radar",
+        "live_price_timestamp": quote_time,
+        "live_price_age_seconds": quote_age,
+        "live_price_is_fallback": True,
+        "live_price_fallback_reason": (
+            "Full-market radar quote retained while Time & Sales / VWAP confirmation is pending."
+        ),
+        "latest_trade_time": quote_time,
+        "latest_quote_time": quote_time,
+        "session_date": now_utc.astimezone(ZoneInfo("America/New_York")).date().isoformat(),
+        "spread_pct": spread,
+        "intraday_range_pct": round(intraday_range, 2) if intraday_range is not None else None,
+        "distance_from_high_pct": round(from_high, 2) if from_high is not None else None,
+        "vwap": None,
+        "distance_from_vwap_pct": None,
+        "above_vwap": False,
+        "avg_20d_volume": radar_row.get("discovery_average_volume"),
+        "live_bonus": 0.0,
+        "news_bonus": 0.0,
+        "radar_only": True,
+    }
+    merge_radar_fields(candidate, radar_row)
+    refresh_quality(candidate)
+    return candidate
 
 
 def daily_history_context(symbol, now_utc, current_day=None):
@@ -2346,6 +2585,8 @@ def enrich_live(c, now_utc, now_et):
     )
 
     if session_stats:
+        c["radar_only"] = False
+        c["radar_deep_confirmed"] = True
         c.update(session_stats.get("behavior_features") or {})
 
     current_day = None
@@ -2889,6 +3130,26 @@ def candidate_log_record(c, rank):
         "price": c.get("price"),
         "prev_close": c.get("prev_close"),
         "day_pct": c.get("day_pct"),
+        "risk_lane": c.get("risk_lane") or risk_lane_for_price(c.get("price")),
+        "sub_dollar": bool(c.get("sub_dollar")),
+        "explosion_score": c.get("explosion_score"),
+        "tradeability_score": c.get("tradeability_score"),
+        "radar_tradeability_score": c.get("radar_tradeability_score"),
+        "radar_rank": c.get("radar_rank"),
+        "radar_rank_score": c.get("radar_rank_score"),
+        "radar_change_since_last_pct": c.get("radar_change_since_last_pct"),
+        "radar_change_3m_pct": c.get("radar_change_3m_pct"),
+        "radar_change_5m_pct": c.get("radar_change_5m_pct"),
+        "radar_volume_per_min": c.get("radar_volume_per_min"),
+        "radar_dollar_velocity_per_min": c.get("radar_dollar_velocity_per_min"),
+        "radar_volume_velocity_ratio": c.get("radar_volume_velocity_ratio"),
+        "radar_volume_acceleration_ratio": c.get("radar_volume_acceleration_ratio"),
+        "radar_quiet_to_active": bool(c.get("radar_quiet_to_active")),
+        "radar_quote_fresh": bool(c.get("radar_quote_fresh")),
+        "radar_quote_age_seconds": c.get("radar_quote_age_seconds"),
+        "radar_reasons": c.get("radar_reasons") or [],
+        "radar_only": bool(c.get("radar_only")),
+        "radar_deep_confirmed": bool(c.get("radar_deep_confirmed")),
         "score": c.get("score"),
         "base_score": c.get("base_score"),
         "live_bonus": c.get("live_bonus"),
@@ -3026,6 +3287,7 @@ def write_scan_logs(
     excluded_symbols,
     ml_summary=None,
     performance=None,
+    discovery_meta=None,
 ):
     """Write one JSON snapshot and one flat CSV. Logging failures never fail the scan."""
     try:
@@ -3081,8 +3343,17 @@ def write_scan_logs(
                 ),
                 "sip_liquidity_delay_minutes": SIP_LIQUIDITY_DELAY_MINUTES,
             },
+            "radar": discovery_meta or {},
             "summary": {
                 "candidates_analyzed": len(rows),
+                "full_market_enabled": bool((discovery_meta or {}).get("full_market_enabled")),
+                "market_symbols_requested": (discovery_meta or {}).get("requested_symbols"),
+                "market_quotes_received": (discovery_meta or {}).get("quotes_received"),
+                "market_coverage_pct": (discovery_meta or {}).get("coverage_pct"),
+                "sub_dollar_eligible": (discovery_meta or {}).get("sub_dollar_eligible"),
+                "explosive_candidates": sum(
+                    float(c.get("explosion_score") or 0.0) >= 65.0 for c in rows
+                ),
                 "candidates_logged": len(records),
                 "base_filter_passes": sum(bool(c.get("passed_base_filters")) for c in rows),
                 "grade_counts": dict(grade_counts),
@@ -3103,6 +3374,11 @@ def write_scan_logs(
         csv_path = out_dir / f"scan_{scan_id}.csv"
         csv_fields = [
             "scan_id", "scan_time_et", "rank", "symbol", "price", "day_pct",
+            "risk_lane", "sub_dollar", "explosion_score", "tradeability_score",
+            "radar_rank", "radar_change_since_last_pct", "radar_change_3m_pct",
+            "radar_change_5m_pct", "radar_volume_velocity_ratio",
+            "radar_volume_acceleration_ratio", "radar_quiet_to_active",
+            "radar_quote_fresh", "radar_quote_age_seconds", "radar_only",
             "score", "opportunity_score", "ml_continuation_prob_pct",
             "ml_advisory_prob_pct", "ml_validated", "ml_status",
             "ml_training_samples", "ml_validation_auc",
@@ -3137,6 +3413,20 @@ def write_scan_logs(
                     "symbol": r.get("symbol"),
                     "price": r.get("price"),
                     "day_pct": r.get("day_pct"),
+                    "risk_lane": r.get("risk_lane"),
+                    "sub_dollar": r.get("sub_dollar"),
+                    "explosion_score": r.get("explosion_score"),
+                    "tradeability_score": r.get("tradeability_score"),
+                    "radar_rank": r.get("radar_rank"),
+                    "radar_change_since_last_pct": r.get("radar_change_since_last_pct"),
+                    "radar_change_3m_pct": r.get("radar_change_3m_pct"),
+                    "radar_change_5m_pct": r.get("radar_change_5m_pct"),
+                    "radar_volume_velocity_ratio": r.get("radar_volume_velocity_ratio"),
+                    "radar_volume_acceleration_ratio": r.get("radar_volume_acceleration_ratio"),
+                    "radar_quiet_to_active": r.get("radar_quiet_to_active"),
+                    "radar_quote_fresh": r.get("radar_quote_fresh"),
+                    "radar_quote_age_seconds": r.get("radar_quote_age_seconds"),
+                    "radar_only": r.get("radar_only"),
                     "score": r.get("score"),
                     "opportunity_score": r.get("opportunity_score"),
                     "ml_continuation_prob_pct": r.get("ml_continuation_prob_pct"),
@@ -3425,42 +3715,51 @@ def main():
     candidates = get_candidate_universe(now_et)
     print(f"Combined discovery returned {len(candidates)} candidate symbols.")
 
-    tradier_quotes = {}
-    if USE_TRADIER:
-        quote_symbols = [
-            str(row.get("symbol") or "").upper().strip()
-            for row in candidates
-            if row.get("symbol")
-        ]
-        try:
-            tradier_quotes = get_tradier_quotes(quote_symbols, TRADIER_TOKEN)
-            print(
-                f"Tradier consolidated quotes loaded for "
-                f"{len(tradier_quotes)}/{len(quote_symbols)} candidates."
-            )
-        except Exception as exc:
-            print(f"WARN Tradier quote batch failed; using Alpaca fallback: {exc}")
-            tradier_quotes = {}
+    discovery_meta = (
+        get_last_discovery_meta()
+        if get_last_discovery_meta is not None
+        else {}
+    )
 
     quote_symbols = [
         str(row.get("symbol") or "").upper().strip()
         for row in candidates
         if row.get("symbol")
     ]
+    tradier_quotes = {}
+    if USE_TRADIER:
+        # Full-market discovery already paid for these quotes. Reuse them so a
+        # 6,000-symbol sweep is not followed by a redundant second request.
+        tradier_quotes = {
+            str(row.get("symbol") or "").upper().strip(): row.get("_tradier_quote")
+            for row in candidates
+            if row.get("symbol") and isinstance(row.get("_tradier_quote"), dict)
+        }
+        missing_quote_symbols = [
+            symbol for symbol in quote_symbols if symbol not in tradier_quotes
+        ]
+        if missing_quote_symbols:
+            try:
+                tradier_quotes.update(
+                    get_tradier_quotes(missing_quote_symbols, TRADIER_TOKEN)
+                )
+            except Exception as exc:
+                print(f"WARN Tradier candidate quote refill failed: {exc}")
+        print(
+            f"Tradier candidate quotes available for "
+            f"{len(tradier_quotes)}/{len(quote_symbols)} candidates "
+            f"({len(quote_symbols) - len(missing_quote_symbols)} reused from radar)."
+        )
+
     alpaca_snapshots = {}
-    # Tradier is the preferred live quote/volume source, but extended-hours
-    # quote payloads can legitimately omit daily high/low/previous-close
-    # context. Without a fallback, analyze_snapshot() rejects every otherwise
-    # valid pre/post-market symbol before live enrichment begins. When Alpaca
-    # credentials are available, load one cheap batched snapshot to provide
-    # that daily context while Tradier still owns the live price/volume/spread.
+    # Tradier quote rows contain the live price, previous close, high/low,
+    # volume and spread needed to begin enrichment. Do not let an unrelated
+    # Alpaca credential problem disable a healthy consolidated radar.
     needs_alpaca_snapshots = bool(
         ALPACA_CONFIGURED
         and (
             not USE_TRADIER
-            or phase in {"premarket", "afterhours"}
-            or phase == "regular"
-            or len(tradier_quotes) < len(quote_symbols)
+            or any(symbol not in tradier_quotes for symbol in quote_symbols)
         )
     )
     if needs_alpaca_snapshots:
@@ -3490,21 +3789,29 @@ def main():
             excluded_symbols.append(symbol)
             continue
 
+        quote_row = tradier_quotes.get(symbol)
         try:
             c = analyze_snapshot(
                 symbol,
-                tradier_quotes.get(symbol),
+                quote_row,
                 alpaca_snapshots.get(symbol, {}),
+                now_utc=now_utc,
             )
         except Exception as exc:
             print(f"WARN {symbol}: snapshot error: {exc}")
             rejection_counts["API/data error"] += 1
-            continue
+            c = None
+
+        if c is None and mover.get("explosion_score") is not None:
+            c = radar_only_candidate(mover, quote_row, now_utc)
+            if c is not None:
+                rejection_counts["radar-only pending deep confirmation"] += 1
 
         if c is None:
             rejection_counts["missing market data"] += 1
             continue
 
+        merge_radar_fields(c, mover)
         c["market_session"] = phase
         c["session_date"] = now_et.date().isoformat()
         refresh_quality(c)
@@ -3744,6 +4051,7 @@ def main():
         excluded_symbols,
         ml_summary=ml_summary,
         performance=performance,
+        discovery_meta=discovery_meta,
     )
 
     # The live Streamlit app scans much more frequently than the durable

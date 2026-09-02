@@ -371,7 +371,7 @@ def run_scanner():
         alpaca_secret=secret("ALPACA_SECRET_KEY"),
         alpaca_live_feed=configured_live_feed(),
         tradier_token=get_tradier_token(),
-        discovery_universe_size="1200",
+        discovery_universe_size="full-market",
         learning_github_token=(
             secret("ANALYZER_GITHUB_TOKEN")
             or secret("GITHUB_TOKEN")
@@ -381,7 +381,7 @@ def run_scanner():
             or "derektshaffer/STOCK-SCANNER"
         ),
         learning_branch="learning-journal",
-        timeout_seconds=105,
+        timeout_seconds=180,
     )
 
     st.session_state["scanner_out"] = str(result.get("stdout") or "")[-12000:]
@@ -619,8 +619,19 @@ def card(c):
     card_cls = {"A": "card-a", "B": "card-b", "C": "card-c"}.get(grade, "card-r")
     badge_cls = {"A": "green", "B": "blue", "C": "amber"}.get(grade, "red")
 
-    score = float(c.get("score") or 0)
-    score_color = "#65e98d" if score >= 75 else ("#ffd166" if score >= 60 else "#ff8181")
+    setup_score = float(c.get("score") or 0)
+    explosion_score = (
+        float(c.get("explosion_score"))
+        if c.get("explosion_score") is not None
+        else setup_score
+    )
+    tradeability_score = float(c.get("tradeability_score") or 0)
+    score_color = "#65e98d" if explosion_score >= 75 else ("#ffd166" if explosion_score >= 55 else "#ff8181")
+    risk_lane = str(c.get("risk_lane") or "$1-$50")
+    risk_badge_cls = "red" if risk_lane == "SUB-$1" else ("amber" if risk_lane == "ABOVE-$50" else "blue")
+    risk_badge = f'<span class="badge {risk_badge_cls}">{html.escape(risk_lane)} LANE</span>'
+    trade_badge_cls = "green" if tradeability_score >= 70 else ("amber" if tradeability_score >= 45 else "red")
+    trade_badge = f'<span class="badge {trade_badge_cls}">TRADEABILITY {tradeability_score:.0f}/100</span>'
 
     day = c.get("day_pct")
     day_cls = "pos" if (day or 0) >= 0 else "neg"
@@ -647,9 +658,9 @@ def card(c):
     action_reason = str(c.get("scanner_action_reason") or "")
     action_color = (
         "red"
-        if action in {"NO TRADE", "DATA CHECK"}
+        if action in {"NO TRADE", "DATA CHECK", "EXPLOSIVE / NO TRADE"}
         else "amber"
-        if action in {"CAUTION", "WAIT", "WAIT PULLBACK"}
+        if action in {"CAUTION", "WAIT", "WAIT PULLBACK", "HIGH-RISK REVIEW", "SUB-$1 EXPLOSIVE WATCH"}
         else "blue"
     )
     action_badge = (
@@ -698,6 +709,13 @@ def card(c):
     )
     note = " · ".join(str(x) for x in notes[:4]) or "No major issues flagged."
 
+    radar_reasons = c.get("radar_reasons") or []
+    radar_text = " · ".join(str(item) for item in radar_reasons[:4])
+    radar_html = (
+        f'<div class="note"><div class="nk">RADAR DETECTION</div><div class="nv">{html.escape(radar_text[:260])}</div></div>'
+        if radar_text else ""
+    )
+
     news = c.get("news") or {}
     news_bits = [news.get("category"), news.get("headline")]
     news_text = " — ".join(str(x) for x in news_bits if x)
@@ -719,16 +737,21 @@ def card(c):
         <span class="{day_cls}">&nbsp;{f(day,1,"%")} today</span>
       </div>
     </div>
-    <div class="score" style="color:{score_color}">{score:.0f}<small>SETUP SCORE / 100</small></div>
+    <div class="score" style="color:{score_color}">{explosion_score:.0f}<small>EXPLOSION SCORE / 100</small></div>
   </div>
   <div>
     <span class="badge {badge_cls}">GRADE {html.escape(grade)} · {html.escape(label)}</span>
-    {fit_badge}{action_badge}{live_price_badge}{pass_badge}{alert_badge}{vwap_badge}
+    {risk_badge}{trade_badge}{fit_badge}{action_badge}{live_price_badge}{pass_badge}{alert_badge}{vwap_badge}
   </div>
   {live_price_note}
+  {radar_html}
   <div class="note"><div class="nk">ACTION</div><div class="nv">{html.escape(action_reason[:260])}</div></div>
   <div class="note"><div class="nk">TIMEFRAME FIT</div><div class="nv">{html.escape(fit_reason[:260] or "Timeframe evidence is still limited.")}</div></div>
   <div class="grid">
+    {metric("SETUP SCORE / 100",f(setup_score,0,"/100"))}
+    {metric("TRADEABILITY",f(tradeability_score,0,"/100"),"pos" if tradeability_score>=70 else "muted")}
+    {metric("RADAR 3 MIN",f(c.get("radar_change_3m_pct"),2,"%"),"pos" if (c.get("radar_change_3m_pct") or 0)>0 else "muted")}
+    {metric("VOL VELOCITY",f(c.get("radar_volume_velocity_ratio"),2,"x"),"pos" if (c.get("radar_volume_velocity_ratio") or 0)>=4 else "muted")}
     {metric("5 MIN",f(c.get("momentum_5m"),2,"%"),"pos" if (c.get("momentum_5m") or 0)>0 else "muted")}
     {metric("15 MIN",f(c.get("momentum_15m"),2,"%"),"pos" if (c.get("momentum_15m") or 0)>0 else "muted")}
     {metric("ML 60M",ml_text,ml_cls)}
@@ -753,6 +776,12 @@ def to_df(records):
         out.append(
             {
                 "Ticker": c.get("symbol"),
+                "Risk Lane": c.get("risk_lane") or "$1-$50",
+                "Explosion": c.get("explosion_score"),
+                "Tradeability": c.get("tradeability_score"),
+                "Radar 3m %": c.get("radar_change_3m_pct"),
+                "Radar 5m %": c.get("radar_change_5m_pct"),
+                "Vol Velocity": c.get("radar_volume_velocity_ratio"),
                 "Grade": c.get("setup_grade"),
                 "Status": c.get("setup_label"),
                 "Action": c.get("scanner_action"),
@@ -846,13 +875,18 @@ def styled(df):
         }.get(str(v), "color:#9fb0c9;font-weight:800")
 
     return (
-        df.style.map(score_style, subset=["Score", "Opportunity", "Intraday Fit", "Swing Fit", "Longer Fit"])
+        df.style.map(score_style, subset=["Explosion", "Tradeability", "Score", "Opportunity", "Intraday Fit", "Swing Fit", "Longer Fit"])
         .map(ml_style, subset=["ML 60m %"])
         .map(grade_style, subset=["Grade"])
         .map(fit_style, subset=["Best Fit"])
         .map(vwap_style, subset=["VWAP Status"])
         .format(
             {
+                "Explosion": lambda x: "—" if pd.isna(x) else f"{x:.0f}",
+                "Tradeability": lambda x: "—" if pd.isna(x) else f"{x:.0f}",
+                "Radar 3m %": lambda x: "—" if pd.isna(x) else f"{x:.2f}%",
+                "Radar 5m %": lambda x: "—" if pd.isna(x) else f"{x:.2f}%",
+                "Vol Velocity": lambda x: "—" if pd.isna(x) else f"{x:.2f}x",
                 "Score": "{:.1f}",
                 "Opportunity": lambda x: "—" if pd.isna(x) else f"{x:.1f}",
                 "Intraday Fit": lambda x: "—" if pd.isna(x) else f"{x:.0f}",
@@ -1258,6 +1292,11 @@ def render_scanner_results():
 
     payload_summary = payload.get("summary") or {}
     data_meta = payload.get("data") or {}
+    radar_meta = payload.get("radar") or {}
+    market_requested = int(radar_meta.get("requested_symbols") or 0)
+    market_received = int(radar_meta.get("quotes_received") or 0)
+    market_coverage = radar_meta.get("coverage_pct")
+    full_market_enabled = bool(radar_meta.get("full_market_enabled"))
     live_provider = str(data_meta.get("live_provider") or "alpaca").lower()
     if live_provider == "tradier":
         live_data_pill = "LIVE DATA · TRADIER CONSOLIDATED"
@@ -1295,6 +1334,18 @@ def render_scanner_results():
         '<span class="pill amber">⚠ STALE SNAPSHOT</span>'
         if scan_is_stale else ''
     )
+    if full_market_enabled:
+        coverage_text = (
+            f"FULL MARKET · {market_received:,}/{market_requested:,} · {float(market_coverage):.1f}%"
+            if market_coverage is not None and market_requested
+            else "FULL MARKET RADAR"
+        )
+        radar_pill_cls = "green" if radar_meta.get("coverage_ok", True) else "red"
+        radar_pill_html = (
+            f'<span class="pill {radar_pill_cls}">{html.escape(coverage_text)}</span>'
+        )
+    else:
+        radar_pill_html = '<span class="pill amber">LIMITED DISCOVERY FALLBACK</span>'
     st.markdown(
         f'<div class="header"><div class="title">Momentum Scanner</div>'
         '<div class="sub">Readable ranking of momentum, liquidity, VWAP position, '
@@ -1302,11 +1353,23 @@ def render_scanner_results():
         f'<span class="pill {pill_cls}">{pill_text}</span>'
         f'<span class="pill {live_data_pill_cls}">{html.escape(live_data_pill)}</span>'
         f'<span class="pill {ml_pill_cls}">{html.escape(ml_pill_text)}</span>'
-        f'{stale_pill_html}'
+        f'{radar_pill_html}{stale_pill_html}'
         f'<div class="sub">Last scan: {html.escape(str(when))} · '
         f'Scanner v{html.escape(str(payload.get("scanner_version","—")))}</div></div>',
         unsafe_allow_html=True,
     )
+
+    if full_market_enabled and not radar_meta.get("coverage_ok", True):
+        warnings = radar_meta.get("warnings") or []
+        st.error(
+            "⚠️ **FULL-MARKET COVERAGE DEGRADED — results may be incomplete.** "
+            + (" ".join(str(item) for item in warnings[:2]) or "One or more quote batches did not return normally.")
+        )
+    elif not full_market_enabled:
+        st.warning(
+            "⚠️ This snapshot used limited fallback discovery rather than the full-market radar. "
+            "Do not assume every listed stock was checked."
+        )
 
     summary = payload_summary
     records = payload.get("candidates") or []
@@ -1335,11 +1398,36 @@ def render_scanner_results():
             "Ranking itself is unchanged."
         )
 
+    explosive_records = sorted(
+        records,
+        key=lambda row: (
+            float(row.get("explosion_score") or 0.0),
+            float(row.get("tradeability_score") or 0.0),
+        ),
+        reverse=True,
+    )
+    explosive_count = int(
+        summary.get("explosive_candidates")
+        or sum(float(row.get("explosion_score") or 0.0) >= 65.0 for row in records)
+    )
+    coverage_display = (
+        f"{float(market_coverage):.1f}%"
+        if market_coverage is not None
+        else "LIMITED"
+    )
     vals = [
-        ("ANALYZED", summary.get("candidates_analyzed", len(records)), "Common-stock mover candidates"),
-        ("BASE PASSES", summary.get("base_filter_passes", 0), "Passed every base filter"),
-        ("NEAR MISSES", grades.get("C", 0), "Grade C: one filter short"),
-        ("EXCLUDED", len(summary.get("excluded_non_common_symbols") or []), "Likely warrants / rights / units"),
+        (
+            "MARKET CHECKED",
+            f"{market_received:,}" if market_received else summary.get("candidates_analyzed", len(records)),
+            f"of {market_requested:,} listed stocks" if market_requested else "limited discovery fallback",
+        ),
+        ("QUOTE COVERAGE", coverage_display, "Latest full-market sweep"),
+        ("EXPLOSIVE", explosive_count, "Explosion Score ≥ 65"),
+        (
+            "SUB-$1 COVERED",
+            f"{int(radar_meta.get('sub_dollar_eligible') or 0):,}",
+            "Eligible sub-dollar stocks checked",
+        ),
     ]
 
     cols = st.columns(4)
@@ -1351,34 +1439,76 @@ def render_scanner_results():
                 unsafe_allow_html=True,
             )
 
-    top = [
-        c
-        for c in display_records
-        if c.get("setup_grade") in {"A", "B"} and c.get("passed_base_filters")
-    ]
-    if not top:
-        top = [c for c in display_records if c.get("setup_grade") in {"A", "B"}]
-    top = top[:4]
+    radar_top = [
+        row for row in explosive_records
+        if row.get("explosion_score") is not None
+    ][:6]
 
     st.markdown(
-        '<div class="section top-candidates-section">🔥 Top Candidates</div>',
+        '<div class="section top-candidates-section">🔥 Explosive Radar</div>',
         unsafe_allow_html=True,
     )
-
-    if top:
-        for i in range(0, len(top), 2):
+    st.caption(
+        "Detection comes first: these are the strongest price/volume ignitions across the market. "
+        "A low Tradeability Score or DATA CHECK keeps the stock visible but means it is not a clean entry."
+    )
+    if radar_top:
+        for i in range(0, len(radar_top), 2):
             pair = st.columns(2)
-            for j, c in enumerate(top[i : i + 2]):
+            for j, c in enumerate(radar_top[i : i + 2]):
                 with pair[j]:
                     st.markdown(card(c), unsafe_allow_html=True)
     else:
-        st.warning("No A/B candidates are available in this scan.")
+        st.info("No full-market ignition candidates are available in this snapshot.")
+
+    tradeable = [
+        row for row in filtered_records
+        if row.get("passed_base_filters")
+        and row.get("action_data_integrity_ok")
+        and row.get("setup_grade") in {"A", "B"}
+    ]
+    tradeable.sort(
+        key=lambda row: (
+            float(row.get("tradeability_score") or 0.0),
+            float(row.get("score") or 0.0),
+            float(row.get("explosion_score") or 0.0),
+        ),
+        reverse=True,
+    )
+
+    st.markdown(
+        '<div class="section top-candidates-section">✅ Top Tradeable Candidates</div>',
+        unsafe_allow_html=True,
+    )
+    if tradeable[:4]:
+        for i in range(0, min(4, len(tradeable)), 2):
+            pair = st.columns(2)
+            for j, c in enumerate(tradeable[i : i + 2]):
+                with pair[j]:
+                    st.markdown(card(c), unsafe_allow_html=True)
+    else:
+        st.warning(
+            "No candidate currently combines clean data integrity, base-filter quality, and an A/B setup. "
+            "Explosions are still shown above so risky or early moves are not hidden."
+        )
 
     st.markdown(
         """
     <div class="legend-box">
       <div class="legend-title">Quick metric guide</div>
       <div class="legend-grid">
+        <div class="legend-item">
+          <div class="legend-term">Explosion Score — 0 to 100</div>
+          <div class="legend-def">
+            Measures how strongly price, volume velocity, relative volume, short-term acceleration, and proximity to the session high indicate an ignition event. It is a <b>detection score</b>, not a buy signal. A stock can score very high here and still be unsafe to enter.
+          </div>
+        </div>
+        <div class="legend-item">
+          <div class="legend-term">Tradeability Score — 0 to 100</div>
+          <div class="legend-def">
+            Separately measures fresh consolidated data, spread, dollar liquidity, and participation. Low tradeability no longer hides an explosion; it changes the ACTION to DATA CHECK, CAUTION, or NO TRADE. Sub-$1 stocks receive an explicit extreme-risk label.
+          </div>
+        </div>
         <div class="legend-item">
           <div class="legend-term">Setup Score — 0 to 100</div>
           <div class="legend-def">
@@ -1416,8 +1546,8 @@ def render_scanner_results():
           <div class="legend-def">This now uses the stock's <b>own recent intraday volume pattern</b>, not a straight-line assumption. The scanner looks at recent completed sessions and estimates what percentage of a normal day's volume this ticker usually has traded by the current clock time. That automatically accounts for the fact that volume is normally much heavier near the open and often quieter in the middle of the day.<br><br><b>1.00x:</b> about normal for this ticker at this exact time. <b>2.00x:</b> about twice the volume normally expected by now. <b>Normal Vol by Now %</b> shows the historical percentage of a typical day's volume usually completed by this time. The scanner uses a median-based baseline so one unusually huge prior day does not distort the comparison. If a ticker does not yet have enough intraday history, it temporarily falls back to the older linear calculation.</div>
         </div>
         <div class="legend-item">
-          <div class="legend-term">IEX Spread</div>
-          <div class="legend-def">The percentage gap between the current IEX bid and ask. A smaller spread generally means cleaner entries/exits and less immediate slippage. A wide spread can make a trade expensive even when the chart looks good. This reflects IEX quotes, not the full consolidated SIP market.</div>
+          <div class="legend-term">Live Consolidated Spread</div>
+          <div class="legend-def">The percentage gap between the current live bid and ask. A smaller spread generally means cleaner entries/exits and less immediate slippage. Tradier rows use the consolidated market; Alpaca fallback rows are labeled separately.</div>
         </div>
       </div>
     </div>
@@ -1443,7 +1573,7 @@ def render_scanner_results():
 
     st.markdown(
         '<div class="section">📊 Full Ranked Table</div>'
-        '<div class="section-sub">Top 30 ranked scanner results.</div>',
+        '<div class="section-sub">Top ranked results retained from the full-market radar and deeper analysis.</div>',
         unsafe_allow_html=True,
     )
     df = to_df(full_table_records)
