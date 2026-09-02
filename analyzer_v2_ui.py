@@ -117,12 +117,18 @@ def render_v2_decision(st, metrics):
     potential = float(v2.get("potential_score") or 0)
     readiness = float(v2.get("entry_readiness") or 0)
     evidence = float(v2.get("evidence_strength") or 0)
+    research_only = bool(metrics.get("research_only"))
 
     heading_cols = st.columns([8, 1.35], vertical_alignment="center")
     with heading_cols[0]:
         st.markdown(
-            '<div class="section">Upside potential & entry timing '
-            '<span style="font-size:12px;color:#91a7c2">Decision v2</span></div>',
+            (
+                '<div class="section">Research potential & evidence '
+                '<span style="font-size:12px;color:#91a7c2">completed-session context</span></div>'
+                if research_only
+                else '<div class="section">Upside potential & entry timing '
+                '<span style="font-size:12px;color:#91a7c2">Decision v2</span></div>'
+            ),
             unsafe_allow_html=True,
         )
     details_slot = heading_cols[1]
@@ -133,11 +139,21 @@ def render_v2_decision(st, metrics):
         str(v2.get("potential_label") or "—"),
         "setup-strength score for further upside; not a probability",
     )
-    _score_card(
-        st, cols[1], "ENTRY READINESS", readiness,
-        str(v2.get("entry_label") or "—"),
-        "current entry-quality score; not a success probability",
-    )
+    if research_only:
+        _text_card(
+            st,
+            cols[1],
+            "ENTRY READINESS",
+            "UNAVAILABLE",
+            "live timing disabled while market is closed",
+            "warn",
+        )
+    else:
+        _score_card(
+            st, cols[1], "ENTRY READINESS", readiness,
+            str(v2.get("entry_label") or "—"),
+            "current entry-quality score; not a success probability",
+        )
     _score_card(
         st, cols[2], "EVIDENCE STRENGTH", evidence,
         str(v2.get("evidence_label") or "—"),
@@ -169,7 +185,7 @@ def render_v2_decision(st, metrics):
             "INTRADAY FIT",
             float(tf_scores.get("intraday") or 0),
             str(tf_labels.get("intraday") or "—"),
-            "today / live momentum",
+            "latest completed session" if research_only else "today / live momentum",
         )
         _score_card(
             st,
@@ -268,7 +284,12 @@ def render_v2_decision(st, metrics):
         else "PAUSED OFF-HOURS"
     )
 
-    if tracking.get("error"):
+    if research_only:
+        st.caption(
+            "Live prediction capture and live-entry tracking are paused in "
+            "after-hours research mode."
+        )
+    elif tracking.get("error"):
         st.warning(
             "Live test status: prediction tracking reported an error — "
             + str(tracking.get("error"))[:180]
@@ -296,7 +317,11 @@ def render_v2_decision(st, metrics):
             + "**"
         )
 
-    lifecycle_html = _signal_progression_html(tracking.get("signal_lifecycle"))
+    lifecycle_html = (
+        None
+        if research_only
+        else _signal_progression_html(tracking.get("signal_lifecycle"))
+    )
     if lifecycle_html:
         st.markdown(lifecycle_html, unsafe_allow_html=True)
 
@@ -374,7 +399,12 @@ def render_v2_decision(st, metrics):
 
             stream = v2.get("live_stream_status") or {}
             provider = str(stream.get("provider") or "").lower()
-            if provider == "tradier":
+            if research_only:
+                st.write(
+                    "**Market data mode: COMPLETED-SESSION RESEARCH** · "
+                    "live stream and live execution are disabled"
+                )
+            elif provider == "tradier":
                 stream_status = str(stream.get("status") or "").upper()
                 st.write(
                     f"**Live market stream: TRADIER CONSOLIDATED** · {stream_status}"
