@@ -1158,6 +1158,14 @@ def run():
         result = st.session_state.get("result") or {}
         if not isinstance(result, dict) or not result.get("symbol"):
             return
+        # A completed-session reference is deliberately not a live price. Do
+        # not let a still-connected provider stream or its cached state paint
+        # a contradictory LIVE PRICE strip above the research-only Analyzer.
+        if (
+            result.get("research_only") is True
+            or str(result.get("analysis_mode") or "") == "after_hours_research"
+        ):
+            return
         overlay = get_live_overlay(result)
         with st.container(key="analyzer_fast_live_tape"):
             render_live_tape(st, overlay)
