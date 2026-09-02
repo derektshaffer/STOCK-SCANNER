@@ -14,12 +14,41 @@ jobs:
       - name: Checkout proposed revision
         uses: actions/checkout@v4
 
+      - name: Capture redacted Tradier quote sample
+        env:
+          TRADIER_ACCESS_TOKEN: ${{ secrets.TRADIER_ACCESS_TOKEN }}
+          TRADIER_TOKEN: ${{ secrets.TRADIER_TOKEN }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from tradier_live import post_quotes
+
+          token = os.environ.get("TRADIER_ACCESS_TOKEN") or os.environ.get("TRADIER_TOKEN")
+          output = {"token_configured": bool(token), "quotes": {}}
+          if token:
+              rows = post_quotes(["BIAF", "AAPL", "SPY"], token)
+              keep = {
+                  "symbol", "type", "last", "change", "change_percentage",
+                  "volume", "average_volume", "open", "high", "low",
+                  "prevclose", "bid", "ask", "trade_date", "bid_date", "ask_date",
+              }
+              output["quotes"] = {
+                  symbol: {key: value for key, value in row.items() if key in keep}
+                  for symbol, row in rows.items()
+              }
+          with open("tradier-quote-diagnostic.json", "w", encoding="utf-8") as handle:
+              json.dump(output, handle, indent=2)
+          PY
+
       - name: Create source archive
         run: git archive --format=zip --output=stock-scanner-source.zip HEAD
 
-      - name: Upload source archive
+      - name: Upload source archive and diagnostic
         uses: actions/upload-artifact@v4
         with:
           name: codex-stock-scanner-source-${{ github.run_id }}
-          path: stock-scanner-source.zip
+          path: |
+            stock-scanner-source.zip
+            tradier-quote-diagnostic.json
           retention-days: 1
