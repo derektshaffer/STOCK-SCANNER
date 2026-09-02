@@ -647,7 +647,7 @@ def card(c):
     action_reason = str(c.get("scanner_action_reason") or "")
     action_color = (
         "red"
-        if action == "NO TRADE"
+        if action in {"NO TRADE", "DATA CHECK"}
         else "amber"
         if action in {"CAUTION", "WAIT", "WAIT PULLBACK"}
         else "blue"
@@ -668,6 +668,17 @@ def card(c):
         f'<span class="badge {fit_badge_cls}">BEST FIT {html.escape(fit_display)}</span>'
     )
     fit_reason = str(c.get("timeframe_fit_reason") or "")
+    live_price_fallback=bool(c.get("live_price_is_fallback"))
+    live_price_badge=(
+        '<span class="badge amber">LIVE PRICE FALLBACK</span>'
+        if live_price_fallback else ""
+    )
+    live_price_note=(
+        f'<div class="note"><div class="nk">LIVE PRICE FALLBACK</div><div class="nv">'
+        f'{html.escape(str(c.get("live_price_fallback_reason") or "Fresh quote midpoint or alternate provider price used."))}'
+        f'</div></div>'
+        if live_price_fallback else ""
+    )
 
     ml_text, ml_cls = ml_display(c)
 
@@ -712,8 +723,9 @@ def card(c):
   </div>
   <div>
     <span class="badge {badge_cls}">GRADE {html.escape(grade)} · {html.escape(label)}</span>
-    {fit_badge}{action_badge}{pass_badge}{alert_badge}{vwap_badge}
+    {fit_badge}{action_badge}{live_price_badge}{pass_badge}{alert_badge}{vwap_badge}
   </div>
+  {live_price_note}
   <div class="note"><div class="nk">ACTION</div><div class="nv">{html.escape(action_reason[:260])}</div></div>
   <div class="note"><div class="nk">TIMEFRAME FIT</div><div class="nv">{html.escape(fit_reason[:260] or "Timeframe evidence is still limited.")}</div></div>
   <div class="grid">

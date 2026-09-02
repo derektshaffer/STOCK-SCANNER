@@ -1277,7 +1277,16 @@ def _poll_analyzer_launch():
     st.session_state["_analyzer_launch_state"]=None
     st.session_state.pop("_analyzer_scanner_launch_pending",None)
     if not outcome.get("ok"):
-        st.session_state["_analyzer_launch_error"]=outcome.get("message") or "Analyzer failed."
+        failure_message=str(outcome.get("message") or "Analyzer failed.")
+        st.session_state["_analyzer_launch_error"]=failure_message
+        if failure_message.startswith("LIVE PRICE UNAVAILABLE"):
+            symbol=str((state or {}).get("symbol") or "").upper().strip()
+            cache=st.session_state.get("_analyzer_result_cache") or {}
+            cache.pop(symbol,None)
+            st.session_state["_analyzer_result_cache"]=cache
+            current_result=st.session_state.get("result") or {}
+            if str(current_result.get("symbol") or "").upper().strip()==symbol:
+                st.session_state.pop("result",None)
         return
 
     symbol=str(outcome.get("symbol") or "").upper().strip()
@@ -1492,6 +1501,14 @@ if view == "Momentum Scanner":
                         f'</div>',
                         unsafe_allow_html=True,
                     )
+                    if row.get("live_price_is_fallback"):
+                        st.caption(
+                            "LIVE PRICE FALLBACK — "
+                            + str(
+                                row.get("live_price_fallback_reason")
+                                or "Fresh quote midpoint or alternate provider price used."
+                            )
+                        )
                 with right:
                     _launch_state=(
                         st.session_state.get("_analyzer_bootstrap_launch_state")

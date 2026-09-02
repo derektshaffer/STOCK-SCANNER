@@ -270,6 +270,17 @@ def _post_exit_rebound_watch(metrics, price, atr_pct, vwap, m5, m15, from_high):
 
 def build_position_exit_plan(metrics, average_cost, shares=None):
     metrics = metrics or {}
+    live_integrity = _position_live_integrity(metrics)
+    if not live_integrity.get("ok"):
+        return {
+            "status": "unavailable",
+            "error": (
+                "LIVE PRICE UNAVAILABLE — no position targets or exit plan were "
+                "calculated from stale or unverified market data. "
+                + "; ".join((live_integrity.get("reasons") or [])[:3])
+            ),
+            "live_integrity": live_integrity,
+        }
     price = _num(metrics.get("price"))
     cost = _num(average_cost)
     shares = _num(shares)
@@ -303,8 +314,6 @@ def build_position_exit_plan(metrics, average_cost, shares=None):
     from_high = _num(metrics.get("from_high_pct"))
     liquidity = str((metrics.get("liquidity") or {}).get("label") or "")
     potential = _num((metrics.get("decision_v2") or {}).get("potential_score"))
-    live_integrity = _position_live_integrity(metrics)
-
     rebound_watch = _post_exit_rebound_watch(
         metrics,
         price,
