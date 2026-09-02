@@ -24,8 +24,10 @@ jobs:
         shell: bash
         run: |
           cat codex-full-market.patch.part.* > /tmp/full-market.patch.gz.b64
+          echo "acb8809b07fdb9d0f5644a8d1c30109782891c76e6e293db92c439f779cfa1ac  /tmp/full-market.patch.gz.b64" | sha256sum --check
           base64 --decode /tmp/full-market.patch.gz.b64 > /tmp/full-market.patch.gz
           gzip --decompress --stdout /tmp/full-market.patch.gz > /tmp/full-market.patch
+          echo "5130bca9da0dc107fb7d296a9dcfe39900c443518411777a5ff249e19bcbdfd9  /tmp/full-market.patch" | sha256sum --check
           git apply --check /tmp/full-market.patch
           git apply --index /tmp/full-market.patch
           rm -f codex-full-market.patch.ready codex-full-market.patch.part.*
