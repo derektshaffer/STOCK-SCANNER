@@ -1,35 +1,49 @@
 {
-  "generated_at_utc": "2026-09-02T05:47:21.010050+00:00",
+  "generated_at_utc": "2026-09-02T06:00:10.030280+00:00",
   "production_claim": "Rules-based Scanner/Analyzer decision support remains usable. Predictive ML and Swing/Longer-Term probability claims remain gated until their independent evidence requirements pass.",
   "schema_version": 1,
   "sections": {
     "analyzer_calibration_v9": {
       "artifact_found": true,
-      "calibration_by_prediction_source": {},
+      "calibration_by_prediction_source": {
+        "interactive_analyzer": {
+          "avg_return_60m_pct": -6.013,
+          "avg_source_scanner_rank": null,
+          "calibration_rows": 1,
+          "diagnostic_only": true,
+          "higher_60m_rate": 0.0,
+          "resolved_60m": 1,
+          "source_scanner_rank_max": null,
+          "source_scanner_rank_min": null,
+          "target_before_stop_rate": 100.0,
+          "target_stop_resolved": 1,
+          "unique_symbols": 1
+        }
+      },
       "calibration_ready": false,
-      "calibration_rows": 0,
+      "calibration_rows": 1,
       "early_read_gate": {
-        "current": 0,
+        "current": 1,
         "passed": false,
-        "remaining": 30,
+        "remaining": 29,
         "required": 30
       },
-      "prediction_rows": 36,
+      "prediction_rows": 40,
       "required_schema_version": 9,
-      "resolved_60m": 0,
+      "resolved_60m": 1,
       "schema_current": true,
       "schema_version": 9,
       "stronger_sample_gate": {
-        "current": 0,
+        "current": 1,
         "passed": false,
-        "remaining": 300,
+        "remaining": 299,
         "required": 300
       },
       "untrusted_integrity_rows_excluded": 0,
       "useful_gate": {
-        "current": 0,
+        "current": 1,
         "passed": false,
-        "remaining": 100,
+        "remaining": 99,
         "required": 100
       }
     },
@@ -48,7 +62,7 @@
       "target_replay_dates": 267
     },
     "offhours_timeframe_forward": {
-      "cohort_count": 2,
+      "cohort_count": 3,
       "longer_20d_resolved": 0,
       "longer_early_read_gate": {
         "current": 0,
@@ -94,99 +108,99 @@
       "evidence_gate_ready": false,
       "gates": {
         "days": {
-          "current": 0,
+          "current": 1,
           "passed": false,
-          "remaining": 5,
+          "remaining": 4,
           "required": 5
         },
         "negatives": {
-          "current": 0,
-          "passed": false,
-          "remaining": 15,
+          "current": 37,
+          "passed": true,
+          "remaining": 0,
           "required": 15
         },
         "positives": {
-          "current": 0,
+          "current": 1,
           "passed": false,
-          "remaining": 15,
+          "remaining": 14,
           "required": 15
         },
         "samples": {
-          "current": 0,
+          "current": 38,
           "passed": false,
-          "remaining": 100,
+          "remaining": 62,
           "required": 100
         },
         "symbols": {
-          "current": 0,
-          "passed": false,
-          "remaining": 15,
+          "current": 38,
+          "passed": true,
+          "remaining": 0,
           "required": 15
         }
       },
       "historical_replay_samples": 12848,
-      "live_confirmation_days": 0,
-      "live_confirmation_raw_samples": 0,
-      "live_confirmation_samples": 0,
-      "live_confirmation_symbols": 0,
-      "live_negatives": 0,
-      "live_positives": 0,
-      "live_samples": 30,
+      "live_confirmation_days": 1,
+      "live_confirmation_raw_samples": 59,
+      "live_confirmation_samples": 38,
+      "live_confirmation_symbols": 38,
+      "live_negatives": 37,
+      "live_positives": 1,
+      "live_samples": 89,
       "note": "Passing these count gates only makes the independent live holdout large enough to evaluate. Production validation still requires the live AUC/Brier performance gate to pass.",
       "replay_end_day": "2026-08-31",
       "training_source": {
         "artifact_report_count": 12,
         "historical_replay_samples": 12848,
-        "live_samples": 30,
-        "local_report_count": 3,
+        "live_samples": 89,
+        "local_report_count": 4,
         "observation_source_counts": {
           "historical_replay": 12848,
-          "live_scan": 30
+          "live_scan": 89
         },
-        "observations_loaded": 12878,
+        "observations_loaded": 12937,
         "training_data_requirement": "consolidated live + consolidated historical only"
       }
     },
     "scanner_path_target_shadow": {
       "comparison_ready": false,
-      "days": 0,
-      "endpoint_comparable_samples": 0,
+      "days": 1,
+      "endpoint_comparable_samples": 172,
       "endpoint_model_baseline_brier": 0.0428,
       "endpoint_model_historical_validated": true,
       "endpoint_model_status": "replay_validated_waiting_live",
       "endpoint_model_walk_forward_auc": 0.859,
       "endpoint_model_walk_forward_brier": 0.0373,
-      "endpoint_path_disagreement_rate_pct": null,
-      "endpoint_path_disagreements": 0,
+      "endpoint_path_disagreement_rate_pct": 5.2,
+      "endpoint_path_disagreements": 9,
       "gates": {
         "days": {
-          "current": 0,
+          "current": 1,
           "passed": false,
-          "remaining": 5,
+          "remaining": 4,
           "required": 5
         },
         "negatives": {
-          "current": 0,
-          "passed": false,
-          "remaining": 15,
+          "current": 162,
+          "passed": true,
+          "remaining": 0,
           "required": 15
         },
         "positives": {
-          "current": 0,
+          "current": 10,
           "passed": false,
-          "remaining": 15,
+          "remaining": 5,
           "required": 15
         },
         "samples": {
-          "current": 0,
-          "passed": false,
-          "remaining": 100,
+          "current": 172,
+          "passed": true,
+          "remaining": 0,
           "required": 100
         },
         "symbols": {
-          "current": 0,
-          "passed": false,
-          "remaining": 15,
+          "current": 91,
+          "passed": true,
+          "remaining": 0,
           "required": 15
         }
       },
@@ -197,10 +211,10 @@
       "historical_replay_endpoint_path_disagreements": 131,
       "historical_replay_independent_samples": 2477,
       "historical_replay_samples": 11845,
-      "independent_samples": 0,
-      "live_confirmation_raw_samples": 0,
-      "live_raw_samples": 30,
-      "negatives": 0,
+      "independent_samples": 172,
+      "live_confirmation_raw_samples": 438,
+      "live_raw_samples": 468,
+      "negatives": 162,
       "note": "Historical replay can bootstrap research immediately, but promotion still requires independent live path evidence strictly after the replay period plus a later model-performance comparison.",
       "path_model_baseline_brier": 0.0751,
       "path_model_historical_validated": true,
@@ -210,21 +224,22 @@
       "path_model_version": "scanner-path-shadow-v1",
       "path_model_walk_forward_auc": 0.864,
       "path_model_walk_forward_brier": 0.061,
-      "positives": 0,
+      "positives": 10,
       "production_influence": false,
       "replay_end_day": "2026-08-31",
       "source": {
         "historical_replay_path_rows": 11845,
         "observation_source_counts": {
-          "durable_scan_artifact": 30,
-          "historical_replay": 11845
+          "durable_scan_artifact": 89,
+          "historical_replay": 11845,
+          "live_app_journal": 379
         },
-        "observations_loaded": 11875,
+        "observations_loaded": 12313,
         "production_influence": false,
-        "report_count": 1,
+        "report_count": 2,
         "target_description": ">= +3% within 60m before -3% failure stop"
       },
-      "symbols": 0,
+      "symbols": 91,
       "target_description": ">= +3% within 60m before -3% failure stop"
     },
     "swing_timeframe_ml": {

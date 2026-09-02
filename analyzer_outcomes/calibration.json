@@ -3,29 +3,149 @@
   "feature_version": "analyzer-features-v10-confirmed-multisession",
   "decision_score_version": "decision-v2.8-integrity-gated",
   "timeframe_score_version": "timeframe-fit-v1",
-  "generated_at_utc": "2026-09-01T12:28:52.510572+00:00",
-  "prediction_rows": 36,
+  "generated_at_utc": "2026-09-02T05:59:24.413588+00:00",
+  "prediction_rows": 40,
   "legacy_prediction_rows_excluded": 402,
   "legacy_decision_rows_excluded": 27,
-  "calibration_rows": 0,
-  "calibration_by_prediction_source": {},
+  "calibration_rows": 1,
+  "calibration_by_prediction_source": {
+    "interactive_analyzer": {
+      "calibration_rows": 1,
+      "unique_symbols": 1,
+      "resolved_60m": 1,
+      "higher_60m_rate": 0.0,
+      "avg_return_60m_pct": -6.013,
+      "target_stop_resolved": 1,
+      "target_before_stop_rate": 100.0,
+      "avg_source_scanner_rank": null,
+      "source_scanner_rank_min": null,
+      "source_scanner_rank_max": null,
+      "diagnostic_only": true
+    }
+  },
   "untrusted_integrity_rows_excluded": 0,
   "calibration_sampling": "trusted consolidated regular-session one observation per ticker per ET hour",
   "timeframe_calibration_sampling": "Intraday: regular-session ticker-hour; Swing/Longer-term: latest regular-session observation per ticker per ET day",
-  "timeframe_daily_rows": 0,
-  "resolved_60m": 0,
+  "timeframe_daily_rows": 1,
+  "resolved_60m": 1,
   "calibration_ready": false,
   "calibration_progress": {
     "stage": "COLLECTING",
     "next_threshold": 30,
-    "remaining": 30,
+    "remaining": 29,
     "message": "Not enough resolved observations to tune score weights yet."
   },
-  "potential_calibration": {},
-  "entry_calibration": {},
-  "evidence_calibration": {},
+  "potential_calibration": {
+    "50-64": {
+      "n": 1,
+      "higher_60m_rate": 0.0,
+      "hit_3pct_60m_rate": 0.0,
+      "avg_return_60m_pct": -6.013,
+      "median_return_60m_pct": -6.013,
+      "return_15m": {
+        "n": 1,
+        "higher_rate": 0.0,
+        "hit_3pct_rate": 0.0,
+        "avg_return_pct": -1.247,
+        "median_return_pct": -1.247
+      },
+      "return_30m": {
+        "n": 1,
+        "higher_rate": 0.0,
+        "hit_3pct_rate": 0.0,
+        "avg_return_pct": -2.848,
+        "median_return_pct": -2.848
+      },
+      "return_60m": {
+        "n": 1,
+        "higher_rate": 0.0,
+        "hit_3pct_rate": 0.0,
+        "avg_return_pct": -6.013,
+        "median_return_pct": -6.013
+      },
+      "target_stop_n": 1,
+      "target_ambiguous_count": 0,
+      "target_before_stop_rate": 100.0,
+      "target_ambiguity_policy": "same-bar target+stop counted as failure for conservative calibration"
+    }
+  },
+  "entry_calibration": {
+    "0-49": {
+      "n": 1,
+      "higher_60m_rate": 0.0,
+      "hit_3pct_60m_rate": 0.0,
+      "avg_return_60m_pct": -6.013,
+      "median_return_60m_pct": -6.013,
+      "return_15m": {
+        "n": 1,
+        "higher_rate": 0.0,
+        "hit_3pct_rate": 0.0,
+        "avg_return_pct": -1.247,
+        "median_return_pct": -1.247
+      },
+      "return_30m": {
+        "n": 1,
+        "higher_rate": 0.0,
+        "hit_3pct_rate": 0.0,
+        "avg_return_pct": -2.848,
+        "median_return_pct": -2.848
+      },
+      "return_60m": {
+        "n": 1,
+        "higher_rate": 0.0,
+        "hit_3pct_rate": 0.0,
+        "avg_return_pct": -6.013,
+        "median_return_pct": -6.013
+      },
+      "target_stop_n": 1,
+      "target_ambiguous_count": 0,
+      "target_before_stop_rate": 100.0,
+      "target_ambiguity_policy": "same-bar target+stop counted as failure for conservative calibration"
+    }
+  },
+  "evidence_calibration": {
+    "0-49": {
+      "n": 1,
+      "higher_60m_rate": 0.0,
+      "hit_3pct_60m_rate": 0.0,
+      "avg_return_60m_pct": -6.013,
+      "median_return_60m_pct": -6.013,
+      "return_15m": {
+        "n": 1,
+        "higher_rate": 0.0,
+        "hit_3pct_rate": 0.0,
+        "avg_return_pct": -1.247,
+        "median_return_pct": -1.247
+      },
+      "return_30m": {
+        "n": 1,
+        "higher_rate": 0.0,
+        "hit_3pct_rate": 0.0,
+        "avg_return_pct": -2.848,
+        "median_return_pct": -2.848
+      },
+      "return_60m": {
+        "n": 1,
+        "higher_rate": 0.0,
+        "hit_3pct_rate": 0.0,
+        "avg_return_pct": -6.013,
+        "median_return_pct": -6.013
+      },
+      "target_stop_n": 1,
+      "target_ambiguous_count": 0,
+      "target_before_stop_rate": 100.0,
+      "target_ambiguity_policy": "same-bar target+stop counted as failure for conservative calibration"
+    }
+  },
   "timeframe_calibration": {
-    "intraday_60m": {},
+    "intraday_60m": {
+      "50-64": {
+        "n": 1,
+        "higher_rate": 0.0,
+        "avg_return_pct": -6.013,
+        "median_return_pct": -6.013
+      }
+    },
     "swing_3d": {},
     "swing_5d": {},
     "long_term_20d": {},
@@ -61,7 +181,7 @@
     "intraday": {
       "stage": "COLLECTING",
       "next_threshold": 30,
-      "remaining": 30,
+      "remaining": 29,
       "message": "Not enough resolved observations to tune score weights yet."
     },
     "swing": {
@@ -78,9 +198,36 @@
     }
   },
   "swing_research_flag_version": "swing-research-flags-v2-context-parity",
-  "swing_research_flag_calibration": {},
-  "target_before_stop_rate": null,
-  "target_stop_resolved": 0,
+  "swing_research_flag_calibration": {
+    "strong_momentum_day": {
+      "signals": 1,
+      "resolved": 0,
+      "target_before_stop_rate_pct": null,
+      "avg_mfe_5d_pct": null,
+      "avg_mae_5d_pct": null,
+      "stage": "COLLECTING",
+      "next_threshold": 10,
+      "sampling": "first regular-session historical-universe-proxy match per flag/ticker/day",
+      "context": "intraday_exploratory",
+      "direct_historical_parity": false,
+      "excluded_context_rows": 46
+    },
+    "strong_stair_step": {
+      "signals": 1,
+      "resolved": 0,
+      "target_before_stop_rate_pct": null,
+      "avg_mfe_5d_pct": null,
+      "avg_mae_5d_pct": null,
+      "stage": "COLLECTING",
+      "next_threshold": 10,
+      "sampling": "first regular-session historical-universe-proxy match per flag/ticker/day",
+      "context": "intraday_exploratory",
+      "direct_historical_parity": false,
+      "excluded_context_rows": 46
+    }
+  },
+  "target_before_stop_rate": 100.0,
+  "target_stop_resolved": 1,
   "target_stop_ambiguous": 0,
   "target_ambiguity_policy": "same-bar target+stop counted as failure",
   "repeat_bounce_calibration": {

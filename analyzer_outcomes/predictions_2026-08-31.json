@@ -151,7 +151,9 @@
       "return_30m_pct": 1.133,
       "return_60m_pct": 2.987,
       "resolved_60m": true,
-      "target1_first_touch": "stop"
+      "target1_first_touch": "stop",
+      "return_1d_pct": -8.685,
+      "resolved_1d": true
     }
   },
   {
@@ -325,7 +327,9 @@
       "return_30m_pct": -17.051,
       "return_60m_pct": -15.995,
       "resolved_60m": true,
-      "target1_first_touch": "stop"
+      "target1_first_touch": "stop",
+      "return_1d_pct": -32.796,
+      "resolved_1d": true
     }
   },
   {
@@ -519,7 +523,9 @@
       "return_30m_pct": -8.041,
       "return_60m_pct": -4.181,
       "resolved_60m": true,
-      "target1_first_touch": "stop"
+      "target1_first_touch": "stop",
+      "return_1d_pct": -24.127,
+      "resolved_1d": true
     }
   },
   {
@@ -713,7 +719,9 @@
       "return_30m_pct": -7.134,
       "return_60m_pct": -0.462,
       "resolved_60m": true,
-      "target1_first_touch": "stop"
+      "target1_first_touch": "stop",
+      "return_1d_pct": -22.958,
+      "resolved_1d": true
     }
   },
   {
@@ -887,7 +895,9 @@
       "return_15m_pct": 21.866,
       "return_30m_pct": 15.453,
       "return_60m_pct": 39.787,
-      "resolved_60m": true
+      "resolved_60m": true,
+      "return_1d_pct": -32.766,
+      "resolved_1d": true
     }
   },
   {
@@ -1061,7 +1071,9 @@
       "return_15m_pct": 17.289,
       "return_30m_pct": 9.65,
       "return_60m_pct": 34.472,
-      "resolved_60m": true
+      "resolved_60m": true,
+      "return_1d_pct": -36.606,
+      "resolved_1d": true
     }
   },
   {
@@ -1235,7 +1247,9 @@
       "return_15m_pct": -1.572,
       "return_30m_pct": 4.322,
       "return_60m_pct": 26.326,
-      "resolved_60m": true
+      "resolved_60m": true,
+      "return_1d_pct": -41.65,
+      "resolved_1d": true
     }
   },
   {
@@ -1416,7 +1430,9 @@
       "return_15m_pct": 3.248,
       "return_30m_pct": 12.944,
       "return_60m_pct": 29.935,
-      "resolved_60m": true
+      "resolved_60m": true,
+      "return_1d_pct": -40.63,
+      "resolved_1d": true
     }
   },
   {
@@ -1590,7 +1606,9 @@
       "return_30m_pct": 0.376,
       "target1_first_touch": "target",
       "return_60m_pct": -1.547,
-      "resolved_60m": true
+      "resolved_60m": true,
+      "return_1d_pct": 1.128,
+      "resolved_1d": true
     }
   },
   {
@@ -1764,7 +1782,9 @@
       "return_15m_pct": -2.174,
       "return_30m_pct": 0.378,
       "return_60m_pct": -1.418,
-      "resolved_60m": true
+      "resolved_60m": true,
+      "return_1d_pct": 1.701,
+      "resolved_1d": true
     }
   },
   {
@@ -1949,7 +1969,9 @@
       "post_bounce_max_drop_60m_pct": -2.277,
       "post_bounce_max_rise_60m_pct": 38.614,
       "return_60m_pct": 22.821,
-      "resolved_60m": true
+      "resolved_60m": true,
+      "return_1d_pct": -41.188,
+      "resolved_1d": true
     }
   },
   {
@@ -2134,7 +2156,9 @@
       "return_15m_pct": 7.765,
       "return_30m_pct": 12.867,
       "return_60m_pct": 19.209,
-      "resolved_60m": true
+      "resolved_60m": true,
+      "return_1d_pct": -43.352,
+      "resolved_1d": true
     }
   },
   {
@@ -2319,7 +2343,9 @@
       "return_15m_pct": 8.683,
       "return_30m_pct": 24.945,
       "return_60m_pct": 14.085,
-      "resolved_60m": true
+      "resolved_60m": true,
+      "return_1d_pct": -41.097,
+      "resolved_1d": true
     }
   },
   {
@@ -2497,7 +2523,9 @@
       "post_bounce_max_drop_30m_pct": -33.915,
       "post_bounce_max_rise_30m_pct": 2.128,
       "post_bounce_max_drop_60m_pct": -40.915,
-      "post_bounce_max_rise_60m_pct": 2.128
+      "post_bounce_max_rise_60m_pct": 2.128,
+      "return_1d_pct": -60.362,
+      "resolved_1d": true
     }
   },
   {
@@ -2671,7 +2699,9 @@
       "return_30m_pct": -24.528,
       "return_60m_pct": -38.272,
       "resolved_60m": true,
-      "target1_first_touch": "target"
+      "target1_first_touch": "target",
+      "return_1d_pct": -60.056,
+      "resolved_1d": true
     }
   },
   {
@@ -2856,7 +2886,9 @@
       "post_bounce_max_drop_30m_pct": -17.173,
       "post_bounce_max_rise_30m_pct": 14.307,
       "post_bounce_max_drop_60m_pct": -26.24,
-      "post_bounce_max_rise_60m_pct": 14.307
+      "post_bounce_max_rise_60m_pct": 14.307,
+      "return_1d_pct": -50.32,
+      "resolved_1d": true
     }
   },
   {
@@ -3041,7 +3073,9 @@
       "post_bounce_max_drop_30m_pct": -24.151,
       "post_bounce_max_rise_30m_pct": 4.676,
       "post_bounce_max_drop_60m_pct": -36.313,
-      "post_bounce_max_rise_60m_pct": 4.676
+      "post_bounce_max_rise_60m_pct": 4.676,
+      "return_1d_pct": -54.505,
+      "resolved_1d": true
     }
   },
   {
@@ -3226,7 +3260,9 @@
       "post_bounce_max_drop_30m_pct": -21.832,
       "post_bounce_max_rise_30m_pct": -0.717,
       "post_bounce_max_drop_60m_pct": -34.365,
-      "post_bounce_max_rise_60m_pct": -0.717
+      "post_bounce_max_rise_60m_pct": -0.717,
+      "return_1d_pct": -53.114,
+      "resolved_1d": true
     }
   },
   {
@@ -3411,7 +3447,9 @@
       "post_bounce_max_drop_30m_pct": -10.062,
       "post_bounce_max_rise_30m_pct": 9.599,
       "post_bounce_max_drop_60m_pct": -24.482,
-      "post_bounce_max_rise_60m_pct": 9.599
+      "post_bounce_max_rise_60m_pct": 9.599,
+      "return_1d_pct": -46.055,
+      "resolved_1d": true
     }
   },
   {
@@ -3596,7 +3634,9 @@
       "post_bounce_max_drop_30m_pct": -1.406,
       "post_bounce_max_rise_30m_pct": 3.414,
       "post_bounce_max_drop_60m_pct": -1.406,
-      "post_bounce_max_rise_60m_pct": 14.458
+      "post_bounce_max_rise_60m_pct": 14.458,
+      "return_1d_pct": -0.03,
+      "resolved_1d": true
     }
   },
   {
@@ -3781,7 +3821,9 @@
       "post_bounce_max_drop_30m_pct": -2.175,
       "post_bounce_max_rise_30m_pct": 4.27,
       "post_bounce_max_drop_60m_pct": -2.175,
-      "post_bounce_max_rise_60m_pct": 13.208
+      "post_bounce_max_rise_60m_pct": 13.208,
+      "return_1d_pct": -1.122,
+      "resolved_1d": true
     }
   },
   {
@@ -3966,7 +4008,9 @@
       "post_bounce_max_drop_30m_pct": -1.188,
       "post_bounce_max_rise_30m_pct": 7.784,
       "post_bounce_max_drop_60m_pct": -1.188,
-      "post_bounce_max_rise_60m_pct": 13.772
+      "post_bounce_max_rise_60m_pct": 13.772,
+      "return_1d_pct": -0.629,
+      "resolved_1d": true
     }
   },
   {
@@ -4151,7 +4195,9 @@
       "post_bounce_max_drop_30m_pct": -2.913,
       "post_bounce_max_rise_30m_pct": 4.854,
       "post_bounce_max_drop_60m_pct": -2.913,
-      "post_bounce_max_rise_60m_pct": 10.68
+      "post_bounce_max_rise_60m_pct": 10.68,
+      "return_1d_pct": -3.33,
+      "resolved_1d": true
     }
   },
   {
@@ -4336,7 +4382,9 @@
       "post_bounce_max_drop_30m_pct": -0.99,
       "post_bounce_max_rise_30m_pct": 12.871,
       "post_bounce_max_drop_60m_pct": -0.99,
-      "post_bounce_max_rise_60m_pct": 12.871
+      "post_bounce_max_rise_60m_pct": 12.871,
+      "return_1d_pct": -1.416,
+      "resolved_1d": true
     }
   },
   {
@@ -4510,7 +4558,9 @@
       "return_15m_pct": -6.363,
       "return_30m_pct": -4.487,
       "return_60m_pct": -14.94,
-      "resolved_60m": true
+      "resolved_60m": true,
+      "return_1d_pct": -52.583,
+      "resolved_1d": true
     }
   },
   {
@@ -4684,7 +4734,9 @@
       "return_30m_pct": -0.162,
       "return_60m_pct": 0.85,
       "resolved_60m": true,
-      "target1_first_touch": "target"
+      "target1_first_touch": "target",
+      "return_1d_pct": 3.369,
+      "resolved_1d": true
     }
   },
   {
@@ -4858,7 +4910,9 @@
       "return_30m_pct": -2.011,
       "return_60m_pct": 2.251,
       "resolved_60m": true,
-      "target1_first_touch": "target"
+      "target1_first_touch": "target",
+      "return_1d_pct": 3.065,
+      "resolved_1d": true
     }
   },
   {
@@ -5032,7 +5086,9 @@
       "return_15m_pct": -0.963,
       "return_30m_pct": -2.0,
       "return_60m_pct": 1.811,
-      "resolved_60m": true
+      "resolved_60m": true,
+      "return_1d_pct": 2.574,
+      "resolved_1d": true
     }
   },
   {
@@ -5206,7 +5262,9 @@
       "return_30m_pct": -1.342,
       "return_60m_pct": 2.109,
       "resolved_60m": true,
-      "target1_first_touch": "target"
+      "target1_first_touch": "target",
+      "return_1d_pct": 3.164,
+      "resolved_1d": true
     }
   },
   {
@@ -5380,7 +5438,9 @@
       "return_15m_pct": -0.823,
       "return_30m_pct": -1.208,
       "return_60m_pct": 1.859,
-      "resolved_60m": true
+      "resolved_60m": true,
+      "return_1d_pct": 3.006,
+      "resolved_1d": true
     }
   },
   {
@@ -5554,7 +5614,9 @@
       "return_15m_pct": -0.952,
       "return_30m_pct": -1.147,
       "return_60m_pct": 2.611,
-      "resolved_60m": true
+      "resolved_60m": true,
+      "return_1d_pct": 3.671,
+      "resolved_1d": true
     }
   },
   {
@@ -5728,7 +5790,9 @@
       "return_15m_pct": -1.035,
       "return_30m_pct": -8.517,
       "return_60m_pct": -13.873,
-      "resolved_60m": true
+      "resolved_60m": true,
+      "return_1d_pct": -49.497,
+      "resolved_1d": true
     }
   },
   {
@@ -5913,7 +5977,9 @@
       "return_15m_pct": -7.953,
       "return_30m_pct": -16.493,
       "return_60m_pct": -23.65,
-      "resolved_60m": true
+      "resolved_60m": true,
+      "return_1d_pct": -53.028,
+      "resolved_1d": true
     }
   },
   {
@@ -6098,7 +6164,9 @@
       "return_15m_pct": -3.991,
       "return_30m_pct": -12.794,
       "return_60m_pct": -20.083,
-      "resolved_60m": true
+      "resolved_60m": true,
+      "return_1d_pct": -51.132,
+      "resolved_1d": true
     }
   },
   {
@@ -6272,7 +6340,9 @@
       "return_15m_pct": -0.414,
       "return_30m_pct": -0.83,
       "return_60m_pct": 4.295,
-      "resolved_60m": true
+      "resolved_60m": true,
+      "return_1d_pct": 15.791,
+      "resolved_1d": true
     }
   },
   {
@@ -6427,7 +6497,9 @@
       "return_15m_pct": -0.417,
       "return_30m_pct": 0.487,
       "return_60m_pct": 4.869,
-      "resolved_60m": true
+      "resolved_60m": true,
+      "return_1d_pct": 16.273,
+      "resolved_1d": true
     }
   },
   {
@@ -6582,7 +6654,9 @@
       "return_15m_pct": -0.279,
       "return_30m_pct": 1.534,
       "return_60m_pct": 3.626,
-      "resolved_60m": true
+      "resolved_60m": true,
+      "return_1d_pct": 16.597,
+      "resolved_1d": true
     }
   },
   {
@@ -6737,7 +6811,9 @@
       "return_15m_pct": 1.777,
       "return_30m_pct": 3.625,
       "return_60m_pct": 6.301,
-      "resolved_60m": true
+      "resolved_60m": true,
+      "return_1d_pct": 18.834,
+      "resolved_1d": true
     }
   },
   {
@@ -6892,7 +6968,9 @@
       "return_15m_pct": 0.908,
       "return_30m_pct": 2.095,
       "return_60m_pct": 4.19,
-      "resolved_60m": true
+      "resolved_60m": true,
+      "return_1d_pct": 16.76,
+      "resolved_1d": true
     }
   },
   {
@@ -7047,7 +7125,9 @@
       "return_15m_pct": 2.68,
       "return_30m_pct": 4.443,
       "return_60m_pct": 5.358,
-      "resolved_60m": true
+      "resolved_60m": true,
+      "return_1d_pct": 17.913,
+      "resolved_1d": true
     }
   },
   {
@@ -7202,7 +7282,9 @@
       "return_15m_pct": 1.533,
       "return_30m_pct": 4.876,
       "return_60m_pct": 9.612,
-      "resolved_60m": true
+      "resolved_60m": true,
+      "return_1d_pct": 16.436,
+      "resolved_1d": true
     }
   },
   {
@@ -7357,7 +7439,9 @@
       "return_30m_pct": 2.679,
       "return_60m_pct": -0.73,
       "resolved_60m": true,
-      "target1_first_touch": "target"
+      "target1_first_touch": "target",
+      "return_1d_pct": -10.918,
+      "resolved_1d": true
     }
   },
   {
@@ -7531,7 +7615,9 @@
       "return_30m_pct": 2.703,
       "return_60m_pct": 5.686,
       "resolved_60m": true,
-      "target1_first_touch": "stop"
+      "target1_first_touch": "stop",
+      "return_1d_pct": -10.319,
+      "resolved_1d": true
     }
   },
   {
@@ -7685,7 +7771,9 @@
       "return_15m_pct": 2.344,
       "return_60m_pct": -0.73,
       "resolved_60m": true,
-      "target1_first_touch": "target"
+      "target1_first_touch": "target",
+      "return_1d_pct": -10.918,
+      "resolved_1d": true
     }
   },
   {
@@ -7837,7 +7925,9 @@
     "dilution_risk": "LOW",
     "outcomes": {
       "return_15m_pct": 1.184,
-      "target1_first_touch": "target"
+      "target1_first_touch": "target",
+      "return_1d_pct": -12.5,
+      "resolved_1d": true
     }
   },
   {
@@ -8011,7 +8101,9 @@
       "return_30m_pct": -2.631,
       "return_60m_pct": -2.801,
       "resolved_60m": true,
-      "target1_first_touch": "stop"
+      "target1_first_touch": "stop",
+      "return_1d_pct": -8.636,
+      "resolved_1d": true
     }
   },
   {
@@ -8191,7 +8283,9 @@
       "repeat_bounce_mae_30m_pct": -14.976,
       "repeat_bounce_mfe_60m_pct": 0.483,
       "repeat_bounce_mae_60m_pct": -14.976,
-      "repeat_bounce_reference_peak_reclaimed_60m": true
+      "repeat_bounce_reference_peak_reclaimed_60m": true,
+      "return_1d_pct": -25.604,
+      "resolved_1d": true
     }
   },
   {
@@ -8365,7 +8459,9 @@
       "return_30m_pct": -2.632,
       "return_60m_pct": -4.375,
       "resolved_60m": true,
-      "target1_first_touch": "stop"
+      "target1_first_touch": "stop",
+      "return_1d_pct": -8.706,
+      "resolved_1d": true
     }
   },
   {
@@ -8545,7 +8641,9 @@
       "repeat_bounce_mae_30m_pct": -11.996,
       "repeat_bounce_mfe_60m_pct": 4.005,
       "repeat_bounce_mae_60m_pct": -11.996,
-      "repeat_bounce_reference_peak_reclaimed_60m": true
+      "repeat_bounce_reference_peak_reclaimed_60m": true,
+      "return_1d_pct": -22.996,
+      "resolved_1d": true
     }
   },
   {
@@ -8726,7 +8824,9 @@
       "repeat_bounce_mae_30m_pct": -7.853,
       "repeat_bounce_mfe_60m_pct": 8.901,
       "repeat_bounce_mae_60m_pct": -7.853,
-      "repeat_bounce_reference_peak_reclaimed_60m": true
+      "repeat_bounce_reference_peak_reclaimed_60m": true,
+      "return_1d_pct": -19.372,
+      "resolved_1d": true
     }
   },
   {
@@ -8898,7 +8998,9 @@
     "outcomes": {
       "return_15m_pct": -3.143,
       "return_30m_pct": -0.698,
-      "target1_first_touch": "stop"
+      "target1_first_touch": "stop",
+      "return_1d_pct": -15.017,
+      "resolved_1d": true
     }
   },
   {
@@ -9070,7 +9172,9 @@
     "outcomes": {
       "return_15m_pct": -3.458,
       "return_30m_pct": -0.701,
-      "target1_first_touch": "stop"
+      "target1_first_touch": "stop",
+      "return_1d_pct": -14.72,
+      "resolved_1d": true
     }
   },
   {
@@ -9241,7 +9345,9 @@
     "dilution_risk": "HIGH",
     "outcomes": {
       "return_15m_pct": -1.176,
-      "target1_first_touch": "stop"
+      "target1_first_touch": "stop",
+      "return_1d_pct": -14.319,
+      "resolved_1d": true
     }
   },
   {
@@ -9412,7 +9518,9 @@
     "dilution_risk": "HIGH",
     "outcomes": {
       "target1_first_touch": "stop",
-      "return_15m_pct": -19.292
+      "return_15m_pct": -19.292,
+      "return_1d_pct": -25.085,
+      "resolved_1d": true
     }
   },
   {
@@ -9583,7 +9691,9 @@
     "dilution_risk": "LOW",
     "outcomes": {
       "target1_first_touch": "stop",
-      "return_15m_pct": 1.405
+      "return_15m_pct": 1.405,
+      "return_1d_pct": -5.963,
+      "resolved_1d": true
     }
   },
   {
@@ -9754,7 +9864,9 @@
     "dilution_risk": "LOW",
     "outcomes": {
       "target1_first_touch": "stop",
-      "return_15m_pct": 0.113
+      "return_15m_pct": 0.113,
+      "return_1d_pct": -6.488,
+      "resolved_1d": true
     }
   },
   {
@@ -9925,7 +10037,9 @@
     "dilution_risk": "HIGH",
     "outcomes": {
       "target1_first_touch": "stop",
-      "return_15m_pct": -25.128
+      "return_15m_pct": -25.128,
+      "return_1d_pct": -24.299,
+      "resolved_1d": true
     }
   },
   {
@@ -10096,7 +10210,9 @@
     "dilution_risk": "HIGH",
     "outcomes": {
       "return_15m_pct": -19.258,
-      "target1_first_touch": "stop"
+      "target1_first_touch": "stop",
+      "return_1d_pct": -15.264,
+      "resolved_1d": true
     }
   },
   {
@@ -10267,7 +10383,9 @@
     "dilution_risk": "LOW",
     "outcomes": {
       "target1_first_touch": "stop",
-      "return_15m_pct": -2.308
+      "return_15m_pct": -2.308,
+      "return_1d_pct": -8.132,
+      "resolved_1d": true
     }
   },
   {
@@ -10437,7 +10555,9 @@
     "sector_move_pct": null,
     "dilution_risk": "HIGH",
     "outcomes": {
-      "target1_first_touch": "stop"
+      "target1_first_touch": "stop",
+      "return_1d_pct": -10.136,
+      "resolved_1d": true
     }
   },
   {
@@ -10627,7 +10747,9 @@
     "sector_move_pct": null,
     "dilution_risk": "HIGH",
     "outcomes": {
-      "target1_first_touch": "stop"
+      "target1_first_touch": "stop",
+      "return_1d_pct": -5.399,
+      "resolved_1d": true
     }
   },
   {
@@ -10778,7 +10900,9 @@
     "sector_move_pct": null,
     "dilution_risk": "HIGH",
     "outcomes": {
-      "target1_first_touch": "target"
+      "target1_first_touch": "target",
+      "return_1d_pct": 4.214,
+      "resolved_1d": true
     }
   },
   {
@@ -10927,7 +11051,10 @@
     "sector_etf": null,
     "sector_move_pct": null,
     "dilution_risk": "NONE FOUND",
-    "outcomes": {}
+    "outcomes": {
+      "return_1d_pct": -0.738,
+      "resolved_1d": true
+    }
   },
   {
     "id": "USDE:2026-08-31T20:00:00+00:00:147",
@@ -11095,7 +11222,10 @@
     "sector_etf": "XLF",
     "sector_move_pct": -0.67,
     "dilution_risk": "LOW",
-    "outcomes": {}
+    "outcomes": {
+      "return_1d_pct": -5.75,
+      "resolved_1d": true
+    }
   },
   {
     "id": "USDE:2026-08-31T20:05:00+00:00:148",
@@ -11263,7 +11393,10 @@
     "sector_etf": "XLF",
     "sector_move_pct": -0.67,
     "dilution_risk": "LOW",
-    "outcomes": {}
+    "outcomes": {
+      "return_1d_pct": -5.75,
+      "resolved_1d": true
+    }
   },
   {
     "id": "WETO:2026-08-31T20:10:00+00:00:149",
@@ -11415,7 +11548,10 @@
     "sector_etf": null,
     "sector_move_pct": null,
     "dilution_risk": "HIGH",
-    "outcomes": {}
+    "outcomes": {
+      "return_1d_pct": 8.394,
+      "resolved_1d": true
+    }
   },
   {
     "id": "SDOT:2026-08-31T22:25:00+00:00:150",
@@ -11596,7 +11732,10 @@
     "sector_etf": "XLY",
     "sector_move_pct": -0.53,
     "dilution_risk": "LOW",
-    "outcomes": {}
+    "outcomes": {
+      "return_1d_pct": -6.601,
+      "resolved_1d": true
+    }
   },
   {
     "id": "SDOT:2026-08-31T22:30:00+00:00:151",
@@ -11777,7 +11916,10 @@
     "sector_etf": "XLY",
     "sector_move_pct": -0.53,
     "dilution_risk": "LOW",
-    "outcomes": {}
+    "outcomes": {
+      "return_1d_pct": -6.601,
+      "resolved_1d": true
+    }
   },
   {
     "id": "AAPL:2026-08-31T22:35:00+00:00:152",
@@ -11933,7 +12075,10 @@
     "sector_etf": "XLK",
     "sector_move_pct": 0.44,
     "dilution_risk": "NONE FOUND",
-    "outcomes": {}
+    "outcomes": {
+      "return_1d_pct": 2.613,
+      "resolved_1d": true
+    }
   },
   {
     "id": "AAPL:2026-08-31T22:40:00+00:00:153",
@@ -12089,7 +12234,10 @@
     "sector_etf": "XLK",
     "sector_move_pct": 0.44,
     "dilution_risk": "NONE FOUND",
-    "outcomes": {}
+    "outcomes": {
+      "return_1d_pct": 2.613,
+      "resolved_1d": true
+    }
   },
   {
     "id": "AAPL:2026-08-31T22:45:00+00:00:154",
@@ -12245,7 +12393,10 @@
     "sector_etf": "XLK",
     "sector_move_pct": 0.44,
     "dilution_risk": "NONE FOUND",
-    "outcomes": {}
+    "outcomes": {
+      "return_1d_pct": 2.613,
+      "resolved_1d": true
+    }
   },
   {
     "id": "AAPL:2026-08-31T22:50:00+00:00:155",
@@ -12401,7 +12552,10 @@
     "sector_etf": "XLK",
     "sector_move_pct": 0.44,
     "dilution_risk": "NONE FOUND",
-    "outcomes": {}
+    "outcomes": {
+      "return_1d_pct": 2.613,
+      "resolved_1d": true
+    }
   },
   {
     "id": "AAPL:2026-08-31T22:55:00+00:00:156",
@@ -12557,7 +12711,10 @@
     "sector_etf": "XLK",
     "sector_move_pct": 0.44,
     "dilution_risk": "NONE FOUND",
-    "outcomes": {}
+    "outcomes": {
+      "return_1d_pct": 2.613,
+      "resolved_1d": true
+    }
   },
   {
     "id": "AAPL:2026-08-31T23:00:00+00:00:157",
@@ -12713,7 +12870,10 @@
     "sector_etf": "XLK",
     "sector_move_pct": 0.44,
     "dilution_risk": "NONE FOUND",
-    "outcomes": {}
+    "outcomes": {
+      "return_1d_pct": 2.613,
+      "resolved_1d": true
+    }
   },
   {
     "id": "AAPL:2026-08-31T23:05:00+00:00:158",
@@ -12869,7 +13029,10 @@
     "sector_etf": "XLK",
     "sector_move_pct": 0.44,
     "dilution_risk": "NONE FOUND",
-    "outcomes": {}
+    "outcomes": {
+      "return_1d_pct": 2.613,
+      "resolved_1d": true
+    }
   },
   {
     "id": "AAPL:2026-08-31T23:10:00+00:00:159",
@@ -13025,7 +13188,10 @@
     "sector_etf": "XLK",
     "sector_move_pct": 0.44,
     "dilution_risk": "NONE FOUND",
-    "outcomes": {}
+    "outcomes": {
+      "return_1d_pct": 2.613,
+      "resolved_1d": true
+    }
   },
   {
     "id": "AAPL:2026-08-31T23:15:00+00:00:160",
@@ -13181,7 +13347,10 @@
     "sector_etf": "XLK",
     "sector_move_pct": 0.44,
     "dilution_risk": "NONE FOUND",
-    "outcomes": {}
+    "outcomes": {
+      "return_1d_pct": 2.613,
+      "resolved_1d": true
+    }
   },
   {
     "id": "AAPL:2026-08-31T23:20:00+00:00:161",
@@ -13337,7 +13506,10 @@
     "sector_etf": "XLK",
     "sector_move_pct": 0.44,
     "dilution_risk": "NONE FOUND",
-    "outcomes": {}
+    "outcomes": {
+      "return_1d_pct": 2.613,
+      "resolved_1d": true
+    }
   },
   {
     "id": "AAPL:2026-08-31T23:25:00+00:00:162",
@@ -13493,7 +13665,10 @@
     "sector_etf": "XLK",
     "sector_move_pct": 0.44,
     "dilution_risk": "NONE FOUND",
-    "outcomes": {}
+    "outcomes": {
+      "return_1d_pct": 2.613,
+      "resolved_1d": true
+    }
   },
   {
     "id": "AAPL:2026-08-31T23:30:00+00:00:163",
@@ -13649,7 +13824,10 @@
     "sector_etf": "XLK",
     "sector_move_pct": 0.44,
     "dilution_risk": "NONE FOUND",
-    "outcomes": {}
+    "outcomes": {
+      "return_1d_pct": 2.613,
+      "resolved_1d": true
+    }
   },
   {
     "id": "AAPL:2026-08-31T23:35:00+00:00:164",
@@ -13805,7 +13983,10 @@
     "sector_etf": "XLK",
     "sector_move_pct": 0.44,
     "dilution_risk": "NONE FOUND",
-    "outcomes": {}
+    "outcomes": {
+      "return_1d_pct": 2.613,
+      "resolved_1d": true
+    }
   },
   {
     "id": "AAPL:2026-08-31T23:40:00+00:00:165",
@@ -13961,7 +14142,10 @@
     "sector_etf": "XLK",
     "sector_move_pct": 0.44,
     "dilution_risk": "NONE FOUND",
-    "outcomes": {}
+    "outcomes": {
+      "return_1d_pct": 2.613,
+      "resolved_1d": true
+    }
   },
   {
     "id": "AAPL:2026-08-31T23:45:00+00:00:166",
@@ -14117,7 +14301,10 @@
     "sector_etf": "XLK",
     "sector_move_pct": 0.44,
     "dilution_risk": "NONE FOUND",
-    "outcomes": {}
+    "outcomes": {
+      "return_1d_pct": 2.613,
+      "resolved_1d": true
+    }
   },
   {
     "id": "AAPL:2026-08-31T23:50:00+00:00:167",
@@ -14273,7 +14460,10 @@
     "sector_etf": "XLK",
     "sector_move_pct": 0.44,
     "dilution_risk": "NONE FOUND",
-    "outcomes": {}
+    "outcomes": {
+      "return_1d_pct": 2.613,
+      "resolved_1d": true
+    }
   },
   {
     "id": "AAPL:2026-08-31T23:55:00+00:00:168",
@@ -14429,6 +14619,9 @@
     "sector_etf": "XLK",
     "sector_move_pct": 0.44,
     "dilution_risk": "NONE FOUND",
-    "outcomes": {}
+    "outcomes": {
+      "return_1d_pct": 2.613,
+      "resolved_1d": true
+    }
   }
 ]
