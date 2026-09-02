@@ -39,6 +39,9 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install validation dependencies
+        run: python -m pip install --disable-pip-version-check -q -r requirements.txt
+
       - name: Validate full-market radar
         env:
           TRADIER_ACCESS_TOKEN: offline-test-token
