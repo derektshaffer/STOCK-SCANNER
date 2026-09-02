@@ -5950,6 +5950,31 @@ def test_combined_analyzer_refresh_is_background_and_saved_stocks_follow_search(
     assert "not _COMBINED_WORKSPACE or _combined_timed_refresh" in core
     assert "_cancel_combined_loader" in bootstrap
     assert "You are already in Analyzer" in bootstrap
+    loader_fragment = bootstrap.find('@st.fragment(run_every="1s")')
+    loader_status = bootstrap.find(
+        'f"Analyzing {requested_ticker} in the background… "'
+    )
+    loader_poll = bootstrap.find("outcome = poll_analyzer_process(state)")
+    loader_call = bootstrap.find(
+        "\n            _render_combined_analysis_loader()\n",
+        loader_status,
+    )
+    assert 0 <= loader_fragment < loader_poll < loader_status < loader_call, (
+        loader_fragment,
+        loader_poll,
+        loader_status,
+        loader_call,
+    )
+    assert 'float(outcome.get("runtime_seconds") or 0.0)' in bootstrap
+    assert 'st.session_state["_analyzer_failed_symbol"] = requested_ticker' in bootstrap
+    assert 'st.session_state.pop("ticker_search_request", None)' in bootstrap
+    assert 'st.session_state.pop("result", None)' in bootstrap
+    assert 'f"Retry {failed_symbol}"' in bootstrap
+    failure_marker = bootstrap.find(
+        'st.session_state["_analyzer_failed_symbol"] = requested_ticker'
+    )
+    failure_rerun = bootstrap.find('st.rerun(scope="app")', failure_marker)
+    assert failure_marker >= 0 and failure_rerun > failure_marker
     assert '"_analyzer_background_request_symbol"' in core
     assert "can_render_existing = bool(" in bootstrap
     assert 'div[data-testid="stHorizontalBlock"]:has(.combined-ticker-row)' in app
