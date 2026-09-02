@@ -1,0 +1,25 @@
+name: Codex Workspace Export
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout proposed revision
+        uses: actions/checkout@v4
+
+      - name: Create source archive
+        run: git archive --format=zip --output=stock-scanner-source.zip HEAD
+
+      - name: Upload source archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: codex-stock-scanner-source-${{ github.run_id }}
+          path: stock-scanner-source.zip
+          retention-days: 1
