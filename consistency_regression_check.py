@@ -5196,16 +5196,17 @@ def test_live_scanner_does_not_publish_empty_snapshot_after_provider_failure():
     assert "Preserving the previous scanner snapshot" in guard
 
 
-def test_premarket_tradier_scan_keeps_alpaca_daily_context_fallback():
+def test_premarket_tradier_scan_does_not_depend_on_alpaca_daily_context():
     from pathlib import Path
 
     source = Path("stock_scanner.py").read_text(encoding="utf-8")
     main = source.split("def main():", 1)[1]
-    assert "phase in {\"premarket\", \"afterhours\"}" in main
+    assert 'phase in {"premarket", "afterhours"}' in main
     assert "ALPACA_CONFIGURED" in main
     assert "get_multi_snapshots(" in main
-    assert "Tradier still owns the live price/volume/spread" in main
-
+    assert "Do not let an unrelated" in main
+    assert "not USE_TRADIER" in main
+    assert 'row.get("_tradier_quote")' in main
 
 def test_live_scanner_matches_scheduled_tradier_discovery():
     from pathlib import Path
@@ -5217,32 +5218,46 @@ def test_live_scanner_matches_scheduled_tradier_discovery():
     assert 'env["SCANNER_DISCOVERY_UNIVERSE_SIZE"]' in runtime_source
 
 
-def test_discovery_universe_reserves_extreme_mover_rescue_slot():
+def test_full_market_discovery_keeps_extreme_mover_and_price_lanes():
+    import time
     import scanner_discovery as discovery
 
-    rows={}
-    # Ten highly liquid ordinary stocks would normally dominate a tiny universe.
-    for i in range(20):
-        symbol=f"LQ{i:02d}"
-        rows[symbol]={
+    now=time.time()
+    def q(symbol, price, prevclose, volume, average_volume):
+        return {
+            "symbol":symbol,
             "type":"stock",
-            "last":10.0,
-            "prevclose":10.0,
-            "average_volume":10_000_000-i*10_000,
-            "change_percentage":1.0,
+            "last":price,
+            "prevclose":prevclose,
+            "average_volume":average_volume,
+            "volume":volume,
+            "change_percentage":(price/prevclose-1)*100,
+            "high":price,
+            "low":prevclose,
+            "bid":price*0.995,
+            "ask":price*1.005,
+            "trade_date":int(now*1000),
+            "bid_date":int(now*1000),
+            "ask_date":int(now*1000),
         }
-    # WETO-like case: materially lower normal dollar volume but a huge current/
-    # recent move. The rescue lane must keep it visible to the live scanner.
-    rows["WETO"]={
-        "type":"stock",
-        "last":7.24,
-        "prevclose":5.72,
-        "average_volume":250_000,
-        "change_percentage":26.57,
-    }
-    selected,_=discovery._select_seed_symbols(rows,10)
-    assert "WETO" in selected, selected
 
+    biaf=discovery._radar_row(
+        "BIAF",q("BIAF",7.85,6.57,180_000,224_302),
+        [{"t":now-180,"p":6.60,"v":5_000}],now,
+    )
+    penny=discovery._radar_row(
+        "PENNY",q("PENNY",0.42,0.31,1_500_000,120_000),
+        [{"t":now-180,"p":0.32,"v":50_000}],now,
+    )
+    pricey=discovery._radar_row(
+        "PRICEY",q("PRICEY",120,108,900_000,600_000),
+        [{"t":now-180,"p":110,"v":150_000}],now,
+    )
+    selected=discovery._select_candidates([biaf,penny,pricey],20)
+    symbols={row["symbol"] for row in selected}
+    assert {"BIAF","PENNY","PRICEY"}.issubset(symbols), selected
+    assert penny["risk_lane"]=="SUB-$1"
+    assert pricey["risk_lane"]=="ABOVE-$50"
 
 def test_live_mover_rescue_is_merged_without_duplicate_symbols():
     import stock_scanner as scanner
@@ -5262,16 +5277,18 @@ def test_live_mover_rescue_is_merged_without_duplicate_symbols():
     assert aaa.get("change_pct")==9.0, aaa
 
 
-def test_tradier_discovery_does_not_short_circuit_live_mover_rescue():
+def test_tradier_discovery_is_full_market_and_not_alpaca_rescue_dependent():
     from pathlib import Path
 
     source=Path("stock_scanner.py").read_text(encoding="utf-8")
     discovery_source=Path("scanner_discovery.py").read_text(encoding="utf-8")
-    assert "rescue = _alpaca_rescue_candidates(phase)" in source
-    assert "_merge_candidate_rows(rows, rescue" in source
-    assert "VOLATILITY_RESCUE_SHARE" in discovery_source
-    assert "CACHE_SCHEMA_VERSION = 2" in discovery_source
-
+    main=source.split("def get_candidate_universe",1)[1].split("def get_snapshot",1)[0]
+    assert "FULL_MARKET_CANDIDATE_TOP" in main
+    assert "Full-market radar" in main
+    assert "_alpaca_rescue_candidates" not in main
+    assert "tradier_full_market_universe.json" in discovery_source
+    assert "full_market_enabled" in discovery_source
+    assert "MIN_RADAR_PRICE" in discovery_source
 
 def test_analyzer_session_filter_uses_current_extended_session():
     # 2026-08-31 is a Monday in EDT.
@@ -8567,11 +8584,11 @@ if __name__ == "__main__":
         test_combined_analyze_button_has_no_obvious_help_popup_and_can_cancel,
         test_cancelable_analyzer_runtime_terminates_active_process,
         test_live_scanner_does_not_publish_empty_snapshot_after_provider_failure,
-        test_premarket_tradier_scan_keeps_alpaca_daily_context_fallback,
+        test_premarket_tradier_scan_does_not_depend_on_alpaca_daily_context,
         test_live_scanner_matches_scheduled_tradier_discovery,
-        test_discovery_universe_reserves_extreme_mover_rescue_slot,
+        test_full_market_discovery_keeps_extreme_mover_and_price_lanes,
         test_live_mover_rescue_is_merged_without_duplicate_symbols,
-        test_tradier_discovery_does_not_short_circuit_live_mover_rescue,
+        test_tradier_discovery_is_full_market_and_not_alpaca_rescue_dependent,
         test_swing_research_ui_disclaims_historical_probability,
         test_legacy_analyzer_entrypoint_cannot_drift,
         test_monday_readiness_blocks_stale_scan_handoffs,

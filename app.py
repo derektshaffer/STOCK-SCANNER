@@ -149,7 +149,7 @@ st.markdown(
     .combined-ticker-row {
         min-height: 68px;
         display: grid;
-        grid-template-columns: minmax(115px, 1.25fr) repeat(5, minmax(82px, 1fr));
+        grid-template-columns: minmax(115px, 1.25fr) repeat(6, minmax(72px, 1fr));
         gap: 10px;
         align-items: stretch;
         border-bottom: 1px solid rgba(120,150,190,.18);
@@ -695,7 +695,7 @@ def _workspace_scanner_monitor():
             alpaca_secret=_shell_secret("ALPACA_SECRET_KEY"),
             alpaca_live_feed=_shell_live_feed(),
             tradier_token=_shell_tradier_token(),
-            discovery_universe_size="1200",
+            discovery_universe_size="full-market",
             learning_github_token=(
                 _shell_secret("ANALYZER_GITHUB_TOKEN")
                 or _shell_secret("GITHUB_TOKEN")
@@ -705,7 +705,7 @@ def _workspace_scanner_monitor():
                 or "derektshaffer/STOCK-SCANNER"
             ),
             learning_branch="learning-journal",
-            timeout_seconds=105,
+            timeout_seconds=180,
         )
         if started.get("started"):
             st.session_state["_scanner_async_state"] = started
@@ -1142,6 +1142,12 @@ def _latest_scan_candidates():
             {
                 "symbol": symbol,
                 "grade": str(row.get("setup_grade") or "—"),
+                "risk_lane": row.get("risk_lane") or "$1-$50",
+                "explosion_score": row.get("explosion_score"),
+                "tradeability_score": row.get("tradeability_score"),
+                "radar_change_3m_pct": row.get("radar_change_3m_pct"),
+                "radar_volume_velocity_ratio": row.get("radar_volume_velocity_ratio"),
+                "radar_quote_fresh": row.get("radar_quote_fresh"),
                 "score": row.get("score"),
                 "ml_probability": row.get("ml_continuation_prob_pct"),
                 "ml_validated": bool(row.get("ml_validated")),
@@ -1163,6 +1169,9 @@ def _latest_scan_candidates():
                     row.get("volume_pace_display_source")
                     or row.get("volume_pace_source")
                 ),
+                "live_price_is_fallback": bool(row.get("live_price_is_fallback")),
+                "live_price_fallback_reason": row.get("live_price_fallback_reason"),
+                "action_data_integrity_ok": bool(row.get("action_data_integrity_ok")),
             }
         )
     return out[:15]
@@ -1347,6 +1356,7 @@ def _action_display(row):
         "breakout": "grade-b",
         "pullback": "grade-c",
         "avoid": "change-neg",
+        "blocked": "change-neg",
         "caution": "grade-c",
         "watch": "volume-normal",
     }.get(tier, "volume-normal")
@@ -1410,6 +1420,28 @@ if view == "Momentum Scanner":
             else []
         )
         candidates = offhours_candidates or _latest_scan_candidates()
+        live_scan_payload = _read_latest_scan_payload() if not offhours_candidates else {}
+        radar_meta = (live_scan_payload or {}).get("radar") or {}
+        if radar_meta.get("full_market_enabled"):
+            requested = int(radar_meta.get("requested_symbols") or 0)
+            received = int(radar_meta.get("quotes_received") or 0)
+            coverage = radar_meta.get("coverage_pct")
+            coverage_text = (
+                f"{float(coverage):.1f}%" if coverage is not None else "unknown"
+            )
+            st.caption(
+                f"Full-market radar checked {received:,} of {requested:,} listed stocks "
+                f"({coverage_text} quote coverage), including "
+                f"{int(radar_meta.get('sub_dollar_eligible') or 0):,} sub-$1 names."
+            )
+            if not radar_meta.get("coverage_ok", True):
+                st.error(
+                    "Full-market coverage is degraded; this candidate list may be incomplete."
+                )
+        elif workspace_live and candidates:
+            st.warning(
+                "This snapshot used limited discovery fallback rather than the full-market radar."
+            )
         trade_horizon = st.session_state.get("scanner_trade_horizon", "ALL")
         candidates = [
             row for row in candidates
@@ -1455,12 +1487,14 @@ if view == "Momentum Scanner":
                 fit = str(row.get("timeframe_best_fit") or "—")
                 fit_display = "MULTIPLE TIMEFRAMES" if fit == "MIXED" else fit
                 grade_fit = f"{grade} · {fit_display}" if fit_display != "—" else grade
-                score_text = _fmt_num(row.get("score"), "{:.0f}")
-                score_label = (
-                    "Trend Candidate Score"
-                    if row.get("source_mode") == "offhours_daily_timeframe"
-                    else "Score"
+                offhours_row = row.get("source_mode") == "offhours_daily_timeframe"
+                explosion_text = _fmt_num(
+                    row.get("score") if offhours_row else row.get("explosion_score"),
+                    "{:.0f}",
                 )
+                explosion_label = "Trend Candidate Score" if offhours_row else "Explosion"
+                tradeability_text = "—" if offhours_row else _fmt_num(row.get("tradeability_score"), "{:.0f}")
+                tradeability_label = "Daily Screen" if offhours_row else "Tradeability"
                 action_text, action_cls, action_label = _action_display(row)
                 day_text = _fmt_num(row.get("day_pct"), "{:+.1f}%")
                 volume_text, volume_value = _volume_pace_display(row)
@@ -1481,8 +1515,12 @@ if view == "Momentum Scanner":
                         f'    <div class="combined-stat-value {grade_cls}">{html.escape(grade_fit)}</div>'
                         f'  </div>'
                         f'  <div class="combined-stat">'
-                        f'    <div class="combined-stat-label">{score_label}</div>'
-                        f'    <div class="combined-stat-value">{score_text}</div>'
+                        f'    <div class="combined-stat-label">{explosion_label}</div>'
+                        f'    <div class="combined-stat-value">{explosion_text}</div>'
+                        f'  </div>'
+                        f'  <div class="combined-stat" title="{html.escape(str(row.get("risk_lane") or ""))}">'
+                        f'    <div class="combined-stat-label">{tradeability_label}</div>'
+                        f'    <div class="combined-stat-value">{tradeability_text}</div>'
                         f'  </div>'
                         f'  <div class="combined-stat" title="{html.escape(str(row.get("scanner_action_reason") or ""))}">'
                         f'    <div class="combined-stat-label">{action_label}</div>'

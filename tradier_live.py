@@ -117,22 +117,22 @@ def get_history_bars(symbol, token, start, end, interval="daily"):
     return bars
 
 
-def get_quotes(symbols, token):
+def get_quotes(symbols, token, batch_size=300):
+    """Return quotes for any practical symbol list using Tradier POST batches.
+
+    The old GET implementation could exceed URL limits as discovery expanded.
+    POST batching is also the same path used by the full-market radar, so the
+    scanner has one predictable quote contract for 1 symbol or several thousand.
+    """
     symbols = [str(s).upper().strip() for s in symbols if str(s).strip()]
     if not symbols:
         return {}
-    params = urllib.parse.urlencode({"symbols": ",".join(symbols)})
-    payload = _request_json(f"{TRADIER_BASE}/markets/quotes?{params}", token)
-    quotes = ((payload or {}).get("quotes") or {}).get("quote")
-    if quotes is None:
-        return {}
-    if not isinstance(quotes, list):
-        quotes = [quotes]
-    return {
-        str(row.get("symbol") or "").upper(): row
-        for row in quotes
-        if row.get("symbol")
-    }
+
+    merged = {}
+    size = max(1, int(batch_size or 300))
+    for start in range(0, len(symbols), size):
+        merged.update(post_quotes(symbols[start : start + size], token))
+    return merged
 
 
 def _iso_timestamp(row):

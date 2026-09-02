@@ -19,7 +19,7 @@ from pathlib import Path
 
 SCAN_FILE = Path("scan_logs/latest_scan.json")
 LOCK_FILE = Path(tempfile.gettempdir()) / "stock-scanner-live.lock"
-LOCK_STALE_SECONDS = 120.0
+LOCK_STALE_SECONDS = 240.0
 
 
 def _provider_error():
