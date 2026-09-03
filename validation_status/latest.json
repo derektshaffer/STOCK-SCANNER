@@ -1,5 +1,5 @@
 {
-  "generated_at_utc": "2026-09-02T06:00:10.030280+00:00",
+  "generated_at_utc": "2026-09-03T05:45:39.082740+00:00",
   "production_claim": "Rules-based Scanner/Analyzer decision support remains usable. Predictive ML and Swing/Longer-Term probability claims remain gated until their independent evidence requirements pass.",
   "schema_version": 1,
   "sections": {
@@ -92,17 +92,17 @@
     },
     "point_in_time_universe": {
       "activation_gate": {
-        "current": 2,
-        "passed": false,
-        "remaining": 1,
+        "current": 3,
+        "passed": true,
+        "remaining": 0,
         "required": 3
       },
       "first_replay_ready_capture_date": "2026-08-31",
-      "latest_replay_ready_capture_date": "2026-09-02",
+      "latest_replay_ready_capture_date": "2026-09-03",
       "minimum_snapshots_for_point_in_time_replay": 3,
       "note": "A snapshot captured after a session may only be used for later sessions, never the same replay date.",
-      "replay_ready_snapshot_count": 2,
-      "snapshot_count": 2
+      "replay_ready_snapshot_count": 3,
+      "snapshot_count": 3
     },
     "scanner_ml_live_confirmation": {
       "evidence_gate_ready": false,
@@ -138,7 +138,7 @@
           "required": 15
         }
       },
-      "historical_replay_samples": 12848,
+      "historical_replay_samples": 12818,
       "live_confirmation_days": 1,
       "live_confirmation_raw_samples": 59,
       "live_confirmation_samples": 38,
@@ -150,14 +150,14 @@
       "replay_end_day": "2026-08-31",
       "training_source": {
         "artifact_report_count": 12,
-        "historical_replay_samples": 12848,
+        "historical_replay_samples": 12818,
         "live_samples": 89,
         "local_report_count": 4,
         "observation_source_counts": {
-          "historical_replay": 12848,
+          "historical_replay": 12818,
           "live_scan": 89
         },
-        "observations_loaded": 12937,
+        "observations_loaded": 12907,
         "training_data_requirement": "consolidated live + consolidated historical only"
       }
     },
