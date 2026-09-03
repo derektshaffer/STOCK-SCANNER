@@ -193,7 +193,9 @@
     "sector_move_pct": 0.0,
     "dilution_risk": "LOW",
     "outcomes": {
-      "target1_first_touch": "stop"
+      "target1_first_touch": "stop",
+      "return_1d_pct": -7.163,
+      "resolved_1d": true
     }
   },
   {
@@ -390,7 +392,9 @@
     "sector_move_pct": 0.0,
     "dilution_risk": "LOW",
     "outcomes": {
-      "target1_first_touch": "stop"
+      "target1_first_touch": "stop",
+      "return_1d_pct": -7.163,
+      "resolved_1d": true
     }
   },
   {
@@ -588,7 +592,9 @@
     "sector_move_pct": 0.0,
     "dilution_risk": "LOW",
     "outcomes": {
-      "target1_first_touch": "stop"
+      "target1_first_touch": "stop",
+      "return_1d_pct": -7.163,
+      "resolved_1d": true
     }
   },
   {
@@ -786,7 +792,9 @@
     "sector_move_pct": 0.0,
     "dilution_risk": "LOW",
     "outcomes": {
-      "target1_first_touch": "stop"
+      "target1_first_touch": "stop",
+      "return_1d_pct": -7.163,
+      "resolved_1d": true
     }
   },
   {
@@ -983,7 +991,9 @@
     "sector_move_pct": 0.0,
     "dilution_risk": "LOW",
     "outcomes": {
-      "target1_first_touch": "stop"
+      "target1_first_touch": "stop",
+      "return_1d_pct": -7.163,
+      "resolved_1d": true
     }
   },
   {
@@ -1180,7 +1190,9 @@
     "sector_move_pct": 0.0,
     "dilution_risk": "LOW",
     "outcomes": {
-      "target1_first_touch": "stop"
+      "target1_first_touch": "stop",
+      "return_1d_pct": -7.163,
+      "resolved_1d": true
     }
   },
   {
@@ -1378,7 +1390,9 @@
     "sector_move_pct": 0.0,
     "dilution_risk": "LOW",
     "outcomes": {
-      "target1_first_touch": "stop"
+      "target1_first_touch": "stop",
+      "return_1d_pct": -7.163,
+      "resolved_1d": true
     }
   },
   {
@@ -1576,7 +1590,9 @@
     "outcomes": {
       "target1_first_touch": "stop",
       "repeat_bounce_target1_first_touch": "ambiguous",
-      "repeat_bounce_target2_first_touch": "ambiguous"
+      "repeat_bounce_target2_first_touch": "ambiguous",
+      "return_1d_pct": 92.878,
+      "resolved_1d": true
     }
   },
   {
@@ -1774,7 +1790,9 @@
     "outcomes": {
       "target1_first_touch": "stop",
       "repeat_bounce_target1_first_touch": "ambiguous",
-      "repeat_bounce_target2_first_touch": "ambiguous"
+      "repeat_bounce_target2_first_touch": "ambiguous",
+      "return_1d_pct": 92.878,
+      "resolved_1d": true
     }
   },
   {
@@ -1972,7 +1990,9 @@
     "outcomes": {
       "target1_first_touch": "stop",
       "repeat_bounce_target1_first_touch": "ambiguous",
-      "repeat_bounce_target2_first_touch": "ambiguous"
+      "repeat_bounce_target2_first_touch": "ambiguous",
+      "return_1d_pct": 92.878,
+      "resolved_1d": true
     }
   },
   {
@@ -2170,7 +2190,9 @@
     "outcomes": {
       "target1_first_touch": "stop",
       "repeat_bounce_target1_first_touch": "ambiguous",
-      "repeat_bounce_target2_first_touch": "ambiguous"
+      "repeat_bounce_target2_first_touch": "ambiguous",
+      "return_1d_pct": 92.878,
+      "resolved_1d": true
     }
   },
   {
@@ -2368,7 +2390,9 @@
     "outcomes": {
       "target1_first_touch": "stop",
       "repeat_bounce_target1_first_touch": "ambiguous",
-      "repeat_bounce_target2_first_touch": "ambiguous"
+      "repeat_bounce_target2_first_touch": "ambiguous",
+      "return_1d_pct": 92.878,
+      "resolved_1d": true
     }
   },
   {
@@ -2566,7 +2590,9 @@
     "outcomes": {
       "target1_first_touch": "stop",
       "repeat_bounce_target1_first_touch": "ambiguous",
-      "repeat_bounce_target2_first_touch": "ambiguous"
+      "repeat_bounce_target2_first_touch": "ambiguous",
+      "return_1d_pct": 92.878,
+      "resolved_1d": true
     }
   },
   {
@@ -2764,7 +2790,9 @@
     "outcomes": {
       "target1_first_touch": "stop",
       "repeat_bounce_target1_first_touch": "ambiguous",
-      "repeat_bounce_target2_first_touch": "ambiguous"
+      "repeat_bounce_target2_first_touch": "ambiguous",
+      "return_1d_pct": 92.878,
+      "resolved_1d": true
     }
   },
   {
@@ -2962,7 +2990,9 @@
     "outcomes": {
       "target1_first_touch": "stop",
       "repeat_bounce_target1_first_touch": "ambiguous",
-      "repeat_bounce_target2_first_touch": "ambiguous"
+      "repeat_bounce_target2_first_touch": "ambiguous",
+      "return_1d_pct": 92.878,
+      "resolved_1d": true
     }
   },
   {
@@ -3159,7 +3189,10 @@
     "sector_etf": "XLF",
     "sector_move_pct": 0.0,
     "dilution_risk": "NONE FOUND",
-    "outcomes": {}
+    "outcomes": {
+      "return_1d_pct": -0.203,
+      "resolved_1d": true
+    }
   },
   {
     "id": "GPRO:2026-09-01T12:15:00+00:00:17",
@@ -3356,7 +3389,9 @@
     "outcomes": {
       "target1_first_touch": "stop",
       "repeat_bounce_target1_first_touch": "ambiguous",
-      "repeat_bounce_target2_first_touch": "ambiguous"
+      "repeat_bounce_target2_first_touch": "ambiguous",
+      "return_1d_pct": 92.878,
+      "resolved_1d": true
     }
   },
   {
@@ -3570,7 +3605,9 @@
       "return_30m_pct": -2.848,
       "return_60m_pct": -6.013,
       "resolved_60m": true,
-      "target1_first_touch": "target"
+      "target1_first_touch": "target",
+      "return_1d_pct": -12.025,
+      "resolved_1d": true
     }
   },
   {
@@ -3784,7 +3821,9 @@
       "return_30m_pct": -2.854,
       "return_60m_pct": -5.126,
       "resolved_60m": true,
-      "target1_first_touch": "target"
+      "target1_first_touch": "target",
+      "return_1d_pct": -12.031,
+      "resolved_1d": true
     }
   },
   {
@@ -3998,7 +4037,9 @@
       "return_30m_pct": -2.54,
       "return_60m_pct": -4.978,
       "resolved_60m": true,
-      "target1_first_touch": "target"
+      "target1_first_touch": "target",
+      "return_1d_pct": -11.746,
+      "resolved_1d": true
     }
   },
   {
@@ -4211,7 +4252,9 @@
       "return_15m_pct": -2.54,
       "return_30m_pct": -2.229,
       "return_60m_pct": -5.714,
-      "resolved_60m": true
+      "resolved_60m": true,
+      "return_1d_pct": -11.746,
+      "resolved_1d": true
     }
   }
 ]

@@ -1,6 +1,6 @@
 # Forward Validation Status
 
-Generated: 2026-09-03T05:45:39.082740+00:00
+Generated: 2026-09-03T05:58:35.998573+00:00
 
 ## Scanner ML — independent live confirmation
 - **Samples:** 38/100 — 62 remaining
@@ -18,12 +18,12 @@ Generated: 2026-09-03T05:45:39.082740+00:00
 - Replay end day: 2026-08-31
 - Path model historical status: replay_validated_waiting_live · AUC 0.864 · Brier 0.061
 - Endpoint model historical status: replay_validated_waiting_live · AUC 0.859 · Brier 0.0373
-- **Independent live samples:** 172/100 ✅
-- **Trading days:** 1/5 — 4 remaining
-- **Symbols:** 91/15 ✅
-- **Positive class:** 10/15 — 5 remaining
-- **Negative class:** 162/15 ✅
-- Endpoint/path disagreements: 9/172 (5.2%)
+- **Independent live samples:** 314/100 ✅
+- **Trading days:** 2/5 — 3 remaining
+- **Symbols:** 211/15 ✅
+- **Positive class:** 26/15 ✅
+- **Negative class:** 288/15 ✅
+- Endpoint/path disagreements: 20/261 (7.7%)
 - **Ready for endpoint-vs-path model comparison:** NO
 - Production influence: **OFF**
 
