@@ -3,7 +3,7 @@
   "feature_version": "analyzer-features-v10-confirmed-multisession",
   "decision_score_version": "decision-v2.8-integrity-gated",
   "timeframe_score_version": "timeframe-fit-v1",
-  "generated_at_utc": "2026-09-04T06:05:07.518989+00:00",
+  "generated_at_utc": "2026-09-05T05:54:51.030716+00:00",
   "prediction_rows": 40,
   "legacy_prediction_rows_excluded": 402,
   "legacy_decision_rows_excluded": 27,
@@ -146,7 +146,14 @@
         "median_return_pct": -6.013
       }
     },
-    "swing_3d": {},
+    "swing_3d": {
+      "0-49": {
+        "n": 1,
+        "higher_rate": 0.0,
+        "avg_return_pct": -13.016,
+        "median_return_pct": -13.016
+      }
+    },
     "swing_5d": {},
     "long_term_20d": {},
     "long_term_60d": {}

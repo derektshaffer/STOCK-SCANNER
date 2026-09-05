@@ -1,5 +1,5 @@
 {
-  "generated_at_utc": "2026-09-05T05:42:59.643141+00:00",
+  "generated_at_utc": "2026-09-05T05:56:00.486900+00:00",
   "production_claim": "Rules-based Scanner/Analyzer decision support remains usable. Predictive ML and Swing/Longer-Term probability claims remain gated until their independent evidence requirements pass.",
   "schema_version": 1,
   "sections": {
@@ -62,7 +62,7 @@
       "target_replay_dates": 267
     },
     "offhours_timeframe_forward": {
-      "cohort_count": 5,
+      "cohort_count": 6,
       "longer_20d_resolved": 0,
       "longer_early_read_gate": {
         "current": 0,
@@ -76,17 +76,17 @@
         "remaining": 100,
         "required": 100
       },
-      "swing_5d_resolved": 0,
+      "swing_5d_resolved": 30,
       "swing_early_read_gate": {
-        "current": 0,
-        "passed": false,
-        "remaining": 30,
+        "current": 30,
+        "passed": true,
+        "remaining": 0,
         "required": 30
       },
       "swing_useful_gate": {
-        "current": 0,
+        "current": 30,
         "passed": false,
-        "remaining": 100,
+        "remaining": 70,
         "required": 100
       }
     },
@@ -152,7 +152,7 @@
         "artifact_report_count": 11,
         "historical_replay_samples": 12818,
         "live_samples": 89,
-        "local_report_count": 6,
+        "local_report_count": 7,
         "observation_source_counts": {
           "historical_replay": 12818,
           "live_scan": 89
@@ -236,7 +236,7 @@
         },
         "observations_loaded": 12964,
         "production_influence": false,
-        "report_count": 4,
+        "report_count": 5,
         "target_description": ">= +3% within 60m before -3% failure stop"
       },
       "symbols": 328,

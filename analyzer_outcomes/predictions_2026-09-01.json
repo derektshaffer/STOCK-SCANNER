@@ -195,7 +195,9 @@
     "outcomes": {
       "target1_first_touch": "stop",
       "return_1d_pct": -7.163,
-      "resolved_1d": true
+      "resolved_1d": true,
+      "return_3d_pct": -10.323,
+      "resolved_3d": true
     }
   },
   {
@@ -394,7 +396,9 @@
     "outcomes": {
       "target1_first_touch": "stop",
       "return_1d_pct": -7.163,
-      "resolved_1d": true
+      "resolved_1d": true,
+      "return_3d_pct": -10.323,
+      "resolved_3d": true
     }
   },
   {
@@ -594,7 +598,9 @@
     "outcomes": {
       "target1_first_touch": "stop",
       "return_1d_pct": -7.163,
-      "resolved_1d": true
+      "resolved_1d": true,
+      "return_3d_pct": -10.323,
+      "resolved_3d": true
     }
   },
   {
@@ -794,7 +800,9 @@
     "outcomes": {
       "target1_first_touch": "stop",
       "return_1d_pct": -7.163,
-      "resolved_1d": true
+      "resolved_1d": true,
+      "return_3d_pct": -10.323,
+      "resolved_3d": true
     }
   },
   {
@@ -993,7 +1001,9 @@
     "outcomes": {
       "target1_first_touch": "stop",
       "return_1d_pct": -7.163,
-      "resolved_1d": true
+      "resolved_1d": true,
+      "return_3d_pct": -10.323,
+      "resolved_3d": true
     }
   },
   {
@@ -1192,7 +1202,9 @@
     "outcomes": {
       "target1_first_touch": "stop",
       "return_1d_pct": -7.163,
-      "resolved_1d": true
+      "resolved_1d": true,
+      "return_3d_pct": -10.323,
+      "resolved_3d": true
     }
   },
   {
@@ -1392,7 +1404,9 @@
     "outcomes": {
       "target1_first_touch": "stop",
       "return_1d_pct": -7.163,
-      "resolved_1d": true
+      "resolved_1d": true,
+      "return_3d_pct": -10.323,
+      "resolved_3d": true
     }
   },
   {
@@ -1592,7 +1606,9 @@
       "repeat_bounce_target1_first_touch": "ambiguous",
       "repeat_bounce_target2_first_touch": "ambiguous",
       "return_1d_pct": 92.878,
-      "resolved_1d": true
+      "resolved_1d": true,
+      "return_3d_pct": 94.02,
+      "resolved_3d": true
     }
   },
   {
@@ -1792,7 +1808,9 @@
       "repeat_bounce_target1_first_touch": "ambiguous",
       "repeat_bounce_target2_first_touch": "ambiguous",
       "return_1d_pct": 92.878,
-      "resolved_1d": true
+      "resolved_1d": true,
+      "return_3d_pct": 94.02,
+      "resolved_3d": true
     }
   },
   {
@@ -1992,7 +2010,9 @@
       "repeat_bounce_target1_first_touch": "ambiguous",
       "repeat_bounce_target2_first_touch": "ambiguous",
       "return_1d_pct": 92.878,
-      "resolved_1d": true
+      "resolved_1d": true,
+      "return_3d_pct": 94.02,
+      "resolved_3d": true
     }
   },
   {
@@ -2192,7 +2212,9 @@
       "repeat_bounce_target1_first_touch": "ambiguous",
       "repeat_bounce_target2_first_touch": "ambiguous",
       "return_1d_pct": 92.878,
-      "resolved_1d": true
+      "resolved_1d": true,
+      "return_3d_pct": 94.02,
+      "resolved_3d": true
     }
   },
   {
@@ -2392,7 +2414,9 @@
       "repeat_bounce_target1_first_touch": "ambiguous",
       "repeat_bounce_target2_first_touch": "ambiguous",
       "return_1d_pct": 92.878,
-      "resolved_1d": true
+      "resolved_1d": true,
+      "return_3d_pct": 94.02,
+      "resolved_3d": true
     }
   },
   {
@@ -2592,7 +2616,9 @@
       "repeat_bounce_target1_first_touch": "ambiguous",
       "repeat_bounce_target2_first_touch": "ambiguous",
       "return_1d_pct": 92.878,
-      "resolved_1d": true
+      "resolved_1d": true,
+      "return_3d_pct": 94.02,
+      "resolved_3d": true
     }
   },
   {
@@ -2792,7 +2818,9 @@
       "repeat_bounce_target1_first_touch": "ambiguous",
       "repeat_bounce_target2_first_touch": "ambiguous",
       "return_1d_pct": 92.878,
-      "resolved_1d": true
+      "resolved_1d": true,
+      "return_3d_pct": 94.02,
+      "resolved_3d": true
     }
   },
   {
@@ -2992,7 +3020,9 @@
       "repeat_bounce_target1_first_touch": "ambiguous",
       "repeat_bounce_target2_first_touch": "ambiguous",
       "return_1d_pct": 92.878,
-      "resolved_1d": true
+      "resolved_1d": true,
+      "return_3d_pct": 94.02,
+      "resolved_3d": true
     }
   },
   {
@@ -3191,7 +3221,9 @@
     "dilution_risk": "NONE FOUND",
     "outcomes": {
       "return_1d_pct": -0.203,
-      "resolved_1d": true
+      "resolved_1d": true,
+      "return_3d_pct": 0.709,
+      "resolved_3d": true
     }
   },
   {
@@ -3391,7 +3423,9 @@
       "repeat_bounce_target1_first_touch": "ambiguous",
       "repeat_bounce_target2_first_touch": "ambiguous",
       "return_1d_pct": 92.878,
-      "resolved_1d": true
+      "resolved_1d": true,
+      "return_3d_pct": 94.02,
+      "resolved_3d": true
     }
   },
   {
@@ -3607,7 +3641,9 @@
       "resolved_60m": true,
       "target1_first_touch": "target",
       "return_1d_pct": -12.025,
-      "resolved_1d": true
+      "resolved_1d": true,
+      "return_3d_pct": -13.291,
+      "resolved_3d": true
     }
   },
   {
@@ -3823,7 +3859,9 @@
       "resolved_60m": true,
       "target1_first_touch": "target",
       "return_1d_pct": -12.031,
-      "resolved_1d": true
+      "resolved_1d": true,
+      "return_3d_pct": -13.297,
+      "resolved_3d": true
     }
   },
   {
@@ -4039,7 +4077,9 @@
       "resolved_60m": true,
       "target1_first_touch": "target",
       "return_1d_pct": -11.746,
-      "resolved_1d": true
+      "resolved_1d": true,
+      "return_3d_pct": -13.016,
+      "resolved_3d": true
     }
   },
   {
@@ -4254,7 +4294,9 @@
       "return_60m_pct": -5.714,
       "resolved_60m": true,
       "return_1d_pct": -11.746,
-      "resolved_1d": true
+      "resolved_1d": true,
+      "return_3d_pct": -13.016,
+      "resolved_3d": true
     }
   }
 ]
