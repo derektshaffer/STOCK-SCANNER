@@ -1,5 +1,5 @@
 {
-  "generated_at_utc": "2026-09-04T06:05:29.420743+00:00",
+  "generated_at_utc": "2026-09-05T05:42:59.643141+00:00",
   "production_claim": "Rules-based Scanner/Analyzer decision support remains usable. Predictive ML and Swing/Longer-Term probability claims remain gated until their independent evidence requirements pass.",
   "schema_version": 1,
   "sections": {
@@ -92,17 +92,17 @@
     },
     "point_in_time_universe": {
       "activation_gate": {
-        "current": 4,
+        "current": 5,
         "passed": true,
         "remaining": 0,
         "required": 3
       },
       "first_replay_ready_capture_date": "2026-08-31",
-      "latest_replay_ready_capture_date": "2026-09-04",
+      "latest_replay_ready_capture_date": "2026-09-05",
       "minimum_snapshots_for_point_in_time_replay": 3,
       "note": "A snapshot captured after a session may only be used for later sessions, never the same replay date.",
-      "replay_ready_snapshot_count": 4,
-      "snapshot_count": 4
+      "replay_ready_snapshot_count": 5,
+      "snapshot_count": 5
     },
     "scanner_ml_live_confirmation": {
       "evidence_gate_ready": false,
@@ -149,7 +149,7 @@
       "note": "Passing these count gates only makes the independent live holdout large enough to evaluate. Production validation still requires the live AUC/Brier performance gate to pass.",
       "replay_end_day": "2026-08-31",
       "training_source": {
-        "artifact_report_count": 12,
+        "artifact_report_count": 11,
         "historical_replay_samples": 12818,
         "live_samples": 89,
         "local_report_count": 6,
