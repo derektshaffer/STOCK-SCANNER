@@ -17,6 +17,7 @@ from scanner_runtime import (
     cadence_health,
     cancel_scanner_process,
     run_scanner_process,
+    start_scanner_process,
     scanner_process_busy,
 )
 
@@ -98,13 +99,13 @@ st.markdown(
 .legend-def{color:var(--muted);font-size:12px;line-height:1.4}
 .auto-box{background:var(--panel);border:1px solid var(--line);border-radius:10px;
   padding:7px 10px;margin:2px 0 6px}
-.market-box{display:flex;align-items:center;justify-content:space-between;gap:10px;
+.market-box{flex-wrap:wrap;display:flex;align-items:center;justify-content:space-between;gap:10px;
   min-height:38px;box-sizing:border-box;background:var(--panel);border:1px solid var(--line);
   border-radius:9px;padding:6px 10px;margin:0}
 .market-box.open{border-left:4px solid var(--green)}
 .market-box.closed{border-left:4px solid var(--amber)}
-.market-main{font-size:13px;font-weight:900;white-space:nowrap}
-.market-time{color:var(--muted);font-size:11px;font-weight:700;white-space:nowrap}
+.market-main{font-size:13px;font-weight:900;white-space:normal;overflow-wrap:anywhere}
+.market-time{color:var(--muted);font-size:11px;font-weight:700;white-space:normal}
 .auto-on{border-left:4px solid var(--green)}
 .auto-wait{border-left:4px solid var(--amber)}
 .auto-off{border-left:4px solid var(--muted)}
@@ -918,144 +919,176 @@ if "last_auto_message" not in st.session_state:
 combined_monitor_active = bool(
     st.session_state.get("_combined_scanner_monitor_active")
 )
-_active_scan_state = st.session_state.get("_scanner_async_state") or {}
-_active_scan_process = _active_scan_state.get("process")
-_active_scan_running = bool(
-    _active_scan_process is not None
-    and _active_scan_process.poll() is None
-)
-manual_scan_busy = _active_scan_running or scanner_process_busy()
 
-controls_mount = st.session_state.get("_scanner_controls_mount")
-controls_context = controls_mount.container() if controls_mount is not None else st.container(key="scanner_controls_top")
+def _queue_horizon_refresh():
+    st.session_state["_scanner_horizon_changed"] = True
 
-with controls_context:
-    flash_success = st.session_state.pop("_scanner_flash_success", None)
-    if flash_success:
-        # A success alert participates in document layout. On the next rerun it
-        # disappears again, which used to push every scanner row down and then
-        # pull it back up. Toasts overlay the page, so scan completion feedback
-        # cannot move the user's viewport.
-        st.toast(str(flash_success), icon="✓")
 
-    scan_col, auto_col, horizon_col, market_col = st.columns(
-        [1.10, 1.35, 2.65, 1.40],
-        vertical_alignment="center",
+@st.fragment(run_every=5 if combined_monitor_active else None)
+def render_scanner_controls():
+    _active_scan_state = st.session_state.get("_scanner_async_state") or {}
+    _active_scan_process = _active_scan_state.get("process")
+    _active_scan_running = bool(
+        _active_scan_process is not None
+        and _active_scan_process.poll() is None
     )
-    with scan_col:
-        scan_button_slot = st.empty()
-        cancel_clicked = False
-        if _active_scan_running:
-            clicked = False
-            cancel_clicked = scan_button_slot.button(
-                "■ Cancel Scan",
-                type="secondary",
-                use_container_width=True,
-                help="Stop the current scan if it appears stuck.",
-            )
-        else:
-            clicked = scan_button_slot.button(
-                "▶ Run Fresh Scan",
-                type="primary",
-                use_container_width=True,
-                disabled=manual_scan_busy,
-                help=(
-                    "Another scan is already running."
-                    if manual_scan_busy
-                    else "Run a fresh momentum scan now."
-                ),
-            )
-            if clicked:
-                scan_button_slot.button(
-                    "Working…",
+    manual_scan_busy = _active_scan_running or scanner_process_busy()
+
+    controls_context = st.container(key="scanner_controls_top")
+
+    with controls_context:
+        flash_success = st.session_state.pop("_scanner_flash_success", None)
+        if flash_success:
+            # A success alert participates in document layout. On the next rerun it
+            # disappears again, which used to push every scanner row down and then
+            # pull it back up. Toasts overlay the page, so scan completion feedback
+            # cannot move the user's viewport.
+            st.toast(str(flash_success), icon="✅")
+
+        scan_col, auto_col, horizon_col, market_col = st.columns(
+            [1.10, 1.35, 2.65, 1.40],
+            vertical_alignment="center",
+        )
+        with scan_col:
+            scan_button_slot = st.empty()
+            cancel_clicked = False
+            if _active_scan_running:
+                clicked = False
+                cancel_clicked = scan_button_slot.button(
+                    "■ Cancel Scan",
+                    type="secondary",
+                    use_container_width=True,
+                    help="Stop the current scan if it appears stuck.",
+                )
+            else:
+                clicked = scan_button_slot.button(
+                    "▶ Run Fresh Scan",
                     type="primary",
                     use_container_width=True,
-                    disabled=True,
-                    key="scan_working_button",
+                    disabled=manual_scan_busy,
+                    help=(
+                        "Another scan is already running."
+                        if manual_scan_busy
+                        else "Run a fresh momentum scan now."
+                    ),
                 )
-    with auto_col:
-        feed_name = configured_live_label()
-        coverage = (
-            "4:00 AM–8:00 PM ET"
-            if configured_live_provider() == "tradier" or configured_live_feed() == "sip"
-            else "8:00 AM–5:00 PM ET"
+                if clicked:
+                    scan_button_slot.button(
+                        "Working…",
+                        type="primary",
+                        use_container_width=True,
+                        disabled=True,
+                        key="scan_working_button",
+                    )
+        with auto_col:
+            feed_name = configured_live_label()
+            coverage = (
+                "4:00 AM–8:00 PM ET"
+                if configured_live_provider() == "tradier" or configured_live_feed() == "sip"
+                else "8:00 AM–5:00 PM ET"
+            )
+            st.toggle(
+                "Auto scan every 2 minutes",
+                key="auto_scan_enabled",
+                help=(
+                    f"Runs about every 2 minutes across Scanner and Analyzer while this "
+                    f"app session is active. Browser backgrounding can delay refreshes. "
+                    f"Current live feed: "
+                    f"{feed_name}; live scanner coverage: {coverage} on weekdays."
+                ),
+            )
+        with horizon_col:
+            st.selectbox(
+                "Trade Horizon Focus",
+                TRADE_HORIZON_OPTIONS,
+                key="scanner_trade_horizon",
+                on_change=_queue_horizon_refresh,
+                format_func=lambda value: TRADE_HORIZON_LABELS.get(value, value),
+                help=(
+                    "Filters what the scanner shows you. Short term = minutes to same "
+                    "day; Medium term = roughly 2–10 trading days; Long term = roughly "
+                    "2–8 weeks. This does not change scores, ranking logic, Scanner ACTION, "
+                    "or ML."
+                ),
+            )
+        with market_col:
+            market_open, now_et = market_is_open()
+            phase = market_session_phase(now_et)
+            if phase == "premarket" and not market_open:
+                market_label = "🟡 PRE-MKT · LIVE DATA OFF"
+            elif phase == "afterhours" and not market_open:
+                market_label = "🟡 AFTER-HRS · LIVE DATA OFF"
+            else:
+                market_label = {
+                    "premarket": "🔵 PRE-MARKET",
+                    "regular": "🟢 MARKET OPEN",
+                    "afterhours": "🟣 AFTER-HOURS",
+                    "closed": "🟡 MARKET CLOSED",
+                }[phase]
+            st.markdown(
+                f'<div class="market-box {"open" if market_open else "closed"}">'
+                f'<span class="market-main">{market_label}</span>'
+                f'<span class="market-time">{now_et:%I:%M %p ET}</span></div>',
+                unsafe_allow_html=True,
+            )
+
+    if st.session_state.pop("_scanner_horizon_changed", False):
+        st.rerun(scope="app")
+
+    if cancel_clicked:
+        cancelled = cancel_scanner_process(_active_scan_state)
+        st.session_state["_scanner_async_state"] = None
+        st.session_state["_scanner_process_running"] = False
+        st.session_state["last_auto_scan_started_at"] = time.time()
+        st.session_state["last_auto_message"] = str(
+            cancelled.get("message") or "Momentum scan cancelled."
         )
-        st.toggle(
-            "Auto scan every 2 minutes",
-            key="auto_scan_enabled",
-            help=(
-                f"Runs about every 2 minutes across Scanner and Analyzer while this "
-                f"app session is active. Browser backgrounding can delay refreshes. "
-                f"Current live feed: "
-                f"{feed_name}; live scanner coverage: {coverage} on weekdays."
-            ),
+        st.toast("Momentum scan cancelled.", icon="❌")
+        st.rerun()
+
+    if clicked and combined_monitor_active:
+        launch = start_scanner_process(
+            alpaca_key=secret("ALPACA_API_KEY"),
+            alpaca_secret=secret("ALPACA_SECRET_KEY"),
+            alpaca_live_feed=configured_live_feed(),
+            tradier_token=secret("TRADIER_ACCESS_TOKEN") or secret("TRADIER_TOKEN"),
+            discovery_universe_size="full-market",
+            learning_github_token=secret("ANALYZER_GITHUB_TOKEN") or secret("GITHUB_TOKEN"),
+            learning_repository=secret("ANALYZER_GITHUB_REPO") or "derektshaffer/STOCK-SCANNER",
+            learning_branch="learning-journal",
+            timeout_seconds=180,
         )
-    with horizon_col:
-        st.selectbox(
-            "Trade Horizon Focus",
-            TRADE_HORIZON_OPTIONS,
-            key="scanner_trade_horizon",
-            format_func=lambda value: TRADE_HORIZON_LABELS.get(value, value),
-            help=(
-                "Filters what the scanner shows you. Short term = minutes to same "
-                "day; Medium term = roughly 2–10 trading days; Long term = roughly "
-                "2–8 weeks. This does not change scores, ranking logic, Scanner ACTION, "
-                "or ML."
-            ),
-        )
-    with market_col:
-        market_open, now_et = market_is_open()
-        phase = market_session_phase(now_et)
-        if phase == "premarket" and not market_open:
-            market_label = "🟡 PRE-MKT · LIVE DATA OFF"
-        elif phase == "afterhours" and not market_open:
-            market_label = "🟡 AFTER-HRS · LIVE DATA OFF"
+        if launch.get("started"):
+            st.session_state["_scanner_async_state"] = launch
+            st.session_state["_scanner_process_running"] = True
+            st.session_state["last_auto_scan_started_at"] = time.time()
         else:
-            market_label = {
-                "premarket": "🔵 PRE-MARKET",
-                "regular": "🟢 MARKET OPEN",
-                "afterhours": "🟣 AFTER-HOURS",
-                "closed": "🟡 MARKET CLOSED",
-            }[phase]
-        st.markdown(
-            f'<div class="market-box {"open" if market_open else "closed"}">'
-            f'<span class="market-main">{market_label}</span>'
-            f'<span class="market-time">{now_et:%I:%M %p ET}</span></div>',
-            unsafe_allow_html=True,
-        )
+            st.error(str(launch.get("message") or "Could not start scanner."))
+    elif clicked:
+        st.session_state["last_auto_scan_started_at"] = time.time()
+        with st.spinner("Scanning movers and ranking live setups…"):
+            ok, msg = run_scanner()
+        if ok:
+            st.session_state["last_auto_scan_at"] = time.time()
+            st.session_state["last_auto_message"] = "Manual scan completed."
+            st.session_state["_scanner_flash_success"] = msg
+            # The compact list and detailed results refresh independently.
+            # Do not rebuild the full Scanner after a completed manual scan.
+            st.session_state["_scanner_snapshot_refresh_at"] = time.time()
+        else:
+            st.error(msg)
 
-if cancel_clicked:
-    cancelled = cancel_scanner_process(_active_scan_state)
-    st.session_state["_scanner_async_state"] = None
-    st.session_state["_scanner_process_running"] = False
-    st.session_state["last_auto_scan_started_at"] = time.time()
-    st.session_state["last_auto_message"] = str(
-        cancelled.get("message") or "Momentum scan cancelled."
-    )
-    st.toast("Momentum scan cancelled.", icon="✕")
-    st.rerun()
 
-if clicked:
-    st.session_state["last_auto_scan_started_at"] = time.time()
-    with st.spinner("Scanning movers and ranking live setups…"):
-        ok, msg = run_scanner()
-    if ok:
-        st.session_state["last_auto_scan_at"] = time.time()
-        st.session_state["last_auto_message"] = "Manual scan completed."
-        st.session_state["_scanner_flash_success"] = msg
-        # The compact list and detailed results refresh independently.
-        # Do not rebuild the full Scanner after a completed manual scan.
-        st.session_state["_scanner_snapshot_refresh_at"] = time.time()
-    else:
-        st.error(msg)
-
+controls_mount = st.session_state.get("_scanner_controls_mount")
+with controls_mount.container() if controls_mount is not None else st.container():
+    render_scanner_controls()
 
 scanner_return_grace_until = float(
     st.session_state.get("_scanner_return_grace_until") or 0.0
 )
 scanner_return_grace_active = scanner_return_grace_until > time.time()
 auto_run_every = (
-    None
+    AUTO_STATUS_REFRESH_SECONDS
     if combined_monitor_active
     else (
         3 if st.session_state["auto_scan_enabled"] and scanner_return_grace_active

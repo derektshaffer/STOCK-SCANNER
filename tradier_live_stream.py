@@ -200,8 +200,13 @@ class _TradierStream:
         with self.lock:
             out = self._public()
         if symbol and str(out.get("symbol") or "").upper() != str(symbol).upper():
-            out["status"] = "switching"
-            out["symbol"] = str(symbol).upper()
+            return {
+                "status": "switching",
+                "symbol": str(symbol).upper(),
+                "feed": out.get("feed"),
+                "connected": out.get("connected", False),
+                "authenticated": out.get("authenticated", False),
+            }
         return out
 
     def _subscription_payload(self, symbol):

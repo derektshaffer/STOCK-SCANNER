@@ -3458,15 +3458,14 @@ def test_combined_analyzer_timed_refresh_stays_fragment_scoped():
     assert "finishFragmentSwap" in bootstrap
     assert "liveStaleNode" in bootstrap
     assert "beginFragmentSwap" in bootstrap
-    assert "const watcher = p.setInterval" in bootstrap
-    assert "restorePosition(pendingY)" in bootstrap
-    assert "settledTicks >= 10" in bootstrap
-    assert "lockViewportBeforePaint" in bootstrap
-    assert "requestAnimationFrame(lockViewportBeforePaint)" in bootstrap
-    assert "root.style.setProperty('height', px, 'important')" in bootstrap
+    assert "root.style.setProperty('min-height'" in bootstrap
+    assert "setTimeout(finishFragmentSwap, 3000)" in bootstrap
+    assert "userMoved" in bootstrap
     assert "releaseHeight()" in bootstrap
+    assert "requestAnimationFrame(lockViewportBeforePaint)" not in bootstrap
+    assert "root.style.setProperty('max-height'" not in bootstrap
+    assert "root.style.setProperty('overflow'" not in bootstrap
     assert ".st-key-analyzer_live_fragment" in bootstrap
-    assert "staleNode.isConnected" in bootstrap
     assert "childList: true" in bootstrap
     scroll_helper = bootstrap.split("def _install_scroll_keeper", 1)[1]
     assert scroll_helper.index('[data-testid="stMain"]') < scroll_helper.index(
@@ -3483,7 +3482,7 @@ def test_scanner_scan_completion_feedback_never_changes_layout():
     controls = source.split("with controls_context:", 1)[1].split(
         "scan_col, auto_col", 1
     )[0]
-    assert 'st.toast(str(flash_success), icon="✓")' in controls
+    assert 'st.toast(str(flash_success), icon="✅")' in controls
     assert "st.success(str(flash_success))" not in controls
 
 
@@ -5652,7 +5651,7 @@ def test_manual_scanner_refreshes_combined_candidates_after_success():
     source = Path("scanner_app.py").read_text(encoding="utf-8")
     assert 'st.session_state["_scanner_flash_success"] = msg' in source
     assert 'st.session_state["_scanner_snapshot_refresh_at"] = time.time()' in source
-    manual_success = source.split('\nif clicked:', 1)[1].split('scanner_return_grace_until', 1)[0]
+    manual_success = source.split('    elif clicked:', 1)[1].split('scanner_return_grace_until', 1)[0]
     assert "st.rerun()" not in manual_success
     assert "def render_scanner_results():" in source
 

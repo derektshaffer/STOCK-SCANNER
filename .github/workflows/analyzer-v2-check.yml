@@ -72,6 +72,9 @@ on:
       - ".github/workflows/outcome-tracker.yml"
       - ".github/workflows/historical-ml-backfill.yml"
       - "requirements.txt"
+      - "equity_directory.py"
+      - "rendering_regression_check.py"
+      - "tests/rendering_fixture.py"
       - "APP_BOUNDARY.md"
       - "app_boundary_check.py"
       - "tradier_live_stream.py"
@@ -340,3 +343,8 @@ jobs:
           else
             echo "TRADIER_SECRET_CONFIGURED=false"
           fi
+
+      - name: Test Scanner and Analyzer rendering lifecycles offline
+        run: |
+          python -m pip install --disable-pip-version-check -q -r requirements.txt
+          python rendering_regression_check.py

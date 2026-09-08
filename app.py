@@ -13,6 +13,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 from glass_theme import inject_glass_theme
+from scanner_expand import _load_details, scanner_detail_html
 from momentum_alerts import (
     alert_message,
     newly_actionable,
@@ -149,7 +150,7 @@ st.markdown(
     .combined-ticker-row {
         min-height: 68px;
         display: grid;
-        grid-template-columns: minmax(115px, 1.25fr) repeat(6, minmax(72px, 1fr));
+        grid-template-columns: minmax(110px, 1.2fr) minmax(140px, 1.6fr) repeat(5, minmax(0, 1fr));
         gap: 10px;
         align-items: stretch;
         border-bottom: 1px solid rgba(120,150,190,.18);
@@ -183,6 +184,7 @@ st.markdown(
         padding: 8px 12px;
     }
     .combined-stat-label {
+        overflow-wrap: anywhere;
         color: #91a7c2;
         font-size: 10px;
         font-weight: 900;
@@ -196,7 +198,34 @@ st.markdown(
         font-weight: 950;
         line-height: 1.1;
         margin-top: 5px;
-        white-space: nowrap;
+        white-space: normal;
+        overflow-wrap: anywhere;
+    }
+    .combined-candidate-card { container-type: inline-size; min-width: 0; }
+    .combined-candidate-summary { list-style: none; }
+    summary.combined-candidate-summary { cursor: pointer; }
+    summary.combined-candidate-summary::-webkit-details-marker { display: none; }
+    summary .combined-ticker-symbol { flex-wrap: wrap; overflow-wrap: anywhere; }
+    summary .combined-ticker-symbol::after { content: " ▾"; color: #7dd3fc; }
+    details[open] summary .combined-ticker-symbol::after { content: " ▴"; }
+    .scanner-inline-detail { padding: 14px; border: 1px solid #355071; border-radius: 10px; overflow-wrap: anywhere; }
+    .sid-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 8px; margin: 12px 0; }
+    .sid-metric { min-width: 0; padding: 8px; background: #14233a; border-radius: 8px; }
+    .sid-mk { font-size: 10px; color: #9fb0c9; }
+    .sid-mv { font-size: 15px; font-weight: 800; }
+    .sid-note { margin-top: 10px; font-size: 13px; }
+    @container (max-width: 560px) { .sid-grid { grid-template-columns: repeat(2,minmax(0,1fr)); } }
+    .combined-price-notice {
+        padding: 8px 10px; margin: 4px 0; border: 1px solid #705c32;
+        border-radius: 8px; background: rgba(100, 70, 15, .16);
+        color: #ffe0a0; font-size: 12px; line-height: 1.4;
+        white-space: normal; overflow-wrap: anywhere;
+    }
+    @container (max-width: 1000px) {
+        .combined-ticker-row { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    }
+    @container (max-width: 560px) {
+        .combined-ticker-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     }
     .combined-action-value {
         font-size: 16px;
@@ -252,7 +281,7 @@ st.markdown(
 
     @media (max-width: 1050px) {
         .combined-ticker-row {
-            grid-template-columns: minmax(98px, 1.1fr) repeat(5, minmax(68px, 1fr));
+            grid-template-columns: repeat(4, minmax(0, 1fr));
             gap: 6px;
         }
         .combined-stat { padding: 7px 8px; }
@@ -265,6 +294,8 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+
+inject_glass_theme()
 
 VIEWS = ("Momentum Scanner", "Stock Analyzer")
 if st.session_state.get("app_view") not in VIEWS:
@@ -541,11 +572,11 @@ with status_col:
 
 def _install_workspace_selector_cleanup():
     """Hide Streamlit's native radio indicator; the segment highlight is enough."""
-    components.html(
+    st.html(
         """
         <script>
         (() => {
-          const p = window.parent;
+          const p = window;
           const d = p.document;
 
           function clean() {
@@ -582,14 +613,13 @@ def _install_workspace_selector_cleanup():
           }
 
           clean();
-          const observer = new MutationObserver(() => p.requestAnimationFrame(clean));
+          const observer = new p.MutationObserver(() => p.requestAnimationFrame(clean));
           if (d.body) observer.observe(d.body, {childList: true, subtree: true});
           p.__workspaceSelectorCleanup = {observer};
         })();
         </script>
         """,
-        height=0,
-        scrolling=False,
+        unsafe_allow_javascript=True,
     )
 
 
@@ -903,7 +933,7 @@ if view == "Momentum Scanner":
            from jumping downward after they have already painted. */
         .st-key-scanner_top_mounts {
             min-height: 92px !important;
-            contain: layout paint !important;
+            /* Content determines height; paint containment clipped status messages. */
         }
 
         /* Compact the combined one-click scanner section without affecting
@@ -925,7 +955,7 @@ if view == "Momentum Scanner":
         }
         .combined-ticker-row {
             min-height: 50px !important;
-            height: 50px !important;
+            height: auto !important;
             box-sizing: border-box !important;
             gap: 5px !important;
             padding: 3px 0 !important;
@@ -938,28 +968,56 @@ if view == "Momentum Scanner":
             margin-top: 2px !important;
         }
         .combined-stat {
-            height: 44px !important;
+            min-height: 44px !important;
+            height: auto !important;
             box-sizing: border-box !important;
             padding: 4px 7px !important;
             border-radius: 7px !important;
         }
         .combined-stat-label {
+        overflow-wrap: anywhere;
             font-size: 8.5px !important;
         }
         .combined-stat-value {
             font-size: 16px !important;
             margin-top: 1px !important;
         }
-        .combined-action-value {
+        .combined-candidate-card { container-type: inline-size; min-width: 0; }
+    .combined-candidate-summary { list-style: none; }
+    summary.combined-candidate-summary { cursor: pointer; }
+    summary.combined-candidate-summary::-webkit-details-marker { display: none; }
+    summary .combined-ticker-symbol { flex-wrap: wrap; overflow-wrap: anywhere; }
+    summary .combined-ticker-symbol::after { content: " ▾"; color: #7dd3fc; }
+    details[open] summary .combined-ticker-symbol::after { content: " ▴"; }
+    .scanner-inline-detail { padding: 14px; border: 1px solid #355071; border-radius: 10px; overflow-wrap: anywhere; }
+    .sid-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 8px; margin: 12px 0; }
+    .sid-metric { min-width: 0; padding: 8px; background: #14233a; border-radius: 8px; }
+    .sid-mk { font-size: 10px; color: #9fb0c9; }
+    .sid-mv { font-size: 15px; font-weight: 800; }
+    .sid-note { margin-top: 10px; font-size: 13px; }
+    @container (max-width: 560px) { .sid-grid { grid-template-columns: repeat(2,minmax(0,1fr)); } }
+    .combined-price-notice {
+        padding: 8px 10px; margin: 4px 0; border: 1px solid #705c32;
+        border-radius: 8px; background: rgba(100, 70, 15, .16);
+        color: #ffe0a0; font-size: 12px; line-height: 1.4;
+        white-space: normal; overflow-wrap: anywhere;
+    }
+    @container (max-width: 1000px) {
+        .combined-ticker-row { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    }
+    @container (max-width: 560px) {
+        .combined-ticker-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    .combined-action-value {
             font-size: 13px !important;
         }
 
         /* Align ticker cells with metric rows */
         .combined-ticker-row {
-            align-items: center !important;
+            align-items: stretch !important;
         }
         .combined-ticker-symbol-wrap {
-            height: 100% !important;
+            min-height: 44px !important;
             width: 100% !important;
             display: grid !important;
             grid-template-columns: 36px minmax(0, 1fr) !important;
@@ -971,7 +1029,7 @@ if view == "Momentum Scanner":
             display: inline-flex !important;
             align-items: center !important;
             justify-self: start !important;
-            height: 100% !important;
+            min-height: 44px !important;
             line-height: 1 !important;
             min-width: 0 !important;
         }
@@ -996,7 +1054,7 @@ if view == "Momentum Scanner":
         }
 
         [class*="st-key-combined_analyze_"] {
-            height: 50px !important;
+            height: auto !important;
             min-height: 50px !important;
             margin: 0 !important;
             padding: 3px 0 !important;
@@ -1006,12 +1064,14 @@ if view == "Momentum Scanner":
         }
         [class*="st-key-combined_analyze_"] [data-testid="stButton"] {
             width: 100% !important;
-            height: 44px !important;
+            min-height: 44px !important;
+            height: auto !important;
             margin: 0 !important;
         }
         [class*="st-key-combined_analyze_"] button {
             min-height: 44px !important;
-            height: 44px !important;
+            min-height: 44px !important;
+            height: auto !important;
             margin: 0 !important;
             border-radius: 8px !important;
         }
@@ -1021,13 +1081,11 @@ if view == "Momentum Scanner":
     )
 
 
-def _latest_scan_age_seconds():
-    path = Path("scan_logs/latest_scan.json")
-    if not path.exists():
-        return None
+def _latest_scan_age_seconds(payload=None):
     try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-        raw = payload.get("scan_time_et")
+        if payload is None:
+            payload = _read_latest_scan_payload()
+        raw = (payload or {}).get("scan_time_et")
         if not raw:
             return None
         dt = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
@@ -1121,16 +1179,11 @@ def _offhours_timeframe_candidates():
     return out[:15]
 
 
-def _latest_scan_candidates():
-    path = Path("scan_logs/latest_scan.json")
-    if not path.exists():
-        return []
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
-        return []
+def _latest_scan_candidates(payload=None):
+    if payload is None:
+        payload = _read_latest_scan_payload()
 
-    rows = payload.get("candidates") or []
+    rows = (payload or {}).get("candidates") or []
     out = []
     seen = set()
     for row in rows:
@@ -1419,8 +1472,9 @@ if view == "Momentum Scanner":
             if offhours_mode
             else []
         )
-        candidates = offhours_candidates or _latest_scan_candidates()
         live_scan_payload = _read_latest_scan_payload() if not offhours_candidates else {}
+        candidates = offhours_candidates or _latest_scan_candidates(live_scan_payload)
+        detail_data = _load_details(live_scan_payload)
         radar_meta = (live_scan_payload or {}).get("radar") or {}
         if radar_meta.get("full_market_enabled"):
             requested = int(radar_meta.get("requested_symbols") or 0)
@@ -1447,7 +1501,7 @@ if view == "Momentum Scanner":
             row for row in candidates
             if _trade_horizon_matches(row, trade_horizon)
         ]
-        latest_scan_age = _latest_scan_age_seconds()
+        latest_scan_age = _latest_scan_age_seconds(live_scan_payload)
         # Auto-scan targets every two minutes. During a live session, allow a
         # two-minute grace window and prevent one-click analysis of stale rows.
         latest_scan_stale = bool(
@@ -1502,80 +1556,88 @@ if view == "Momentum Scanner":
                 change_cls = _change_class(row.get("day_pct"))
                 volume_cls = _volume_class(volume_value)
 
-                left, right = st.columns([7.2, 1.55], vertical_alignment="center")
-                with left:
-                    st.markdown(
-                        f'<div class="combined-ticker-row">'
-                        f'  <div class="combined-ticker-symbol-wrap">'
-                        f'    <div class="combined-rank">{idx + 1}.</div>'
-                        f'    <div class="combined-ticker-symbol">{symbol}</div>'
-                        f'  </div>'
-                        f'  <div class="combined-stat" title="{html.escape(str(row.get("timeframe_fit_reason") or ""))}">'
-                        f'    <div class="combined-stat-label">Grade · Best Fit</div>'
-                        f'    <div class="combined-stat-value {grade_cls}">{html.escape(grade_fit)}</div>'
-                        f'  </div>'
-                        f'  <div class="combined-stat">'
-                        f'    <div class="combined-stat-label">{explosion_label}</div>'
-                        f'    <div class="combined-stat-value">{explosion_text}</div>'
-                        f'  </div>'
-                        f'  <div class="combined-stat" title="{html.escape(str(row.get("risk_lane") or ""))}">'
-                        f'    <div class="combined-stat-label">{tradeability_label}</div>'
-                        f'    <div class="combined-stat-value">{tradeability_text}</div>'
-                        f'  </div>'
-                        f'  <div class="combined-stat" title="{html.escape(str(row.get("scanner_action_reason") or ""))}">'
-                        f'    <div class="combined-stat-label">{action_label}</div>'
-                        f'    <div class="combined-stat-value combined-action-value {action_cls}">{action_text}</div>'
-                        f'  </div>'
-                        f'  <div class="combined-stat">'
-                        f'    <div class="combined-stat-label">Today</div>'
-                        f'    <div class="combined-stat-value {change_cls}">{day_text}</div>'
-                        f'  </div>'
-                        f'  <div class="combined-stat">'
-                        f'    <div class="combined-stat-label">'
-                        f'{"Daily Vol / Avg" if row.get("source_mode") == "offhours_daily_timeframe" else "Volume Pace"}'
-                        f'</div>'
-                        f'    <div class="combined-stat-value {volume_cls}">{volume_text}</div>'
-                        f'  </div>'
-                        f'</div>',
-                        unsafe_allow_html=True,
+                detail_html = scanner_detail_html(detail_data.get(symbol))
+                card_tag = "details" if detail_html else "div"
+                summary_tag = "summary" if detail_html else "div"
+                notice_html = ""
+                if row.get("live_price_is_fallback"):
+                    reason = str(row.get("live_price_fallback_reason") or
+                                 "Fresh quote midpoint or alternate provider price used.")
+                    notice_html = (
+                        f'<div class="combined-price-notice" role="note">'
+                        f'<strong>{html.escape(symbol)} · LIVE PRICE FALLBACK</strong> — '
+                        f'{html.escape(reason)}</div>'
                     )
-                    if row.get("live_price_is_fallback"):
-                        st.caption(
-                            "LIVE PRICE FALLBACK — "
-                            + str(
-                                row.get("live_price_fallback_reason")
-                                or "Fresh quote midpoint or alternate provider price used."
-                            )
+                with st.container(key=f"scanner_candidate_{symbol}"):
+                    left, right = st.columns([7.2, 1.55], vertical_alignment="top")
+                    with left:
+                        st.markdown(
+                            f'<{card_tag} class="combined-candidate-card" name="scanner-details" data-symbol="{html.escape(symbol)}">'
+                            f'<{summary_tag} class="combined-candidate-summary">'
+                            f'<div class="combined-ticker-row">'
+                            f'  <div class="combined-ticker-symbol-wrap">'
+                            f'    <div class="combined-rank">{idx + 1}.</div>'
+                            f'    <div class="combined-ticker-symbol">{html.escape(symbol)}</div>'
+                            f'  </div>'
+                            f'  <div class="combined-stat" title="{html.escape(str(row.get("timeframe_fit_reason") or ""))}">'
+                            f'    <div class="combined-stat-label">Grade · Best Fit</div>'
+                            f'    <div class="combined-stat-value {grade_cls}">{html.escape(grade_fit)}</div>'
+                            f'  </div>'
+                            f'  <div class="combined-stat">'
+                            f'    <div class="combined-stat-label">{explosion_label}</div>'
+                            f'    <div class="combined-stat-value">{explosion_text}</div>'
+                            f'  </div>'
+                            f'  <div class="combined-stat" title="{html.escape(str(row.get("risk_lane") or ""))}">'
+                            f'    <div class="combined-stat-label">{tradeability_label}</div>'
+                            f'    <div class="combined-stat-value">{tradeability_text}</div>'
+                            f'  </div>'
+                            f'  <div class="combined-stat" title="{html.escape(str(row.get("scanner_action_reason") or ""))}">'
+                            f'    <div class="combined-stat-label">{action_label}</div>'
+                            f'    <div class="combined-stat-value combined-action-value {action_cls}">{action_text}</div>'
+                            f'  </div>'
+                            f'  <div class="combined-stat">'
+                            f'    <div class="combined-stat-label">Today</div>'
+                            f'    <div class="combined-stat-value {change_cls}">{day_text}</div>'
+                            f'  </div>'
+                            f'  <div class="combined-stat">'
+                            f'    <div class="combined-stat-label">'
+                            f'{"Daily Vol / Avg" if row.get("source_mode") == "offhours_daily_timeframe" else "Volume Pace"}'
+                            f'</div>'
+                            f'    <div class="combined-stat-value {volume_cls}">{volume_text}</div>'
+                            f'  </div>'
+                            f'</div>{notice_html}</{summary_tag}>{detail_html}</{card_tag}>',
+                            unsafe_allow_html=True,
                         )
-                with right:
-                    _launch_state=(
-                        st.session_state.get("_analyzer_bootstrap_launch_state")
-                        or st.session_state.get("_analyzer_launch_state")
-                        or {}
-                    )
-                    _launch_process=_launch_state.get("process")
-                    _launch_active=bool(
-                        _launch_process is not None
-                        and _launch_process.poll() is None
-                    )
-                    _this_running=bool(
-                        _launch_active
-                        and str(_launch_state.get("symbol") or "").upper()==symbol
-                    )
-                    st.button(
-                        f"Cancel {symbol}" if _this_running else f"Analyze {symbol}",
-                        key=f"combined_analyze_{idx}_{symbol}",
-                        type="secondary" if _this_running else "primary",
-                        width="stretch",
-                        disabled=bool(latest_scan_stale and not _this_running),
-                        help=(
-                            "Waiting for a fresh scanner snapshot."
-                            if latest_scan_stale and not _this_running
-                            else None
-                        ),
-                        on_click=_toggle_analyzer_and_navigate,
-                        args=(symbol,),
-                    )
+                    with right:
+                        _launch_state=(
+                            st.session_state.get("_analyzer_bootstrap_launch_state")
+                            or st.session_state.get("_analyzer_launch_state")
+                            or {}
+                        )
+                        _launch_process=_launch_state.get("process")
+                        _launch_active=bool(
+                            _launch_process is not None
+                            and _launch_process.poll() is None
+                        )
+                        _this_running=bool(
+                            _launch_active
+                            and str(_launch_state.get("symbol") or "").upper()==symbol
+                        )
+                        st.button(
+                            f"Cancel {symbol}" if _this_running else f"Analyze {symbol}",
+                            key=f"combined_analyze_{idx}_{symbol}",
+                            type="secondary" if _this_running else "primary",
+                            width="stretch",
+                            disabled=bool(latest_scan_stale and not _this_running),
+                            help=(
+                                "Waiting for a fresh scanner snapshot."
+                                if latest_scan_stale and not _this_running
+                                else None
+                            ),
+                            on_click=_toggle_analyzer_and_navigate,
+                            args=(symbol,),
+                        )
+
         else:
             st.caption(
                 "No scanner candidates are available yet. Live momentum scanning runs "
@@ -1665,11 +1727,11 @@ TECHNICAL_TOOLTIPS = {
 
 def _install_technical_tooltips():
     tooltip_json = json.dumps(TECHNICAL_TOOLTIPS)
-    components.html(
+    st.html(
         f"""
         <script>
         (() => {{
-          const p = window.parent;
+          const p = window;
           const d = p.document;
           const tips = {tooltip_json};
           const selector = '.combined-stat-label, .mk, .k, .legend-term';
@@ -1785,7 +1847,7 @@ def _install_technical_tooltips():
           d.addEventListener('focusout', focusout);
 
           let queued = false;
-          const observer = new MutationObserver(() => {{
+          const observer = new p.MutationObserver(() => {{
             if (queued) return;
             queued = true;
             p.requestAnimationFrame(() => {{
@@ -1800,8 +1862,7 @@ def _install_technical_tooltips():
         }})();
         </script>
         """,
-        height=0,
-        scrolling=False,
+        unsafe_allow_javascript=True,
     )
 
 
