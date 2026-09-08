@@ -8,7 +8,7 @@
   "research_only": true,
   "production_rank_impact": false,
   "candidate_count": 30,
-  "last_checked_utc": "2026-09-05T05:55:25.797253+00:00",
+  "last_checked_utc": "2026-09-08T06:03:48.622617+00:00",
   "elapsed_trading_sessions": 0,
   "fully_resolved": false,
   "candidates": [
@@ -508,6 +508,28 @@
       "outcomes": {}
     },
     {
+      "symbol": "BTBT",
+      "signal_price": 1.64,
+      "daily_discovery_score": 86.2,
+      "trend_candidate_raw_score": 86.2,
+      "trend_candidate_score_version": "trend-candidate-score-v1",
+      "daily_setup_grade": "B",
+      "timeframe_best_fit": "LONGER-TERM",
+      "timeframe_primary_fit": "LONGER-TERM",
+      "timeframe_swing_score": 86.0,
+      "timeframe_longer_term_score": 97.0,
+      "daily_setup_archetypes": [
+        "MOMENTUM TREND"
+      ],
+      "day_pct": 0.61,
+      "daily_return_5d_pct": 14.69,
+      "daily_return_20d_pct": 18.84,
+      "daily_return_40d_pct": -2.96,
+      "daily_volume_ratio": 1.24,
+      "relative_strength_vs_spy_20d_pct": 19.24,
+      "outcomes": {}
+    },
+    {
       "symbol": "NX",
       "signal_price": 22.93,
       "daily_discovery_score": 83.8,
@@ -660,28 +682,6 @@
       "daily_return_40d_pct": 20.69,
       "daily_volume_ratio": 1.1,
       "relative_strength_vs_spy_20d_pct": 11.28,
-      "outcomes": {}
-    },
-    {
-      "symbol": "INTG",
-      "signal_price": 36.17,
-      "daily_discovery_score": 81.3,
-      "trend_candidate_raw_score": 81.3,
-      "trend_candidate_score_version": "trend-candidate-score-v1",
-      "daily_setup_grade": "B",
-      "timeframe_best_fit": "LONGER-TERM",
-      "timeframe_primary_fit": "LONGER-TERM",
-      "timeframe_swing_score": 81.0,
-      "timeframe_longer_term_score": 91.0,
-      "daily_setup_archetypes": [
-        "MOMENTUM TREND"
-      ],
-      "day_pct": 0.03,
-      "daily_return_5d_pct": 2.18,
-      "daily_return_20d_pct": 15.34,
-      "daily_return_40d_pct": -8.78,
-      "daily_volume_ratio": 0.8,
-      "relative_strength_vs_spy_20d_pct": 15.74,
       "outcomes": {}
     }
   ],
