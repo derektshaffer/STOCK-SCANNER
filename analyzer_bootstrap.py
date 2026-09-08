@@ -42,53 +42,9 @@ def _preload_secrets():
             os.environ[key] = str(value).strip()
 
 
-@st.cache_data(ttl=21600, show_spinner=False)
 def _load_active_us_equity_choices():
-    """Return active US equities for instant browser-side ticker filtering."""
-    key = os.environ.get("ALPACA_API_KEY", "").strip()
-    secret = os.environ.get("ALPACA_SECRET_KEY", "").strip()
-    if not key or not secret:
-        return []
-
-    headers = {
-        "APCA-API-KEY-ID": key,
-        "APCA-API-SECRET-KEY": secret,
-        "Accept": "application/json",
-        "User-Agent": "single-stock-analyzer/1.0",
-    }
-    endpoints = [
-        "https://paper-api.alpaca.markets/v2/assets?status=active&asset_class=us_equity",
-        "https://api.alpaca.markets/v2/assets?status=active&asset_class=us_equity",
-    ]
-
-    assets = None
-    for url in endpoints:
-        try:
-            req = urllib.request.Request(url, headers=headers)
-            with urllib.request.urlopen(req, timeout=20) as resp:
-                payload = json.loads(resp.read().decode("utf-8"))
-            if isinstance(payload, list) and payload:
-                assets = payload
-                break
-        except Exception:
-            continue
-
-    if not isinstance(assets, list):
-        return []
-
-    choices = []
-    seen = set()
-    for asset in assets:
-        symbol = str(asset.get("symbol") or "").upper().strip()
-        name = str(asset.get("name") or "").strip()
-        status = str(asset.get("status") or "").lower()
-        if not symbol or symbol in seen or status not in ("", "active"):
-            continue
-        seen.add(symbol)
-        choices.append(f"{symbol} — {name}" if name else symbol)
-
-    choices.sort(key=lambda x: x.split(" — ", 1)[0])
-    return choices
+    from equity_directory import equity_choices
+    return equity_choices()
 
 
 def _start_async_prediction_sync():
@@ -230,15 +186,16 @@ def _install_no_fade_css(combined=False):
 
 def _cleanup_combined_browser_helpers():
     """Retire Scanner-only browser helpers without mutating Streamlit nodes."""
-    components.html(
+    st.html(
         """
         <script>
         (() => {
-          const p = window.parent;
+          const p = window;
           const d = p.document;
 
           const scroll = p.__ssaScrollKeeper;
           if (scroll) {
+            try { scroll.dispose && scroll.dispose(); } catch (_) {}
             try { scroll.observer && scroll.observer.disconnect(); } catch (_) {}
             try { scroll.watcher && p.clearInterval(scroll.watcher); } catch (_) {}
             try { scroll.lockFrame && p.cancelAnimationFrame(scroll.lockFrame); } catch (_) {}
@@ -281,284 +238,109 @@ def _cleanup_combined_browser_helpers():
         })();
         </script>
         """,
-        height=0,
-        scrolling=False,
+        unsafe_allow_javascript=True,
     )
 
 
 def _install_scroll_keeper():
-    """Preserve viewport while Streamlit replaces the Analyzer fragment."""
-    components.html(
+    """Preserve refresh position without clipping content or fighting the user."""
+    st.html(
         """
         <script>
         (() => {
-          const p = window.parent;
-          const d = p.document;
-          const KEY = "ssa-scroll-position-v2";
-
-          function findScroller() {
-            const selectors = [
-              '[data-testid="stMain"]',
-              '[data-testid="stAppViewContainer"]',
-              'section.main'
-            ];
-            for (const selector of selectors) {
-              const el = d.querySelector(selector);
-              if (el && el.scrollHeight > el.clientHeight + 20) return el;
-            }
-            return d.scrollingElement || d.documentElement;
-          }
-
-          function getY() {
-            const scroller = findScroller();
-            if (scroller && typeof scroller.scrollTop === "number") {
-              return Math.max(0, scroller.scrollTop);
-            }
-            return Math.max(0, p.scrollY || d.documentElement.scrollTop || 0);
-          }
-
-          function savePosition() {
-            try {
-              p.sessionStorage.setItem(KEY, JSON.stringify({ y: getY(), t: Date.now() }));
-            } catch (_) {}
-          }
-
-          function restorePosition(y) {
-            const scroller = findScroller();
-            try {
-              if (scroller && scroller !== d.scrollingElement && scroller !== d.documentElement) {
-                scroller.scrollTop = y;
-              } else {
-                p.scrollTo(0, y);
-              }
-            } catch (_) {}
-          }
-
+          const p = window, d = p.document;
           const old = p.__ssaScrollKeeper;
-          if (old) {
-            try { old.observer && old.observer.disconnect(); } catch (_) {}
-            try { old.watcher && p.clearInterval(old.watcher); } catch (_) {}
-            try { old.lockFrame && p.cancelAnimationFrame(old.lockFrame); } catch (_) {}
-            try { old.releaseHeight && old.releaseHeight(); } catch (_) {}
-            try { old.scroller && old.onScroll && old.scroller.removeEventListener("scroll", old.onScroll); } catch (_) {}
-            try { old.onWindowScroll && p.removeEventListener("scroll", old.onWindowScroll); } catch (_) {}
+          if (old && old.dispose) old.dispose();
+          // Retire a controller from the previous deployed version too.
+          if (old && !old.dispose) {
+            old.observer?.disconnect();
+            p.clearInterval(old.watcher);
+            p.cancelAnimationFrame(old.lockFrame);
+            old.releaseHeight?.();
+            old.scroller?.removeEventListener('scroll', old.onScroll);
+            p.removeEventListener('scroll', old.onWindowScroll);
           }
-
-          let saved = null;
-          try {
-            const raw = p.sessionStorage.getItem(KEY);
-            saved = raw ? JSON.parse(raw) : null;
-          } catch (_) {}
-
-          if (saved && Number.isFinite(saved.y) && Date.now() - saved.t < 120000) {
-            const y = saved.y;
-            p.requestAnimationFrame(() => restorePosition(y));
-            p.setTimeout(() => restorePosition(y), 60);
-            p.setTimeout(() => restorePosition(y), 180);
-            p.setTimeout(() => restorePosition(y), 450);
-          }
-
-          const scroller = findScroller();
-          let pendingY = null;
-          let staleNode = null;
-          let restoreScheduled = false;
-          let frozenHeight = null;
-          let frozenRoot = null;
-          let lockFrame = null;
-          const onScroll = () => {
-            if (p.__ssaRerunPending) return;
-            savePosition();
-          };
-          if (scroller) scroller.addEventListener("scroll", onScroll, { passive: true });
-          p.addEventListener("scroll", onScroll, { passive: true });
-
-          function finishFragmentSwap() {
-            if (restoreScheduled || !Number.isFinite(pendingY)) return;
-            restoreScheduled = true;
-            const y = pendingY;
-            p.setTimeout(() => {
-              releaseHeight();
-              // Style removal and the final restoration happen in the same
-              // pre-paint frame. There is never a rendered frame between the
-              // frozen replacement and its natural settled height.
-              p.requestAnimationFrame(() => {
-                restorePosition(y);
-                if (lockFrame) p.cancelAnimationFrame(lockFrame);
-                lockFrame = null;
-                pendingY = null;
-                staleNode = null;
-                restoreScheduled = false;
-                p.__ssaRerunPending = false;
-                savePosition();
-              });
-            }, 900);
-          }
-
-          function holdHeight() {
-            const root = d.querySelector('.st-key-analyzer_live_fragment');
-            if (!root) return;
-
-            if (!Number.isFinite(frozenHeight)) {
-              const rect = root.getBoundingClientRect();
-              if (rect.height > 0) frozenHeight = rect.height;
-            }
-            if (!Number.isFinite(frozenHeight)) return;
-
-            // The keyed container can itself be replaced. Apply the same
-            // frozen geometry to whichever copy is currently mounted.
-            if (frozenRoot && frozenRoot !== root) {
-              frozenRoot.style.removeProperty('height');
-              frozenRoot.style.removeProperty('min-height');
-              frozenRoot.style.removeProperty('max-height');
-              frozenRoot.style.removeProperty('overflow');
-              frozenRoot.style.removeProperty('contain');
-            }
-            frozenRoot = root;
-            const px = `${frozenHeight}px`;
-            root.style.setProperty('height', px, 'important');
-            root.style.setProperty('min-height', px, 'important');
-            root.style.setProperty('max-height', px, 'important');
-            root.style.setProperty('overflow', 'hidden', 'important');
-            root.style.setProperty('contain', 'layout paint', 'important');
-          }
-
+          p.__ssaRerunPending = false;
+          const rootSelector = '.st-key-analyzer_live_fragment';
+          const scroller = d.querySelector('[data-testid="stMain"]') ||
+            d.querySelector('[data-testid="stAppViewContainer"]') || d.scrollingElement;
+          let pending = false, userMoved = false, y = 0, height = 0;
+          let settleTimer = null, deadline = null, heldRoot = null;
           function releaseHeight() {
-            if (frozenRoot) {
-              frozenRoot.style.removeProperty('height');
-              frozenRoot.style.removeProperty('min-height');
-              frozenRoot.style.removeProperty('max-height');
-              frozenRoot.style.removeProperty('overflow');
-              frozenRoot.style.removeProperty('contain');
-            }
-            frozenRoot = null;
-            frozenHeight = null;
+            if (heldRoot) heldRoot.style.removeProperty('min-height');
+            heldRoot = null;
           }
-
-          function lockViewportBeforePaint() {
-            if (!p.__ssaRerunPending || !Number.isFinite(pendingY)) {
-              lockFrame = null;
-              return;
-            }
-            holdHeight();
-            restorePosition(pendingY);
-            lockFrame = p.requestAnimationFrame(lockViewportBeforePaint);
-            if (p.__ssaScrollKeeper) p.__ssaScrollKeeper.lockFrame = lockFrame;
+          function holdMinimum() {
+            const root = d.querySelector(rootSelector);
+            if (!root || !pending || userMoved) return;
+            if (heldRoot !== root) releaseHeight();
+            heldRoot = root;
+            // A minimum reserves space during replacement. New content can
+            // always grow, so charts, errors and expanded cards remain visible.
+            root.style.setProperty('min-height', `${height}px`);
           }
-
-          function liveStaleNode() {
-            const liveRoot = d.querySelector('.st-key-analyzer_live_fragment');
-            if (!liveRoot) return null;
-            for (const node of d.querySelectorAll('[data-stale="true"]')) {
-              if (
-                node === liveRoot ||
-                (node.contains && node.contains(liveRoot)) ||
-                (liveRoot.contains && liveRoot.contains(node))
-              ) {
-                return node;
-              }
-            }
-            return null;
-          }
-
-          function beginFragmentSwap(node) {
-            if (p.__ssaRerunPending) return;
-            pendingY = getY();
-            staleNode = node;
-            restoreScheduled = false;
-            p.__ssaRerunPending = true;
-            holdHeight();
-            // MutationObserver callbacks run before the browser paints the DOM
-            // mutation. Start a frame-by-frame lock here so no intermediate
-            // collapsed/expanded layout can ever become visible.
-            lockViewportBeforePaint();
-            try {
-              p.sessionStorage.setItem(
-                KEY,
-                JSON.stringify({ y: pendingY, t: Date.now() })
-              );
-            } catch (_) {}
-          }
-
-          const observer = new MutationObserver((mutations) => {
-            for (const m of mutations) {
-              if (
-                m.type === "attributes" &&
-                m.attributeName === "data-stale" &&
-                m.target &&
-                m.target.getAttribute("data-stale") === "true"
-              ) {
-                const liveRoot = d.querySelector('.st-key-analyzer_live_fragment');
-                const liveFragment = liveRoot && (
-                  m.target === liveRoot ||
-                  (m.target.contains && m.target.contains(liveRoot)) ||
-                  (liveRoot.contains && liveRoot.contains(m.target))
-                );
-                if (liveFragment && !p.__ssaRerunPending) {
-                  beginFragmentSwap(m.target);
-                }
-              }
-            }
-
-            // Streamlit removes or unmarks the stale fragment when its new
-            // delta is mounted. Restore repeatedly while charts and expanders
-            // settle so the temporary height collapse cannot move the reader.
-            if (
-              p.__ssaRerunPending &&
-              staleNode &&
-              (!staleNode.isConnected || staleNode.getAttribute("data-stale") !== "true")
-            ) {
-              finishFragmentSwap();
-            }
-          });
-          if (d.body) {
-            observer.observe(d.body, {
-              subtree: true,
-              childList: true,
-              attributes: true,
-              attributeFilter: ["data-stale"]
-            });
-          }
-
-          // Streamlit keeps the old subtree marked stale for several seconds
-          // while the deep calculation runs. This low-frequency watcher only
-          // detects lifecycle state; the animation-frame loop above owns the
-          // actual pre-paint viewport and height lock.
-          let settledTicks = 0;
-          const watcher = p.setInterval(() => {
-            const liveStale = liveStaleNode();
-            if (liveStale && !p.__ssaRerunPending) {
-              beginFragmentSwap(liveStale);
-            }
-            if (!p.__ssaRerunPending || !Number.isFinite(pendingY)) return;
-
-            restorePosition(pendingY);
-            if (liveStale) {
-              settledTicks = 0;
-            } else {
-              settledTicks += 1;
-              if (settledTicks >= 10) finishFragmentSwap();
-            }
-          }, 100);
-
-          p.__ssaScrollKeeper = {
-            observer,
-            watcher,
-            lockFrame,
-            releaseHeight,
-            scroller,
-            onScroll,
-            onWindowScroll: onScroll
-          };
-
-          p.setTimeout(() => {
+          function finishFragmentSwap() {
+            if (!pending) return;
+            p.clearTimeout(settleTimer);
+            p.clearTimeout(deadline);
+            releaseHeight();
+            if (!userMoved && scroller) scroller.scrollTop = y;
+            pending = false;
             p.__ssaRerunPending = false;
-            savePosition();
-          }, 700);
+          }
+          function liveStaleNode() {
+            const root = d.querySelector(rootSelector);
+            if (!root) return null;
+            return Array.from(d.querySelectorAll('[data-stale="true"]')).find(
+              node => node === root || node.contains(root) || root.contains(node));
+          }
+          function beginFragmentSwap() {
+            const root = d.querySelector(rootSelector);
+            if (!root || pending) return;
+            pending = true;
+            userMoved = false;
+            y = scroller?.scrollTop || 0;
+            height = root.getBoundingClientRect().height;
+            p.__ssaRerunPending = true;
+            holdMinimum();
+            // A failed/disconnected rerun must never leave a frozen page.
+            deadline = p.setTimeout(finishFragmentSwap, 3000);
+          }
+          const userIntent = () => {
+            userMoved = true;
+            releaseHeight();
+          };
+          const onKey = event => {
+            if (['ArrowDown','ArrowUp','PageDown','PageUp','Home','End',' '].includes(event.key)) userIntent();
+          };
+          const observer = new p.MutationObserver(() => {
+            const stale = liveStaleNode();
+            if (stale && !pending) beginFragmentSwap();
+            if (!pending) return;
+            holdMinimum();
+            p.clearTimeout(settleTimer);
+            if (!stale) settleTimer = p.setTimeout(finishFragmentSwap, 120);
+          });
+          observer.observe(d.body, {subtree: true, childList: true,
+            attributes: true, attributeFilter: ['data-stale']});
+          d.addEventListener('wheel', userIntent, {passive: true, capture: true});
+          d.addEventListener('touchstart', userIntent, {passive: true, capture: true});
+          d.addEventListener('pointerdown', userIntent, true);
+          d.addEventListener('keydown', onKey, true);
+          function dispose() {
+            observer.disconnect();
+            userMoved = true;
+            finishFragmentSwap();
+            d.removeEventListener('wheel', userIntent, true);
+            d.removeEventListener('touchstart', userIntent, true);
+            d.removeEventListener('pointerdown', userIntent, true);
+            d.removeEventListener('keydown', onKey, true);
+          }
+          p.__ssaScrollKeeper = {observer, releaseHeight, dispose};
         })();
         </script>
         """,
-        height=0,
-        scrolling=False,
+        unsafe_allow_javascript=True,
     )
 
 
@@ -935,7 +717,7 @@ def run():
             and existing_result
             and (not existing_symbol or existing_symbol == requested_ticker)
             and not forced_refresh
-            and not launch_active_same_symbol
+            and not (launch_state and launch_symbol == requested_ticker)
         )
 
         if not result_ready:
