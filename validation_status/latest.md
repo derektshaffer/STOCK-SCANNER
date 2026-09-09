@@ -1,6 +1,6 @@
 # Forward Validation Status
 
-Generated: 2026-09-09T05:57:56.930322+00:00
+Generated: 2026-09-09T06:08:32.982989+00:00
 
 ## Scanner ML — independent live confirmation
 - **Samples:** 38/100 — 62 remaining
@@ -18,12 +18,12 @@ Generated: 2026-09-09T05:57:56.930322+00:00
 - Replay end day: 2026-08-31
 - Path model historical status: replay_validated_waiting_live · AUC 0.864 · Brier 0.061
 - Endpoint model historical status: replay_validated_waiting_live · AUC 0.859 · Brier 0.0373
-- **Independent live samples:** 529/100 ✅
-- **Trading days:** 3/5 — 2 remaining
-- **Symbols:** 328/15 ✅
-- **Positive class:** 69/15 ✅
-- **Negative class:** 460/15 ✅
-- Endpoint/path disagreements: 45/424 (10.6%)
+- **Independent live samples:** 662/100 ✅
+- **Trading days:** 4/5 — 1 remaining
+- **Symbols:** 396/15 ✅
+- **Positive class:** 96/15 ✅
+- **Negative class:** 566/15 ✅
+- Endpoint/path disagreements: 62/537 (11.5%)
 - **Ready for endpoint-vs-path model comparison:** NO
 - Production influence: **OFF**
 
@@ -35,8 +35,8 @@ Generated: 2026-09-09T05:57:56.930322+00:00
 - Calibration provenance: interactive_analyzer: 1 rows/1 resolved
 
 ## Swing / Longer-Term forward cohorts
-- **Swing 5-day resolved — early read:** 30/30 ✅
-- **Swing 5-day resolved — useful:** 30/100 — 70 remaining
+- **Swing 5-day resolved — early read:** 60/30 ✅
+- **Swing 5-day resolved — useful:** 60/100 — 40 remaining
 - **Longer-Term 20-day resolved — early read:** 0/30 — 30 remaining
 - **Longer-Term 20-day resolved — useful:** 0/100 — 100 remaining
 
