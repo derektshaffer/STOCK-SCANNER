@@ -165,6 +165,21 @@ class OverviewInteractionTests(unittest.TestCase):
         at.button(key="cancel_combined_loader_SVRN").click().run(); self.clean(at)
         self.assertFalse(at.session_state["_analyzer_loading"])
 
+    def test_reopening_cached_ticker_finishes_loading_and_can_refresh(self):
+        import time
+        at = self.app("live")
+        result = at.session_state["result"]
+        at.session_state["_analyzer_result_cache"] = {"SVRN": {"result":result, "cached_at":time.time()}}
+        at.radio(key="app_view").set_value("Momentum Scanner").run()
+        at.radio(key="app_view").set_value("Stock Analyzer").run(); self.clean(at)
+        self.assertIn("analyzer_landing_ticker", [w.key for w in at.selectbox])
+        at.selectbox(key="analyzer_landing_ticker").select("SVRN").run(); self.clean(at)
+        self.assertEqual(at.session_state["result"]["symbol"], "SVRN")
+        self.assertFalse(at.session_state["_analyzer_loading"])
+        self.assertFalse(at.button(key="analyzer_manual_analyze").disabled)
+        at.button(key="analyzer_manual_analyze").click().run(); self.clean(at)
+        self.assertTrue(any("background" in x.value for x in at.info))
+
     def test_switching_chart_does_not_request_analysis_or_train(self):
         at = self.app("live")
         with patch("stock_analyzer.analyze", side_effect=AssertionError("UI must not analyze")), \

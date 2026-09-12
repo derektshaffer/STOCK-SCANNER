@@ -16,7 +16,7 @@ The provider's documented continuation behavior is described in [Alpaca historic
 
 - 17 acquisition/cache/error regressions, without training or research-data access.
 - 31 live-price/provider-failure regressions, run in their normal separate process.
-- 19 overview and 12 rendering/lifecycle regressions.
+- 20 overview and 12 rendering/lifecycle regressions.
 - 10 relevant existing history, ML gate, refresh, and continuity checks.
 - Compilation and standalone import boundary across all 85 Python files in the deployment manifest; unrelated untracked research directories are not publication inputs.
 - Desktop, narrow-screen, fallback-message containment, scrolling, and navigation browser evidence from the layout implementation.
@@ -24,6 +24,12 @@ The provider's documented continuation behavior is described in [Alpaca historic
 Combining otherwise separate test programs in one interpreter revealed pre-existing global test-fixture pollution (provider import flags and a replaced stream-router function). The normal separate-process invocations pass; these mixed-process attempts are not reported as passing. The whole working-directory recursive boundary check includes protected untracked Lab copies and is not claimed green. Those copies were left untouched.
 
 These checks do not certify live feed entitlement, profitable predictions, or market-open operation. The bounded authenticated diagnostic fetched market history only; it did not train models, change credentials, place orders, or modify the separate research jobs.
+
+## Hosted follow-up
+
+After deployment of PR #105, the hosted SVRN result confirmed zero five-minute bars and provider HTTP 401. Alpaca rejects the hosted authentication pair; the old history loader hid that failure as insufficient history. Tradier still provides the main analysis. Replacing the hosted Alpaca pair with the existing locally verified pair requires the user's specific credential-change approval, which has been requested. No credential values were exported or changed.
+
+The hosted navigation check also reproduced a separate warm-cache lifecycle defect: selecting a recently analyzed ticker from the landing picker restored its result while leaving the Analyze button permanently disabled as "Analyzing...". That path starts no worker and therefore receives no worker-completion callback. The renderer now ends the loading state when a result is ready and no manual refresh is pending. A regression reproduces the failure before the change, then checks the cached result, enabled button, and a subsequent real background-refresh handoff. Active/forced/manual requests keep their existing lifecycle.
 
 ## Deployment
 

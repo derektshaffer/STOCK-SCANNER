@@ -727,6 +727,13 @@ def run():
             and not (launch_state and launch_symbol == requested_ticker)
         )
 
+        # A landing/saved-stock request may be fulfilled immediately by the
+        # warm result cache. There is no worker completion callback in that
+        # path, so finish the loading state here. Explicit manual refreshes
+        # still flow through the core's existing background-request handoff.
+        if result_ready and not st.session_state.get("_manual_analyze_requested"):
+            st.session_state["_analyzer_loading"] = False
+
         if not result_ready:
             launch_state = st.session_state.get(launch_key)
             launch_symbol = str(
