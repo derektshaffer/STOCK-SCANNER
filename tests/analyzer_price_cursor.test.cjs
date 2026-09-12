@@ -1,6 +1,17 @@
 const {test} = require('node:test');
 const assert = require('node:assert/strict');
-const {cursorPoint, install} = require('../analyzer_price_cursor.js');
+const {candleAtPointer, cursorPoint, install} = require('../analyzer_price_cursor.js');
+const transform = (scale = 1, tx = 0, ty = 0) => ({a: scale, b: 0, c: 0, d: scale,
+  inverse: () => ({a: 1 / scale, b: 0, c: 0, d: 1 / scale, e: -tx / scale, f: -ty / scale})});
+
+function candleFixture() {
+  return {
+    getBoundingClientRect: () => ({left: 240, right: 260, top: 60, bottom: 190}),
+    getScreenCTM: () => transform(),
+    isPointInFill: ({x, y}) => x >= 240 && x <= 260 && y >= 90 && y <= 170,
+    isPointInStroke: ({x, y}) => Math.abs(x - 250) <= 1 && y >= 60 && y <= 190,
+  };
+}
 
 function plotFixture() {
   return {
@@ -8,14 +19,37 @@ function plotFixture() {
       xaxis: {_offset: 20, _length: 740},
       yaxis: {_offset: 10, _length: 200, p2d: px => 15 - px / 20}},
     getBoundingClientRect: () => ({left: 100, top: 50, width: 800, height: 300}),
+    querySelectorAll: () => [candleFixture()],
     appendChild(label) { label.parentNode = this; },
   };
 }
-test('price follows cursor height, including gaps between candles', () => {
+test('price follows cursor height only on a candle body or wick', () => {
   const plot = plotFixture();
   assert.equal(cursorPoint(plot, {clientX: 250, clientY: 100}).price, 13);
-  assert.equal(cursorPoint(plot, {clientX: 600, clientY: 100}).price, 13);
+  assert.equal(cursorPoint(plot, {clientX: 600, clientY: 100}), null);
   assert.equal(cursorPoint(plot, {clientX: 250, clientY: 160}).price, 10);
+  assert.equal(cursorPoint(plot, {clientX: 250, clientY: 70}).price, 14.5);
+  for (const [clientX, clientY] of [[245, 70], [250, 195], [270, 120]]) {
+    assert.equal(cursorPoint(plot, {clientX, clientY}), null);
+  }
+});
+test('rendered candle geometry transforms with zoom, scroll and resize', () => {
+  const plot = plotFixture(), candle = candleFixture();
+  candle.getBoundingClientRect = () => ({left: 580, right: 620, top: 320, bottom: 580});
+  candle.getScreenCTM = () => transform(2, 100, 200);
+  plot.querySelectorAll = () => [candle];
+  assert.equal(candleAtPointer(plot, {clientX: 600, clientY: 420}), true);
+  assert.equal(candleAtPointer(plot, {clientX: 600, clientY: 340}), true);
+  assert.equal(candleAtPointer(plot, {clientX: 590, clientY: 340}), false);
+  assert.equal(candleAtPointer(plot, {clientX: 250, clientY: 110}), false);
+});
+test('missing candle geometry never restores whole-chart hover', () => {
+  const plot = plotFixture(), candle = candleFixture();
+  plot.querySelectorAll = () => [];
+  assert.equal(cursorPoint(plot, {clientX: 250, clientY: 120}), null);
+  delete candle.isPointInFill;
+  plot.querySelectorAll = () => [candle];
+  assert.equal(cursorPoint(plot, {clientX: 250, clientY: 120}), null);
 });
 test('uses the new transform after pan/zoom and CSS scaling', () => {
   const plot = plotFixture();
@@ -42,6 +76,10 @@ test('one small price label; hides on drag, scroll, touch, exit; reruns replace 
     labels.push(label); return label;
   };
   const plot = plotFixture();
+  const candle = candleFixture();
+  candle.getBoundingClientRect = () => ({left: 840, right: 860, top: 60, bottom: 190});
+  candle.getScreenCTM = () => transform(1, 600, 0);
+  plot.querySelectorAll = () => [candle];
   const target = {closest: selector => selector.includes('js-plotly-plot') ? plot : null};
   function fire(type, extra = {}) {
     const event = new Event(type);
@@ -59,6 +97,8 @@ test('one small price label; hides on drag, scroll, touch, exit; reruns replace 
   fire('pointermove', {clientY: 160});
   assert.equal(visible().length, 1);
   assert.equal(visible()[0].textContent, '$10.00');
+  fire('pointermove', {clientX: 820}); assert.equal(visible().length, 0);
+  fire('pointermove'); assert.equal(visible().length, 1);
   for (const [type, extra] of [['pointermove', {buttons: 1}], ['scroll', {}],
     ['pointermove', {pointerType: 'touch'}], ['pointerout', {}]]) {
     fire(type, extra); assert.equal(visible().length, 0);
