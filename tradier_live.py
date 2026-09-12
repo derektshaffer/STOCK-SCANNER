@@ -193,7 +193,7 @@ def _bar_from_timesale(row):
     }
 
 
-def get_timesales_bars(symbol, token, start, end, interval="1min", session_filter="all"):
+def get_timesales_bars(symbol, token, start, end, interval="1min", session_filter="all", *, strict=False, timeout=30):
     start_et = start.astimezone(ET)
     end_et = end.astimezone(ET)
     params = urllib.parse.urlencode(
@@ -205,7 +205,14 @@ def get_timesales_bars(symbol, token, start, end, interval="1min", session_filte
             "session_filter": session_filter,
         }
     )
-    payload = _request_json(f"{TRADIER_BASE}/markets/timesales?{params}", token)
+    payload = _request_json(f"{TRADIER_BASE}/markets/timesales?{params}", token, timeout=timeout)
+    if strict and (not isinstance(payload, dict) or "series" not in payload or
+                   payload.get("fault") or payload.get("errors")):
+        raise ValueError("Malformed historical response")
+    if strict and payload.get("series") is not None and not isinstance(payload["series"], dict):
+        raise ValueError("Malformed historical series")
+    if strict and isinstance(payload.get("series"), dict) and "data" not in payload["series"]:
+        raise ValueError("Malformed historical series")
     rows = ((payload or {}).get("series") or {}).get("data")
     if rows is None:
         return []
@@ -214,6 +221,11 @@ def get_timesales_bars(symbol, token, start, end, interval="1min", session_filte
 
     bars = []
     for row in rows:
+        if strict:
+            if not isinstance(row, dict) or any(_num(row.get(k)) is None for k in ("open", "high", "low", "close", "volume")) or not _iso_timestamp(row):
+                raise ValueError("Malformed historical OHLCV")
+            if row.get("symbol") and str(row["symbol"]).upper() != str(symbol).upper():
+                raise ValueError("Historical response contains a different symbol")
         bar = _bar_from_timesale(row or {})
         if bar is not None:
             bars.append(bar)

@@ -71,6 +71,7 @@ def _install_common_analyzer_stubs():
         "prevDailyBar": {"c": 8.8},
     }
     sa.avg_daily_volume = lambda symbol, now: (1_000_000.0, "delayed SIP")
+    sa.load_chart_history = lambda *args, **kwargs: {"status": "empty", "bars": [], "source": "Offline fixture"}
     sa.try_sip_delayed_bars = (
         lambda symbol, timeframe, start, end, limit=1000: (_daily_bars(), "delayed SIP")
     )

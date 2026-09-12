@@ -37,7 +37,8 @@ def money(value):
 def inject_overview_theme(st):
     st.html("<style>" + Path(__file__).with_suffix(".css").read_text() + "</style>")
     # Trusted, local presentation code only; no result/provider data enters the script.
-    st.html("<script>" + Path(__file__).with_name("analyzer_price_cursor.js").read_text() + "</script>",
+    st.html("<script>" + Path(__file__).with_name("analyzer_price_cursor.js").read_text()
+            + "\n" + Path(__file__).with_name("analyzer_timeline.js").read_text() + "</script>",
             unsafe_allow_javascript=True)
 
 
@@ -110,10 +111,26 @@ def chart_frame(result, timeframe):
     from analyzer_visuals import _bars
     kind = "daily" if timeframe == "D" else "intraday"
     rows = _bars(result, kind)
+    if timeframe == "D":
+        # The analysis already carries a longer daily series. Session keys stay dates.
+        rows = list(result.get("daily_context_bars") or []) + rows
+    else:
+        history = result.get("overview_history") or {}
+        if history.get("status") == "ok" and history.get("symbol") == result.get("symbol"):
+            cutoff = str(result.get("reference_price_timestamp") if result.get("research_only") else result.get("as_of") or "")[:10]
+            # Never mix coarser historical bars into the active/reference session.
+            older = []
+            for row in history.get("bars") or []:
+                stamp = pd.to_datetime(row.get("t"), utc=True, errors="coerce")
+                if pd.notna(stamp) and cutoff and stamp.tz_convert("America/New_York").date().isoformat() < cutoff:
+                    older.append(row)
+            rows = older + rows
     if not rows:
         return pd.DataFrame()
     frame = pd.DataFrame(rows)
-    frame["t"] = pd.to_datetime(frame["t"], utc=True, errors="coerce")
+    if timeframe == "D":
+        frame["t"] = frame["t"].astype(str).str[:10]
+    frame["t"] = pd.to_datetime(frame["t"], utc=True, errors="coerce", format="mixed")
     for col in ("o", "h", "l", "c", "v"):
         frame[col] = pd.to_numeric(frame[col], errors="coerce").replace([float("inf"), -float("inf")], float("nan"))
     frame = frame.dropna(subset=["t", "o", "h", "l", "c"]).sort_values("t").drop_duplicates("t", keep="last").set_index("t")
@@ -127,7 +144,8 @@ def chart_frame(result, timeframe):
     return frame
 
 
-def price_figure(result, timeframe):
+def price_figure(result, timeframe, window="All"):
+    import pandas as pd
     import plotly.graph_objects as go
     from plotly.subplots import make_subplots
     frame = chart_frame(result, timeframe)
@@ -144,12 +162,25 @@ def price_figure(result, timeframe):
     if vwap is not None:
         fig.add_hline(y=vwap, line_color="#53d7ee", line_dash="dash", line_width=1,
                       annotation_text="Session VWAP", annotation_font_color="#53d7ee", row=1, col=1)
-    fig.update_layout(height=277, margin=dict(l=0, r=4, t=8, b=0), paper_bgcolor="rgba(0,0,0,0)",
+    dates = pd.DatetimeIndex(x)
+    sessions = dates.normalize().unique()
+    count = {"1D": 1, "5D": 5, "1M": 22, "3M": 66, "1Y": 252}.get(window, len(sessions))
+    start = dates[dates.normalize() >= sessions[max(0, len(sessions) - count)]][0]
+    start_index = int((dates < start).sum())
+    visible = frame[dates >= start]
+    low, high = float(visible.l.min()), float(visible.h.max())
+    padding = max((high - low) * .08, high * .005)
+    fig.update_layout(height=300, margin=dict(l=44, r=4, t=8, b=42), paper_bgcolor="rgba(0,0,0,0)",
                       plot_bgcolor="rgba(0,0,0,0)", font=dict(color="#abc4da", size=11),
                       showlegend=False, dragmode="pan", hovermode=False,
-                      uirevision=f"overview:{result.get('symbol')}:{timeframe}")
-    fig.update_xaxes(type="category", rangeslider_visible=False, gridcolor="#193343", nticks=7)
+                      uirevision=f"overview:{result.get('symbol')}:{timeframe}:{window}")
+    # Keep one slot per real candle. The local timeline formatter groups the
+    # visible native tick labels by date after every Plotly pan/zoom/render.
+    fig.update_xaxes(type="category", rangeslider_visible=False, gridcolor="#193343", nticks=7,
+                     tickangle=0, ticklabeloverflow="allow", minallowed=-.5,
+                     maxallowed=len(frame)-.5, range=[start_index-.5, len(frame)-.5])
     fig.update_yaxes(side="right", gridcolor="#193343", zeroline=False, fixedrange=False)
+    fig.update_yaxes(range=[low - padding, high + padding], row=1, col=1)
     fig.update_yaxes(showticklabels=False, row=2, col=1)
     return fig
 
@@ -210,12 +241,36 @@ def render_overview(st, pd, result, card, pp, render_details):
                     _html(st, '<h3 class="ao-heading">▥ &nbsp;Price &amp; key levels</h3>')
                 with timeframe_col:
                     timeframe = st.segmented_control("Chart timeframe", ["5m", "15m", "1h", "D"], default="D" if research else "5m", key="overview_chart_timeframe", selection_mode="single", required=True, label_visibility="collapsed")
-                st.caption(("Completed-session context" if research else "Analysis snapshot") + " · " + ("Daily sessions" if timeframe == "D" else "Pacific time"))
-                fig = price_figure(result, timeframe)
+                caption_col, range_col = st.columns([1.4, 1], vertical_alignment="center")
+                with range_col:
+                    window = st.segmented_control("History range", ["1M", "3M", "1Y", "All"] if timeframe == "D" else ["1D", "5D", "1M", "All"],
+                        default="3M" if timeframe == "D" else "5D" if best_key in ("swing", "long_term") else "1D",
+                        key="overview_history_daily" if timeframe == "D" else "overview_history_intraday",
+                        required=True, selection_mode="single", label_visibility="collapsed")
+                frame = chart_frame(result, timeframe)
+                with caption_col:
+                    coverage = ""
+                    if not frame.empty:
+                        coverage = " · " + frame.index[0].strftime("%b %d") + "–" + frame.index[-1].strftime("%b %d") + " loaded"
+                    st.caption(("Daily sessions" if timeframe == "D" else "Pacific time") + coverage)
+                fig = price_figure(result, timeframe, window)
                 if fig is None:
                     st.info("No " + ("daily" if timeframe == "D" else "intraday") + " bars returned for this analysis.")
                 else:
                     st.plotly_chart(fig, key="analyzer_overview_chart", width="stretch", config={"displaylogo": False, "scrollZoom": False, "displayModeBar": "hover", "doubleClick": "reset", "responsive": True})
+                if timeframe != "D":
+                    history = result.get("overview_history") or {}
+                    if history.get("status") == "ok":
+                        note = "Earlier sessions: " + str(history.get("source")) + " · Chart context only"
+                        if not (result.get("chart_data") or {}).get("intraday"):
+                            note += " · Active/reference session intraday bars unavailable"
+                    elif history.get("status") == "unavailable":
+                        note = "Older intraday history unavailable (" + str(history.get("error") or "provider error") + "). Daily history is available under D."
+                    elif history.get("status") == "empty":
+                        note = "No older intraday bars returned. Daily history is available under D."
+                    else:
+                        note = "Analyze again to load older intraday history."
+                    _html(st, '<div class="ao-chart-note">' + esc(note) + '</div>')
                 _html(st, '<div class="ao-levels"><span>VWAP <b>' + esc(money(result.get("vwap"))) + '</b></span><span>Low <b class="ao-red">' + esc(money(result.get("day_low"))) + '</b></span><span>High <b class="ao-green">' + esc(money(result.get("day_high"))) + '</b></span></div>')
             with ml_col, st.container(key="ao_ml", border=True):
                 ml = ml_summary(result)
