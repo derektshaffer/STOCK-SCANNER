@@ -1,3 +1,4 @@
+from live_price_quality import price_view, price_note
 import html
 
 
@@ -29,26 +30,9 @@ def render_live_tape(st, overlay):
     trade_age = overlay.get("trade_age_seconds")
     quote_age = overlay.get("quote_age_seconds")
 
-    if status == "streaming":
-        dot = "#35e06f"
-        label = f"{feed} LIVE"
-    elif status == "rest_fallback":
-        dot = "#ffd166"
-        label = f"{feed} REST FALLBACK"
-    elif status in {
-        "connecting",
-        "authenticating",
-        "subscribing",
-        "switching",
-        "reconnecting",
-        "connection_limit",
-        "session_limit",
-    }:
-        dot = "#ffd166"
-        label = status.upper()
-    else:
-        dot = "#ff6b6b"
-        label = "STREAM ERROR" if status == "error" else status.upper()
+    view = price_view(overlay)
+    label = price_note(view)
+    dot = "#35e06f" if view["state"] == "LIVE" else "#ffd166" if view["state"] == "FALLBACK" else "#ff6b6b"
 
     def _age_text(value):
         try:
@@ -60,21 +44,18 @@ def render_live_tape(st, overlay):
         if seconds < 60:
             return f"{seconds:.1f}s"
         return f"{seconds / 60.0:.1f}m"
-    bid = _money(overlay.get("bid"))
-    ask = _money(overlay.get("ask"))
-    breakout = str(overlay.get("breakout_state") or "—")
+    bid = _money(overlay.get("bid")) if view["current"] else "—"
+    ask = _money(overlay.get("ask")) if view["current"] else "—"
+    breakout = str(overlay.get("breakout_state") or "—") if view["current"] else "DATA CHECK"
     vwap_pos = str(overlay.get("vwap_position") or "N/A")
 
-    live_price_value=(
-        _money(overlay.get("price"))
-        if overlay.get("live_price_available") is not False and overlay.get("price") is not None
-        else "UNAVAILABLE"
-    )
+    live_price_value = _money(view["price"]) if view["current"] else (
+        _money(view["last_known_price"])+" · STALE" if view["state"] == "STALE" else view["state"])
     cells = [
-        ("LIVE PRICE", live_price_value, label),
+        (view["state"]+" PRICE", live_price_value, label),
         ("BID / ASK", f"{bid} / {ask}", "streaming quote"),
         ("SPREAD", _pct(overlay.get("spread_pct")), "live quote spread"),
-        ("LIVE VWAP", _money(overlay.get("vwap")), vwap_pos),
+        ("SESSION VWAP", _money(overlay.get("vwap")), vwap_pos),
         (
             "SESSION VOL",
             _int(overlay.get("session_volume")),

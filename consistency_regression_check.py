@@ -401,12 +401,12 @@ def test_live_price_fallback_and_unavailable_states_are_explicit_in_ui():
     analyzer_bootstrap = Path("analyzer_bootstrap.py").read_text(encoding="utf-8")
     analyzer_engine = Path("stock_analyzer.py").read_text(encoding="utf-8")
     v2_ui = Path("analyzer_v2_ui.py").read_text(encoding="utf-8")
-    assert 'startswith("LIVE PRICE UNAVAILABLE")' in analyzer_ui
+    assert "is_price_failure(_analysis_error)" in analyzer_ui
     assert 'st.session_state.pop("result",None)' in analyzer_ui
-    assert "LIVE PRICE FALLBACK" in analyzer_ui
-    assert "LIVE PRICE FALLBACK" in scanner_ui
-    assert "LIVE PRICE FALLBACK" in combined_ui
-    assert 'else "UNAVAILABLE"' in live_tape
+    assert "FALLBACK PRICE" in analyzer_ui
+    assert "price_view(price_record)" in scanner_ui
+    assert "price_view(price_record)" in combined_ui
+    assert "price_view(overlay)" in live_tape
     assert 'analysis_mode="after_hours_research"' in analyzer_engine
     assert '"research_only":True' in analyzer_engine
     assert "MARKET CLOSED — AFTER-HOURS RESEARCH MODE" in analyzer_ui
@@ -415,8 +415,8 @@ def test_live_price_fallback_and_unavailable_states_are_explicit_in_ui():
     assert '"ENTRY READINESS",\n            "UNAVAILABLE"' in v2_ui
     assert 'result.get("research_only") is True' in analyzer_bootstrap
     assert '== "after_hours_research"' in analyzer_bootstrap
-    assert "overlay = get_live_overlay(result)" in analyzer_bootstrap
-    assert analyzer_bootstrap.index('result.get("research_only") is True') < analyzer_bootstrap.index("overlay = get_live_overlay(result)")
+    assert "overlay = None if research else get_live_overlay(result)" in analyzer_bootstrap
+    assert analyzer_bootstrap.index('result.get("research_only") is True') < analyzer_bootstrap.index("overlay = None if research else get_live_overlay(result)")
 
 
 def test_live_price_validator_rejects_future_and_missing_symbol_timestamps():
@@ -6019,17 +6019,18 @@ def test_scanner_monitor_and_saved_stocks_are_vertically_compact():
 
     app_source = Path("app.py").read_text(encoding="utf-8")
     bootstrap = Path("analyzer_bootstrap.py").read_text(encoding="utf-8")
-    analyzer_css = Path("analyzer_app.py").read_text(encoding="utf-8")
+    analyzer_css = Path("analyzer_overview.css").read_text(encoding="utf-8")
+    core = Path("analyzer_ui_core.py").read_text(encoding="utf-8")
 
     assert 'status_col, alerts_col = st.columns(' not in app_source
     assert "scanner-monitor-status" in app_source
     assert "if first_alert:" in app_source
     assert "_browser_alert_control(first_alert, first_alert_kind)" in app_source
-    assert "first_saved = saved[:5]" in bootstrap
+    assert "first_saved = saved[:3 if compact else 5]" in bootstrap
     assert 'weights = [1.15, 1.15, 1.15] + [0.95] * len(first_saved)' in bootstrap
-    assert "title/actions/first tickers share one row" in analyzer_css
-    assert "min-height: 30px !important" in analyzer_css
-    assert "margin: 0 0 4px !important" in analyzer_css
+    assert 'with saved_col.popover("☆", help="Saved stocks")' in core
+    assert '.st-key-analyzer_controls' in analyzer_css
+    assert 'grid-template-columns: repeat(6,minmax(0,1fr))' in analyzer_css
 
 
 def test_combined_analyzer_refresh_is_background_and_saved_stocks_follow_search():

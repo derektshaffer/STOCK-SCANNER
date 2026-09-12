@@ -1,3 +1,4 @@
+from live_price_quality import stream_price_fields, provider_problem
 import json
 import os
 import threading
@@ -385,6 +386,8 @@ class _LiveStream:
         try:
             payload = json.loads(raw)
         except Exception:
+            with self.lock:
+                self.state.update(status="error", error="Malformed stream response")
             return
         messages = payload if isinstance(payload, list) else [payload]
 
@@ -572,10 +575,14 @@ def _rest_snapshot(symbol, feed):
     try:
         with urllib.request.urlopen(req, timeout=5) as resp:
             payload = json.loads(resp.read().decode("utf-8"))
+        if not isinstance(payload, dict):
+            raise ValueError("Malformed snapshot response")
+        if payload.get("error") or payload.get("errors"):
+            raise RuntimeError(provider_problem(payload, "alpaca REST")["state"])
         error = None
     except Exception as exc:
-        payload = _REST_FALLBACK.get("payload")
-        error = str(exc)[:180]
+        payload = None
+        error = provider_problem(exc, "alpaca REST")["state"]
 
     _REST_FALLBACK.update(
         {
@@ -604,78 +611,32 @@ def get_live_overlay(metrics):
     metrics = metrics or {}
     symbol = str(metrics.get("symbol") or "").upper().strip()
     state = get_live_state(symbol)
-    trade = state.get("last_trade") or {}
-    quote = state.get("last_quote") or {}
-
-    # If Alpaca's single WebSocket connection is occupied elsewhere, keep
-    # price/quote fresh with a low-frequency REST snapshot instead of leaving
-    # the live tape dead.
+    feed = str(state.get("feed") or "iex").lower()
+    source = str(metrics.get("live_price_source") or "")
+    requested_feed = source.split("_")[1] if source.startswith(("alpaca_iex_", "alpaca_sip_")) else feed
+    if requested_feed != feed:
+        # A previous subscription to another feed has no authority over this one.
+        state = {"symbol": symbol, "status": "switching", "feed": requested_feed}
+        feed = requested_feed
+    snap, rest_error = None, None
     if state.get("status") == "connection_limit" and symbol:
-        feed = str(state.get("feed") or metrics.get("live_feed") or "iex").lower()
         snap, rest_error = _rest_snapshot(symbol, feed)
-        if isinstance(snap, dict):
-            snap_trade = snap.get("latestTrade") or {}
-            snap_quote = snap.get("latestQuote") or {}
-            if snap_trade:
-                trade = {
-                    "price": _num(snap_trade.get("p")),
-                    "size": _num(snap_trade.get("s")),
-                    "timestamp": snap_trade.get("t"),
-                    "exchange": snap_trade.get("x"),
-                }
-            if snap_quote:
-                quote = {
-                    "bid": _num(snap_quote.get("bp")),
-                    "ask": _num(snap_quote.get("ap")),
-                    "bid_size": _num(snap_quote.get("bs")),
-                    "ask_size": _num(snap_quote.get("as")),
-                    "timestamp": snap_quote.get("t"),
-                }
-            state = {
-                **state,
-                "status": "rest_fallback",
-                "fallback_reason": "Alpaca WebSocket connection limit",
-                "rest_error": rest_error,
-                "message_age_seconds": round(
-                    max(0.0, time.time() - float(_REST_FALLBACK.get("last_poll") or 0)),
-                    2,
-                ),
-            }
-
-    price = _num(trade.get("price"))
-    if price is None:
-        price = _num(metrics.get("price"))
-    bid = _num(quote.get("bid"))
-    if bid is None:
-        bid = _num(metrics.get("bid"))
-    ask = _num(quote.get("ask"))
-    if ask is None:
-        ask = _num(metrics.get("ask"))
-
-    spread_pct = None
-    if bid and ask and ask >= bid:
-        midpoint = (ask + bid) / 2.0
-        if midpoint > 0:
-            spread_pct = (ask - bid) / midpoint * 100.0
-
-    now_ts = time.time()
-    trade_dt = _parse_dt(trade.get("timestamp") or metrics.get("latest_trade_time"))
-    quote_dt = _parse_dt(quote.get("timestamp") or metrics.get("latest_quote_time"))
-    trade_age_seconds = (
-        max(0.0, now_ts - trade_dt.timestamp()) if trade_dt is not None else None
-    )
-    quote_age_seconds = (
-        max(0.0, now_ts - quote_dt.timestamp()) if quote_dt is not None else None
-    )
+    fields = stream_price_fields(metrics, state, "alpaca", feed=feed, rest=snap, rest_error=rest_error)
+    price, bid, ask = fields["price"], fields["bid"], fields["ask"]
+    spread_pct = (ask-bid)/((ask+bid)/2)*100 if bid and ask else None
+    if snap is not None and fields["live_price_available"]:
+        state = dict(state, status="rest_fallback", rest_error=rest_error)
+    same_provider = (str(metrics.get("live_price_source") or "").startswith(f"alpaca_{feed}_")
+                     and (metrics.get("market_provider") or metrics.get("live_provider") or "alpaca") == "alpaca")
 
     vwap = _num(state.get("session_vwap"))
-    if vwap is None:
+    if vwap is None and same_provider:
         vwap = _num(metrics.get("vwap"))
 
     volume = _num(state.get("session_volume"))
-    if volume is None:
+    if volume is None and same_provider:
         volume = _num(metrics.get("session_volume"))
-    if volume is None:
+    if volume is None and same_provider:
         volume = _num(metrics.get("volume"))
 
     plan = metrics.get("trade_plan") or {}
@@ -703,16 +664,8 @@ def get_live_overlay(metrics):
 
     return {
         **state,
-        "price": price,
-        "bid": bid,
-        "ask": ask,
+        **fields,
         "spread_pct": round(spread_pct, 3) if spread_pct is not None else None,
-        "trade_age_seconds": (
-            round(trade_age_seconds, 2) if trade_age_seconds is not None else None
-        ),
-        "quote_age_seconds": (
-            round(quote_age_seconds, 2) if quote_age_seconds is not None else None
-        ),
         "vwap": round(vwap, 4) if vwap is not None else None,
         "vwap_position": vwap_position,
         "session_volume": round(volume) if volume is not None else None,

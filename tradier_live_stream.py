@@ -1,3 +1,4 @@
+from live_price_quality import stream_price_fields, quote_timestamp, provider_problem
 import json
 import os
 import threading
@@ -78,6 +79,8 @@ def _create_session():
     )
     with urllib.request.urlopen(req, timeout=12) as resp:
         payload = json.loads(resp.read().decode("utf-8"))
+    if isinstance(payload, dict) and (payload.get("error") or payload.get("errors") or payload.get("fault")):
+        raise RuntimeError(provider_problem(payload, "tradier")["state"])
 
     def find_sessionid(obj):
         if isinstance(obj, dict):
@@ -436,6 +439,8 @@ class _TradierStream:
             try:
                 msg = json.loads(chunk) if isinstance(chunk, str) else chunk
             except Exception:
+                with self.lock:
+                    self.state.update(status="error", error="Malformed stream response")
                 continue
             if not isinstance(msg, dict):
                 continue
@@ -457,6 +462,8 @@ class _TradierStream:
                 continue
 
             kind = str(msg.get("type") or "").lower()
+            if symbol != target or kind not in {"trade", "tradex", "quote", "timesale", "summary"}:
+                continue
             now_ts = time.time()
 
             with self.lock:
@@ -493,7 +500,8 @@ class _TradierStream:
                         "ask": _num(msg.get("ask")),
                         "bid_size": _num(msg.get("bidsz")),
                         "ask_size": _num(msg.get("asksz")),
-                        "timestamp": msg.get("askdate") or msg.get("biddate"),
+                        "timestamp": quote_timestamp(msg.get("biddate") or msg.get("date"), msg.get("askdate") or msg.get("date")),
+                        "side_timestamps": [msg.get("biddate") or msg.get("date"), msg.get("askdate") or msg.get("date")],
                     }
 
                 elif kind == "timesale":
@@ -523,7 +531,7 @@ class _TradierStream:
         size = _num(msg.get("size"))
         ts = _epoch_ms(msg.get("date"))
         cutoff = _num(self.state.get("seed_cutoff"))
-        if price is None or size is None or size <= 0:
+        if price is None or size is None or size <= 0 or ts is None:
             return
         if ts is not None and cutoff is not None and ts <= cutoff:
             return
@@ -576,103 +584,12 @@ def get_live_overlay(metrics):
         or metrics.get("live_provider")
         or ""
     ).lower()
-    metrics_are_tradier = (
-        metrics_provider == "tradier"
-        or "TRADIER" in str(metrics.get("live_feed") or "").upper()
-    )
+    metrics_are_tradier = (metrics_provider in {"", "tradier"}
+                           and str(metrics.get("live_price_source") or "").startswith("tradier_"))
 
-    state_symbol = str(state.get("symbol") or "").upper().strip()
-    now_utc = datetime.now(timezone.utc)
-    stream_bid = _num(quote.get("bid"))
-    stream_ask = _num(quote.get("ask"))
-    stream_mid = (
-        (stream_bid + stream_ask) / 2.0
-        if stream_bid is not None
-        and stream_ask is not None
-        and stream_bid > 0
-        and stream_ask >= stream_bid
-        else None
-    )
-    metric_bid = None
-    metric_ask = None
-    candidates = [
-        {
-            "symbol": state_symbol,
-            "price": trade.get("price"),
-            "timestamp": trade.get("timestamp"),
-            "source": "tradier_stream_trade",
-            "kind": "trade",
-        },
-        {
-            "symbol": state_symbol,
-            "price": stream_mid,
-            "timestamp": quote.get("timestamp"),
-            "source": "tradier_stream_quote_midpoint",
-            "kind": "quote_midpoint",
-        },
-    ]
-    if metrics_are_tradier:
-        metric_price_source = str(metrics.get("live_price_source") or "")
-        metric_price_kind = (
-            "quote_midpoint" if "quote" in metric_price_source.lower()
-            else "bar" if "bar" in metric_price_source.lower()
-            else "trade"
-        )
-        candidates.append({
-            "symbol":metrics.get("symbol"),
-            "price":metrics.get("price"),
-            "timestamp":metrics.get("live_price_timestamp") or metrics.get("latest_trade_time"),
-            "source":metric_price_source or "tradier_analyzer_snapshot",
-            "kind":metric_price_kind,
-        })
-        metric_bid = _num(metrics.get("bid"))
-        metric_ask = _num(metrics.get("ask"))
-        candidates.append({
-            "symbol": metrics.get("symbol"),
-            "price": (
-                (metric_bid + metric_ask) / 2.0
-                if metric_bid is not None
-                and metric_ask is not None
-                and metric_bid > 0
-                and metric_ask >= metric_bid
-                else None
-            ),
-            "timestamp": metrics.get("latest_quote_time"),
-            "source": "tradier_analyzer_quote_midpoint",
-            "kind": "quote_midpoint",
-        })
-    selected_price, price_rejections = select_freshest_live_price(
-        symbol,
-        candidates,
-        now=now_utc,
-        max_age_seconds=MAX_LIVE_PRICE_AGE_SECONDS,
-    )
-    price = (selected_price or {}).get("price")
-
-    trade_selected, _ = select_freshest_live_price(
-        symbol,
-        [row for row in candidates if row.get("kind") in {"trade", "bar"}],
-        now=now_utc,
-        max_age_seconds=MAX_LIVE_PRICE_AGE_SECONDS,
-    )
-    quote_selected, _ = select_freshest_live_price(
-        symbol,
-        [row for row in candidates if row.get("kind") == "quote_midpoint"],
-        now=now_utc,
-        max_age_seconds=MAX_LIVE_PRICE_AGE_SECONDS,
-    )
-    if quote_selected and quote_selected.get("source") == "tradier_stream_quote_midpoint":
-        bid, ask = stream_bid, stream_ask
-    elif quote_selected and quote_selected.get("source") == "tradier_analyzer_quote_midpoint":
-        bid, ask = metric_bid, metric_ask
-    else:
-        bid, ask = None, None
-
-    spread_pct = None
-    if bid and ask and ask > 0:
-        mid = (bid + ask) / 2.0
-        if mid > 0:
-            spread_pct = (ask - bid) / mid * 100.0
+    fields = stream_price_fields(metrics, state, "tradier")
+    price, bid, ask = fields["price"], fields["bid"], fields["ask"]
+    spread_pct = (ask-bid)/((ask+bid)/2)*100 if bid and ask else None
 
     vwap = _num(state.get("session_vwap"))
     if vwap is None and metrics_are_tradier:
@@ -709,14 +626,7 @@ def get_live_overlay(metrics):
 
     return {
         **state,
-        "price": price,
-        "live_price_available": selected_price is not None,
-        "live_price_source": (selected_price or {}).get("source"),
-        "live_price_timestamp": (selected_price or {}).get("timestamp"),
-        "live_price_age_seconds": (selected_price or {}).get("age_seconds"),
-        "live_price_rejections": price_rejections[:6],
-        "trade_age_seconds": (trade_selected or {}).get("age_seconds"),
-        "quote_age_seconds": (quote_selected or {}).get("age_seconds"),
+        **fields,
         "bid": bid,
         "ask": ask,
         "spread_pct": round(spread_pct, 3) if spread_pct is not None else None,

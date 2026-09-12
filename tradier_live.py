@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from live_price_quality import provider_problem
 import math
 import urllib.parse
 import urllib.request
@@ -58,11 +59,20 @@ def post_quotes(symbols, token):
         token,
         {"symbols": ",".join(symbols), "greeks": "false"},
     )
-    quotes = ((payload or {}).get("quotes") or {}).get("quote")
+    if not isinstance(payload, dict):
+        raise RuntimeError("Malformed Tradier quote response")
+    failure = payload.get("fault") or payload.get("errors") or payload.get("error")
+    if failure:
+        raise RuntimeError(provider_problem(failure, "tradier")["state"])
+    if not isinstance(payload.get("quotes"), dict):
+        raise RuntimeError("Malformed Tradier quote response")
+    quotes = payload["quotes"].get("quote")
     if quotes is None:
         return {}
     if not isinstance(quotes, list):
         quotes = [quotes]
+    if any(not isinstance(row, dict) for row in quotes):
+        raise RuntimeError("Malformed Tradier quote response")
     return {
         str(row.get("symbol") or "").upper(): row
         for row in quotes

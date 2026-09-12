@@ -11,6 +11,7 @@ from __future__ import annotations
 import gzip
 import json
 import os
+import re
 import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -38,6 +39,42 @@ DEEP_5M_WORKERS = max(
 )
 
 
+class HistoryLoadError(RuntimeError):
+    """Incomplete provider history is unavailable, not a training sample deficit."""
+    def __init__(self, diagnostics):
+        self.diagnostics = diagnostics
+        super().__init__(diagnostics["message"])
+
+
+def history_error_summary(exc):
+    """Only allow known diagnostic categories; never echo provider bodies/secrets."""
+    text = str(exc)
+    codes = sorted(set(re.findall(r"HTTP (\d{3})", text)))
+    if codes:
+        return "provider HTTP " + "/".join(codes)
+    if "Missing ALPACA_API_KEY" in text or "credentials missing" in text:
+        return "Alpaca history credentials missing"
+    if isinstance(exc, TimeoutError) or "timed out" in text.lower():
+        return "provider request timed out"
+    if "pagination" in text.lower():
+        return "history pagination incomplete"
+    if "different symbol" in text:
+        return "history symbol mismatch"
+    if "malformed" in text:
+        return "history response malformed"
+    return "history request failed"
+
+
+def _raise_incomplete(payload):
+    errors = payload.get("errors") or ["history request failed"]
+    raise HistoryLoadError({
+        "status": "history_unavailable", "bar_count": len(payload.get("rows") or []),
+        "source": " + ".join(payload.get("sources") or []) or "unavailable",
+        "failed_chunks": payload.get("failed_chunks", len(errors)),
+        "message": "5-minute history could not be loaded completely: " + "; ".join(errors),
+    })
+
+
 def _parse_dt(value):
     try:
         dt = datetime.fromisoformat(str(value or "").replace("Z", "+00:00"))
@@ -50,7 +87,9 @@ def _parse_dt(value):
 
 def _cache_path(symbol):
     safe = "".join(ch for ch in str(symbol or "").upper() if ch.isalnum() or ch in "._-")
-    return CACHE_DIR / f"{safe or 'UNKNOWN'}-5min.json.gz"
+    # The old cache could contain unpaginated data and undetected interior gaps.
+    # Keep those files intact, but never reuse them as complete training history.
+    return CACHE_DIR / f"{safe or 'UNKNOWN'}-5min-v2.json.gz"
 
 
 def _load_cache(symbol):
@@ -67,15 +106,24 @@ def _load_cache(symbol):
 
 def _write_cache(symbol, payload):
     path = _cache_path(symbol)
+    tmp = None
     try:
         CACHE_DIR.mkdir(parents=True, exist_ok=True)
-        tmp = path.with_suffix(path.suffix + ".tmp")
+        fd, name = tempfile.mkstemp(prefix=path.name, suffix=".tmp", dir=CACHE_DIR)
+        os.close(fd)
+        tmp = Path(name)
         with gzip.open(tmp, "wt", encoding="utf-8", compresslevel=5) as fh:
             json.dump(payload, fh, separators=(",", ":"), default=str)
         os.replace(tmp, path)
         return True
     except Exception:
         return False
+    finally:
+        if tmp is not None:
+            try:
+                tmp.unlink(missing_ok=True)
+            except OSError:
+                pass
 
 
 def _merge_rows(*groups):
@@ -112,14 +160,14 @@ def _fetch_chunks(fetch_bars, symbol, chunks):
             data, source = fetch_bars(symbol, "5Min", start, end, 10000)
             return list(data or []), str(source or "unavailable"), None
         except Exception as exc:
-            return [], "unavailable", str(exc)[:180]
+            return [], "unavailable", history_error_summary(exc)
 
     with ThreadPoolExecutor(max_workers=DEEP_5M_WORKERS) as pool:
         futures = [pool.submit(one, pair) for pair in chunks]
         for future in as_completed(futures):
             data, source, error = future.result()
             rows.extend(data)
-            if source and source not in sources:
+            if data and source and source not in sources:
                 sources.append(source)
             if error:
                 errors.append(error)
@@ -167,6 +215,8 @@ def load_deep_5m_history(
     start = end - timedelta(days=max(30, int(days)))
     now_ts = time.time()
     cached = _load_cache(symbol) or {}
+    if cached.get("symbol") != symbol:
+        cached = {}
     cached_rows = list(cached.get("rows") or [])
     cached_start = _parse_dt(cached.get("coverage_start"))
     cached_end = _parse_dt(cached.get("coverage_end"))
@@ -174,7 +224,7 @@ def load_deep_5m_history(
     cache_age = max(0.0, now_ts - fetched_at) if fetched_at else None
 
     full_coverage = bool(
-        cached_rows
+        cached.get("complete") is True
         and cached_start is not None
         and cached_start <= start + timedelta(days=2)
         and cached_end is not None
@@ -183,6 +233,12 @@ def load_deep_5m_history(
 
     sources = list(cached.get("sources") or [])
     errors = []
+
+    # Share a short failure receipt between historical matching and ML. Retry
+    # the full interval after one minute; never train on the partial receipt.
+    if cached.get("complete") is False and cache_age is not None and cache_age <= 60:
+        if cached_start is not None and cached_start <= start and cached_end is not None and cached_end >= end - timedelta(minutes=1):
+            _raise_incomplete(cached)
 
     if full_coverage and cache_age is not None and cache_age <= DEEP_5M_TTL_SECONDS:
         return _filter_rows(cached_rows, start, end), " + ".join(sources) or "cached 5m history"
@@ -207,26 +263,29 @@ def load_deep_5m_history(
             symbol,
             _chunks(start, end, step_days),
         )
-        rows = _merge_rows(cached_rows, fresh)
-        for source in fresh_sources:
-            if source not in sources:
-                sources.append(source)
+        # A full refresh replaces the old source mix rather than relabelling
+        # cached fallback rows as consolidated history.
+        rows = fresh
+        sources = fresh_sources
         errors.extend(fresh_errors)
 
     filtered = _filter_rows(rows, start, end)
-    if filtered:
-        first_dt = _parse_dt(filtered[0].get("t"))
-        last_dt = _parse_dt(filtered[-1].get("t"))
-        payload = {
-            "symbol": symbol,
-            "fetched_at": now_ts,
-            "coverage_start": first_dt.isoformat() if first_dt else start.isoformat(),
-            "coverage_end": last_dt.isoformat() if last_dt else end.isoformat(),
-            "sources": sources,
-            "errors": errors[-5:],
-            "rows": filtered,
-        }
-        _write_cache(symbol, payload)
+    payload = {
+        "symbol": symbol,
+        "fetched_at": now_ts,
+        # Successful exhaustive requests establish coverage even on holidays
+        # or before a stock was listed. First/last bars cannot detect gaps.
+        "coverage_start": start.isoformat(),
+        "coverage_end": end.isoformat(),
+        "complete": not errors,
+        "sources": sources,
+        "errors": sorted(set(errors)),
+        "failed_chunks": len(errors),
+        "rows": filtered,
+    }
+    _write_cache(symbol, payload)
+    if errors:
+        _raise_incomplete(payload)
 
     source_text = " + ".join(sources) if sources else "unavailable"
     return filtered, source_text

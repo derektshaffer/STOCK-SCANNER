@@ -1,3 +1,4 @@
+from live_price_quality import tradier_price_candidates, provider_problem, price_view
 import csv
 import json
 import os
@@ -1665,25 +1666,7 @@ def analyze_snapshot(symbol, tradier_quote=None, alpaca_snapshot=None, now_utc=N
     tradier_selected=None
     tradier_quote_selected=None
     if tradier_quote:
-        tradier_symbol=str(tradier_quote.get("symbol") or "").upper().strip()
-        tradier_candidates=[
-            {
-                "symbol":tradier_symbol,
-                "price":tradier_quote.get("last"),
-                "timestamp":tradier_quote.get("trade_date") or tradier_quote.get("timestamp"),
-                "source":"tradier_consolidated_trade",
-                "kind":"trade",
-            },
-            {
-                "symbol":tradier_symbol,
-                "price":quote_midpoint(tradier_quote.get("bid"),tradier_quote.get("ask")),
-                "timestamp":newest_timestamp(
-                    tradier_quote.get("bid_date"),tradier_quote.get("ask_date")
-                ) or tradier_quote.get("timestamp"),
-                "source":"tradier_consolidated_quote_midpoint",
-                "kind":"quote_midpoint",
-            },
-        ]
+        tradier_candidates=tradier_price_candidates(symbol, tradier_quote)
         tradier_selected,rejected=select_freshest_live_price(
             symbol,
             tradier_candidates,
@@ -1742,7 +1725,7 @@ def analyze_snapshot(symbol, tradier_quote=None, alpaca_snapshot=None, now_utc=N
     live_price_age_seconds=selected.get("age_seconds")
     live_price_is_fallback=bool(
         selected.get("kind") != "trade"
-        or (tradier_quote and not tradier_selected)
+        or ((USE_TRADIER or tradier_quote) and not tradier_selected)
     )
 
     if tradier_selected:
@@ -1765,19 +1748,13 @@ def analyze_snapshot(symbol, tradier_quote=None, alpaca_snapshot=None, now_utc=N
             tradier_quote.get("trade_date")
             or tradier_quote.get("timestamp")
         )
-        latest_quote_time = (
-            newest_timestamp(
-                tradier_quote.get("ask_date"),tradier_quote.get("bid_date")
-            )
-            or tradier_quote.get("timestamp")
-            or latest_trade_time
-        )
+        latest_quote_time = tradier_candidates[1]["timestamp"]
         if selected.get("kind") == "quote_midpoint":
             live_price_fallback_reason=(
                 "Tradier last trade was stale or older than the selected fresh "
                 "consolidated quote midpoint."
             )
-    elif tradier_quote:
+    elif USE_TRADIER or tradier_quote:
         bid=float(quote.get("bp") or 0) if alpaca_quote_selected else 0.0
         ask=float(quote.get("ap") or 0) if alpaca_quote_selected else 0.0
         live_quote_source=f"alpaca_{LIVE_FEED}_fallback"
@@ -2646,7 +2623,7 @@ def enrich_live(c, now_utc, now_et):
             c["live_price_source"] = session_stats.get("last_price_source")
             c["live_price_timestamp"] = session_stats.get("last_price_timestamp")
             c["live_price_age_seconds"] = session_stats.get("last_price_age_seconds")
-            c["latest_trade_time"] = session_stats.get("last_price_timestamp")
+            c["live_price_is_fallback"] = bool("bar" in str(c["live_price_source"]) or "quote" in str(c["live_price_source"]) or (USE_TRADIER and str(c["live_price_source"]).startswith("alpaca_")))
             if c.get("prev_close"):
                 c["day_pct"] = round(
                     pct_change(c["price"], float(c["prev_close"])) or 0.0,
@@ -3196,6 +3173,7 @@ def candidate_log_record(c, rank):
         "live_price_timestamp": c.get("live_price_timestamp"),
         "live_price_age_seconds": c.get("live_price_age_seconds"),
         "live_price_is_fallback": bool(c.get("live_price_is_fallback")),
+        "live_price_provider_errors": c.get("live_price_provider_errors") or [],
         "live_price_fallback_reason": c.get("live_price_fallback_reason"),
         "live_dollar_volume": c.get("dollar_volume"),
         "live_spread_pct": c.get("spread_pct"),
@@ -3727,6 +3705,7 @@ def main():
         if row.get("symbol")
     ]
     tradier_quotes = {}
+    price_provider_errors = [provider_problem(e.get("error"), "tradier") for e in discovery_meta.get("batch_errors", [])]
     if USE_TRADIER:
         # Full-market discovery already paid for these quotes. Reuse them so a
         # 6,000-symbol sweep is not followed by a redundant second request.
@@ -3744,7 +3723,8 @@ def main():
                     get_tradier_quotes(missing_quote_symbols, TRADIER_TOKEN)
                 )
             except Exception as exc:
-                print(f"WARN Tradier candidate quote refill failed: {exc}")
+                price_provider_errors.append(provider_problem(exc, "tradier"))
+                print("WARN Tradier candidate quote refill failed: " + price_provider_errors[-1]["state"])
         print(
             f"Tradier candidate quotes available for "
             f"{len(tradier_quotes)}/{len(quote_symbols)} candidates "
@@ -3773,7 +3753,8 @@ def main():
                 f"{len(alpaca_snapshots)}/{len(quote_symbols)} candidates."
             )
         except Exception as exc:
-            print(f"WARN Alpaca batch snapshots failed: {exc}")
+            price_provider_errors.append(provider_problem(exc, "alpaca"))
+            print("WARN Alpaca batch snapshots failed: " + price_provider_errors[-1]["state"])
             alpaca_snapshots = {}
 
     rows = []
@@ -3811,6 +3792,7 @@ def main():
             rejection_counts["missing market data"] += 1
             continue
 
+        c["live_price_provider_errors"] = list(price_provider_errors)
         merge_radar_fields(c, mover)
         c["market_session"] = phase
         c["session_date"] = now_et.date().isoformat()
@@ -3821,11 +3803,12 @@ def main():
     # row is a provider/data-integrity failure, not a legitimate "zero ideas"
     # result. Fail before writing latest_scan.json so the UI keeps the prior
     # usable snapshot instead of replacing it with an empty dashboard.
-    if is_active_market_session(now_et) and candidates and not rows:
+    if is_active_market_session(now_et) and (candidates or price_provider_errors) and not rows:
         raise RuntimeError(
             "LIVE PRICE UNAVAILABLE — the scanner discovered symbols but could not "
             "validate any fresh, symbol-matched market prices. "
-            "Preserving the previous scanner snapshot instead of publishing zero candidates."
+            "Preserving the previous scanner snapshot instead of publishing zero candidates. "
+            + "; ".join(e["provider"] + ": " + e["state"] for e in price_provider_errors)
         )
 
     # Tradier rows already carry consolidated live liquidity. Alpaca fallback

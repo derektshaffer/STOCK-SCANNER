@@ -1057,6 +1057,14 @@ def predict_ml(symbol, now, metrics, fetch_bars, et):
             10000,
         )
     except Exception as exc:
+        from analyzer_history_cache import HistoryLoadError
+        if isinstance(exc, HistoryLoadError):
+            diagnostic = exc.diagnostics
+            return {
+                "status": "history_unavailable", "error": diagnostic["message"],
+                "source": diagnostic["source"], "bar_count": diagnostic["bar_count"],
+                "history_diagnostics": diagnostic, "models": {},
+            }
         return {
             "status": "unavailable",
             "error": str(exc)[:180],
