@@ -189,6 +189,16 @@ class OverviewInteractionTests(unittest.TestCase):
                 at.run(); self.clean(at)
                 self.assertFalse(at.session_state.filtered_state.get("_analyzer_bootstrap_launch_state"))
 
+    def test_history_controls_keep_analysis_and_model_state(self):
+        at = self.app("live")
+        before = copy.deepcopy(at.session_state["result"])
+        with patch("stock_analyzer.analyze", side_effect=AssertionError("UI must not analyze")), \
+             patch("stock_analyzer.load_chart_history", side_effect=AssertionError("UI must not fetch")):
+            for window in ("5D", "1M", "All", "1D"):
+                at.session_state["overview_history_intraday"] = window
+                at.run(); self.clean(at)
+                self.assertEqual(at.session_state["result"], before)
+
 
 if __name__ == "__main__":
     unittest.main()

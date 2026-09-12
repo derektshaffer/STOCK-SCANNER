@@ -108,6 +108,12 @@ def result(symbol):
     if st.query_params.get('overview') == 'fallback':
         r['live_price_is_fallback']=True
         r['live_price_fallback_reason']='Offline provider fallback diagnostic: '+('LongProviderDiagnosticWithoutSpaces'*8)
+    if st.query_params.get('history'):
+        r['overview_history'] = {'symbol': symbol, 'status': 'ok', 'source': 'Offline fixture', 'bars': [
+            {'t': (RealDateTime(2026, 9, day, 13, 30, tzinfo=timezone.utc) + timedelta(minutes=5*i)).isoformat(),
+             'o': 9 + day/10 + i/100, 'h': 9.2 + day/10 + i/100,
+             'l': 8.9 + day/10 + i/100, 'c': 9.1 + day/10 + i/100, 'v': 1000 + i*100}
+            for day in (1, 2, 3, 4, 8, 9, 10) for i in range(78)]}
     return r
 
 ar.start_analyzer_process=start;ar.poll_analyzer_process=poll

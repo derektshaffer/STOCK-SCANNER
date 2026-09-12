@@ -14,6 +14,7 @@ from stair_step import detect_stair_step
 from zoneinfo import ZoneInfo
 
 from analyzer_versions import ANALYZER_FEATURE_VERSION
+from analyzer_chart_history import load_chart_history
 from live_price_quality import (
     MAX_FUTURE_CLOCK_SKEW_SECONDS,
     MAX_LIVE_PRICE_AGE_SECONDS,
@@ -2253,6 +2254,11 @@ def analyze(symbol):
         }
     else:
         metrics["trade_plan"]=build_trade_plan(metrics,now)
+    # Display-only history is deliberately attached after all session calculations.
+    metrics["overview_history"] = load_chart_history(
+        symbol, now, reference_price_timestamp if research_only else now_et.date(),
+        tradier_token=TRADIER_TOKEN, alpaca_fetch=bars, feed=HISTORICAL_FEED,
+    )
     return metrics
 
 if __name__=="__main__":

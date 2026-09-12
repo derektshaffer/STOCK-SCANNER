@@ -64,6 +64,7 @@
 .st-key-analyzer_overview [data-testid="stCaptionContainer"] p { color: #8faec6 !important; font-size: 11px !important; margin: 0 !important; line-height: 1.45; }
 .ao-levels { display: flex; justify-content: space-around; gap: 8px; border-top: 1px solid var(--ao-border); padding-top: 10px; font-size: 12px; color: #a7c1d7; flex-wrap: wrap; }
 .ao-levels b { margin-left: 8px; color: #f1f5ff; }
+.ao-chart-note { color: #8faec6; font-size: 11px; line-height: 1.4; overflow-wrap: anywhere; }
 .ao-fit-rows { margin: 12px 0; }
 .ao-fit-row { display: grid; grid-template-columns: 86px minmax(20px,1fr) 68px; gap: 12px; align-items: center; margin: 12px 0; font-size: 12px; }
 .ao-fit-row b { font-weight: 500; text-align: right; }
