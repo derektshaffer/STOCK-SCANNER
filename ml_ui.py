@@ -72,10 +72,13 @@ def render_ml_prediction(st, pd, result, card):
 
     if ml.get("status") != "ok":
         if ml.get("status") == "insufficient_history":
-            st.info("ML v1.1 does not have enough 5-minute same-ticker history to train a reliable model yet.")
+            st.info("Not enough 5-minute same-ticker history to train a reliable model yet.")
         else:
             detail = ml.get("error")
-            st.caption("ML v1.1 is temporarily unavailable." + (f" {detail}" if detail else ""))
+            st.caption("Model predictions are unavailable." + (f" {detail}" if detail else ""))
+        count = ml.get("bar_count")
+        if count is not None:
+            st.caption(f"{count:,} five-minute bars returned · " + str(ml.get("source") or "Source not reported"))
         return
 
     models = ml.get("models") or {}

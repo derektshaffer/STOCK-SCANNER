@@ -1,3 +1,4 @@
+from live_price_quality import tradier_price_candidates, quote_timestamp, provider_problem, price_view
 import json, math, os, urllib.parse, urllib.request, urllib.error
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
@@ -78,9 +79,37 @@ def get_json(url):
 
 def _iso(dt): return dt.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
-def bars(symbol, timeframe, start, end, limit=1000, feed=None, adjustment="raw"):
-    q = urllib.parse.urlencode({"timeframe":timeframe,"start":_iso(start),"end":_iso(end),"limit":limit,"adjustment":adjustment,"feed":feed or LIVE_FEED,"sort":"asc"})
-    return get_json(f"{DATA_BASE}/v2/stocks/{urllib.parse.quote(symbol)}/bars?{q}").get("bars") or []
+def bars(symbol, timeframe, start, end, limit=1000, feed=None, adjustment="raw", *, complete=False):
+    """Follow provider continuation tokens, including short/empty pages.
+
+    Normal callers retain their total row limit. Deep-history chunks require
+    the complete interval; an interrupted/bounded fetch must never look complete.
+    """
+    params = {"timeframe":timeframe,"start":_iso(start),"end":_iso(end),
+              "limit":min(10000, max(1, int(limit))),"adjustment":adjustment,
+              "feed":feed or LIVE_FEED,"sort":"asc"}
+    rows, seen_tokens = {}, set()
+    for _ in range(20):
+        payload = get_json(f"{DATA_BASE}/v2/stocks/{urllib.parse.quote(symbol, safe='')}/bars?{urllib.parse.urlencode(params)}")
+        if not isinstance(payload, dict) or "bars" not in payload or not isinstance(payload["bars"], (list, type(None))):
+            raise RuntimeError("Historical bars response malformed")
+        if str(payload.get("symbol") or symbol).upper() != str(symbol).upper():
+            raise RuntimeError("Historical bars returned a different symbol")
+        for row in payload.get("bars") or []:
+            if not isinstance(row, dict):
+                raise RuntimeError("Historical bars response malformed")
+            dt = _parse_market_timestamp(row.get("t"))
+            if dt is not None and start <= dt <= end:
+                rows[dt] = row
+        token = payload.get("next_page_token")
+        ordered = [rows[dt] for dt in sorted(rows)]
+        if not token or (not complete and len(ordered) >= limit):
+            return ordered if complete else ordered[:limit]
+        if token in seen_tokens:
+            raise RuntimeError("Historical bars pagination repeated a token")
+        seen_tokens.add(token)
+        params["page_token"] = token
+    raise RuntimeError("Historical bars pagination exceeded the request bound")
 
 def snapshot(symbol, feed=None):
     q=urllib.parse.urlencode({"feed":feed or LIVE_FEED})
@@ -151,8 +180,20 @@ def try_sip_delayed_bars(symbol, timeframe, start, end, limit=1000):
     # Free/basic Alpaca accounts can query consolidated SIP once data is delayed enough.
     safe_end=min(end, datetime.now(timezone.utc)-timedelta(minutes=16))
     if safe_end<=start:return [], "unavailable"
-    try:return bars(symbol,timeframe,start,safe_end,limit,feed="sip"), "delayed SIP"
-    except Exception:return bars(symbol,timeframe,start,safe_end,limit,feed=LIVE_FEED), LIVE_FEED.upper()
+    options = {"complete": True} if timeframe == "5Min" else {}
+    try:
+        return bars(symbol,timeframe,start,safe_end,limit,feed="sip", **options), "delayed SIP"
+    except Exception as primary_error:
+        if LIVE_FEED == "sip":
+            raise
+        try:
+            return bars(symbol,timeframe,start,safe_end,limit,feed=LIVE_FEED, **options), LIVE_FEED.upper()
+        except Exception as fallback_error:
+            from analyzer_history_cache import history_error_summary
+            raise RuntimeError(
+                "SIP: " + history_error_summary(primary_error)
+                + "; " + LIVE_FEED.upper() + ": " + history_error_summary(fallback_error)
+            ) from None
 
 def session_vwap_from_bars(bs):
     pv=v=0.0
@@ -454,18 +495,7 @@ def _tradier_timestamp(value):
 
 
 def _tradier_quote_timestamp(quote):
-    values=[]
-    for key in ("bid_date", "ask_date"):
-        parsed=_parse_market_timestamp(_tradier_timestamp((quote or {}).get(key)))
-        if parsed is not None:
-            values.append(parsed)
-    if not values:
-        parsed=_parse_market_timestamp(_tradier_timestamp((quote or {}).get("timestamp")))
-        if parsed is not None:
-            values.append(parsed)
-    if not values:
-        return None
-    return max(values).isoformat().replace("+00:00", "Z")
+    return quote_timestamp((quote or {}).get("bid_date"), (quote or {}).get("ask_date"))
 
 
 def _tradier_trade_timestamp(quote):
@@ -511,33 +541,7 @@ def _provider_price_candidates(symbol, trade, quote, *, provider, feed):
 
 
 def _tradier_price_candidates(symbol, quote, intraday):
-    quote=quote or {}
-    observed_symbol=quote.get("symbol")
-    candidates=[
-        {
-            "symbol":observed_symbol,
-            "price":quote.get("last"),
-            "timestamp":_tradier_trade_timestamp(quote),
-            "source":"tradier_consolidated_trade",
-            "kind":"trade",
-        },
-        {
-            "symbol":observed_symbol,
-            "price":_quote_midpoint(quote.get("bid"),quote.get("ask")),
-            "timestamp":_tradier_quote_timestamp(quote),
-            "source":"tradier_consolidated_quote_midpoint",
-            "kind":"quote_midpoint",
-        },
-    ]
-    for bar in list(intraday or [])[-3:]:
-        candidates.append({
-            "symbol":bar.get("symbol") or bar.get("S") or symbol,
-            "price":bar.get("c") or bar.get("price"),
-            "timestamp":bar.get("t") or bar.get("timestamp"),
-            "source":"tradier_consolidated_timesales_bar",
-            "kind":"bar",
-        })
-    return candidates
+    return tradier_price_candidates(symbol, quote, intraday)
 
 
 def _tradier_regular_session_bars(symbol, now):
@@ -1908,7 +1912,7 @@ def analyze(symbol):
         try:
             _load_alpaca_snapshot()
         except Exception as exc:
-            alpaca_snapshot_error=str(exc)[:180]
+            alpaca_snapshot_error=provider_problem(exc, "alpaca")["state"]
             if not _activate_closed_research(alpaca_snapshot_error):
                 raise RuntimeError(
                     "LIVE PRICE UNAVAILABLE — no fresh, symbol-matched quote/trade. "
@@ -1961,7 +1965,7 @@ def analyze(symbol):
             provider_day_high=fnum(tradier_quote.get("high"))
             provider_day_low=fnum(tradier_quote.get("low"))
             intraday=tradier_intraday
-            trade_ts=(fresh_trade or {}).get("timestamp") or _tradier_trade_timestamp(tradier_quote)
+            trade_ts=_tradier_trade_timestamp(tradier_quote)
             quote_ts=_tradier_quote_timestamp(tradier_quote)
             live_provider="tradier"
             live_feed_label="TRADIER CONSOLIDATED"
@@ -1981,11 +1985,11 @@ def analyze(symbol):
         except Exception as exc:
             # Explicit fallback keeps the Analyzer usable during a Tradier
             # outage while making the source change visible in the metrics.
-            live_provider_error=str(exc)[:180]
+            live_provider_error=provider_problem(exc, "tradier")["state"]
             try:
                 _load_alpaca_snapshot(fallback_reason=live_provider_error)
             except Exception as alpaca_exc:
-                alpaca_snapshot_error=str(alpaca_exc)[:180]
+                alpaca_snapshot_error=provider_problem(alpaca_exc, "alpaca")["state"]
                 failure_detail=(
                     f"Tradier: {live_provider_error}; Alpaca: {alpaca_snapshot_error}"
                 )

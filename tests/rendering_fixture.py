@@ -1,5 +1,6 @@
 """Offline browser fixture: real app entrypoints and rendering, simulated providers."""
 import copy,json,os,runpy,sys,time
+import datetime as datetime_module
 from datetime import datetime,timezone,timedelta
 from pathlib import Path
 from unittest.mock import patch
@@ -13,6 +14,32 @@ import stock_analyzer as sa
 import consistency_regression_check as cr
 import live_market_stream as lm
 import prediction_tracker as pt
+import ml_integration
+import historical_integration
+import live_price_quality
+
+# Keep the rendering suite deterministic on weekends and outside market hours.
+# All timestamps and freshness comparisons share this clock. Never read the
+# user's saved off-hours candidate file from an offline rendering fixture.
+RealDateTime = getattr(datetime_module, '_rendering_original_datetime', datetime_module.datetime)
+datetime_module._rendering_original_datetime = RealDateTime
+class FixtureDateTime(RealDateTime):
+    fixture_day = 12 if st.query_params.get('overview') == 'research' else 11
+    @classmethod
+    def now(cls, tz=None):
+        instant = cls(2026, 9, cls.fixture_day, 16, 0, tzinfo=timezone.utc)
+        return instant.astimezone(tz) if tz else instant.replace(tzinfo=None)
+
+datetime = FixtureDateTime
+sa.datetime = FixtureDateTime
+cr.datetime = FixtureDateTime
+live_price_quality.datetime = FixtureDateTime
+datetime_module.datetime = FixtureDateTime
+
+# Rendering/provider tests must not enter model or historical-research helpers.
+# Keep the real base Analyzer and UI; optional research adapters are out of scope.
+ml_integration.install_ml_analysis = lambda analyzer: analyzer.analyze
+historical_integration.install_historical_analysis = lambda analyzer: analyzer.analyze
 
 class Process:
     def poll(self):return 0 if st.session_state.get('fixture_mode')=='success' else None
@@ -47,6 +74,7 @@ def read(path,*args,**kwargs):
     return original_read(path,*args,**kwargs)
 def exists(path):
     if path.as_posix().endswith('scan_logs/latest_scan.json'):return True
+    if path.as_posix().endswith('scan_logs/offhours_timeframe_latest.json'):return False
     return original_exists(path)
 
 def start(symbol,*args,**kwargs):
@@ -65,9 +93,21 @@ def result(symbol):
     def capture(s):
         r=original(s);captured.append(r);return r
     sa.analyze=capture
-    try:cr.test_analyzer_prefers_tradier()
+    try:
+        if st.query_params.get('overview') == 'research':
+            cr.test_market_closed_uses_completed_daily_reference_without_live_plan()
+        else:
+            cr.test_analyzer_prefers_tradier()
     finally:sa.analyze=original
     r=captured[0];r['snapshot_tag']='new';r['symbol']=symbol;r['as_of']=datetime.now(timezone.utc).isoformat()
+    if st.query_params.get('overview'):
+        r['ml_prediction']={'status':'insufficient_history','bar_count':412,'source':'Offline fixture','version':'ml-v2.0','models':{}}
+        if st.query_params.get('ml_error'):
+            r['ml_prediction'].update(status='history_unavailable', bar_count=0,
+                error='5-minute history could not be loaded completely: provider HTTP 401')
+    if st.query_params.get('overview') == 'fallback':
+        r['live_price_is_fallback']=True
+        r['live_price_fallback_reason']='Offline provider fallback diagnostic: '+('LongProviderDiagnosticWithoutSpaces'*8)
     return r
 
 ar.start_analyzer_process=start;ar.poll_analyzer_process=poll
@@ -79,7 +119,7 @@ sr.poll_scanner_process=lambda state:dict(done=st.session_state.get('fixture_sca
 ab._preload_secrets=lambda:None
 ab._load_active_us_equity_choices=lambda:['BNC','TEST','PDSB']
 ab._start_async_prediction_sync=lambda:None
-lm.get_live_overlay=lambda metrics:dict(price=metrics.get('price'),symbol=metrics.get('symbol'),status='snapshot_only',live_price_available=True)
+lm.get_live_overlay=lambda metrics:dict(metrics, status='snapshot_only')
 pt.sync_predictions_remote=lambda *a,**k:None
 pt.record_prediction=lambda *a,**k:None
 pt.capture_live_prediction=lambda *a,**k:None
@@ -91,7 +131,17 @@ class Secrets(dict):
 st.secrets=Secrets(TRADIER_ACCESS_TOKEN='offline-test-only')
 Path.read_text=read
 Path.exists=exists
+if st.query_params.get('overview') and 'result' not in st.session_state:
+    st.session_state['result']=result('SVRN')
+    st.session_state['ticker']='SVRN'
+    st.session_state['ticker_search_request']='SVRN'
+    st.session_state['app_view']='Stock Analyzer'
+    st.session_state['_rendered_app_view']='Stock Analyzer'
+    st.session_state['auto_refresh_enabled']=False
 runpy.run_path(str(ROOT/'analyzer_app.py'),run_name='__main__')
+
+if st.query_params.get('overview'):
+    st.html('<div style="position:fixed;right:12px;bottom:8px;z-index:100;pointer-events:none;padding:5px 9px;border:1px solid #53677a;border-radius:5px;background:#102336;color:#b2c9df;font-size:11px">Layout preview · sample data</div>')
 
 st.divider()
 st.caption('OFFLINE RENDERING TEST — fixture data only')

@@ -1,3 +1,4 @@
+from live_price_quality import price_view, price_note, provider_problem, is_price_failure
 # Deployment refresh: analyzer-plotly-render-v3
 import html
 import json
@@ -556,15 +557,18 @@ with nav_col:
     )
 with status_col:
     live_class = "live" if workspace_live else ""
-    live_text = "LIVE" if workspace_live else "CLOSED"
+    live_text = "MARKET OPEN" if workspace_live else "CLOSED"
     session_class = "session" if workspace_session in {"PRE-MARKET", "AFTER-HOURS"} else ""
+    _overview_shell = st.session_state.get("app_view") == "Stock Analyzer"
+    _workspace_clock = workspace_now_et.astimezone(ZoneInfo("America/Los_Angeles")) if _overview_shell else workspace_now_et
+    _workspace_session_pill = "" if _overview_shell else f'<span class="workspace-status-pill {session_class}">{workspace_session}</span>'
     st.markdown(
         '<div class="workspace-status">'
         f'<span class="workspace-status-pill {live_class}">'
         '<span class="workspace-status-dot"></span>'
         f'{live_text}</span>'
-        f'<span class="workspace-status-pill {session_class}">{workspace_session}</span>'
-        f'<span class="workspace-status-pill time">{workspace_now_et:%I:%M %p ET}</span>'
+        f'{_workspace_session_pill}'
+        f'<span class="workspace-status-pill time">{_workspace_clock:%I:%M %p} {"PT" if _overview_shell else "ET"}</span>'
         '</div>',
         unsafe_allow_html=True,
     )
@@ -689,12 +693,14 @@ def _workspace_scanner_monitor():
                     "runtime_seconds"
                 )
             if not poll.get("ok"):
+                st.session_state["_scanner_price_failure"] = provider_problem(poll.get("message"), "scanner feed")
                 st.warning(
                     "Background momentum scan failed: "
                     + str(poll.get("message") or "unknown error")[:260]
                 )
                 scan_running = False
             else:
+                st.session_state.pop("_scanner_price_failure", None)
                 st.session_state["last_auto_scan_at"] = now_ts
                 # Keep the Scanner shell stable. The candidate/results fragments
                 # read the newly written snapshot independently, so a completed
@@ -1222,6 +1228,7 @@ def _latest_scan_candidates(payload=None):
                     row.get("volume_pace_display_source")
                     or row.get("volume_pace_source")
                 ),
+                **{k: row.get(k) for k in ("price", "live_price_source", "live_price_timestamp", "live_price_available", "live_price_provider_errors")},
                 "live_price_is_fallback": bool(row.get("live_price_is_fallback")),
                 "live_price_fallback_reason": row.get("live_price_fallback_reason"),
                 "action_data_integrity_ok": bool(row.get("action_data_integrity_ok")),
@@ -1341,7 +1348,7 @@ def _poll_analyzer_launch():
     if not outcome.get("ok"):
         failure_message=str(outcome.get("message") or "Analyzer failed.")
         st.session_state["_analyzer_launch_error"]=failure_message
-        if failure_message.startswith("LIVE PRICE UNAVAILABLE"):
+        if is_price_failure(failure_message):
             symbol=str((state or {}).get("symbol") or "").upper().strip()
             cache=st.session_state.get("_analyzer_result_cache") or {}
             cache.pop(symbol,None)
@@ -1560,14 +1567,18 @@ if view == "Momentum Scanner":
                 card_tag = "details" if detail_html else "div"
                 summary_tag = "summary" if detail_html else "div"
                 notice_html = ""
-                if row.get("live_price_is_fallback"):
-                    reason = str(row.get("live_price_fallback_reason") or
-                                 "Fresh quote midpoint or alternate provider price used.")
+                if not offhours_row:
+                    price_record = dict(row)
+                    if st.session_state.get("_scanner_price_failure"):
+                        price_record.update(live_price_available=False, live_price_provider_errors=[st.session_state["_scanner_price_failure"]])
+                    view = price_view(price_record)
                     notice_html = (
-                        f'<div class="combined-price-notice" role="note">'
-                        f'<strong>{html.escape(symbol)} · LIVE PRICE FALLBACK</strong> — '
-                        f'{html.escape(reason)}</div>'
+                        '<div class="combined-price-notice" role="note">'
+                        f'<strong>{html.escape(symbol)} · {html.escape(view["state"])} PRICE</strong> — '
+                        f'{html.escape(price_note(view))}</div>'
                     )
+                    if not view["current"]:
+                        action_text, action_cls = "DATA CHECK", "warn"
                 with st.container(key=f"scanner_candidate_{symbol}"):
                     left, right = st.columns([7.2, 1.55], vertical_alignment="top")
                     with left:

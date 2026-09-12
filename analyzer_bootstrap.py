@@ -1,3 +1,4 @@
+from live_price_quality import price_view, price_note, provider_problem, is_price_failure
 from pathlib import Path
 import json
 import os
@@ -378,20 +379,25 @@ def _render_saved_stocks(key_prefix="saved"):
         or ""
     ).upper().strip()
 
-    first_saved = saved[:5]
+    compact = key_prefix == "toolbar"
+    first_saved = saved[:3 if compact else 5]
     weights = [1.15, 1.15, 1.15] + [0.95] * len(first_saved)
     if not first_saved:
         weights += [3.0]
 
-    cols = st.columns(weights, vertical_alignment="center")
-    title_col, action_a, action_b = cols[:3]
-    saved_cols = cols[3:3 + len(first_saved)]
-
-    with title_col:
-        st.markdown(
-            '<div class="saved-stock-inline-title">★ Saved Stocks</div>',
-            unsafe_allow_html=True,
-        )
+    if compact:
+        st.caption("Saved stocks")
+        action_a, action_b = st.columns(2)
+        saved_cols = st.columns(len(first_saved)) if first_saved else []
+    else:
+        cols = st.columns(weights, vertical_alignment="center")
+        title_col, action_a, action_b = cols[:3]
+        saved_cols = cols[3:3 + len(first_saved)]
+        with title_col:
+            st.markdown(
+                '<div class="saved-stock-inline-title">★ Saved Stocks</div>',
+                unsafe_allow_html=True,
+            )
 
     with action_a:
         can_save = bool(current) and current not in saved
@@ -434,10 +440,11 @@ def _render_saved_stocks(key_prefix="saved"):
                 _activate_saved_stock(symbol)
                 st.rerun()
 
-    remaining = saved[5:]
-    for start in range(0, len(remaining), 8):
-        chunk = remaining[start : start + 8]
-        row_cols = st.columns(8)
+    remaining = saved[len(first_saved):]
+    row_size = 3 if compact else 8
+    for start in range(0, len(remaining), row_size):
+        chunk = remaining[start : start + row_size]
+        row_cols = st.columns(row_size)
         for i, col in enumerate(row_cols):
             if i >= len(chunk):
                 continue
@@ -818,7 +825,7 @@ def run():
                         st.session_state.pop("ticker_search_request", None)
                         st.session_state.pop("ticker", None)
                         st.session_state.pop("result", None)
-                        if failure_message.startswith("LIVE PRICE UNAVAILABLE"):
+                        if is_price_failure(failure_message):
                             cache=st.session_state.get("_analyzer_result_cache") or {}
                             cache.pop(requested_ticker,None)
                             st.session_state["_analyzer_result_cache"]=cache
@@ -940,17 +947,11 @@ def run():
         result = st.session_state.get("result") or {}
         if not isinstance(result, dict) or not result.get("symbol"):
             return
-        # A completed-session reference is deliberately not a live price. Do
-        # not let a still-connected provider stream or its cached state paint
-        # a contradictory LIVE PRICE strip above the research-only Analyzer.
-        if (
-            result.get("research_only") is True
-            or str(result.get("analysis_mode") or "") == "after_hours_research"
-        ):
-            return
-        overlay = get_live_overlay(result)
-        with st.container(key="analyzer_fast_live_tape"):
-            render_live_tape(st, overlay)
+        from analyzer_overview import render_quote
+        # Completed-session prices never read from a live stream.
+        research = result.get("research_only") is True or result.get("analysis_mode") == "after_hours_research"
+        overlay = None if research else get_live_overlay(result)
+        render_quote(st, result, overlay)
 
     @st.fragment(run_every=f"{refresh_seconds}s")
     def _render_live_analyzer():
@@ -975,6 +976,7 @@ def run():
                     run_name="__main__",
                     init_globals={
                         "_render_combined_saved_stocks": _render_saved_stocks,
+                        "_render_combined_quote": _render_fast_live_tape,
                     },
                 )
             finally:
@@ -984,7 +986,7 @@ def run():
             card = ns.get("card")
             pp = ns.get("pp")
 
-            if card and pp:
+            if card and pp and not ns.get("_overview_rendered"):
                 slot = analysis_slot.get("placeholder")
 
                 def _render_analysis_sections():
@@ -999,7 +1001,6 @@ def run():
                 else:
                     _render_analysis_sections()
 
-    _render_fast_live_tape()
     _render_live_analyzer()
 
     _install_scroll_keeper()

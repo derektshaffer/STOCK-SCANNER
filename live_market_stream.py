@@ -1,4 +1,5 @@
 import os
+from live_price_quality import price_view
 
 from alpaca_live_stream import (
     ensure_live_stream as ensure_alpaca_stream,
@@ -49,6 +50,17 @@ def get_live_overlay(metrics):
     if tradier_configured():
         overlay = get_tradier_overlay(metrics)
         overlay["provider"] = "tradier"
+        # An explicitly selected Alpaca fallback keeps its own stream/source.
+        # Never stamp its snapshot with Tradier's transport provenance.
+        if not overlay.get("live_price_available") and str((metrics or {}).get("live_price_source") or "").startswith("alpaca_"):
+            fallback = get_alpaca_overlay(metrics)
+            if price_view(fallback)["current"]:
+                fallback["provider"] = "alpaca"
+                fallback["live_price_is_fallback"] = True
+                fallback["live_price_provider_errors"] = (
+                    overlay.get("live_price_provider_errors") or []
+                ) + (fallback.get("live_price_provider_errors") or [])
+                return fallback
         return overlay
 
     overlay = get_alpaca_overlay(metrics)

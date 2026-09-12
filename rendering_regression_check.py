@@ -11,6 +11,15 @@ from streamlit.testing.v1 import AppTest
 ROOT=Path(__file__).resolve().parent
 
 class RenderingTests(unittest.TestCase):
+    def tearDown(self):
+        # The browser fixture freezes provider timestamps for deterministic
+        # reruns. Restore these modules before independent non-UI tests.
+        import live_price_quality, stock_analyzer, consistency_regression_check
+        import datetime as datetime_module
+        datetime_module.datetime = datetime
+        for module in (live_price_quality, stock_analyzer, consistency_regression_check):
+            module.datetime = datetime
+
     def app(self,mode='running'):
         at=AppTest.from_file(str(ROOT/'tests/rendering_fixture.py'),default_timeout=20)
         at.session_state['fixture_mode']=mode
@@ -27,14 +36,15 @@ class RenderingTests(unittest.TestCase):
         at=self.app()
         rows=[m.value for m in at.markdown if 'data-symbol="' in m.value]
         self.assertEqual(len(rows),11)
+        self.assertTrue(all('UNAVAILABLE PRICE' in row for row in rows))
         for row in rows:
             self.assertIn('<details class="combined-candidate-card"',row)
             self.assertIn('class="scanner-inline-detail"',row)
             self.assertEqual(row.count('<summary '),1)
             self.assertEqual(row.count('</summary>'),1)
-            if 'LIVE PRICE FALLBACK' in row:
+            if 'UNAVAILABLE PRICE' in row:
                 self.assertIn('class="combined-price-notice"',row)
-                self.assertLess(row.index('LIVE PRICE FALLBACK'),row.index('</summary>'))
+                self.assertLess(row.index('UNAVAILABLE PRICE'),row.index('</summary>'))
         self.assertFalse(any('LIVE PRICE FALLBACK' in c.value for c in at.caption))
     def test_cold_handoff_and_cancel_return(self):
         at=self.analyze(self.app())

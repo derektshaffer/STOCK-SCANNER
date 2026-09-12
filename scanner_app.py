@@ -1,3 +1,4 @@
+from live_price_quality import price_view, price_note, provider_problem
 import html
 import json
 import os
@@ -680,17 +681,14 @@ def card(c):
         f'<span class="badge {fit_badge_cls}">BEST FIT {html.escape(fit_display)}</span>'
     )
     fit_reason = str(c.get("timeframe_fit_reason") or "")
-    live_price_fallback=bool(c.get("live_price_is_fallback"))
-    live_price_badge=(
-        '<span class="badge amber">LIVE PRICE FALLBACK</span>'
-        if live_price_fallback else ""
-    )
-    live_price_note=(
-        f'<div class="note"><div class="nk">LIVE PRICE FALLBACK</div><div class="nv">'
-        f'{html.escape(str(c.get("live_price_fallback_reason") or "Fresh quote midpoint or alternate provider price used."))}'
-        f'</div></div>'
-        if live_price_fallback else ""
-    )
+    price_record = dict(c)
+    if st.session_state.get("_scanner_price_failure"):
+        price_record.update(live_price_available=False, live_price_provider_errors=[st.session_state["_scanner_price_failure"]])
+    view = price_view(price_record)
+    if not view["current"]:
+        action_badge = '<span class="badge amber">DATA CHECK</span>'
+    live_price_badge = f'<span class="badge amber">{html.escape(view["state"])} PRICE</span>'
+    live_price_note = f'<div class="note">{html.escape(price_note(view))}</div>'
 
     ml_text, ml_cls = ml_display(c)
 
@@ -1188,8 +1186,10 @@ def auto_scan_controller():
             st.session_state["last_auto_scan_at"] = time.time()
             st.session_state["last_auto_message"] = msg
             if ok:
+                st.session_state.pop("_scanner_price_failure", None)
                 st.session_state["_scanner_snapshot_refresh_at"] = time.time()
             else:
+                st.session_state["_scanner_price_failure"] = provider_problem(msg, "scanner feed")
                 st.error(f"Automatic scan failed: {msg}")
             return
 

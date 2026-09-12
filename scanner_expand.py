@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from live_price_quality import price_view, price_note
+
 import json
 from datetime import datetime
 from pathlib import Path
@@ -75,9 +77,10 @@ def _load_details(payload=None) -> dict[str, dict]:
         if spread is None:
             spread = row.get("spread_pct")
 
+        view = price_view(row)
         details[symbol] = {
             "symbol": symbol,
-            "price": "$" + _f(row.get("price"), 2),
+            "price": ("$" + _f(view["price"], 2) if view["current"] else view["state"])+" · "+price_note(view),
             "day": _f(row.get("day_pct"), 1, "%"),
             "day_positive": float(row.get("day_pct") or 0) >= 0,
             "score": _f(row.get("score"), 0),
