@@ -121,3 +121,11 @@
   .st-key-analyzer_controls [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:last-child { flex-basis: 100% !important; }
   .ao-tile strong { font-size: 19px; } .ao-ml-grid b { font-size: 18px; }
 }
+/* Pointer-only overlay; never intercepts chart drags or page scrolling. */
+.st-key-ao_chart .js-plotly-plot { position: relative; }
+.st-key-ao_chart .ao-price-cursor {
+  position: absolute; z-index: 20; pointer-events: none; white-space: nowrap;
+  padding: 3px 6px; border: 1px solid #3b7189; border-radius: 4px;
+  background: #102738; color: #f3f8fc; font: 600 12px/1.3 sans-serif;
+  font-variant-numeric: tabular-nums;
+}

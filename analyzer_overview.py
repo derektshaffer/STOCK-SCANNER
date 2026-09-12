@@ -36,6 +36,9 @@ def money(value):
 
 def inject_overview_theme(st):
     st.html("<style>" + Path(__file__).with_suffix(".css").read_text() + "</style>")
+    # Trusted, local presentation code only; no result/provider data enters the script.
+    st.html("<script>" + Path(__file__).with_name("analyzer_price_cursor.js").read_text() + "</script>",
+            unsafe_allow_javascript=True)
 
 
 def _html(st, body):
@@ -134,16 +137,16 @@ def price_figure(result, timeframe):
     x = frame.index.strftime("%Y-%m-%d") if timeframe == "D" else frame.index.tz_convert("America/Los_Angeles").strftime("%Y-%m-%d %H:%M")
     fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=.015, row_heights=[.83, .17])
     fig.add_trace(go.Candlestick(x=x, open=frame.o, high=frame.h, low=frame.l, close=frame.c,
-                  increasing_line_color="#35dea6", decreasing_line_color="#f77474", name="Price"), row=1, col=1)
+                  increasing_line_color="#35dea6", decreasing_line_color="#f77474", name="Price", hoverinfo="skip"), row=1, col=1)
     fig.add_trace(go.Bar(x=x, y=frame.v, marker_color=["#238f7b" if c >= o else "#94565c" for c, o in zip(frame.c, frame.o)],
-                         name="Volume", hovertemplate="%{x}<br>Volume %{y:,.0f}<extra></extra>"), row=2, col=1)
+                         name="Volume", hoverinfo="skip"), row=2, col=1)
     vwap = number(result.get("vwap"))
     if vwap is not None:
         fig.add_hline(y=vwap, line_color="#53d7ee", line_dash="dash", line_width=1,
                       annotation_text="Session VWAP", annotation_font_color="#53d7ee", row=1, col=1)
     fig.update_layout(height=277, margin=dict(l=0, r=4, t=8, b=0), paper_bgcolor="rgba(0,0,0,0)",
                       plot_bgcolor="rgba(0,0,0,0)", font=dict(color="#abc4da", size=11),
-                      showlegend=False, dragmode="pan", hovermode="x unified",
+                      showlegend=False, dragmode="pan", hovermode=False,
                       uirevision=f"overview:{result.get('symbol')}:{timeframe}")
     fig.update_xaxes(type="category", rangeslider_visible=False, gridcolor="#193343", nticks=7)
     fig.update_yaxes(side="right", gridcolor="#193343", zeroline=False, fixedrange=False)
