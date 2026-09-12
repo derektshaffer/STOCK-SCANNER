@@ -5191,7 +5191,7 @@ def test_live_scanner_does_not_publish_empty_snapshot_after_provider_failure():
     source = Path("stock_scanner.py").read_text(encoding="utf-8")
     main = source.split("def main():", 1)[1]
     guard = main.split("enrich_delayed_sip_liquidity(rows, now_utc, now_et)", 1)[0]
-    assert "if is_active_market_session(now_et) and candidates and not rows:" in guard
+    assert "if is_active_market_session(now_et) and (candidates or price_provider_errors) and not rows:" in guard
     assert "Preserving the previous scanner snapshot" in guard
 
 
