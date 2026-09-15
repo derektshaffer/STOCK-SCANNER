@@ -1,4 +1,5 @@
 from live_price_quality import tradier_price_candidates, provider_problem, price_view
+from scanner_ranking import tradeability_rank_key
 import csv
 import json
 import os
@@ -856,27 +857,9 @@ def critical_fail_count(c):
     return count
 
 
-GRADE_RANK = {"A": 4, "B": 3, "C": 2, "REJECT": 1}
-
-
 def ranking_key(c):
-    """Keep true explosions visible, then rank execution quality within them."""
-    explosion = float(c.get("explosion_score") or 0.0)
-    tradeability = float(c.get("tradeability_score") or 0.0)
-    return (
-        1 if explosion >= 65.0 else 0,
-        explosion,
-        GRADE_RANK.get(c.get("setup_grade"), 0),
-        1 if c.get("passed_base_filters") else 0,
-        tradeability,
-        -c.get("critical_fail_count", critical_fail_count(c)),
-        -c.get("failed_count", 99),
-        -c.get("warning_count", 99),
-        -len(c.get("setup_flags", [])),
-        c.get("opportunity_score", c.get("score", 0)) or 0,
-        c.get("score", 0) or 0,
-        c.get("day_pct") or -999,
-    )
+    """Rank analyzed candidates by Tradeability; eligibility gates stay separate."""
+    return tradeability_rank_key(c)
 
 
 def select_enrichment_targets(rows, phase):
@@ -3905,8 +3888,8 @@ def main():
     mark_stage("historical")
 
     # Rule-based setup grades remain the safety gate. ML is applied only after
-    # those rules are complete, and ranking only changes when the model passes
-    # chronological walk-forward validation.
+    # those rules are complete and retains its validation requirements.
+    # Tradeability remains the ranking criterion regardless of ML status.
     assign_setup_grades(rows, now_et)
 
     if phase == "regular" and apply_scanner_ml is not None:

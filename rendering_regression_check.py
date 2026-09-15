@@ -1,5 +1,7 @@
 """Behavioral loading/row/identity regressions. No credentials or network needed."""
 import ast
+import copy
+import math
 from concurrent.futures import Future
 from datetime import datetime, timezone
 from pathlib import Path
@@ -11,6 +13,53 @@ from streamlit.testing.v1 import AppTest
 ROOT=Path(__file__).resolve().parent
 
 class RenderingTests(unittest.TestCase):
+    def candidate_projection(self, rows):
+        node = next(n for n in ast.parse((ROOT/'app.py').read_text()).body
+                    if isinstance(n, ast.FunctionDef) and n.name == '_latest_scan_candidates')
+        scope = {'math': math}
+        exec(compile(ast.Module(body=[node], type_ignores=[]), 'app.py', 'exec'), scope)
+        return scope['_latest_scan_candidates']({'candidates': rows})
+
+
+    def test_tradeability_order_before_display_limit_preserves_publication(self):
+        rows = [dict(symbol=f'T{i}', tradeability_score=i, explosion_score=100-i,
+                     setup_grade='REJECT', scanner_action='NO TRADE') for i in range(16)]
+        before = copy.deepcopy(rows)
+        result = self.candidate_projection(rows)
+        self.assertEqual([r['symbol'] for r in result], [f'T{i}' for i in range(15, 0, -1)])
+        self.assertEqual(rows, before)
+        self.assertTrue(all(r['grade']=='REJECT' and r['scanner_action']=='NO TRADE' for r in result))
+
+
+    def test_tradeability_ties_stable_and_missing_scores_last(self):
+        scores = [None, 90, '100', 90, float('nan'), float('inf'), 'bad', False, 0]
+        rows = [dict(symbol=f'T{i}', tradeability_score=s) for i,s in enumerate(scores)]
+        result = self.candidate_projection(rows)
+        self.assertEqual([r['symbol'] for r in result],
+                         ['T2','T1','T3','T8','T0','T4','T5','T6','T7'])
+
+
+    def test_tradeability_row_order_columns_and_reordered_analyzer_click(self):
+        source = (ROOT/'tests/rendering_fixture.py').read_text()
+        source = source.replace('ROOT=Path(__file__).resolve().parents[1]', f'ROOT=Path({str(ROOT)!r})')
+        source = source.replace('return json.dumps(snapshot())', '''
+        payload=snapshot()
+        for i,row in enumerate(payload['candidates']):
+            row['tradeability_score']=100 if row['symbol']=='BNC' else 90-i
+        return json.dumps(payload)''')
+        at = AppTest.from_string(source, default_timeout=20)
+        at.run(); self.clean(at)
+        rows = [m.value for m in at.markdown if 'data-symbol="' in m.value]
+        self.assertIn('data-symbol="BNC"', rows[0])
+        self.assertTrue(all(row.index('>Tradeability<') < row.index('>Explosion<') for row in rows))
+        self.assertTrue(all(row.index('>Tradeability<') < row.index('>ACTION<') < row.index('>Explosion<') for row in rows))
+        self.assertTrue(all('DATA CHECK' in row for row in rows))
+        self.assertTrue(any('Sorted by Tradeability' in c.value for c in at.caption))
+        at.button(key='combined_analyze_0_BNC').click().run(); self.clean(at)
+        self.assertEqual(at.session_state['app_view'], 'Stock Analyzer')
+        self.assertTrue(any('Analyzing BNC in the background' in x.value for x in at.info))
+
+
     def tearDown(self):
         # The browser fixture freezes provider timestamps for deterministic
         # reruns. Restore these modules before independent non-UI tests.

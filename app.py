@@ -1234,7 +1234,10 @@ def _latest_scan_candidates(payload=None):
                 "action_data_integrity_ok": bool(row.get("action_data_integrity_ok")),
             }
         )
-    return out[:15]
+    # Sort the display projection before limiting it; keep the publication and
+    # its recorded rank, scores and action/integrity decisions untouched.
+    from scanner_ranking import rank_candidates
+    return rank_candidates(out)[:15]
 def _cancel_analyzer_launch():
     # Scanner -> Analyzer launches now hand off directly to the Analyzer page,
     # so the active process normally lives under the Analyzer bootstrap key.
@@ -1535,6 +1538,8 @@ if view == "Momentum Scanner":
             )
 
         if candidates:
+            if not offhours_candidates:
+                st.caption("Sorted by Tradeability — highest first.")
             if offhours_candidates:
                 st.caption(
                     "Showing the latest completed-daily Swing / Longer-Term discovery. "
@@ -1554,8 +1559,23 @@ if view == "Momentum Scanner":
                     "{:.0f}",
                 )
                 explosion_label = "Trend Candidate Score" if offhours_row else "Explosion"
-                tradeability_text = "—" if offhours_row else _fmt_num(row.get("tradeability_score"), "{:.0f}")
+                from scanner_ranking import tradeability_value
+                tradeability_text = "—" if offhours_row else _fmt_num(tradeability_value(row), "{:.0f}")
                 tradeability_label = "Daily Screen" if offhours_row else "Tradeability"
+                tradeability_cell = (
+                    f'<div class="combined-stat" title="{html.escape(str(row.get("risk_lane") or ""))}">'
+                    f'<div class="combined-stat-label">{tradeability_label}</div>'
+                    f'<div class="combined-stat-value">{tradeability_text}</div></div>'
+                )
+                explosion_cell = (
+                    f'<div class="combined-stat">'
+                    f'<div class="combined-stat-label">{explosion_label}</div>'
+                    f'<div class="combined-stat-value">{explosion_text}</div></div>'
+                )
+                score_cells = (
+                    explosion_cell + tradeability_cell if offhours_row
+                    else tradeability_cell
+                )
                 action_text, action_cls, action_label = _action_display(row)
                 day_text = _fmt_num(row.get("day_pct"), "{:+.1f}%")
                 volume_text, volume_value = _volume_pace_display(row)
@@ -1594,18 +1614,12 @@ if view == "Momentum Scanner":
                             f'    <div class="combined-stat-label">Grade · Best Fit</div>'
                             f'    <div class="combined-stat-value {grade_cls}">{html.escape(grade_fit)}</div>'
                             f'  </div>'
-                            f'  <div class="combined-stat">'
-                            f'    <div class="combined-stat-label">{explosion_label}</div>'
-                            f'    <div class="combined-stat-value">{explosion_text}</div>'
-                            f'  </div>'
-                            f'  <div class="combined-stat" title="{html.escape(str(row.get("risk_lane") or ""))}">'
-                            f'    <div class="combined-stat-label">{tradeability_label}</div>'
-                            f'    <div class="combined-stat-value">{tradeability_text}</div>'
-                            f'  </div>'
+                            f'{score_cells}'
                             f'  <div class="combined-stat" title="{html.escape(str(row.get("scanner_action_reason") or ""))}">'
                             f'    <div class="combined-stat-label">{action_label}</div>'
                             f'    <div class="combined-stat-value combined-action-value {action_cls}">{action_text}</div>'
                             f'  </div>'
+                            f'{"" if offhours_row else explosion_cell}'
                             f'  <div class="combined-stat">'
                             f'    <div class="combined-stat-label">Today</div>'
                             f'    <div class="combined-stat-value {change_cls}">{day_text}</div>'
@@ -1707,7 +1721,7 @@ TECHNICAL_TOOLTIPS = {
     "WAIT PULLBACK": "Momentum may remain attractive, but the current price looks too stretched to chase. Wait for a better pullback area and confirm it in Analyzer.",
     "BREAKOUT WATCH": "Price is pressing the session high with constructive momentum. Wait for breakout confirmation and check the exact trigger in Analyzer.",
     "ML 60M": "Validated XGBoost estimate of the chance this scanner setup will be at least 3% higher 60 minutes later. It stays in Learning mode until chronological validation passes.",
-    "OPPORTUNITY": "Combined ranking score using 70% of the existing scanner score and 30% of validated ML probability. ML has no ranking weight until validation passes.",
+    "OPPORTUNITY": "Supporting score using 70% of the existing scanner score and 30% of validated ML probability. ML has no weight in this score until validation passes. The displayed stock order uses Tradeability.",
     "GRADE": "A quick quality tier based on the scanner's rules. A is strongest, followed by B and C; the grade is not a guarantee of profit.",
     "DAY RANGE": "The lowest and highest prices traded during the current session.",
     "BASE SETUP": "The analyzer's overall read of the current technical setup before considering a specific entry, stop and targets.",
