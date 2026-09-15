@@ -87,6 +87,8 @@ on:
       - "requirements.txt"
       - "equity_directory.py"
       - "rendering_regression_check.py"
+      - "scanner_ranking.py"
+      - "scanner_ranking_regression_check.py"
       - "tests/rendering_fixture.py"
       - "APP_BOUNDARY.md"
       - "app_boundary_check.py"
@@ -367,5 +369,6 @@ jobs:
         run: |
           python -m pip install --disable-pip-version-check -q -r requirements.txt
           python rendering_regression_check.py
+          python scanner_ranking_regression_check.py
           python analyzer_overview_check.py
           python analyzer_chart_history_check.py

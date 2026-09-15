@@ -1,4 +1,5 @@
 from live_price_quality import price_view, price_note, provider_problem
+from scanner_ranking import rank_candidates, tradeability_value
 import html
 import json
 import os
@@ -622,18 +623,15 @@ def card(c):
     badge_cls = {"A": "green", "B": "blue", "C": "amber"}.get(grade, "red")
 
     setup_score = float(c.get("score") or 0)
-    explosion_score = (
-        float(c.get("explosion_score"))
-        if c.get("explosion_score") is not None
-        else setup_score
+    explosion_score = c.get("explosion_score")
+    tradeability_score = tradeability_value(c)
+    tradeability_text = f(tradeability_score, 0)
+    score_color = "#9fb0c9" if tradeability_score is None else (
+        "#65e98d" if tradeability_score >= 70 else "#ffd166" if tradeability_score >= 45 else "#ff8181"
     )
-    tradeability_score = float(c.get("tradeability_score") or 0)
-    score_color = "#65e98d" if explosion_score >= 75 else ("#ffd166" if explosion_score >= 55 else "#ff8181")
     risk_lane = str(c.get("risk_lane") or "$1-$50")
     risk_badge_cls = "red" if risk_lane == "SUB-$1" else ("amber" if risk_lane == "ABOVE-$50" else "blue")
     risk_badge = f'<span class="badge {risk_badge_cls}">{html.escape(risk_lane)} LANE</span>'
-    trade_badge_cls = "green" if tradeability_score >= 70 else ("amber" if tradeability_score >= 45 else "red")
-    trade_badge = f'<span class="badge {trade_badge_cls}">TRADEABILITY {tradeability_score:.0f}/100</span>'
 
     day = c.get("day_pct")
     day_cls = "pos" if (day or 0) >= 0 else "neg"
@@ -736,11 +734,11 @@ def card(c):
         <span class="{day_cls}">&nbsp;{f(day,1,"%")} today</span>
       </div>
     </div>
-    <div class="score" style="color:{score_color}">{explosion_score:.0f}<small>EXPLOSION SCORE / 100</small></div>
+    <div class="score" style="color:{score_color}">{tradeability_text}<small>TRADEABILITY / 100</small></div>
   </div>
   <div>
     <span class="badge {badge_cls}">GRADE {html.escape(grade)} · {html.escape(label)}</span>
-    {risk_badge}{trade_badge}{fit_badge}{action_badge}{live_price_badge}{pass_badge}{alert_badge}{vwap_badge}
+    {risk_badge}{fit_badge}{action_badge}{live_price_badge}{pass_badge}{alert_badge}{vwap_badge}
   </div>
   {live_price_note}
   {radar_html}
@@ -748,7 +746,7 @@ def card(c):
   <div class="note"><div class="nk">TIMEFRAME FIT</div><div class="nv">{html.escape(fit_reason[:260] or "Timeframe evidence is still limited.")}</div></div>
   <div class="grid">
     {metric("SETUP SCORE / 100",f(setup_score,0,"/100"))}
-    {metric("TRADEABILITY",f(tradeability_score,0,"/100"),"pos" if tradeability_score>=70 else "muted")}
+    {metric("EXPLOSION (SUPPORTING)",f(explosion_score,0,"/100"))}
     {metric("RADAR 3 MIN",f(c.get("radar_change_3m_pct"),2,"%"),"pos" if (c.get("radar_change_3m_pct") or 0)>0 else "muted")}
     {metric("VOL VELOCITY",f(c.get("radar_volume_velocity_ratio"),2,"x"),"pos" if (c.get("radar_volume_velocity_ratio") or 0)>=4 else "muted")}
     {metric("5 MIN",f(c.get("momentum_5m"),2,"%"),"pos" if (c.get("momentum_5m") or 0)>0 else "muted")}
@@ -769,21 +767,17 @@ def card(c):
 
 def to_df(records):
     out = []
-    for c in records:
+    for c in rank_candidates(records):
         news = c.get("news") or {}
         fail = (c.get("failed_filters") or []) + (c.get("tradability_warnings") or [])
         out.append(
             {
                 "Ticker": c.get("symbol"),
-                "Risk Lane": c.get("risk_lane") or "$1-$50",
-                "Explosion": c.get("explosion_score"),
-                "Tradeability": c.get("tradeability_score"),
-                "Radar 3m %": c.get("radar_change_3m_pct"),
-                "Radar 5m %": c.get("radar_change_5m_pct"),
-                "Vol Velocity": c.get("radar_volume_velocity_ratio"),
+                "Tradeability": tradeability_value(c),
+                "Action": c.get("scanner_action"),
                 "Grade": c.get("setup_grade"),
                 "Status": c.get("setup_label"),
-                "Action": c.get("scanner_action"),
+                "Risk Lane": c.get("risk_lane") or "$1-$50",
                 "Action Reason": c.get("scanner_action_reason"),
                 "Best Fit": (
                     "MULTIPLE TIMEFRAMES"
@@ -791,6 +785,10 @@ def to_df(records):
                     else c.get("timeframe_best_fit") or "UNKNOWN"
                 ),
                 "Fit Confidence": c.get("timeframe_fit_confidence") or "—",
+                "Explosion": c.get("explosion_score"),
+                "Radar 3m %": c.get("radar_change_3m_pct"),
+                "Radar 5m %": c.get("radar_change_5m_pct"),
+                "Vol Velocity": c.get("radar_volume_velocity_ratio"),
                 "Intraday Fit": c.get("timeframe_intraday_score"),
                 "Swing Fit": c.get("timeframe_swing_score"),
                 "Longer Fit": c.get("timeframe_longer_term_score"),
@@ -1405,7 +1403,9 @@ def render_scanner_results():
         )
 
     summary = payload_summary
-    records = payload.get("candidates") or []
+    # Re-sort saved snapshots too, before filtering/limiting any displayed view.
+    # Keep the original publication and recorded ranks intact.
+    records = rank_candidates(payload.get("candidates") or [])
     grades = summary.get("grade_counts") or {}
 
     timeframe_filter = st.session_state.get("scanner_trade_horizon", "ALL")
@@ -1431,14 +1431,6 @@ def render_scanner_results():
             "Ranking itself is unchanged."
         )
 
-    explosive_records = sorted(
-        records,
-        key=lambda row: (
-            float(row.get("explosion_score") or 0.0),
-            float(row.get("tradeability_score") or 0.0),
-        ),
-        reverse=True,
-    )
     explosive_count = int(
         summary.get("explosive_candidates")
         or sum(float(row.get("explosion_score") or 0.0) >= 65.0 for row in records)
@@ -1472,18 +1464,15 @@ def render_scanner_results():
                 unsafe_allow_html=True,
             )
 
-    radar_top = [
-        row for row in explosive_records
-        if row.get("explosion_score") is not None
-    ][:6]
+    radar_top = records[:6]
 
     st.markdown(
-        '<div class="section top-candidates-section">🔥 Explosive Radar</div>',
+        '<div class="section top-candidates-section">📊 Top Candidates by Tradeability</div>',
         unsafe_allow_html=True,
     )
     st.caption(
-        "Detection comes first: these are the strongest price/volume ignitions across the market. "
-        "A low Tradeability Score or DATA CHECK keeps the stock visible but means it is not a clean entry."
+        "Sorted by Tradeability — highest first. Explosion is supporting detection context. "
+        "ACTION and data-quality warnings still determine whether a candidate is suitable for review."
     )
     if radar_top:
         for i in range(0, len(radar_top), 2):
@@ -1500,14 +1489,7 @@ def render_scanner_results():
         and row.get("action_data_integrity_ok")
         and row.get("setup_grade") in {"A", "B"}
     ]
-    tradeable.sort(
-        key=lambda row: (
-            float(row.get("tradeability_score") or 0.0),
-            float(row.get("score") or 0.0),
-            float(row.get("explosion_score") or 0.0),
-        ),
-        reverse=True,
-    )
+    # Filtering preserves the shared Tradeability order, including stable ties.
 
     st.markdown(
         '<div class="section top-candidates-section">✅ Top Tradeable Candidates</div>',
@@ -1522,7 +1504,7 @@ def render_scanner_results():
     else:
         st.warning(
             "No candidate currently combines clean data integrity, base-filter quality, and an A/B setup. "
-            "Explosions are still shown above so risky or early moves are not hidden."
+            "The candidates above retain their risk and data-quality warnings."
         )
 
     st.markdown(
@@ -1533,13 +1515,13 @@ def render_scanner_results():
         <div class="legend-item">
           <div class="legend-term">Explosion Score — 0 to 100</div>
           <div class="legend-def">
-            Measures how strongly price, volume velocity, relative volume, short-term acceleration, and proximity to the session high indicate an ignition event. It is a <b>detection score</b>, not a buy signal. A stock can score very high here and still be unsafe to enter.
+            Supporting context for price/volume ignition. It does not determine the displayed ranking and is not a buy signal. A stock can score very high here and still be unsafe to enter.
           </div>
         </div>
         <div class="legend-item">
           <div class="legend-term">Tradeability Score — 0 to 100</div>
           <div class="legend-def">
-            Separately measures fresh consolidated data, spread, dollar liquidity, and participation. Low tradeability no longer hides an explosion; it changes the ACTION to DATA CHECK, CAUTION, or NO TRADE. Sub-$1 stocks receive an explicit extreme-risk label.
+            The primary ranking metric: highest first, equal scores keep their order, and unavailable scores appear last. Measures fresh consolidated data, spread, dollar liquidity, and participation. ACTION and data-quality checks still apply independently. Sub-$1 stocks retain their extreme-risk label.
           </div>
         </div>
         <div class="legend-item">

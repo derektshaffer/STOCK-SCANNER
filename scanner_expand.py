@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from live_price_quality import price_view, price_note
+from scanner_ranking import tradeability_value
 
 import json
 from datetime import datetime
@@ -85,12 +86,10 @@ def _load_details(payload=None) -> dict[str, dict]:
             "day_positive": float(row.get("day_pct") or 0) >= 0,
             "score": _f(row.get("score"), 0),
             "explosion_score": _f(
-                row.get("explosion_score")
-                if row.get("explosion_score") is not None
-                else row.get("score"),
+                row.get("explosion_score"),
                 0,
             ),
-            "tradeability_score": _f(row.get("tradeability_score"), 0),
+            "tradeability_score": _f(tradeability_value(row), 0),
             "risk_lane": str(row.get("risk_lane") or "$1-$50"),
             "radar_3m": _f(row.get("radar_change_3m_pct"), 2, "%"),
             "radar_5m": _f(row.get("radar_change_5m_pct"), 2, "%"),
@@ -122,9 +121,9 @@ def scanner_detail_html(data):
         return ""
     esc = lambda value: html.escape(str(value or "—"))
     metrics = (
+        ("Tradeability", data["tradeability_score"]), ("Risk Lane", data["risk_lane"]),
         ("Price", data["price"]), ("Today", data["day"]),
         ("Setup Score", data["score"]), ("Explosion Score", data["explosion_score"]),
-        ("Tradeability", data["tradeability_score"]), ("Risk Lane", data["risk_lane"]),
         ("Radar 3 Min", data["radar_3m"]), ("Radar 5 Min", data["radar_5m"]),
         ("Volume Velocity", data["radar_velocity"]), ("5 Min", data["momentum_5m"]),
         ("15 Min", data["momentum_15m"]), ("Volume Pace", data["volume_pace"]),
