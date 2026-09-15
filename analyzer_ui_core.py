@@ -31,6 +31,9 @@ def _load_streamlit_secrets_into_env():
         st.error(f"Streamlit Secrets could not be read: {exc}")
         st.stop()
 
+    # Do not combine a newly supplied key with an old secret from the process.
+    from analyzer_provider_config import preload_alpaca_pair
+    preload_alpaca_pair(secrets)
     for key in keys:
         value = secrets.get(key)
         if value is not None and str(value).strip():
@@ -806,6 +809,9 @@ if not plan:
     st.stop()
 
 _trade_age=r.get("trade_age_seconds")
+from market_heat_ui import render_market_heat
+_market_regime_context=r.get("market_regime_context")
+render_market_heat(st, _market_regime_context.get("snapshot") if isinstance(_market_regime_context,dict) else None)
 
 def _render_analysis_details(section="All"):
     """Existing calculations and detail content, grouped below the overview."""

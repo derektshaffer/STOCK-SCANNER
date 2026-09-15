@@ -120,6 +120,8 @@ jobs:
           path: |
             scan_logs/*.json
             scan_logs/*.csv
+            scan_logs/market_heat/*.json.gz
+            scan_logs/market_heat/index.sqlite3
             analysis_logs/*.json
           if-no-files-found: warn
           retention-days: 30

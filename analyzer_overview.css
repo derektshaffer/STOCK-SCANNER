@@ -130,3 +130,13 @@
   background: #102738; color: #f3f8fc; font: 600 12px/1.3 sans-serif;
   font-variant-numeric: tabular-nums;
 }
+/* Quiet grid, larger plotting area and lightweight terminal overlays. */
+.st-key-ao_chart { background: linear-gradient(145deg, #102335e6, #07131ee8) !important; border-color: #2c495b !important; border-radius: 12px !important; }
+.st-key-ao_chart .ao-crosshair { position: absolute; inset: 0; z-index: 21; pointer-events: none; display: none; font: 11px/1.5 Inter, -apple-system, sans-serif; font-variant-numeric: tabular-nums; }
+.ao-crosshair i { position: absolute; opacity: .65; }
+.ao-crosshair-v { border-left: 1px dashed #8ba6b9; }
+.ao-crosshair-h { border-top: 1px dashed #8ba6b9; }
+.ao-crosshair span { position: absolute; background: #173447; border: 1px solid #456477; color: #edf7ff; border-radius: 3px; padding: 2px 5px; white-space: nowrap; }
+.ao-crosshair .ao-crosshair-ohlc { background: #0d2030ec; border: 0; color: #b8d0e3; overflow: hidden; }
+.st-key-ao_chart .yaxislayer-above { cursor: ns-resize; }
+.st-key-ao_chart .xaxislayer-above { cursor: ew-resize; }

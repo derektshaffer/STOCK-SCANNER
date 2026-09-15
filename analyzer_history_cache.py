@@ -49,11 +49,25 @@ class HistoryLoadError(RuntimeError):
 def history_error_summary(exc):
     """Only allow known diagnostic categories; never echo provider bodies/secrets."""
     text = str(exc)
-    codes = sorted(set(re.findall(r"HTTP (\d{3})", text)))
+    codes = sorted(set(re.findall(r"HTTP (?:Error )?(\d{3})", text)))
+    if "401" in codes and "Alpaca" not in text:
+        return "provider HTTP 401 — authentication rejected; verify this history provider's credentials in the running Scanner app"
+    if "403" in codes and "Alpaca" not in text:
+        return "provider HTTP 403 — access denied for this history provider/feed"
+    if "401" in codes:
+        return ("Alpaca HTTP 401 — authentication rejected at data.alpaca.markets. "
+                "Update ALPACA_API_KEY and ALPACA_SECRET_KEY together in the running "
+                "Scanner app's Streamlit Secrets (or worker environment), then analyze again. "
+                "Changing SIP to IEX cannot fix rejected credentials")
+    if "403" in codes:
+        return ("Alpaca HTTP 403 — historical feed access denied. Check the configured "
+                "ALPACA_HISTORICAL_FEED and that account's market-data entitlement")
     if codes:
         return "provider HTTP " + "/".join(codes)
     if "Missing ALPACA_API_KEY" in text or "credentials missing" in text:
-        return "Alpaca history credentials missing"
+        return ("Alpaca history credentials missing. Configure both ALPACA_API_KEY and "
+                "ALPACA_SECRET_KEY in the running Scanner app's Streamlit Secrets or worker "
+                "environment. Tradier live quotes do not authorize Alpaca history")
     if isinstance(exc, TimeoutError) or "timed out" in text.lower():
         return "provider request timed out"
     if "pagination" in text.lower():
@@ -69,7 +83,7 @@ def _raise_incomplete(payload):
     errors = payload.get("errors") or ["history request failed"]
     raise HistoryLoadError({
         "status": "history_unavailable", "bar_count": len(payload.get("rows") or []),
-        "source": " + ".join(payload.get("sources") or []) or "unavailable",
+        "source": " + ".join(payload.get("sources") or []) or "Alpaca historical bars",
         "failed_chunks": payload.get("failed_chunks", len(errors)),
         "message": "5-minute history could not be loaded completely: " + "; ".join(errors),
     })
@@ -89,7 +103,9 @@ def _cache_path(symbol):
     safe = "".join(ch for ch in str(symbol or "").upper() if ch.isalnum() or ch in "._-")
     # The old cache could contain unpaginated data and undetected interior gaps.
     # Keep those files intact, but never reuse them as complete training history.
-    return CACHE_DIR / f"{safe or 'UNKNOWN'}-5min-v2.json.gz"
+    # v3 also excludes histories fetched before duplicate/symbol validation.
+    from analyzer_provider_config import history_identity
+    return CACHE_DIR / f"{safe or 'UNKNOWN'}-5min-v4-{history_identity()}.json.gz"
 
 
 def _load_cache(symbol):

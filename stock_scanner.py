@@ -3304,7 +3304,7 @@ def write_scan_logs(
                 ),
                 "sip_liquidity_delay_minutes": SIP_LIQUIDITY_DELAY_MINUTES,
             },
-            "radar": discovery_meta or {},
+            "radar": {k:v for k,v in (discovery_meta or {}).items() if not k.startswith("_market_heat_")},
             "summary": {
                 "candidates_analyzed": len(rows),
                 "full_market_enabled": bool((discovery_meta or {}).get("full_market_enabled")),
@@ -3329,12 +3329,38 @@ def write_scan_logs(
             "candidates": records,
         }
 
+        # The legacy scan clock is collection start, not the final decision.
+        # Receipt coverage is still incomplete; a new timestamp is not a
+        # retroactive whole-path provenance certificate.
+        payload["scan_time_semantics"] = "collection_started_at"
+        payload["decision_time_utc"] = datetime.now(timezone.utc).isoformat()
+        payload["decision_manifest"] = {
+            "input_receipt_coverage": "incomplete",
+            "point_in_time_certified": False,
+        }
         json_path = out_dir / f"scan_{scan_id}.json"
+        if json_path.exists():
+            import uuid
+            scan_id += "-" + uuid.uuid4().hex
+            payload["scan_id"] = scan_id
+            json_path = out_dir / f"scan_{scan_id}.json"
+        # Observational context is attached only to the publication projection,
+        # after all ACTION, eligibility and ranking decisions have finished.
+        try:
+            from market_heat import attach_publication
+            attach_publication(payload, rows,
+                batches=(discovery_meta or {}).get("_market_heat_batches", []),
+                requested_symbols=(discovery_meta or {}).get("_market_heat_roster", []),
+                scan_log_dir=out_dir)
+        except Exception:
+            payload["market_regime_capture_status"] = "UNKNOWN_CAPTURE_FAILED"
+            print("WARN Market Heat context unavailable")
         json_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
         csv_path = out_dir / f"scan_{scan_id}.csv"
         csv_fields = [
             "scan_id", "scan_time_et", "rank", "symbol", "price", "day_pct",
+            "candidate_decision_time_utc", "market_regime_id", "market_regime_formula_version",
             "risk_lane", "sub_dollar", "explosion_score", "tradeability_score",
             "radar_rank", "radar_change_since_last_pct", "radar_change_3m_pct",
             "radar_change_5m_pct", "radar_volume_velocity_ratio",
@@ -3372,6 +3398,9 @@ def write_scan_logs(
                     "scan_time_et": now_et.isoformat(),
                     "rank": r.get("rank"),
                     "symbol": r.get("symbol"),
+                    "candidate_decision_time_utc": r.get("candidate_decision_time_utc"),
+                    "market_regime_id": r.get("market_regime_id"),
+                    "market_regime_formula_version": r.get("market_regime_formula_version"),
                     "price": r.get("price"),
                     "day_pct": r.get("day_pct"),
                     "risk_lane": r.get("risk_lane"),
@@ -3452,6 +3481,11 @@ def write_scan_logs(
         tmp_path = out_dir / f".latest_scan_{scan_id}.tmp"
         tmp_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
         os.replace(tmp_path, latest_path)
+        try:
+            from market_heat import mark_published
+            mark_published(payload, out_dir)
+        except Exception:
+            print("WARN Market Heat publication history unavailable")
 
         print("\nSCAN LOGGING")
         print(f"Saved JSON snapshot: {json_path}")

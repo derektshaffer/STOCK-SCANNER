@@ -1133,7 +1133,7 @@ def _trade_horizon_matches(row, selected):
     return best_fit == selected or selected in horizons
 
 
-def _offhours_timeframe_candidates():
+def _read_offhours_source_payload():
     path = Path("scan_logs/offhours_timeframe_latest.json")
     if not path.exists():
         return []
@@ -1142,6 +1142,13 @@ def _offhours_timeframe_candidates():
     except Exception:
         return []
 
+    return payload
+
+def _offhours_timeframe_candidates(payload=None):
+    if payload is None:
+        payload = _read_offhours_source_payload()
+    if not isinstance(payload, dict):
+        return []
     out = []
     seen = set()
     for row in payload.get("candidates") or []:
@@ -1257,7 +1264,7 @@ def _cancel_analyzer_launch():
     st.session_state.pop("_analyzer_background_request_symbol",None)
 
 
-def _toggle_analyzer_launch(symbol):
+def _toggle_analyzer_launch(symbol, source_publication=None, market_regime_context=None):
     """Open Analyzer immediately, then finish the deep analysis in background."""
     symbol=str(symbol or "").upper().strip()
     if not symbol:
@@ -1287,14 +1294,23 @@ def _toggle_analyzer_launch(symbol):
         "_analyzer_thesis_namespace",
         uuid.uuid4().hex,
     )
+    from analyzer_provider_config import configured_alpaca_pair
+    try:
+        analyzer_secrets = dict(st.secrets)
+    except Exception:
+        analyzer_secrets = {}
+    analyzer_key, analyzer_secret = configured_alpaca_pair(analyzer_secrets)
     launch=start_analyzer_process(
         symbol,
-        alpaca_key=_shell_secret("ALPACA_API_KEY"),
-        alpaca_secret=_shell_secret("ALPACA_SECRET_KEY"),
+        alpaca_key=analyzer_key,
+        alpaca_secret=analyzer_secret,
+        alpaca_historical_feed=_shell_secret("ALPACA_HISTORICAL_FEED"),
         alpaca_live_feed=_shell_live_feed(),
         tradier_token=_shell_tradier_token(),
         thesis_namespace=thesis_namespace,
         timeout_seconds=180,
+        source_publication=source_publication,
+        market_regime_context=market_regime_context,
     )
     if not launch.get("started"):
         st.session_state["_analyzer_launch_error"]=launch.get("message") or "Could not start Analyzer."
@@ -1334,8 +1350,8 @@ def _toggle_analyzer_launch(symbol):
     st.session_state["_pending_app_view"]="Stock Analyzer"
 
 
-def _toggle_analyzer_and_navigate(symbol):
-    _toggle_analyzer_launch(symbol)
+def _toggle_analyzer_and_navigate(symbol, source_publication=None, market_regime_context=None):
+    _toggle_analyzer_launch(symbol, source_publication, market_regime_context)
 
 
 def _poll_analyzer_launch():
@@ -1477,8 +1493,9 @@ if view == "Momentum Scanner":
         if st.session_state.get("_pending_app_view") in VIEWS:
             st.rerun(scope="app")
         offhours_mode = not workspace_live
+        offhours_source_payload = _read_offhours_source_payload() if offhours_mode else None
         offhours_candidates = (
-            _offhours_timeframe_candidates()
+            _offhours_timeframe_candidates(offhours_source_payload)
             if offhours_mode
             else []
         )
@@ -1507,6 +1524,8 @@ if view == "Momentum Scanner":
                 "This snapshot used limited discovery fallback rather than the full-market radar."
             )
         trade_horizon = st.session_state.get("scanner_trade_horizon", "ALL")
+        from market_heat_ui import render_market_heat
+        render_market_heat(st, (live_scan_payload or {}).get("market_regime"))
         candidates = [
             row for row in candidates
             if _trade_horizon_matches(row, trade_horizon)
@@ -1660,7 +1679,10 @@ if view == "Momentum Scanner":
                                 else None
                             ),
                             on_click=_toggle_analyzer_and_navigate,
-                            args=(symbol,),
+                            args=(symbol, __import__("scanner_publication_identity").launch_publication(
+                                offhours_source_payload if offhours_candidates else live_scan_payload, symbol),
+                                __import__("market_heat").launch_context(
+                                    offhours_source_payload if offhours_candidates else live_scan_payload, symbol)),
                         )
 
         else:

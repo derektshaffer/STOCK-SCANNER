@@ -164,7 +164,7 @@ class CacheAndModelTests(unittest.TestCase):
 
     def test_genuine_short_history_keeps_existing_700_bar_gate(self):
         with patch.object(ml, "_build_dataset", side_effect=AssertionError("training path reached")):
-            result = ml.predict_ml("TEST", END, {}, lambda *args: ([bar(END)]*699, "delayed SIP"), sa.ET)
+            result = ml.predict_ml("TEST", END, {}, lambda *args: ([bar(dt) for day in range(1,20) for i in range(78) if (dt := END.replace(hour=13,minute=30)-timedelta(days=day)+timedelta(minutes=i*5)).weekday()<5][:699], "delayed SIP"), sa.ET)
         self.assertEqual(result["status"], "insufficient_history")
         self.assertEqual(result["bar_count"], 699)
 
