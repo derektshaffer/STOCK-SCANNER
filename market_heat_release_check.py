@@ -303,7 +303,7 @@ class ReleaseBoundaryTests(unittest.TestCase):
             if not file.endswith('.py'):continue
             functions={n.name:n for n in ast.parse(Path(file).read_text()).body if isinstance(n,ast.FunctionDef)}
             for name,expected in hashes.items():
-                self.assertEqual(hashlib.sha256(ast.dump(functions[name],include_attributes=False).encode()).hexdigest(),expected,file+':'+name)
+                self.assertEqual(ast.dump(functions[name],include_attributes=False),ast.dump(ast.parse(expected).body[0],include_attributes=False),file+':'+name)
 
     def test_complete_analyzer_decision_prefix_matches_production(self):
         baseline=json.loads(Path('tests/market_heat_production_baseline.json').read_text())['protected']
@@ -316,7 +316,7 @@ class ReleaseBoundaryTests(unittest.TestCase):
         self.assertEqual([ast.unparse(n.targets[0]) for n in tail[1:-1]],['chart_feed',"metrics['overview_history']","metrics['overview_minute_history']","metrics['chart_data']['intraday_interval']"])
         self.assertEqual(ast.unparse(tail[-1]),'return metrics')
         node.body=node.body[:-6]
-        self.assertEqual(hashlib.sha256(ast.dump(node,include_attributes=False).encode()).hexdigest(),baseline['analyzer_decision_prefix'])
+        self.assertEqual(ast.dump(node,include_attributes=False),ast.dump(ast.parse(baseline['analyzer_decision_prefix']).body[0],include_attributes=False))
 
     def test_heat_hook_is_after_final_contract_and_only_context(self):
         baseline=json.loads(Path('tests/market_heat_production_baseline.json').read_text())['protected']
@@ -327,7 +327,7 @@ class ReleaseBoundaryTests(unittest.TestCase):
         self.assertGreater(enhanced.body.index(hooks[0]),next(i for i,n in enumerate(enhanced.body) if '_finalize_trade_plan_contract' in ast.unparse(n)))
         self.assertEqual({ast.unparse(t) for n in ast.walk(hooks[0]) if isinstance(n,ast.Assign) for t in n.targets},{"metrics['market_regime_context']"})
         enhanced.body.remove(hooks[0])
-        self.assertEqual(hashlib.sha256(ast.dump(wrapper,include_attributes=False).encode()).hexdigest(),baseline['analyzer_wrapper'])
+        self.assertEqual(ast.dump(wrapper,include_attributes=False),ast.dump(ast.parse(baseline['analyzer_wrapper']).body[0],include_attributes=False))
 
     def test_identity_is_exact_and_rejects_malformed_binding(self):
         from scanner_publication_identity import launch_publication,validate_launch_publication
