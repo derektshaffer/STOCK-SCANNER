@@ -5135,7 +5135,7 @@ def test_combined_analyze_button_has_no_obvious_help_popup_and_can_cancel():
     assert "Open this ticker in the live Stock Analyzer." not in source
     assert 'f"Cancel {symbol}" if _this_running else f"Analyze {symbol}"' in source
     assert "on_click=_toggle_analyzer_launch" not in source
-    assert "_toggle_analyzer_launch(symbol)" in source
+    assert "_toggle_analyzer_launch(symbol, source_publication, market_regime_context)" in source
     assert 'st.rerun(scope="app")' in source
     assert "_cancel_analyzer_launch()" in source
     assert "start_analyzer_process(" in source

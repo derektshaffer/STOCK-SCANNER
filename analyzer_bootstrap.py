@@ -20,6 +20,8 @@ def _preload_secrets():
         secrets = dict(st.secrets)
     except Exception:
         return
+    from analyzer_provider_config import preload_alpaca_pair
+    preload_alpaca_pair(secrets)
     for key in (
         "ALPACA_API_KEY",
         "ALPACA_SECRET_KEY",

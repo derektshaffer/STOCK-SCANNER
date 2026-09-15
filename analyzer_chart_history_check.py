@@ -43,7 +43,7 @@ class ChartHistoryTests(unittest.TestCase):
         with patch.object(history, "get_cached_context", return_value=None), \
              patch.object(history, "get_timesales_bars", side_effect=RuntimeError("HTTP 401 SECRET")):
             result = history.load_chart_history("TEST", NOW, "2026-09-11", tradier_token="fixture")
-        self.assertEqual(result["error"], "provider HTTP 401")
+        self.assertIn("provider HTTP 401", result["error"])
         self.assertNotIn("SECRET", str(result))
 
     def test_completed_history_cache_avoids_provider_fetch(self):

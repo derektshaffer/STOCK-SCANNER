@@ -42,22 +42,44 @@ def _read_text(path, limit):
 def start_analyzer_process(
     symbol,
     *,
-    alpaca_key="",
-    alpaca_secret="",
+    alpaca_key=None,
+    alpaca_secret=None,
     alpaca_live_feed="iex",
+    alpaca_historical_feed="",
     tradier_token="",
     thesis_namespace="",
     timeout_seconds=180,
+    source_publication=None,
+    market_regime_context=None,
 ):
     symbol=str(symbol or "").upper().strip()
     if not symbol:
         return {"started":False,"ok":False,"message":"No ticker was selected."}
 
     env=os.environ.copy()
-    if alpaca_key:
-        env["ALPACA_API_KEY"]=str(alpaca_key)
-    if alpaca_secret:
-        env["ALPACA_SECRET_KEY"]=str(alpaca_secret)
+    # Never inherit a prior click's identity into an unrelated launch.
+    env.pop("ANALYZER_SOURCE_SCAN_ID", None)
+    env.pop("ANALYZER_SOURCE_PUBLICATION", None)
+    env.pop("ANALYZER_MARKET_REGIME_CONTEXT", None)
+    if source_publication is not None or market_regime_context is not None:
+        # An explicit invalid association must remain UNKNOWN, never become
+        # an independent launch that borrows another publication.
+        env["ANALYZER_MARKET_REGIME_CONTEXT"] = "null"
+        from scanner_publication_identity import validate_launch_publication
+        source_publication = validate_launch_publication(source_publication, symbol)
+        if source_publication:
+            env["ANALYZER_SOURCE_PUBLICATION"] = json.dumps(source_publication, sort_keys=True)
+            from market_heat import validate_launch
+            context = validate_launch(market_regime_context, source_publication, symbol)
+            if context:
+                env["ANALYZER_MARKET_REGIME_CONTEXT"] = json.dumps(context, sort_keys=True)
+    if alpaca_key is not None or alpaca_secret is not None:
+        # Explicit credentials replace the pair atomically, even if incomplete.
+        env["ALPACA_API_KEY"] = str(alpaca_key or "").strip()
+        env["ALPACA_SECRET_KEY"] = str(alpaca_secret or "").strip()
+    if alpaca_historical_feed:
+        from analyzer_provider_config import historical_feed
+        env["ALPACA_HISTORICAL_FEED"] = historical_feed(alpaca_historical_feed, environ={})
     feed=str(alpaca_live_feed or "iex").lower().strip()
     env["ALPACA_LIVE_FEED"]=feed if feed in {"iex","sip"} else "iex"
     if tradier_token:
@@ -76,7 +98,8 @@ def start_analyzer_process(
     err_handle=stderr_path.open("w",encoding="utf-8")
     try:
         process=subprocess.Popen(
-            [sys.executable,"analyzer_launch_worker.py",symbol,str(result_path)],
+            [sys.executable,str(Path(__file__).resolve().with_name("analyzer_launch_worker.py")),symbol,str(result_path)],
+            cwd=str(Path(__file__).resolve().parent),
             env=env,
             stdout=out_handle,
             stderr=err_handle,

@@ -1043,10 +1043,6 @@ def predict_ml(symbol, now, metrics, fetch_bars, et):
     )
     stamp = time.time()
     cached = _CACHE.get(key)
-    if cached and stamp - cached["stamp"] < _CACHE_TTL:
-        out = dict(cached["value"])
-        out["cached"] = True
-        return out
 
     try:
         bars5, source = fetch_bars(
@@ -1067,9 +1063,23 @@ def predict_ml(symbol, now, metrics, fetch_bars, et):
             }
         return {
             "status": "unavailable",
-            "error": str(exc)[:180],
+            "error": __import__("analyzer_history_cache").history_error_summary(exc),
             "models": {},
         }
+
+    # The gate counts unique, valid, completed regular-session observations.
+    # Cached model output cannot bypass a failed/changed history receipt.
+    from analyzer_ml_history import valid_training_bars, history_signature
+    try:
+        bars5 = valid_training_bars(bars5, symbol, now, metrics.get("as_of"), et)
+    except ValueError as exc:
+        return {"status": "history_unavailable", "error": str(exc),
+                "source": source, "bar_count": 0, "models": {}}
+    signature = history_signature(bars5, source)
+    if cached and stamp - cached["stamp"] < _CACHE_TTL and cached.get("history_signature") == signature:
+        out = dict(cached["value"])
+        out["cached"] = True
+        return out
 
     if len(bars5) < 700:
         return {
@@ -1238,5 +1248,5 @@ def predict_ml(symbol, now, metrics, fetch_bars, et):
             "the rule-based entry/stop/target decision."
         ),
     }
-    _CACHE[key] = {"stamp": stamp, "value": result}
+    _CACHE[key] = {"stamp": stamp, "value": result, "history_signature": signature}
     return result

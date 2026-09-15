@@ -1403,6 +1403,8 @@ def render_scanner_results():
         )
 
     summary = payload_summary
+    from market_heat_ui import render_market_heat
+    render_market_heat(st, payload.get("market_regime"))
     # Re-sort saved snapshots too, before filtering/limiting any displayed view.
     # Keep the original publication and recorded ranks intact.
     records = rank_candidates(payload.get("candidates") or [])

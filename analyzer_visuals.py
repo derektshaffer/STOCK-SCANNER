@@ -8,11 +8,15 @@ that produced the Analyzer cards.
 from __future__ import annotations
 
 import plotly.graph_objects as go
+import math
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 
 def _num(value):
     try:
-        return float(value)
+        number = float(value)
+        return number if math.isfinite(number) else None
     except Exception:
         return None
 
@@ -696,6 +700,13 @@ def support_resistance_chart_spec(result, line_overlay=False):
 
 
 
+def viewport_controls():
+    return [dict(type="buttons", direction="right", x=0, y=1.15,
+                 showactive=False, bgcolor="#18314a", bordercolor="#31516f", font=dict(color="#dcecff"),
+                 buttons=[dict(label=label, method="skip") for label in
+                          ("Auto scale", "Reset view", "All levels")])]
+
+
 def _plotly_candlestick_base(result, kind="intraday", *, height=320, line_overlay=False):
     bars = _bars(result or {}, kind)
     if len(bars) < 2:
@@ -737,7 +748,7 @@ def _plotly_candlestick_base(result, kind="intraday", *, height=320, line_overla
         hovermode="x unified",
         showlegend=False,
         xaxis_rangeslider_visible=False,
-        uirevision="analyzer-plotly-v1",
+        uirevision=f"analyzer-plotly-v2:{result.get('symbol')}:{kind}:{bars[0]['t']}:{str(bars[-1]['t'])[:10]}:America/Los_Angeles",
     )
     fig.update_xaxes(
         showgrid=False,
@@ -753,6 +764,40 @@ def _plotly_candlestick_base(result, kind="intraday", *, height=320, line_overla
         fixedrange=False,
         color="#b8c9dc",
     )
+    lows = [row["l"] for row in bars if row.get("l") is not None and row["l"] > 0]
+    highs = [row["h"] for row in bars if row.get("h") is not None and row["h"] > 0]
+    if lows and highs:
+        low, high = min(lows), max(highs)
+        padding = max((high-low)*.08, high*.005)
+        candle_range = [low-padding, high+padding]
+        fig.update_yaxes(range=candle_range, autorange=False)
+        fig.update_layout(meta=dict(analyzerViewport=True), updatemenus=viewport_controls())
+    return fig
+
+
+def _display_plotly_times(fig, kind="intraday"):
+    """Convert candles and their markers together, only in the display copy."""
+    def display(value):
+        text = str(value)
+        if kind == "daily":
+            return text[:10]
+        try:
+            stamp = datetime.fromisoformat(text.replace("Z", "+00:00"))
+            if stamp.tzinfo is None:
+                stamp = stamp.replace(tzinfo=timezone.utc)
+            return stamp.astimezone(ZoneInfo("America/Los_Angeles")).strftime("%Y-%m-%d %H:%M:%S")
+        except ValueError:
+            return value
+    for trace in fig.data:
+        if trace.x is not None:
+            trace.x = [display(value) for value in trace.x]
+    for annotation in fig.layout.annotations or []:
+        if annotation.xref in (None, "x") and annotation.x is not None:
+            annotation.x = display(annotation.x)
+    for shape in fig.layout.shapes or []:
+        if shape.xref in (None, "x"):
+            shape.x0, shape.x1 = display(shape.x0), display(shape.x1)
+    fig.update_xaxes(title_text="Daily sessions" if kind == "daily" else "Pacific time", type="date")
     return fig
 
 
@@ -797,7 +842,7 @@ def trade_plan_plotly_figure(result, line_overlay=False):
     _add_plotly_level(fig, selected.get("target2"), "Target 2", "#50fa9b")
     _add_plotly_level(fig, selected.get("stretch_target"), "Stretch", "#8be9fd")
     _add_plotly_level(fig, result.get("vwap"), "VWAP", "#bd93f9")
-    return fig
+    return _display_plotly_times(fig)
 
 
 def impulse_pullback_plotly_figure(result, line_overlay=False):
@@ -851,7 +896,7 @@ def impulse_pullback_plotly_figure(result, line_overlay=False):
             arrowhead=2,
             font={"color": "#57f287"},
         )
-    return fig
+    return _display_plotly_times(fig)
 
 
 def multi_bounce_plotly_figure(result, line_overlay=False):
@@ -913,7 +958,7 @@ def multi_bounce_plotly_figure(result, line_overlay=False):
             arrowhead=2,
             font={"color": "#ffd166"},
         )
-    return fig
+    return _display_plotly_times(fig)
 
 
 def stair_step_plotly_figure(result, line_overlay=False):
@@ -969,7 +1014,7 @@ def stair_step_plotly_figure(result, line_overlay=False):
             arrowhead=2,
             font={"color": color},
         )
-    return fig
+    return _display_plotly_times(fig, "daily")
 
 
 def support_resistance_plotly_figure(result, line_overlay=False):
@@ -985,4 +1030,4 @@ def support_resistance_plotly_figure(result, line_overlay=False):
         price = _num(row.get("price"))
         if price is not None:
             _add_plotly_level(fig, price, f"Resistance {price:.2f}", "#ffb86c", dash="dot")
-    return fig
+    return _display_plotly_times(fig)

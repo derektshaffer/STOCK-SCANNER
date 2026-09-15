@@ -286,13 +286,27 @@ def _quote_rows(symbols, token):
     """Quote every symbol, preserving partial coverage and batch diagnostics."""
     merged = {}
     errors = []
+    heat_batches = []
     batches = list(_chunks(symbols, QUOTE_BATCH_SIZE))
     started = time.perf_counter()
     for index, batch in enumerate(batches, start=1):
+        heat_started_at = datetime.now(timezone.utc).isoformat()
         try:
             rows = _tradier_call(post_quotes, batch, token) or {}
             merged.update(rows)
+            try:
+                from market_heat import project_batch
+                heat_batches.append(project_batch(batch, rows, started_at=heat_started_at,
+                    received_at=datetime.now(timezone.utc).isoformat()))
+            except Exception:
+                pass  # Context capture cannot change discovery or its failure handling.
         except Exception as exc:
+            try:
+                from market_heat import project_batch
+                heat_batches.append(project_batch(batch, {}, started_at=heat_started_at,
+                    received_at=datetime.now(timezone.utc).isoformat(), status="FAILED"))
+            except Exception:
+                pass
             errors.append(
                 {
                     "batch": index,
@@ -303,6 +317,8 @@ def _quote_rows(symbols, token):
         if index < len(batches) and REQUEST_DELAY_SECONDS > 0:
             time.sleep(REQUEST_DELAY_SECONDS)
     return merged, {
+        "_market_heat_roster": list(symbols),
+        "_market_heat_batches": heat_batches,
         "batches": len(batches),
         "failed_batches": len(errors),
         "batch_errors": errors[:5],

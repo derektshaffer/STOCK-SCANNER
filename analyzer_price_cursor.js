@@ -50,7 +50,7 @@
     const hide = () => { label?.remove(); label = null; };
     const move = event => {
       const plot = event.target.closest?.(".st-key-ao_chart .js-plotly-plot");
-      if (!plot || event.buttons || event.pointerType === "touch" ||
+      if (!plot || plot._fullLayout?.meta?.analyzerTerminal || event.buttons || event.pointerType === "touch" ||
           event.target.closest?.(".modebar")) { hide(); return; }
       const point = cursorPoint(plot, event);
       if (!point) { hide(); return; }

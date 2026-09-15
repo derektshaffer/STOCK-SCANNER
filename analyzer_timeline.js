@@ -4,7 +4,12 @@
     let previousDay;
     return values.map(value => {
       const match = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}:\d{2})$/.exec(value);
-      if (!match) return [value]; // Daily dates keep their native labels.
+      if (!match) {
+        const daily = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+        if (!daily) return [value];
+        const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+        return [months[Number(daily[2])-1]+' '+daily[3], daily[1]];
+      }
       const day = value.slice(0, 10), lines = [match[4]];
       if (day !== previousDay) {
         const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -25,7 +30,7 @@
         .filter(label => label.style.display !== 'none');
       const values = labels.map(label => label.getAttribute('data-unformatted') || label.textContent);
       compactLabels(values).forEach((lines, i) => {
-        if (!/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(values[i])) return;
+        if (!/^\d{4}-\d{2}-\d{2}( \d{2}:\d{2})?$/.test(values[i])) return;
         const label = labels[i];
         label.replaceChildren(...lines.map((line, n) => {
           const span = doc.createElementNS('http://www.w3.org/2000/svg', 'tspan');
@@ -35,6 +40,21 @@
           return span;
         }));
       });
+      // Native category tick counts do not reliably adapt to narrow charts.
+      // Keep ticks/data intact; hide only colliding text after formatting.
+      // Reconsider every label on each pan, zoom or resize so labels reappear.
+      let right = -Infinity;
+      for (const label of labels) {
+        label.style.visibility = 'visible';
+        label.style.textAnchor = '';
+        let box = label.getBoundingClientRect();
+        const bounds = plot.getBoundingClientRect();
+        if (box.left < bounds.left + 4) label.style.textAnchor = 'start';
+        else if (box.right > bounds.right - 4) label.style.textAnchor = 'end';
+        box = label.getBoundingClientRect();
+        if (box.left < right + 10) label.style.visibility = 'hidden';
+        else right = box.right;
+      }
     };
     const bind = () => {
       const candidate = doc.querySelector('.st-key-ao_chart .js-plotly-plot');

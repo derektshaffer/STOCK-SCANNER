@@ -2299,6 +2299,12 @@ def install_v2_analysis(sa):
         thesis_context = plan.get("thesis_continuity") or thesis_context
         metrics["decision_v2"]["thesis_continuity"] = thesis_context
 
+        try:
+            from market_heat import analyzer_context
+            metrics["market_regime_context"] = analyzer_context(symbol_clean, now.isoformat())
+        except Exception:
+            metrics["market_regime_context"] = None
+
         if background_worker:
             # Preserve the live training sample, but keep GitHub sync and
             # delayed outcome resolution off the user's click path.

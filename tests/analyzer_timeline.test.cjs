@@ -10,7 +10,7 @@ test('pan or zoom starts a new visible date group, even halfway through a day', 
   assert.deepEqual(compactLabels(['2026-09-11 08:15','2026-09-11 10:00']), [['08:15','Sep 11, 2026'],['10:00']]);
 });
 test('daily labels and empty charts remain intact; year changes are explicit', () => {
-  assert.deepEqual(compactLabels(['2026-09-11']), [['2026-09-11']]);
+  assert.deepEqual(compactLabels(['2026-09-11']), [['Sep 11','2026']]);
   assert.deepEqual(compactLabels([]), []);
   assert.deepEqual(compactLabels(['2026-12-31 12:55','2027-01-04 06:30']), [['12:55','Dec 31, 2026'],['06:30','Jan 04, 2027']]);
 });

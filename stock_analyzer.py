@@ -65,9 +65,13 @@ CATALYST_RULES = [
 ]
 
 def _headers():
-    if not API_KEY or not API_SECRET:
+    # Streamlit may refresh secrets after this module was imported. Resolve a
+    # pair from one configuration source; never combine old and new credentials.
+    from analyzer_provider_config import alpaca_credentials
+    key, secret = alpaca_credentials()
+    if not key or not secret:
         raise RuntimeError("Missing ALPACA_API_KEY / ALPACA_SECRET_KEY")
-    return {"APCA-API-KEY-ID": API_KEY, "APCA-API-SECRET-KEY": API_SECRET, "Accept":"application/json"}
+    return {"APCA-API-KEY-ID": key, "APCA-API-SECRET-KEY": secret, "Accept":"application/json"}
 
 def get_json(url):
     req = urllib.request.Request(url, headers=_headers())
@@ -75,8 +79,8 @@ def get_json(url):
         with urllib.request.urlopen(req, timeout=20) as r:
             return json.loads(r.read().decode("utf-8"))
     except urllib.error.HTTPError as e:
-        body = e.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"Alpaca HTTP {e.code}: {body[:500]}")
+        # Provider bodies can contain sensitive request details.
+        raise RuntimeError(f"Alpaca HTTP {e.code}") from None
 
 def _iso(dt): return dt.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
@@ -99,8 +103,16 @@ def bars(symbol, timeframe, start, end, limit=1000, feed=None, adjustment="raw",
         for row in payload.get("bars") or []:
             if not isinstance(row, dict):
                 raise RuntimeError("Historical bars response malformed")
+            if any(str(row.get(field) or symbol).strip().upper() != str(symbol).strip().upper()
+                   for field in ("symbol", "S")):
+                raise RuntimeError("Historical bars returned a different symbol")
             dt = _parse_market_timestamp(row.get("t"))
+            if dt is None:
+                raise RuntimeError("Historical bars timestamp malformed")
             if dt is not None and start <= dt <= end:
+                # Do not silently choose the last page's version of a candle.
+                if dt in rows and any(rows[dt].get(k) != row.get(k) for k in ("o", "h", "l", "c", "v", "vw")):
+                    raise RuntimeError("Historical bars contain conflicting duplicate candles")
                 rows[dt] = row
         token = payload.get("next_page_token")
         ordered = [rows[dt] for dt in sorted(rows)]
@@ -182,17 +194,23 @@ def try_sip_delayed_bars(symbol, timeframe, start, end, limit=1000):
     safe_end=min(end, datetime.now(timezone.utc)-timedelta(minutes=16))
     if safe_end<=start:return [], "unavailable"
     options = {"complete": True} if timeframe == "5Min" else {}
+    from analyzer_provider_config import historical_feed
+    primary_feed = historical_feed(HISTORICAL_FEED)
     try:
-        return bars(symbol,timeframe,start,safe_end,limit,feed="sip", **options), "delayed SIP"
+        return bars(symbol,timeframe,start,safe_end,limit,feed=primary_feed, **options), ("delayed SIP" if primary_feed == "sip" else "IEX")
     except Exception as primary_error:
-        if LIVE_FEED == "sip":
+        # A rejected identity cannot be repaired by trying the same credentials
+        # on another feed. Keep the existing IEX fallback for other SIP failures.
+        if "HTTP 401" in str(primary_error) or "Missing ALPACA" in str(primary_error):
+            raise
+        if LIVE_FEED == primary_feed:
             raise
         try:
             return bars(symbol,timeframe,start,safe_end,limit,feed=LIVE_FEED, **options), LIVE_FEED.upper()
         except Exception as fallback_error:
             from analyzer_history_cache import history_error_summary
             raise RuntimeError(
-                "SIP: " + history_error_summary(primary_error)
+                primary_feed.upper() + ": " + history_error_summary(primary_error)
                 + "; " + LIVE_FEED.upper() + ": " + history_error_summary(fallback_error)
             ) from None
 
@@ -2255,10 +2273,17 @@ def analyze(symbol):
     else:
         metrics["trade_plan"]=build_trade_plan(metrics,now)
     # Display-only history is deliberately attached after all session calculations.
+    from analyzer_provider_config import historical_feed
+    chart_feed = historical_feed(HISTORICAL_FEED)
     metrics["overview_history"] = load_chart_history(
         symbol, now, reference_price_timestamp if research_only else now_et.date(),
-        tradier_token=TRADIER_TOKEN, alpaca_fetch=bars, feed=HISTORICAL_FEED,
+        tradier_token=TRADIER_TOKEN, alpaca_fetch=bars, feed=chart_feed,
     )
+    metrics["overview_minute_history"] = load_chart_history(
+        symbol, now, reference_price_timestamp if research_only else now_et.date(),
+        tradier_token=TRADIER_TOKEN, alpaca_fetch=bars, feed=chart_feed, timeframe="1m",
+    )
+    metrics["chart_data"]["intraday_interval"] = "1m"
     return metrics
 
 if __name__=="__main__":
