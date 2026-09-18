@@ -1,5 +1,5 @@
 {
-  "generated_at_utc": "2026-09-18T05:53:52.491603+00:00",
+  "generated_at_utc": "2026-09-18T06:06:03.442078+00:00",
   "production_claim": "Rules-based Scanner/Analyzer decision support remains usable. Predictive ML and Swing/Longer-Term probability claims remain gated until their independent evidence requirements pass.",
   "schema_version": 1,
   "sections": {
@@ -62,7 +62,7 @@
       "target_replay_dates": 267
     },
     "offhours_timeframe_forward": {
-      "cohort_count": 13,
+      "cohort_count": 14,
       "longer_20d_resolved": 0,
       "longer_early_read_gate": {
         "current": 0,
@@ -76,15 +76,15 @@
         "remaining": 100,
         "required": 100
       },
-      "swing_5d_resolved": 238,
+      "swing_5d_resolved": 268,
       "swing_early_read_gate": {
-        "current": 238,
+        "current": 268,
         "passed": true,
         "remaining": 0,
         "required": 30
       },
       "swing_useful_gate": {
-        "current": 238,
+        "current": 268,
         "passed": true,
         "remaining": 0,
         "required": 100
@@ -152,7 +152,7 @@
         "artifact_report_count": 9,
         "historical_replay_samples": 11887,
         "live_samples": 89,
-        "local_report_count": 15,
+        "local_report_count": 16,
         "observation_source_counts": {
           "historical_replay": 11887,
           "live_scan": 89
@@ -163,42 +163,42 @@
     },
     "scanner_path_target_shadow": {
       "comparison_ready": true,
-      "days": 9,
-      "endpoint_comparable_samples": 1228,
+      "days": 10,
+      "endpoint_comparable_samples": 1498,
       "endpoint_model_baseline_brier": 0.0428,
       "endpoint_model_historical_validated": true,
       "endpoint_model_status": "replay_validated_waiting_live",
       "endpoint_model_walk_forward_auc": 0.859,
       "endpoint_model_walk_forward_brier": 0.0373,
-      "endpoint_path_disagreement_rate_pct": 13.2,
-      "endpoint_path_disagreements": 162,
+      "endpoint_path_disagreement_rate_pct": 11.8,
+      "endpoint_path_disagreements": 177,
       "gates": {
         "days": {
-          "current": 9,
+          "current": 10,
           "passed": true,
           "remaining": 0,
           "required": 5
         },
         "negatives": {
-          "current": 1223,
+          "current": 1484,
           "passed": true,
           "remaining": 0,
           "required": 15
         },
         "positives": {
-          "current": 234,
+          "current": 248,
           "passed": true,
           "remaining": 0,
           "required": 15
         },
         "samples": {
-          "current": 1457,
+          "current": 1732,
           "passed": true,
           "remaining": 0,
           "required": 100
         },
         "symbols": {
-          "current": 741,
+          "current": 848,
           "passed": true,
           "remaining": 0,
           "required": 15
@@ -211,10 +211,10 @@
       "historical_replay_endpoint_path_disagreements": 131,
       "historical_replay_independent_samples": 2477,
       "historical_replay_samples": 11845,
-      "independent_samples": 1457,
-      "live_confirmation_raw_samples": 2805,
-      "live_raw_samples": 2835,
-      "negatives": 1223,
+      "independent_samples": 1732,
+      "live_confirmation_raw_samples": 3308,
+      "live_raw_samples": 3338,
+      "negatives": 1484,
       "note": "Historical replay can bootstrap research immediately, but promotion still requires independent live path evidence strictly after the replay period plus a later model-performance comparison.",
       "path_model_baseline_brier": 0.0751,
       "path_model_historical_validated": true,
@@ -224,7 +224,7 @@
       "path_model_version": "scanner-path-shadow-v1",
       "path_model_walk_forward_auc": 0.864,
       "path_model_walk_forward_brier": 0.061,
-      "positives": 234,
+      "positives": 248,
       "production_influence": false,
       "replay_end_day": "2026-08-31",
       "source": {
@@ -232,14 +232,14 @@
         "observation_source_counts": {
           "durable_scan_artifact": 89,
           "historical_replay": 11845,
-          "live_app_journal": 2746
+          "live_app_journal": 3249
         },
-        "observations_loaded": 14680,
+        "observations_loaded": 15183,
         "production_influence": false,
-        "report_count": 13,
+        "report_count": 14,
         "target_description": ">= +3% within 60m before -3% failure stop"
       },
-      "symbols": 741,
+      "symbols": 848,
       "target_description": ">= +3% within 60m before -3% failure stop"
     },
     "swing_timeframe_ml": {
