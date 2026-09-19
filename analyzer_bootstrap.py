@@ -22,6 +22,9 @@ def _preload_secrets():
         return
     from analyzer_provider_config import preload_alpaca_pair
     preload_alpaca_pair(secrets)
+    if any(k in secrets for k in ("TRADIER_ACCESS_TOKEN", "TRADIER_TOKEN")):
+        for key in ("TRADIER_ACCESS_TOKEN", "TRADIER_TOKEN"):
+            os.environ[key] = str(secrets.get(key) or "").strip()
     for key in (
         "ALPACA_API_KEY",
         "ALPACA_SECRET_KEY",

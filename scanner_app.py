@@ -338,17 +338,8 @@ def configured_live_label():
 
 
 def market_session_phase(now_et=None):
-    now_et = now_et or datetime.now(ZoneInfo("America/New_York"))
-    if now_et.weekday() >= 5:
-        return "closed"
-    minutes = now_et.hour * 60 + now_et.minute
-    if (4 * 60) <= minutes < (9 * 60 + 30):
-        return "premarket"
-    if (9 * 60 + 30) <= minutes < (16 * 60):
-        return "regular"
-    if (16 * 60) <= minutes < (20 * 60):
-        return "afterhours"
-    return "closed"
+    from market_session import market_session_phase as shared_phase
+    return shared_phase(now_et)
 
 
 def live_feed_available(now_et):
@@ -359,6 +350,8 @@ def live_feed_available(now_et):
         return True
     if configured_live_feed() == "sip":
         return True
+    from market_session import eastern
+    now_et = eastern(now_et)
     minutes = now_et.hour * 60 + now_et.minute
     return (8 * 60) <= minutes < (17 * 60)
 

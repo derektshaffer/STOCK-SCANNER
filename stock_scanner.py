@@ -636,17 +636,8 @@ def get_news_for_symbols(symbols, now_utc):
 
 
 def market_session_mode(now_et):
-    """Return premarket, regular, afterhours, or closed in New York time."""
-    if now_et.weekday() >= 5:
-        return "closed"
-    minutes = now_et.hour * 60 + now_et.minute
-    if (4 * 60) <= minutes < (9 * 60 + 30):
-        return "premarket"
-    if (9 * 60 + 30) <= minutes < (16 * 60):
-        return "regular"
-    if (16 * 60) <= minutes < (20 * 60):
-        return "afterhours"
-    return "closed"
+    from market_session import market_session_phase as shared_phase
+    return shared_phase(now_et)
 
 
 def is_regular_session(now_et):
@@ -668,6 +659,8 @@ def live_feed_available(now_et):
         return True
 
     # Alpaca Basic/IEX is the fallback and has a narrower useful window.
+    from market_session import eastern
+    now_et = eastern(now_et)
     minutes = now_et.hour * 60 + now_et.minute
     return (8 * 60) <= minutes < (17 * 60)
 
@@ -677,16 +670,14 @@ def is_active_market_session(now_et):
 
 
 def session_window_minutes(now_et):
-    phase = market_session_mode(now_et)
-    if phase == "premarket":
-        return 4 * 60, 9 * 60 + 30
-    if phase == "afterhours":
-        return 16 * 60, 20 * 60
-    return 9 * 60 + 30, 16 * 60
+    from market_session import session_bounds
+    return session_bounds(market_session_mode(now_et), now_et) or (570, 960)
 
 
 def session_fraction(now_et):
     open_minutes, close_minutes = session_window_minutes(now_et)
+    from market_session import eastern
+    now_et = eastern(now_et)
     current_minutes = now_et.hour * 60 + now_et.minute
     total = max(1, close_minutes - open_minutes)
     if current_minutes <= open_minutes:

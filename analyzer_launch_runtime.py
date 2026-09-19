@@ -46,7 +46,7 @@ def start_analyzer_process(
     alpaca_secret=None,
     alpaca_live_feed="iex",
     alpaca_historical_feed="",
-    tradier_token="",
+    tradier_token=None,
     thesis_namespace="",
     timeout_seconds=180,
     source_publication=None,
@@ -82,8 +82,10 @@ def start_analyzer_process(
         env["ALPACA_HISTORICAL_FEED"] = historical_feed(alpaca_historical_feed, environ={})
     feed=str(alpaca_live_feed or "iex").lower().strip()
     env["ALPACA_LIVE_FEED"]=feed if feed in {"iex","sip"} else "iex"
-    if tradier_token:
-        env["TRADIER_ACCESS_TOKEN"]=str(tradier_token)
+    if tradier_token is not None:
+        # Explicit removal must not resurrect an inherited alias/token.
+        env["TRADIER_ACCESS_TOKEN"]=str(tradier_token or "").strip()
+        env.pop("TRADIER_TOKEN", None)
     # The launch subprocess should compute snapshots/analysis, not open a
     # long-lived market-stream session or block the page on prediction-log
     # persistence. Those are handled by the persistent UI/background tracker.

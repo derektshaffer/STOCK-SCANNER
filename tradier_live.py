@@ -194,6 +194,7 @@ def _bar_from_timesale(row):
 
 
 def get_timesales_bars(symbol, token, start, end, interval="1min", session_filter="all", *, strict=False, timeout=30):
+    response_error = ValueError if strict else RuntimeError
     start_et = start.astimezone(ET)
     end_et = end.astimezone(ET)
     params = urllib.parse.urlencode(
@@ -206,6 +207,13 @@ def get_timesales_bars(symbol, token, start, end, interval="1min", session_filte
         }
     )
     payload = _request_json(f"{TRADIER_BASE}/markets/timesales?{params}", token, timeout=timeout)
+    if not isinstance(payload, dict):
+        raise response_error("Malformed Tradier Time & Sales response")
+    failure = payload.get("fault") or payload.get("errors") or payload.get("error")
+    if failure:
+        raise response_error(provider_problem(failure, "tradier")["state"])
+    if "series" not in payload or not isinstance(payload["series"], (dict, type(None))):
+        raise response_error("Malformed Tradier Time & Sales response")
     if strict and (not isinstance(payload, dict) or "series" not in payload or
                    payload.get("fault") or payload.get("errors")):
         raise ValueError("Malformed historical response")
@@ -221,6 +229,10 @@ def get_timesales_bars(symbol, token, start, end, interval="1min", session_filte
 
     bars = []
     for row in rows:
+        if not isinstance(row, dict):
+            raise response_error("Malformed Tradier Time & Sales row")
+        if any(row.get(k) and str(row[k]).strip().upper() != str(symbol).strip().upper() for k in ("symbol", "S")):
+            raise response_error("Tradier Time & Sales symbol mismatch")
         if strict:
             if not isinstance(row, dict) or any(_num(row.get(k)) is None for k in ("open", "high", "low", "close", "volume")) or not _iso_timestamp(row):
                 raise ValueError("Malformed historical OHLCV")

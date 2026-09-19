@@ -1,4 +1,5 @@
-from live_price_quality import tradier_price_candidates, quote_timestamp, provider_problem, price_view
+from live_price_quality import (tradier_price_candidates, quote_timestamp, provider_problem, price_view,
+                                LivePriceRejected, ProviderHTTPError, provider_failure_detail)
 import json, math, os, urllib.parse, urllib.request, urllib.error
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
@@ -80,7 +81,7 @@ def get_json(url):
             return json.loads(r.read().decode("utf-8"))
     except urllib.error.HTTPError as e:
         # Provider bodies can contain sensitive request details.
-        raise RuntimeError(f"Alpaca HTTP {e.code}") from None
+        raise ProviderHTTPError("Alpaca", e.code) from None
 
 def _iso(dt): return dt.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
@@ -151,8 +152,7 @@ def fnum(x):
     except:return None
 
 def is_regular(now_et):
-    m=now_et.hour*60+now_et.minute
-    return now_et.weekday()<5 and 570<=m<960
+    return market_session_phase(now_et) == "regular"
 
 
 def _chart_bars(rows, limit):
@@ -170,8 +170,12 @@ def _chart_bars(rows, limit):
     return out
 
 def session_fraction(now_et):
+    from market_session import eastern, session_bounds
+    now_et = eastern(now_et)
+    opening, closing = session_bounds("regular", now_et) or (570, 960)
+    total = closing - opening
     m=now_et.hour*60+now_et.minute
-    return min(1,max(1/390,(m-570)/390))
+    return min(1,max(1/total,(m-opening)/total))
 
 def try_sip_delayed_bars(symbol, timeframe, start, end, limit=1000):
     # Multi-day Analyzer context is more reliable through the same consolidated
@@ -236,8 +240,7 @@ def _regular_session_bar(b):
     dt = _bar_time_et(b)
     if dt is None:
         return False
-    minute = dt.hour * 60 + dt.minute
-    return dt.weekday() < 5 and 570 <= minute < 960
+    return is_regular(dt)
 
 
 def impulse_pullback_context(bs, current_price=None, atr_pct=None):
@@ -413,24 +416,13 @@ def run_exhaustion_context(bs, current_price=None, vwap=None, atr_pct=None, impu
 
 
 def market_session_phase(now_et):
-    if now_et.weekday() >= 5:
-        return "closed"
-    minute = now_et.hour * 60 + now_et.minute
-    if 4 * 60 <= minute < 9 * 60 + 30:
-        return "premarket"
-    if 9 * 60 + 30 <= minute < 16 * 60:
-        return "regular"
-    if 16 * 60 <= minute < 20 * 60:
-        return "afterhours"
-    return "closed"
+    from market_session import market_session_phase as shared_phase
+    return shared_phase(now_et)
 
 
-def _session_bounds(phase):
-    return {
-        "premarket": (4 * 60, 9 * 60 + 30),
-        "regular": (9 * 60 + 30, 16 * 60),
-        "afterhours": (16 * 60, 20 * 60),
-    }.get(str(phase or "").lower())
+def _session_bounds(phase, now=None):
+    from market_session import session_bounds
+    return session_bounds(phase, now)
 
 
 def _filter_session_bars(raw, now):
@@ -444,7 +436,7 @@ def _filter_session_bars(raw, now):
             continue
         parsed.append((dt, bar))
 
-    bounds = _session_bounds(phase)
+    bounds = _session_bounds(phase, now_et)
     if bounds:
         start_min, end_min = bounds
         today = now_et.date()
@@ -458,8 +450,7 @@ def _filter_session_bars(raw, now):
     # momentum/VWAP do not mix unrelated pre/post-market windows.
     regular = [
         (dt, bar) for dt, bar in parsed
-        if dt.weekday() < 5
-        and 9 * 60 + 30 <= dt.hour * 60 + dt.minute < 16 * 60
+        if is_regular(dt)
     ]
     if not regular:
         return []
@@ -469,7 +460,7 @@ def _filter_session_bars(raw, now):
 
 def _session_fetch_start(now):
     now_et = now.astimezone(ET)
-    bounds = _session_bounds(market_session_phase(now_et))
+    bounds = _session_bounds(market_session_phase(now_et), now_et)
     if bounds:
         start_min, _end_min = bounds
         start_et = now_et.replace(
@@ -535,12 +526,11 @@ def _quote_midpoint(bid, ask):
 def _provider_price_candidates(symbol, trade, quote, *, provider, feed):
     """Build request-scoped Alpaca trade/quote candidates with symbol checks."""
     trade=trade or {}; quote=quote or {}
-    trade_symbol=(
-        trade.get("symbol") or trade.get("S") or symbol
-    )
-    quote_symbol=(
-        quote.get("symbol") or quote.get("S") or symbol
-    )
+    def observed_symbol(row):
+        explicit=[row[k] for k in ("symbol", "S") if row.get(k)]
+        return next((value for value in explicit if str(value).strip().upper() != symbol), symbol)
+    trade_symbol=observed_symbol(trade)
+    quote_symbol=observed_symbol(quote)
     return [
         {
             "symbol":trade_symbol,
@@ -1774,6 +1764,7 @@ def analyze(symbol):
     daily_full_prefetched=None
     daysrc_prefetched=None
     tradier_intraday=None
+    intraday_error=None
 
     def _activate_closed_research(failure_reason, preferred_intraday=None):
         """Use completed-session history for research, never for live decisions."""
@@ -1876,6 +1867,9 @@ def analyze(symbol):
         nonlocal live_price_source, live_price_timestamp, live_price_age_seconds
         nonlocal live_price_is_fallback, live_price_fallback_reason
         snap=snapshot(symbol,LIVE_FEED)
+        if not isinstance(snap, dict) or not all(isinstance(snap.get(k), (dict, type(None))) for k in ("latestTrade", "latestQuote", "dailyBar", "prevDailyBar")):
+            raise RuntimeError("Malformed Alpaca snapshot response")
+        validation_now=datetime.now(timezone.utc)
         snap_symbol=str(snap.get("symbol") or symbol).upper().strip()
         if snap_symbol != symbol:
             raise RuntimeError(
@@ -1893,19 +1887,18 @@ def analyze(symbol):
         selected,rejections=select_freshest_live_price(
             symbol,
             alpaca_candidates,
-            now=now,
+            now=validation_now,
             max_age_seconds=MAX_LIVE_PRICE_AGE_SECONDS,
         )
         live_price_rejections.extend(rejections)
         if not selected:
-            detail="; ".join(rejections[:3]) or "no trade or two-sided quote"
-            raise RuntimeError(f"Alpaca returned no fresh live price ({detail})")
+            raise LivePriceRejected(rejections)
         price=selected["price"]
         prev_close=fnum(prev.get("c"))
         fresh_quote,_=select_freshest_live_price(
             symbol,
             [row for row in alpaca_candidates if row.get("kind")=="quote_midpoint"],
-            now=now,
+            now=validation_now,
             max_age_seconds=MAX_LIVE_PRICE_AGE_SECONDS,
         )
         bid=fnum(quote.get("bp")) if fresh_quote else None
@@ -1931,24 +1924,40 @@ def analyze(symbol):
         try:
             _load_alpaca_snapshot()
         except Exception as exc:
-            alpaca_snapshot_error=provider_problem(exc, "alpaca")["state"]
+            alpaca_snapshot_error=provider_failure_detail(exc, "alpaca", LIVE_FEED)
             if not _activate_closed_research(alpaca_snapshot_error):
                 raise RuntimeError(
                     "LIVE PRICE UNAVAILABLE — no fresh, symbol-matched quote/trade. "
-                    f"Alpaca: {alpaca_snapshot_error}"
+                    f"Alpaca: {alpaca_snapshot_error}. Session: {market_session_phase(now_et)}. "
+                    "Check live feed coverage; delayed/historical prices cannot substitute for live data."
                 ) from exc
 
     if USE_TRADIER:
         try:
-            tradier_quote=(get_tradier_quotes([symbol],TRADIER_TOKEN) or {}).get(symbol)
-            if not tradier_quote:
-                raise RuntimeError("Tradier returned no quote")
-            tradier_intraday=_tradier_regular_session_bars(symbol,now)
-            session_phase=market_session_phase(now_et)
-            if session_phase in {"premarket", "regular", "afterhours"} and not tradier_intraday:
-                raise RuntimeError(
-                    f"Tradier returned no {session_phase} Time & Sales bars"
-                )
+            quote_error=None
+            try:
+                tradier_quote=(get_tradier_quotes([symbol],TRADIER_TOKEN) or {}).get(symbol)
+                if not tradier_quote:
+                    raise RuntimeError("Tradier returned no quote")
+                if not isinstance(tradier_quote, dict):
+                    raise RuntimeError("Malformed Tradier quote response")
+                if str(tradier_quote.get("symbol") or "").strip().upper() != symbol:
+                    raise RuntimeError("Tradier quote symbol mismatch")
+            except Exception as quote_exc:
+                # Authentication/rate/transport failures use the alternate
+                # provider directly; do not issue more calls to a rejected feed.
+                if provider_problem(quote_exc, "tradier")["state"] not in {"NO DATA", "SYMBOL MISMATCH", "MALFORMED RESPONSE"}:
+                    raise
+                tradier_quote={}
+                quote_error=provider_failure_detail(quote_exc, "tradier")
+            # Quote validity and intraday completeness are independent. Missing
+            # bars must not conceal a fresh quote or cause a spurious price fallback.
+            try:
+                tradier_intraday=_tradier_regular_session_bars(symbol,now)
+            except Exception as bars_exc:
+                tradier_intraday=[]
+                intraday_error=provider_failure_detail(bars_exc, "tradier")
+            validation_now=datetime.now(timezone.utc)
 
             tradier_candidates=_tradier_price_candidates(
                 symbol,tradier_quote,tradier_intraday
@@ -1956,24 +1965,27 @@ def analyze(symbol):
             selected,rejections=select_freshest_live_price(
                 symbol,
                 tradier_candidates,
-                now=now,
+                now=validation_now,
                 max_age_seconds=MAX_LIVE_PRICE_AGE_SECONDS,
             )
             live_price_rejections.extend(rejections)
             if not selected:
-                detail="; ".join(rejections[:4]) or "no trade, quote, or Time & Sales bar"
-                raise RuntimeError(f"Tradier returned no fresh live price ({detail})")
+                rejection=LivePriceRejected(rejections)
+                endpoint_details="; ".join(x for x in (quote_error, intraday_error) if x)
+                if endpoint_details:
+                    rejection.detail += "; " + endpoint_details
+                raise rejection
 
             fresh_trade,_=select_freshest_live_price(
                 symbol,
                 [row for row in tradier_candidates if row.get("kind") in {"trade","bar"}],
-                now=now,
+                now=validation_now,
                 max_age_seconds=MAX_LIVE_PRICE_AGE_SECONDS,
             )
             fresh_quote,_=select_freshest_live_price(
                 symbol,
                 [row for row in tradier_candidates if row.get("kind")=="quote_midpoint"],
-                now=now,
+                now=validation_now,
                 max_age_seconds=MAX_LIVE_PRICE_AGE_SECONDS,
             )
 
@@ -2001,14 +2013,16 @@ def analyze(symbol):
                         else "Time & Sales bar close."
                     )
                 )
+                if quote_error:
+                    live_price_fallback_reason += " Quote endpoint: " + quote_error
         except Exception as exc:
             # Explicit fallback keeps the Analyzer usable during a Tradier
             # outage while making the source change visible in the metrics.
-            live_provider_error=provider_problem(exc, "tradier")["state"]
+            live_provider_error=provider_failure_detail(exc, "tradier")
             try:
                 _load_alpaca_snapshot(fallback_reason=live_provider_error)
             except Exception as alpaca_exc:
-                alpaca_snapshot_error=provider_problem(alpaca_exc, "alpaca")["state"]
+                alpaca_snapshot_error=provider_failure_detail(alpaca_exc, "alpaca", LIVE_FEED)
                 failure_detail=(
                     f"Tradier: {live_provider_error}; Alpaca: {alpaca_snapshot_error}"
                 )
@@ -2019,10 +2033,40 @@ def analyze(symbol):
                     raise RuntimeError(
                         "LIVE PRICE UNAVAILABLE — no fresh, symbol-matched quote/trade. "
                         + failure_detail
+                        + f". Session: {market_session_phase(now_et)}. Check live feed coverage; "
+                        "delayed/historical prices cannot substitute for live data."
                     ) from alpaca_exc
 
     if intraday is None:
-        intraday=latest_session_bars(symbol,now)
+        try:
+            intraday=latest_session_bars(symbol,now)
+        except Exception as bars_exc:
+            intraday=[]
+            intraday_error=provider_failure_detail(bars_exc, live_provider, LIVE_FEED if live_provider == "alpaca" else None)
+    if not research_only:
+        # A slow bar request must not let a formerly fresh snapshot reach metrics.
+        checked_at=datetime.now(timezone.utc)
+        selected,rejections=select_freshest_live_price(symbol, [{
+            "symbol":symbol, "price":price, "timestamp":live_price_timestamp,
+            "source":live_price_source,
+        }], now=checked_at)
+        if not selected:
+            raise RuntimeError(
+                "LIVE PRICE UNAVAILABLE — price expired while loading session history. "
+                + provider_failure_detail(LivePriceRejected(rejections), live_provider)
+            )
+        live_price_age_seconds=selected["age_seconds"]
+        if market_session_phase(now_et) != market_session_phase(checked_at):
+            intraday=_filter_session_bars(intraday, checked_at)
+        now=checked_at
+        now_et=now.astimezone(ET)
+    if not research_only and not intraday:
+        detail=intraday_error or "no bars returned for the active session"
+        raise RuntimeError(
+            f"LIVE INTRADAY DATA UNAVAILABLE — {symbol} has a fresh validated price, "
+            f"but {live_provider} intraday history is unavailable ({detail}). "
+            "Analysis remains blocked; retry when current-session bars are available."
+        )
 
     if not price or (not research_only and live_price_timestamp is None):
         raise RuntimeError(
