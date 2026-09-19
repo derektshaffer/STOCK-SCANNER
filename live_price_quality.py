@@ -2,6 +2,7 @@
 
 from datetime import datetime, timezone
 import math
+import re
 from zoneinfo import ZoneInfo
 
 
@@ -136,22 +137,77 @@ def select_freshest_live_price(
     return selected, rejected
 
 
+class LivePriceRejected(RuntimeError):
+    """Safe diagnostic constructed from validator reasons, never response bodies."""
+    def __init__(self, rejections):
+        reasons = list(rejections or [])
+        kinds = []
+        for phrase, label in (("symbol mismatch", "symbol mismatch"),
+                              ("in the future", "future timestamp"),
+                              ("timestamp is missing", "missing/invalid timestamp"),
+                              ("quote side timestamp", "invalid quote-side timestamp"),
+                              ("price is missing", "missing/invalid price")):
+            if any(phrase in reason for reason in reasons):
+                kinds.append(label)
+        ages = [float(match.group(1)) for reason in reasons
+                for match in re.finditer(r"price is stale \((\d+)s old\)", reason)]
+        if ages:
+            kinds.append(f"stale price (newest rejected price {min(ages):.0f}s old; limit {MAX_LIVE_PRICE_AGE_SECONDS:.0f}s)")
+        self.state = "STALE" if ages and len(kinds) == 1 else "PRICE REJECTED"
+        self.detail = "; ".join(kinds) or "no trade or valid two-sided quote"
+        super().__init__(self.detail)
+
+
+class ProviderHTTPError(RuntimeError):
+    def __init__(self, provider, code):
+        self.code = int(code)
+        super().__init__(f"{provider} HTTP {self.code}")
+
+
 def provider_problem(error, provider):
-    """Safe, durable failure categories; never persist response bodies or credentials."""
+    """Allowlisted diagnostics only; never expose bodies, URLs, or credentials."""
     text = str(error or "").lower()
     code = getattr(error, "code", None)
-    if code in (401, 403) or any(s in text for s in ("401", "403", "auth", "entitle", "permission", "subscription", "not permitted")):
+    if not isinstance(code, int):
+        match = re.search(r"\bhttp(?: error)?[ :]+(\d{3})\b", text)
+        code = int(match.group(1)) if match else None
+    if isinstance(error, LivePriceRejected):
+        category, message = error.state, error.detail
+    elif "missing alpaca_api_key" in text or "missing tradier" in text:
+        category, message = "MISSING CREDENTIALS", "Configure the provider credentials in this app's runtime"
+    elif code == 401:
+        category, message = "FEED PERMISSION ERROR", "Authentication rejected; check the configured credential pair/token"
+    elif code == 403:
+        category, message = "FEED PERMISSION ERROR", "Access rejected; check account access and the selected feed entitlement"
+    elif any(s in text for s in ("401", "403", "auth", "entitle", "permission", "subscription", "not permitted")):
         category, message = "FEED PERMISSION ERROR", "Authentication or feed entitlement rejected"
+    elif code == 429:
+        category, message = "RATE LIMITED", "Provider rate limit reached; retry after the provider cooldown"
+    elif code is not None and code >= 500:
+        category, message = "PROVIDER ERROR", "Provider server error; retry when service recovers"
     elif isinstance(error, TimeoutError) or any(s in text for s in ("timeout", "timed out")):
         category, message = "TIMEOUT", "Provider request timed out"
     elif any(s in text for s in ("disconnect", "connection", "closed", "reconnect", "session_limit")):
         category, message = "DISCONNECTED", "Market-data connection unavailable"
+    elif "symbol mismatch" in text or "different symbol" in text:
+        category, message = "SYMBOL MISMATCH", "Provider response does not match the requested ticker"
     elif any(s in text for s in ("json", "malformed", "invalid response")):
         category, message = "MALFORMED RESPONSE", "Provider returned an invalid response"
+    elif "no quote" in text:
+        category, message = "NO DATA", "Provider returned no quote for this ticker"
+    elif "stale" in text:
+        category, message = "STALE", "Provider price exceeded the live freshness limit"
     else:
         category, message = "UNAVAILABLE", "Provider returned no usable market data"
     return {"provider": provider, "state": category, "message": message,
             "http_status": code if isinstance(code, int) else None}
+
+
+def provider_failure_detail(error, provider, feed=None):
+    problem = provider_problem(error, provider)
+    status = f" HTTP {problem['http_status']}" if problem['http_status'] else ""
+    feed_label = f" [{feed.upper()}]" if feed in {"iex", "sip"} else ""
+    return f"{problem['state']}{status}{feed_label} — {problem['message']}"
 
 
 def quote_timestamp(bid_time, ask_time):
@@ -251,7 +307,7 @@ def failed_stream(state):
 
 def is_price_failure(error):
     text = str(error or "").lower()
-    return any(word in text for word in ("live price", "http", "provider", "socket", "401", "403", "permission", "entitle", "auth", "timeout",
+    return any(word in text for word in ("live price", "live intraday", "http", "provider", "socket", "401", "403", "permission", "entitle", "auth", "timeout",
                                         "timed out", "disconnect", "connection", "feed", "malformed", "json"))
 
 

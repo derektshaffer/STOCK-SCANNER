@@ -76,7 +76,7 @@ jobs:
 
       - name: Install scanner ML dependency
         if: github.event_name == 'workflow_dispatch' || steps.market_time.outputs.in_market_hours == 'true'
-        run: python -m pip install --disable-pip-version-check -q "xgboost>=2.1"
+        run: python -m pip install --disable-pip-version-check -q "xgboost>=2.1" "pandas_market_calendars==5.4.0"
 
       - name: Run momentum scanner
         if: github.event_name == 'workflow_dispatch' || steps.market_time.outputs.in_market_hours == 'true'

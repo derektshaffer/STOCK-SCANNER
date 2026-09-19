@@ -320,18 +320,9 @@ if "_analyzer_launch_state" not in st.session_state:
     st.session_state["_analyzer_launch_state"] = None
 st.session_state["_combined_scanner_monitor_active"] = True
 
-def _workspace_market_status():
-    now_et = datetime.now(ZoneInfo("America/New_York"))
-    minutes = now_et.hour * 60 + now_et.minute
-    weekday = now_et.weekday() < 5
-
-    if weekday and 4 * 60 <= minutes < 9 * 60 + 30:
-        return now_et, True, "PRE-MARKET"
-    if weekday and 9 * 60 + 30 <= minutes < 16 * 60:
-        return now_et, True, "MARKET OPEN"
-    if weekday and 16 * 60 <= minutes < 20 * 60:
-        return now_et, True, "AFTER-HOURS"
-    return now_et, False, "MARKET CLOSED"
+def _workspace_market_status(now=None):
+    from market_session import workspace_market_status
+    return workspace_market_status(now)
 
 
 def _shell_secret(name):
@@ -533,7 +524,8 @@ def _browser_alert_control(alert_row=None, alert_kind="actionable"):
 
 
 previous_rendered_view = st.session_state.get("_rendered_app_view")
-workspace_now_et, workspace_live, workspace_session = _workspace_market_status()
+# Candidate refresh includes extended sessions; header OPEN means regular only.
+workspace_live = _workspace_market_status()[2] != "MARKET CLOSED"
 brand_col, nav_col, status_col = st.columns(
     [1.0, 2.35, 1.15],
     gap="small",
@@ -555,23 +547,25 @@ with nav_col:
         horizontal=True,
         label_visibility="collapsed",
     )
-with status_col:
+@st.fragment(run_every=30)
+def _render_workspace_market_status():
+    workspace_now_et, workspace_live, workspace_session = _workspace_market_status()
     live_class = "live" if workspace_live else ""
-    live_text = "MARKET OPEN" if workspace_live else "CLOSED"
-    session_class = "session" if workspace_session in {"PRE-MARKET", "AFTER-HOURS"} else ""
+    live_text = workspace_session
     _overview_shell = st.session_state.get("app_view") == "Stock Analyzer"
     _workspace_clock = workspace_now_et.astimezone(ZoneInfo("America/Los_Angeles")) if _overview_shell else workspace_now_et
-    _workspace_session_pill = "" if _overview_shell else f'<span class="workspace-status-pill {session_class}">{workspace_session}</span>'
     st.markdown(
         '<div class="workspace-status">'
         f'<span class="workspace-status-pill {live_class}">'
         '<span class="workspace-status-dot"></span>'
         f'{live_text}</span>'
-        f'{_workspace_session_pill}'
         f'<span class="workspace-status-pill time">{_workspace_clock:%I:%M %p} {"PT" if _overview_shell else "ET"}</span>'
         '</div>',
         unsafe_allow_html=True,
     )
+
+with status_col:
+    _render_workspace_market_status()
 
 
 def _install_workspace_selector_cleanup():
