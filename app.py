@@ -304,8 +304,9 @@ if st.session_state.get("app_view") not in VIEWS:
 _pending_app_view = st.session_state.pop("_pending_app_view", None)
 if _pending_app_view in VIEWS:
     st.session_state["app_view"] = _pending_app_view
-if "auto_scan_enabled" not in st.session_state:
-    st.session_state["auto_scan_enabled"] = True
+# Keep the user's choice when the Scanner toggle is absent in Analyzer.
+# Reassignment detaches the value from Streamlit's hidden-widget cleanup.
+st.session_state["auto_scan_enabled"] = st.session_state.get("auto_scan_enabled", True)
 if "last_auto_scan_at" not in st.session_state:
     st.session_state["last_auto_scan_at"] = 0.0
 if "_scanner_process_running" not in st.session_state:
@@ -868,7 +869,10 @@ def _workspace_scanner_monitor():
         _browser_alert_control(first_alert, first_alert_kind)
 
 
-_workspace_scanner_monitor()
+# Keep this full-run slot alive if a monitor tick replaces its pending fragment
+# delta before delivery. Otherwise stale-node cleanup shifts Analyzer paths.
+with st.container(key="workspace_scanner_monitor_mount"):
+    _workspace_scanner_monitor()
 
 
 # Real render slots for the Momentum Scanner controls. scanner_app.py fills
