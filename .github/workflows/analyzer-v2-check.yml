@@ -384,6 +384,9 @@ jobs:
           python market_session_regression_check.py
           python analyzer_provider_regression_check.py
           python rendering_regression_check.py
+          python scanner_footer_regression_check.py
+          python scanner_percentage_regression_check.py
+          python cross_horizon_rendering_check.py
           python scanner_ranking_regression_check.py
           python analyzer_overview_check.py
           python analyzer_chart_history_check.py

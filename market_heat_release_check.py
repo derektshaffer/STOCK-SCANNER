@@ -305,6 +305,10 @@ class ReleaseBoundaryTests(unittest.TestCase):
             for name,expected in hashes.items():
                 self.assertEqual(ast.dump(functions[name],include_attributes=False),ast.dump(ast.parse(expected).body[0],include_attributes=False),file+':'+name)
 
+    def test_legacy_execution_metric_alias_is_preserved(self):
+        import scanner_ranking as ranking
+        self.assertIs(ranking.tradeability_value, ranking.execution_quality_value)
+
     def test_complete_analyzer_decision_prefix_matches_production(self):
         baseline=json.loads(Path('tests/market_heat_production_baseline.json').read_text())['protected']
         node=next(n for n in ast.parse(Path('stock_analyzer.py').read_text()).body if isinstance(n,ast.FunctionDef) and n.name=='analyze')
