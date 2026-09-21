@@ -116,6 +116,11 @@ def result(symbol):
              'o': 9 + day/10 + i/100, 'h': 9.2 + day/10 + i/100,
              'l': 8.9 + day/10 + i/100, 'c': 9.1 + day/10 + i/100, 'v': 1000 + i*100}
             for day in (1, 2, 3, 4, 8, 9, 10) for i in range(78)]}
+    if st.session_state.get('fixture_long_patterns'):
+        r['bounce_sequence']={'detected':True,'completed_bounces':3,'bounce1_pct':12,'bounce2_pct':8,'sequence_health_score':40}
+        r['stair_step']={'detected':True,'state':'FAILED STAIR-STEP / LOST PLATEAU','step_count':2,'current_plateau_retention_pct':-362,'breakdown_confirmed':True}
+        r['historical_setup']={'intraday':{'post_second_bounce_drop5_rate_pct':53,'post_third_bounce_drop5_rate_pct':56,'median_post_third_bounce_max_drop_pct':-5.5}}
+        r['news']=[{'headline':'Offline panel news marker','source':'Fixture','category':'test','score':0,'age_hours':1}]
     return r
 
 ar.start_analyzer_process=start;ar.poll_analyzer_process=poll
