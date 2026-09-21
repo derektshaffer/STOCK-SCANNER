@@ -20,7 +20,6 @@ class RenderingTests(unittest.TestCase):
         exec(compile(ast.Module(body=[node], type_ignores=[]), 'app.py', 'exec'), scope)
         return scope['_latest_scan_candidates']({'candidates': rows})
 
-
     def test_tradeability_order_before_display_limit_preserves_publication(self):
         rows = [dict(symbol=f'T{i}', tradeability_score=i, explosion_score=100-i,
                      setup_grade='REJECT', scanner_action='NO TRADE') for i in range(16)]
@@ -30,14 +29,12 @@ class RenderingTests(unittest.TestCase):
         self.assertEqual(rows, before)
         self.assertTrue(all(r['grade']=='REJECT' and r['scanner_action']=='NO TRADE' for r in result))
 
-
     def test_tradeability_ties_stable_and_missing_scores_last(self):
         scores = [None, 90, '100', 90, float('nan'), float('inf'), 'bad', False, 0]
         rows = [dict(symbol=f'T{i}', tradeability_score=s) for i,s in enumerate(scores)]
         result = self.candidate_projection(rows)
         self.assertEqual([r['symbol'] for r in result],
                          ['T2','T1','T3','T8','T0','T4','T5','T6','T7'])
-
 
     def test_tradeability_row_order_columns_and_reordered_analyzer_click(self):
         source = (ROOT/'tests/rendering_fixture.py').read_text()
@@ -51,14 +48,13 @@ class RenderingTests(unittest.TestCase):
         at.run(); self.clean(at)
         rows = [m.value for m in at.markdown if 'data-symbol="' in m.value]
         self.assertIn('data-symbol="BNC"', rows[0])
-        self.assertTrue(all(row.index('>Tradeability<') < row.index('>Explosion<') for row in rows))
-        self.assertTrue(all(row.index('>Tradeability<') < row.index('>ACTION<') < row.index('>Explosion<') for row in rows))
+        self.assertTrue(all(row.index('>Tradability<') < row.index('>Explosion<') for row in rows))
+        self.assertTrue(all(row.index('>Tradability<') < row.index('>ACTION<') < row.index('>Explosion<') for row in rows))
         self.assertTrue(all('DATA CHECK' in row for row in rows))
-        self.assertTrue(any('Sorted by Tradeability' in c.value for c in at.caption))
+        self.assertTrue(any('then Tradability' in c.value for c in at.caption))
         at.button(key='combined_analyze_0_BNC').click().run(); self.clean(at)
         self.assertEqual(at.session_state['app_view'], 'Stock Analyzer')
         self.assertTrue(any('Analyzing BNC in the background' in x.value for x in at.info))
-
 
     def tearDown(self):
         # The browser fixture freezes provider timestamps for deterministic
@@ -156,6 +152,13 @@ class RenderingTests(unittest.TestCase):
         self.clean(at)
         self.assertFalse(any(b.label.startswith('Analyze ') for b in at.button))
         self.assertTrue(any('No scanner candidates' in x.value for x in at.caption))
+    def test_future_snapshot_disables_analyze(self):
+        at=self.app()
+        at.session_state['fixture_future']=True
+        at.run()
+        self.clean(at)
+        self.assertTrue(at.button(key='combined_analyze_2_BNC').disabled)
+        self.assertTrue(any('snapshot is stale' in x.value for x in at.warning))
     def test_filter_changes_visible_candidates(self):
         at=self.app()
         at.selectbox(key='scanner_trade_horizon').set_value('LONGER-TERM').run()

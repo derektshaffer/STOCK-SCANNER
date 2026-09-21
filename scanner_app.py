@@ -1,5 +1,5 @@
-from live_price_quality import price_view, price_note, provider_problem
-from scanner_ranking import rank_candidates, tradeability_value
+from live_price_quality import today_change_pct, price_view, price_note, provider_problem, snapshot_age_seconds
+from scanner_ranking import rank_candidates, execution_quality_value, tradability_value, tradability_status, REVIEW_ACTIONS
 import html
 import json
 import os
@@ -617,17 +617,9 @@ def card(c):
 
     setup_score = float(c.get("score") or 0)
     explosion_score = c.get("explosion_score")
-    tradeability_score = tradeability_value(c)
-    tradeability_text = f(tradeability_score, 0)
-    score_color = "#9fb0c9" if tradeability_score is None else (
-        "#65e98d" if tradeability_score >= 70 else "#ffd166" if tradeability_score >= 45 else "#ff8181"
-    )
     risk_lane = str(c.get("risk_lane") or "$1-$50")
     risk_badge_cls = "red" if risk_lane == "SUB-$1" else ("amber" if risk_lane == "ABOVE-$50" else "blue")
     risk_badge = f'<span class="badge {risk_badge_cls}">{html.escape(risk_lane)} LANE</span>'
-
-    day = c.get("day_pct")
-    day_cls = "pos" if (day or 0) >= 0 else "neg"
 
     passed = bool(c.get("passed_base_filters"))
     pass_badge = (
@@ -676,6 +668,14 @@ def card(c):
     if st.session_state.get("_scanner_price_failure"):
         price_record.update(live_price_available=False, live_price_provider_errors=[st.session_state["_scanner_price_failure"]])
     view = price_view(price_record)
+    day = today_change_pct(price_record)
+    day_cls = "" if day is None else "pos" if day >= 0 else "neg"
+    tradeability_score = tradability_value(price_record, live=True)
+    tradeability_text = f(tradeability_score, 0)
+    final_status = html.escape(tradability_status(price_record, live=True))
+    score_color = "#9fb0c9" if tradeability_score is None else (
+        "#65e98d" if tradeability_score >= 70 else "#ffd166" if tradeability_score >= 45 else "#ff8181"
+    )
     if not view["current"]:
         action_badge = '<span class="badge amber">DATA CHECK</span>'
     live_price_badge = f'<span class="badge amber">{html.escape(view["state"])} PRICE</span>'
@@ -724,10 +724,10 @@ def card(c):
     <div>
       <div class="ticker">{html.escape(str(c.get("symbol") or "—"))}</div>
       <div class="price">${f(c.get("price"),2)}
-        <span class="{day_cls}">&nbsp;{f(day,1,"%")} today</span>
+        <span class="{day_cls}">&nbsp;{f(day,1,"%") if day is not None else "N/A"} today</span>
       </div>
     </div>
-    <div class="score" style="color:{score_color}">{tradeability_text}<small>TRADEABILITY / 100</small></div>
+    <div class="score" style="color:{score_color}">{tradeability_text}<small>TRADABILITY / 100</small><small>{final_status}</small></div>
   </div>
   <div>
     <span class="badge {badge_cls}">GRADE {html.escape(grade)} · {html.escape(label)}</span>
@@ -738,6 +738,7 @@ def card(c):
   <div class="note"><div class="nk">ACTION</div><div class="nv">{html.escape(action_reason[:260])}</div></div>
   <div class="note"><div class="nk">TIMEFRAME FIT</div><div class="nv">{html.escape(fit_reason[:260] or "Timeframe evidence is still limited.")}</div></div>
   <div class="grid">
+    {metric("EXECUTION QUALITY / 100",f(execution_quality_value(c),0,"/100"))}
     {metric("SETUP SCORE / 100",f(setup_score,0,"/100"))}
     {metric("EXPLOSION (SUPPORTING)",f(explosion_score,0,"/100"))}
     {metric("RADAR 3 MIN",f(c.get("radar_change_3m_pct"),2,"%"),"pos" if (c.get("radar_change_3m_pct") or 0)>0 else "muted")}
@@ -760,14 +761,18 @@ def card(c):
 
 def to_df(records):
     out = []
-    for c in rank_candidates(records):
+    for c in rank_candidates(records, live=True):
+        if st.session_state.get("_scanner_price_failure"):
+            c = dict(c, live_price_available=False)
         news = c.get("news") or {}
         fail = (c.get("failed_filters") or []) + (c.get("tradability_warnings") or [])
         out.append(
             {
                 "Ticker": c.get("symbol"),
-                "Tradeability": tradeability_value(c),
-                "Action": c.get("scanner_action"),
+                "Tradability": tradability_value(c, live=True),
+                "Tradability Status": tradability_status(c, live=True),
+                "Execution Quality": execution_quality_value(c),
+                "Action": c.get("scanner_action") if price_view(c)["current"] else "DATA CHECK",
                 "Grade": c.get("setup_grade"),
                 "Status": c.get("setup_label"),
                 "Risk Lane": c.get("risk_lane") or "$1-$50",
@@ -790,7 +795,7 @@ def to_df(records):
                 "ML 60m %": c.get("ml_continuation_prob_pct"),
                 "ML Status": "VALIDATED" if c.get("ml_validated") else str(c.get("ml_status") or "learning").upper(),
                 "Price": c.get("price"),
-                "Day %": c.get("day_pct"),
+                "Day %": today_change_pct(c),
                 "5m %": c.get("momentum_5m"),
                 "15m %": c.get("momentum_15m"),
                 "TOD Vol Pace": c.get("volume_pace"),
@@ -865,7 +870,7 @@ def styled(df):
         }.get(str(v), "color:#9fb0c9;font-weight:800")
 
     return (
-        df.style.map(score_style, subset=["Explosion", "Tradeability", "Score", "Opportunity", "Intraday Fit", "Swing Fit", "Longer Fit"])
+        df.style.map(score_style, subset=["Explosion", "Tradability", "Execution Quality", "Score", "Opportunity", "Intraday Fit", "Swing Fit", "Longer Fit"])
         .map(ml_style, subset=["ML 60m %"])
         .map(grade_style, subset=["Grade"])
         .map(fit_style, subset=["Best Fit"])
@@ -873,7 +878,8 @@ def styled(df):
         .format(
             {
                 "Explosion": lambda x: "—" if pd.isna(x) else f"{x:.0f}",
-                "Tradeability": lambda x: "—" if pd.isna(x) else f"{x:.0f}",
+                "Execution Quality": lambda x: "—" if pd.isna(x) else f"{x:.0f}",
+                "Tradability": lambda x: "—" if pd.isna(x) else f"{x:.0f}",
                 "Radar 3m %": lambda x: "—" if pd.isna(x) else f"{x:.2f}%",
                 "Radar 5m %": lambda x: "—" if pd.isna(x) else f"{x:.2f}%",
                 "Vol Velocity": lambda x: "—" if pd.isna(x) else f"{x:.2f}x",
@@ -1216,19 +1222,7 @@ def render_scanner_results():
             ),
         )
         if not show_details:
-            payload = load_scan()
-            if payload:
-                scan_et = payload.get("scan_time_et") or "latest saved snapshot"
-                summary = payload.get("summary") or {}
-                count = len(payload.get("records") or payload.get("candidates") or [])
-                st.caption(
-                    f"Quick mode · {count} saved candidates · snapshot {scan_et}. "
-                    "Scores and rankings are unchanged; detailed tables are simply not rendered."
-                )
-            else:
-                st.caption(
-                    "Quick mode · no saved scanner snapshot yet. Run a fresh scan to populate candidates."
-                )
+            # The compact card fragment owns the summary and its refresh lifecycle.
             return
 
     payload = load_scan()
@@ -1268,10 +1262,7 @@ def render_scanner_results():
         scan_dt = datetime.fromisoformat(str(scan_et).replace("Z", "+00:00"))
         if scan_dt.tzinfo is None:
             scan_dt = scan_dt.replace(tzinfo=ET)
-        scan_age_seconds = max(
-            0.0,
-            (datetime.now(ET) - scan_dt.astimezone(ET)).total_seconds(),
-        )
+        scan_age_seconds = snapshot_age_seconds(scan_dt, now=datetime.now(ET))
         when = scan_dt.astimezone(ET).strftime("%a %b %d · %I:%M:%S %p ET")
     except Exception:
         when = scan_et or "Unknown"
@@ -1400,7 +1391,7 @@ def render_scanner_results():
     render_market_heat(st, payload.get("market_regime"))
     # Re-sort saved snapshots too, before filtering/limiting any displayed view.
     # Keep the original publication and recorded ranks intact.
-    records = rank_candidates(payload.get("candidates") or [])
+    records = rank_candidates(payload.get("candidates") or [], live=True)
     grades = summary.get("grade_counts") or {}
 
     timeframe_filter = st.session_state.get("scanner_trade_horizon", "ALL")
@@ -1462,12 +1453,12 @@ def render_scanner_results():
     radar_top = records[:6]
 
     st.markdown(
-        '<div class="section top-candidates-section">📊 Top Candidates by Tradeability</div>',
+        '<div class="section top-candidates-section">📊 Top Candidates by Tradability</div>',
         unsafe_allow_html=True,
     )
     st.caption(
-        "Sorted by Tradeability — highest first. Explosion is supporting detection context. "
-        "ACTION and data-quality warnings still determine whether a candidate is suitable for review."
+        "Eligible review candidates first, then Tradability (highest first). Explosion is supporting detection context. "
+        "REJECT, NO TRADE and DATA CHECK remain below eligible candidates."
     )
     if radar_top:
         for i in range(0, len(radar_top), 2):
@@ -1478,16 +1469,18 @@ def render_scanner_results():
     else:
         st.info("No full-market ignition candidates are available in this snapshot.")
 
+    from cross_horizon_visibility import render_cross_horizon
+    render_cross_horizon(st, records, timeframe_filter, card=card)
+
     tradeable = [
         row for row in filtered_records
-        if row.get("passed_base_filters")
-        and row.get("action_data_integrity_ok")
-        and row.get("setup_grade") in {"A", "B"}
+        if tradability_status(row, live=True) in REVIEW_ACTIONS
+        and not st.session_state.get("_scanner_price_failure")
     ]
-    # Filtering preserves the shared Tradeability order, including stable ties.
+    # Filtering preserves the shared Tradability order, including stable ties.
 
     st.markdown(
-        '<div class="section top-candidates-section">✅ Top Tradeable Candidates</div>',
+        '<div class="section top-candidates-section">✅ Eligible Review Candidates</div>',
         unsafe_allow_html=True,
     )
     if tradeable[:4]:
@@ -1498,7 +1491,7 @@ def render_scanner_results():
                     st.markdown(card(c), unsafe_allow_html=True)
     else:
         st.warning(
-            "No candidate currently combines clean data integrity, base-filter quality, and an A/B setup. "
+            "No candidate currently combines clean data integrity, and an eligible setup/action. "
             "The candidates above retain their risk and data-quality warnings."
         )
 
@@ -1514,9 +1507,15 @@ def render_scanner_results():
           </div>
         </div>
         <div class="legend-item">
-          <div class="legend-term">Tradeability Score — 0 to 100</div>
+          <div class="legend-term">Tradability — final review status and score</div>
           <div class="legend-def">
-            The primary ranking metric: highest first, equal scores keep their order, and unavailable scores appear last. Measures fresh consolidated data, spread, dollar liquidity, and participation. ACTION and data-quality checks still apply independently. Sub-$1 stocks retain their extreme-risk label.
+            Eligible grades/actions with clean data rank first, ordered by Execution Quality. REJECT, NO TRADE and DATA CHECK receive 0; missing eligibility is UNKNOWN. Equal scores keep their order. WATCH and CAUTION are review cues, not entry approval. Sub-$1 stocks retain their extreme-risk label.
+          </div>
+        </div>
+        <div class="legend-item">
+          <div class="legend-term">Execution Quality — 0 to 100</div>
+          <div class="legend-def">
+            The separate original signal for fresh consolidated data, spread, dollar liquidity and participation. A rejected setup can still have Execution Quality 100.
           </div>
         </div>
         <div class="legend-item">

@@ -57,6 +57,8 @@ st.session_state.setdefault('fixture_mode','running')
 
 def snapshot():
     now=(datetime.now(timezone.utc)-timedelta(minutes=5 if st.session_state.get('fixture_stale') else 0)).isoformat()
+    if st.session_state.get('fixture_future'):
+        now=(datetime.now(timezone.utc)+timedelta(hours=1)).isoformat()
     syms=['PDSB','GCDT','BNC','ARBE','WCT','ROIV','INDP','SFWL','LONGNAME','XYZ','TEST']
     if st.session_state.get('fixture_reverse'): syms.reverse()
     return {'scan_time_et':now,'radar':{'full_market_enabled':True,'requested_symbols':6101,'quotes_received':6044,'coverage_pct':99.1,'coverage_ok':True,'sub_dollar_eligible':379},

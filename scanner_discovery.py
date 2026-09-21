@@ -26,7 +26,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from live_price_quality import parse_market_timestamp
+from live_price_quality import (parse_market_timestamp, select_freshest_live_price,
+                                tradier_price_candidates, positive_price, price_change_pct)
 from tradier_live import post_quotes
 
 
@@ -38,7 +39,7 @@ CACHE_DIR = Path(
 UNIVERSE_CACHE_PATH = CACHE_DIR / "tradier_full_market_universe.json"
 STATE_PATH = CACHE_DIR / "tradier_full_market_radar_state.json"
 CACHE_SCHEMA_VERSION = 3
-STATE_SCHEMA_VERSION = 1
+STATE_SCHEMA_VERSION = 2  # Old state may pair stale last prices with fresh quote clocks.
 
 # Tradier's POST quote endpoint is intended for larger symbol batches.  Keep
 # batches comfortably bounded and leave a small delay so a full sweep coexists
@@ -352,10 +353,8 @@ def _quote_midpoint(row):
 
 def _quote_price(row):
     return (
-        _num(row.get("last"))
-        or _quote_midpoint(row)
-        or _num(row.get("close"))
-        or _num(row.get("prevclose"))
+        positive_price(row.get("last"))
+        or positive_price(_quote_midpoint(row))
     )
 
 
@@ -435,7 +434,7 @@ def _prior_interval_rate(history):
 
 
 def _explosion_score(row):
-    day_pct = max(0.0, _num(row.get("discovery_change_pct")) or 0.0)
+    day_pct = _num(row.get("discovery_change_pct"))
     last_pct = max(0.0, _num(row.get("radar_change_since_last_pct")) or 0.0)
     three_pct = max(0.0, _num(row.get("radar_change_3m_pct")) or 0.0)
     five_pct = max(0.0, _num(row.get("radar_change_5m_pct")) or 0.0)
@@ -446,8 +445,9 @@ def _explosion_score(row):
     range_pct = max(0.0, _num(row.get("radar_session_range_pct")) or 0.0)
 
     score = 0.0
-    score += _scale(day_pct, 1.0, 30.0, 25.0)
-    score += _scale(day_pct, 30.0, 80.0, 8.0)
+    if day_pct is not None:
+        score += _scale(day_pct, 1.0, 30.0, 25.0)
+        score += _scale(day_pct, 30.0, 80.0, 8.0)
     score += _scale(last_pct, 0.2, 6.0, 17.0)
     score += _scale(three_pct, 0.5, 10.0, 13.0)
     score += _scale(five_pct, 1.0, 15.0, 9.0)
@@ -466,7 +466,7 @@ def _explosion_score(row):
     # ignition alert.  Keep it visible at a heavily reduced score for diagnosis.
     if not row.get("radar_quote_fresh"):
         score *= 0.35
-    if (_num(row.get("discovery_change_pct")) or 0.0) < -1.0:
+    if day_pct is not None and day_pct < -1.0:
         score *= 0.35
     return round(max(0.0, min(100.0, score)), 1)
 
@@ -512,18 +512,25 @@ def _tradeability_score(row):
 
 
 def _radar_row(symbol, quote, history, now_ts):
-    price = _quote_price(quote)
-    prev_close = _num(quote.get("prevclose"))
+    # Price and clock must describe the same observation. A new bid/ask must
+    # never refresh yesterday's last trade (or a prior close) for discovery.
+    selected, _ = select_freshest_live_price(
+        symbol, tradier_price_candidates(symbol, quote),
+        now=datetime.fromtimestamp(now_ts, timezone.utc),
+        max_age_seconds=MAX_QUOTE_AGE_SECONDS,
+    )
+    if selected is None:
+        return None
+    price = selected["price"]
+    prev_close = positive_price(quote.get("prevclose"))
     if price is None or price < MIN_RADAR_PRICE:
         return None
 
     volume = max(0.0, _num(quote.get("volume")) or 0.0)
     average_volume = max(0.0, _num(quote.get("average_volume")) or 0.0)
-    day_pct = _num(quote.get("change_percentage"))
-    if day_pct is None:
-        day_pct = _pct_change(price, prev_close)
+    day_pct = price_change_pct(price, prev_close)
 
-    quote_ts = _quote_timestamp(quote)
+    quote_ts = _timestamp_epoch(selected["timestamp"])
     quote_age = max(0.0, now_ts - quote_ts) if quote_ts is not None else None
     quote_fresh = quote_age is not None and quote_age <= MAX_QUOTE_AGE_SECONDS
 
@@ -614,6 +621,9 @@ def _radar_row(symbol, quote, history, now_ts):
             if quote_ts is not None
             else None
         ),
+        "radar_price_source": selected["source"],
+        "radar_price_kind": selected["kind"],
+        "radar_price_side_timestamps": selected.get("side_timestamps"),
         "radar_quote_age_seconds": round(quote_age, 2) if quote_age is not None else None,
         "radar_quote_fresh": quote_fresh,
         # Reuse the exact quote in stock_scanner.py so the full-market sweep is
@@ -652,7 +662,7 @@ def _radar_row(symbol, quote, history, now_ts):
 def _candidate_trigger(row):
     if not row.get("radar_quote_fresh"):
         return row.get("explosion_score", 0) >= 35
-    day_pct = _num(row.get("discovery_change_pct")) or 0.0
+    day_pct = _num(row.get("discovery_change_pct"))
     short = max(
         _num(row.get("radar_change_since_last_pct")) or -999.0,
         _num(row.get("radar_change_3m_pct")) or -999.0,
@@ -660,7 +670,7 @@ def _candidate_trigger(row):
     )
     rel_volume = _num(row.get("discovery_relative_volume")) or 0.0
     return bool(
-        day_pct >= 1.5
+        (day_pct is not None and day_pct >= 1.5)
         or short >= 0.75
         or rel_volume >= 1.5
         or row.get("radar_quiet_to_active")
@@ -676,7 +686,8 @@ def _select_candidates(rows, top):
             row.get("radar_quote_fresh") is True,
             row.get("explosion_score", 0),
             row.get("tradeability_score", 0),
-            row.get("discovery_change_pct") or -999,
+            (_num(row.get("discovery_change_pct"))
+             if _num(row.get("discovery_change_pct")) is not None else float("-inf")),
             row.get("discovery_dollar_volume") or 0,
         ),
         reverse=True,

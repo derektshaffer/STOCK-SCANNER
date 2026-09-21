@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from live_price_quality import price_view, price_note
-from scanner_ranking import tradeability_value
+from live_price_quality import price_view, price_note, today_change_pct
+from scanner_ranking import execution_quality_value, tradability_text
 
 import json
 from datetime import datetime
@@ -79,17 +79,19 @@ def _load_details(payload=None) -> dict[str, dict]:
             spread = row.get("spread_pct")
 
         view = price_view(row)
+        day = today_change_pct(row)
         details[symbol] = {
             "symbol": symbol,
             "price": ("$" + _f(view["price"], 2) if view["current"] else view["state"])+" · "+price_note(view),
-            "day": _f(row.get("day_pct"), 1, "%"),
-            "day_positive": float(row.get("day_pct") or 0) >= 0,
+            "day": _f(day, 1, "%") if day is not None else "N/A",
+            "day_positive": day is not None and day >= 0,
             "score": _f(row.get("score"), 0),
             "explosion_score": _f(
                 row.get("explosion_score"),
                 0,
             ),
-            "tradeability_score": _f(tradeability_value(row), 0),
+            "tradability": tradability_text(row, live=True),
+            "execution_quality_score": _f(execution_quality_value(row), 0),
             "risk_lane": str(row.get("risk_lane") or "$1-$50"),
             "radar_3m": _f(row.get("radar_change_3m_pct"), 2, "%"),
             "radar_5m": _f(row.get("radar_change_5m_pct"), 2, "%"),
@@ -121,7 +123,8 @@ def scanner_detail_html(data):
         return ""
     esc = lambda value: html.escape(str(value or "—"))
     metrics = (
-        ("Tradeability", data["tradeability_score"]), ("Risk Lane", data["risk_lane"]),
+        ("Tradability", data["tradability"]),
+        ("Execution Quality", data["execution_quality_score"]), ("Risk Lane", data["risk_lane"]),
         ("Price", data["price"]), ("Today", data["day"]),
         ("Setup Score", data["score"]), ("Explosion Score", data["explosion_score"]),
         ("Radar 3 Min", data["radar_3m"]), ("Radar 5 Min", data["radar_5m"]),
