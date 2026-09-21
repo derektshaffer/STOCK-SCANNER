@@ -11,8 +11,44 @@ MAX_LIVE_PRICE_AGE_SECONDS = 120.0
 MAX_FUTURE_CLOCK_SKEW_SECONDS = 15.0
 
 
+def positive_price(value):
+    """A price/reference must be finite and positive; missing is never zero."""
+    if isinstance(value, bool):
+        return None
+    try:
+        value = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return value if math.isfinite(value) and value > 0 else None
+
+
+def price_change_pct(price, previous_close):
+    price, previous_close = positive_price(price), positive_price(previous_close)
+    if price is None or previous_close is None:
+        return None
+    change = (price / previous_close - 1.0) * 100.0
+    return change if math.isfinite(change) else None
+
+
+def today_change_pct(record, *, now=None):
+    """Recompute the live display from validated inputs, never cached day_pct."""
+    if positive_price(record.get("price")) is None:
+        return None  # A last-known display value cannot substitute for current price.
+    view = price_view(record, now=now)
+    return price_change_pct(view["price"], record.get("prev_close")) if view["current"] else None
+
+
 def normalize_symbol(value):
     return str(value or "").upper().strip()
+
+
+def snapshot_age_seconds(timestamp, *, now=None):
+    """Unknown/future publication times cannot masquerade as a fresh snapshot."""
+    stamp = parse_market_timestamp(timestamp)
+    if stamp is None:
+        return None
+    age = ((now or datetime.now(timezone.utc)) - stamp).total_seconds()
+    return max(0.0, age) if age >= -MAX_FUTURE_CLOCK_SKEW_SECONDS else None
 
 
 def parse_market_timestamp(value, naive_tz=ET):
@@ -82,11 +118,8 @@ def select_freshest_live_price(
             )
             continue
 
-        try:
-            price = float(candidate.get("price"))
-        except (TypeError, ValueError):
-            price = None
-        if price is None or not math.isfinite(price) or price <= 0:
+        price = positive_price(candidate.get("price"))
+        if price is None:
             rejected.append(f"{source}: price is missing or invalid")
             continue
 
@@ -97,10 +130,15 @@ def select_freshest_live_price(
 
         sides = candidate.get("side_timestamps")
         if sides is not None:
+            if not isinstance(sides, (list, tuple)):
+                rejected.append(f"{source}: quote side timestamps are invalid")
+                continue
             side_times = [parse_market_timestamp(value) for value in sides]
             if len(side_times) != 2 or any(t is None or (t-now_utc).total_seconds() > MAX_FUTURE_CLOCK_SKEW_SECONDS for t in side_times):
                 rejected.append(f"{source}: quote side timestamp is missing, invalid, or in the future")
                 continue
+            # The primary timestamp must not conceal an older quote side.
+            timestamp = min(timestamp, *side_times)
 
         future_seconds = (timestamp - now_utc).total_seconds()
         if future_seconds > MAX_FUTURE_CLOCK_SKEW_SECONDS:
@@ -264,7 +302,8 @@ def price_view(record, *, now=None):
             errors.append(provider_problem(record[field], provider))
     source = record.get("live_price_source")
     candidate = dict(symbol=record.get("symbol"), price=record.get("price") if record.get("price") is not None else record.get("last_known_price"),
-                     timestamp=record.get("live_price_timestamp"), source=source)
+                     timestamp=record.get("live_price_timestamp"), source=source,
+                     side_timestamps=record.get("side_timestamps"))
     selected, rejected = select_freshest_live_price(record.get("symbol"), [candidate], now=now)
     declared = record.get("market_provider") or record.get("live_provider")
     permitted = permitted_live_source(source) and (not declared or str(source).startswith(str(declared).lower()+"_"))

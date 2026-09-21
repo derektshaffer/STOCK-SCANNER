@@ -1,5 +1,6 @@
-from live_price_quality import tradier_price_candidates, provider_problem, price_view
-from scanner_ranking import tradeability_rank_key
+from live_price_quality import tradier_price_candidates, provider_problem, price_view, positive_price, price_change_pct
+from scanner_ranking import (tradeability_rank_key, execution_quality_rank_key,
+                             execution_quality_value, tradability_value, tradability_status)
 import csv
 import json
 import os
@@ -16,6 +17,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from live_price_quality import (
+    quote_timestamp,
     MAX_FUTURE_CLOCK_SKEW_SECONDS,
     MAX_LIVE_PRICE_AGE_SECONDS,
     parse_market_timestamp,
@@ -849,7 +851,7 @@ def critical_fail_count(c):
 
 
 def ranking_key(c):
-    """Rank analyzed candidates by Tradeability; eligibility gates stay separate."""
+    """Rank final analyzed candidates by eligibility, then execution quality."""
     return tradeability_rank_key(c)
 
 
@@ -1602,7 +1604,7 @@ def analyze_snapshot(symbol, tradier_quote=None, alpaca_snapshot=None, now_utc=N
     prev = snap.get("prevDailyBar") or {}
 
     price = 0.0
-    prev_close = float(prev.get("c") or 0)
+    prev_close = positive_price(prev.get("c"))
     volume = float(daily.get("v") or 0)
     high = float(daily.get("h") or 0)
     low = float(daily.get("l") or 0)
@@ -1709,7 +1711,7 @@ def analyze_snapshot(symbol, tradier_quote=None, alpaca_snapshot=None, now_utc=N
             except (TypeError, ValueError):
                 return 0.0
 
-        prev_close = tnum("prevclose") or prev_close
+        prev_close = positive_price(tradier_quote.get("prevclose")) or prev_close
         volume = tnum("volume") or volume
         high = tnum("high") or high
         low = tnum("low") or low
@@ -1765,7 +1767,7 @@ def analyze_snapshot(symbol, tradier_quote=None, alpaca_snapshot=None, now_utc=N
     if not price or not prev_close or not high or not low:
         return None
 
-    day_pct = pct_change(price, prev_close)
+    day_pct = price_change_pct(price, prev_close)
     dollar_volume = price * volume
     if liquidity_source == "tradier_consolidated":
         estimated_total_dollar_volume = dollar_volume
@@ -1868,25 +1870,33 @@ def radar_only_candidate(radar_row, quote, now_utc):
         return None
 
     price = float(radar_row.get("discovery_price") or 0.0)
-    prev_close = float(radar_row.get("discovery_prev_close") or 0.0)
+    prev_close = positive_price(radar_row.get("discovery_prev_close"))
     high = float((quote or {}).get("high") or price or 0.0)
     low = float((quote or {}).get("low") or price or 0.0)
     volume = float(radar_row.get("discovery_volume") or 0.0)
     spread = radar_row.get("radar_spread_pct")
     quote_time = radar_row.get("radar_quote_timestamp")
     quote_age = radar_row.get("radar_quote_age_seconds")
-    fresh = bool(radar_row.get("radar_quote_fresh"))
+    # Radar discovery allows 180s; live calculations retain the 120s limit.
+    fresh = price_view({
+        "symbol": radar_row.get("symbol"), "price": price,
+        "live_price_source": radar_row.get("radar_price_source"),
+        "live_price_timestamp": quote_time,
+        "side_timestamps": radar_row.get("radar_price_side_timestamps"),
+        "live_price_available": bool(radar_row.get("radar_quote_fresh")),
+    }, now=now_utc)["current"]
 
     if price < MIN_DETECTION_PRICE:
         return None
     intraday_range = pct_change(high, low) if high and low else None
     from_high = ((high - price) / high) * 100.0 if high else None
     dollar_volume = price * volume
+    day_pct = price_change_pct(price, prev_close) if fresh else None
     candidate = {
         "symbol": str(radar_row.get("symbol") or "").upper(),
         "price": round(price, 4),
         "prev_close": round(prev_close, 4) if prev_close else None,
-        "day_pct": radar_row.get("discovery_change_pct"),
+        "day_pct": round(day_pct, 3) if day_pct is not None else None,
         "volume": int(volume),
         "dollar_volume": round(dollar_volume, 2),
         "estimated_total_dollar_volume": round(dollar_volume, 2),
@@ -1894,15 +1904,16 @@ def radar_only_candidate(radar_row, quote, now_utc):
         "liquidity_dollar_volume": round(dollar_volume, 2),
         "live_quote_source": "tradier_consolidated_radar",
         "live_price_available": fresh,
-        "live_price_source": "tradier_full_market_radar",
+        "live_price_source": radar_row.get("radar_price_source"),
+        "side_timestamps": radar_row.get("radar_price_side_timestamps"),
         "live_price_timestamp": quote_time,
         "live_price_age_seconds": quote_age,
         "live_price_is_fallback": True,
         "live_price_fallback_reason": (
             "Full-market radar quote retained while Time & Sales / VWAP confirmation is pending."
         ),
-        "latest_trade_time": quote_time,
-        "latest_quote_time": quote_time,
+        "latest_trade_time": (quote or {}).get("trade_date"),
+        "latest_quote_time": quote_timestamp((quote or {}).get("bid_date"), (quote or {}).get("ask_date")),
         "session_date": now_utc.astimezone(ZoneInfo("America/New_York")).date().isoformat(),
         "spread_pct": spread,
         "intraday_range_pct": round(intraday_range, 2) if intraday_range is not None else None,
@@ -2596,13 +2607,12 @@ def enrich_live(c, now_utc, now_et):
             c["live_price_available"] = True
             c["live_price_source"] = session_stats.get("last_price_source")
             c["live_price_timestamp"] = session_stats.get("last_price_timestamp")
+            # This is a new validated observation, not the earlier radar quote.
+            c["side_timestamps"] = session_stats.get("last_price_side_timestamps")
             c["live_price_age_seconds"] = session_stats.get("last_price_age_seconds")
             c["live_price_is_fallback"] = bool("bar" in str(c["live_price_source"]) or "quote" in str(c["live_price_source"]) or (USE_TRADIER and str(c["live_price_source"]).startswith("alpaca_")))
-            if c.get("prev_close"):
-                c["day_pct"] = round(
-                    pct_change(c["price"], float(c["prev_close"])) or 0.0,
-                    2,
-                )
+            day_pct = price_change_pct(c["price"], c.get("prev_close"))
+            c["day_pct"] = round(day_pct, 2) if day_pct is not None else None
 
         c["live_intraday_source"] = session_stats.get("live_source")
         c["session_volume"] = round(session_volume, 0)
@@ -3084,7 +3094,10 @@ def candidate_log_record(c, rank):
         "risk_lane": c.get("risk_lane") or risk_lane_for_price(c.get("price")),
         "sub_dollar": bool(c.get("sub_dollar")),
         "explosion_score": c.get("explosion_score"),
-        "tradeability_score": c.get("tradeability_score"),
+        "tradeability_score": c.get("tradeability_score"),  # legacy execution signal
+        "execution_quality_score": execution_quality_value(c),
+        "tradability_score": tradability_value(c),
+        "tradability_status": tradability_status(c),
         "radar_tradeability_score": c.get("radar_tradeability_score"),
         "radar_rank": c.get("radar_rank"),
         "radar_rank_score": c.get("radar_rank_score"),
@@ -3145,9 +3158,14 @@ def candidate_log_record(c, rank):
         "live_price_available": c.get("live_price_available") is True,
         "live_price_source": c.get("live_price_source"),
         "live_price_timestamp": c.get("live_price_timestamp"),
+        "side_timestamps": c.get("side_timestamps"),
         "live_price_age_seconds": c.get("live_price_age_seconds"),
         "live_price_is_fallback": bool(c.get("live_price_is_fallback")),
         "live_price_provider_errors": c.get("live_price_provider_errors") or [],
+        "live_price_state": c.get("live_price_state"),
+        "latest_trade_time": c.get("latest_trade_time"),
+        "latest_quote_time": c.get("latest_quote_time"),
+        "side_timestamps": c.get("side_timestamps"),
         "live_price_fallback_reason": c.get("live_price_fallback_reason"),
         "live_dollar_volume": c.get("dollar_volume"),
         "live_spread_pct": c.get("spread_pct"),
@@ -3353,6 +3371,7 @@ def write_scan_logs(
             "scan_id", "scan_time_et", "rank", "symbol", "price", "day_pct",
             "candidate_decision_time_utc", "market_regime_id", "market_regime_formula_version",
             "risk_lane", "sub_dollar", "explosion_score", "tradeability_score",
+            "execution_quality_score", "tradability_score", "tradability_status",
             "radar_rank", "radar_change_since_last_pct", "radar_change_3m_pct",
             "radar_change_5m_pct", "radar_volume_velocity_ratio",
             "radar_volume_acceleration_ratio", "radar_quiet_to_active",
@@ -3389,15 +3408,18 @@ def write_scan_logs(
                     "scan_time_et": now_et.isoformat(),
                     "rank": r.get("rank"),
                     "symbol": r.get("symbol"),
+                    "price": r.get("price"),
+                    "day_pct": r.get("day_pct"),
                     "candidate_decision_time_utc": r.get("candidate_decision_time_utc"),
                     "market_regime_id": r.get("market_regime_id"),
                     "market_regime_formula_version": r.get("market_regime_formula_version"),
-                    "price": r.get("price"),
-                    "day_pct": r.get("day_pct"),
                     "risk_lane": r.get("risk_lane"),
                     "sub_dollar": r.get("sub_dollar"),
                     "explosion_score": r.get("explosion_score"),
                     "tradeability_score": r.get("tradeability_score"),
+                    "execution_quality_score": r.get("execution_quality_score"),
+                    "tradability_score": r.get("tradability_score"),
+                    "tradability_status": r.get("tradability_status"),
                     "radar_rank": r.get("radar_rank"),
                     "radar_change_since_last_pct": r.get("radar_change_since_last_pct"),
                     "radar_change_3m_pct": r.get("radar_change_3m_pct"),
@@ -3828,7 +3850,7 @@ def main():
         reason for c in rows for reason in c.get("failed_filters", [])
     )
 
-    rows.sort(key=ranking_key, reverse=True)
+    rows.sort(key=execution_quality_rank_key, reverse=True)
 
     if is_active_market_session(now_et):
         enrich_targets = select_enrichment_targets(rows, phase)
@@ -3856,13 +3878,13 @@ def main():
         for c in rows:
             c["live_data_status"] = "skipped_market_closed"
 
-    rows.sort(key=ranking_key, reverse=True)
+    rows.sort(key=execution_quality_rank_key, reverse=True)
     mark_stage("live_enrichment")
 
     # One batched news call for the displayed watchlist.
     enrich_news(rows, now_utc)
 
-    rows.sort(key=ranking_key, reverse=True)
+    rows.sort(key=execution_quality_rank_key, reverse=True)
     mark_stage("news")
 
     historical_targets = rows[:HISTORICAL_TOP]
@@ -3914,7 +3936,7 @@ def main():
 
     # Rule-based setup grades remain the safety gate. ML is applied only after
     # those rules are complete and retains its validation requirements.
-    # Tradeability remains the ranking criterion regardless of ML status.
+    # Final ranking applies eligibility after ACTION and integrity are known.
     assign_setup_grades(rows, now_et)
 
     if phase == "regular" and apply_scanner_ml is not None:

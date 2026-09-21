@@ -1,4 +1,4 @@
-from live_price_quality import price_view, price_note, provider_problem, is_price_failure
+from live_price_quality import today_change_pct, price_view, price_note, provider_problem, is_price_failure, snapshot_age_seconds
 # Deployment refresh: analyzer-plotly-render-v3
 import html
 import json
@@ -151,7 +151,7 @@ st.markdown(
     .combined-ticker-row {
         min-height: 68px;
         display: grid;
-        grid-template-columns: minmax(110px, 1.2fr) minmax(140px, 1.6fr) repeat(5, minmax(0, 1fr));
+        grid-template-columns: minmax(110px, 1.2fr) minmax(140px, 1.6fr) repeat(6, minmax(0, 1fr));
         gap: 10px;
         align-items: stretch;
         border-bottom: 1px solid rgba(120,150,190,.18);
@@ -1088,14 +1088,7 @@ def _latest_scan_age_seconds(payload=None):
         raw = (payload or {}).get("scan_time_et")
         if not raw:
             return None
-        dt = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
-        et = ZoneInfo("America/New_York")
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=et)
-        return max(
-            0.0,
-            (datetime.now(et) - dt.astimezone(et)).total_seconds(),
-        )
+        return snapshot_age_seconds(raw, now=datetime.now(ZoneInfo("America/New_York")))
     except Exception:
         return None
 
@@ -1137,6 +1130,7 @@ def _read_offhours_source_payload():
         return []
 
     return payload
+
 
 def _offhours_timeframe_candidates(payload=None):
     if payload is None:
@@ -1186,6 +1180,18 @@ def _offhours_timeframe_candidates(payload=None):
     return out[:15]
 
 
+def _scanner_snapshot_summary(payload, visible_count):
+    """Describe the card fragment's already-loaded snapshot without another read."""
+    if not payload:
+        return "Scan summary · no saved scanner snapshot yet."
+    scan_time = payload.get("scan_time_et") or payload.get("generated_at_et") or "unknown"
+    saved_count = len(payload.get("candidates") or [])
+    return (
+        f"Scan summary · {visible_count} shown · {saved_count} saved candidates · "
+        f"snapshot {scan_time}."
+    )
+
+
 def _latest_scan_candidates(payload=None):
     if payload is None:
         payload = _read_latest_scan_payload()
@@ -1202,6 +1208,10 @@ def _latest_scan_candidates(payload=None):
             {
                 "symbol": symbol,
                 "grade": str(row.get("setup_grade") or "—"),
+                "setup_grade": row.get("setup_grade"),
+                "passed_base_filters": row.get("passed_base_filters"),
+                "radar_only": row.get("radar_only"),
+                "execution_quality_score": row.get("execution_quality_score", row.get("tradeability_score")),
                 "risk_lane": row.get("risk_lane") or "$1-$50",
                 "explosion_score": row.get("explosion_score"),
                 "tradeability_score": row.get("tradeability_score"),
@@ -1229,16 +1239,16 @@ def _latest_scan_candidates(payload=None):
                     row.get("volume_pace_display_source")
                     or row.get("volume_pace_source")
                 ),
-                **{k: row.get(k) for k in ("price", "live_price_source", "live_price_timestamp", "live_price_available", "live_price_provider_errors")},
+                **{k: row.get(k) for k in ("price", "prev_close", "side_timestamps", "live_price_source", "live_price_timestamp", "live_price_available", "live_price_provider_errors")},
                 "live_price_is_fallback": bool(row.get("live_price_is_fallback")),
                 "live_price_fallback_reason": row.get("live_price_fallback_reason"),
-                "action_data_integrity_ok": bool(row.get("action_data_integrity_ok")),
+                "action_data_integrity_ok": row.get("action_data_integrity_ok"),
             }
         )
     # Sort the display projection before limiting it; keep the publication and
     # its recorded rank, scores and action/integrity decisions untouched.
     from scanner_ranking import rank_candidates
-    return rank_candidates(out)[:15]
+    return rank_candidates(out, live=True)[:15]
 def _cancel_analyzer_launch():
     # Scanner -> Analyzer launches now hand off directly to the Analyzer page,
     # so the active process normally lives under the Analyzer bootstrap key.
@@ -1495,7 +1505,13 @@ if view == "Momentum Scanner":
         )
         live_scan_payload = _read_latest_scan_payload() if not offhours_candidates else {}
         candidates = offhours_candidates or _latest_scan_candidates(live_scan_payload)
-        detail_data = _load_details(live_scan_payload)
+        detail_payload = live_scan_payload
+        if st.session_state.get("_scanner_price_failure"):
+            detail_payload = dict(live_scan_payload or {}, candidates=[
+                dict(row, live_price_available=False)
+                for row in (live_scan_payload or {}).get("candidates", [])
+            ])
+        detail_data = _load_details(detail_payload)
         radar_meta = (live_scan_payload or {}).get("radar") or {}
         if radar_meta.get("full_market_enabled"):
             requested = int(radar_meta.get("requested_symbols") or 0)
@@ -1506,9 +1522,10 @@ if view == "Momentum Scanner":
             )
             st.caption(
                 f"Full-market radar checked {received:,} of {requested:,} listed stocks "
-                f"({coverage_text} quote coverage), including "
+                f"({coverage_text} quote response coverage), including "
                 f"{int(radar_meta.get('sub_dollar_eligible') or 0):,} sub-$1 names."
             )
+            st.caption("Quote coverage counts returned records; live prices also require valid timestamps and freshness.")
             if not radar_meta.get("coverage_ok", True):
                 st.error(
                     "Full-market coverage is degraded; this candidate list may be incomplete."
@@ -1552,7 +1569,7 @@ if view == "Momentum Scanner":
 
         if candidates:
             if not offhours_candidates:
-                st.caption("Sorted by Tradeability — highest first.")
+                st.caption("Eligible review candidates first, then Tradability — highest first.")
             if offhours_candidates:
                 st.caption(
                     "Showing the latest completed-daily Swing / Longer-Term discovery. "
@@ -1561,6 +1578,8 @@ if view == "Momentum Scanner":
             # Make each row useful at a glance: ticker, grade, score/review cue,
             # today's completed move and volume context, with Analyze at the end.
             for idx, row in enumerate(candidates):
+                if st.session_state.get("_scanner_price_failure"):
+                    row = dict(row, live_price_available=False)
                 symbol = row["symbol"]
                 grade = row.get("grade") or "—"
                 fit = str(row.get("timeframe_best_fit") or "—")
@@ -1572,9 +1591,9 @@ if view == "Momentum Scanner":
                     "{:.0f}",
                 )
                 explosion_label = "Trend Candidate Score" if offhours_row else "Explosion"
-                from scanner_ranking import tradeability_value
-                tradeability_text = "—" if offhours_row else _fmt_num(tradeability_value(row), "{:.0f}")
-                tradeability_label = "Daily Screen" if offhours_row else "Tradeability"
+                from scanner_ranking import execution_quality_value, tradability_text
+                tradeability_text = "—" if offhours_row else html.escape(tradability_text(row, live=True))
+                tradeability_label = "Daily Screen" if offhours_row else "Tradability"
                 tradeability_cell = (
                     f'<div class="combined-stat" title="{html.escape(str(row.get("risk_lane") or ""))}">'
                     f'<div class="combined-stat-label">{tradeability_label}</div>'
@@ -1587,13 +1606,17 @@ if view == "Momentum Scanner":
                 )
                 score_cells = (
                     explosion_cell + tradeability_cell if offhours_row
-                    else tradeability_cell
+                    else tradeability_cell + (
+                        '<div class="combined-stat"><div class="combined-stat-label">Execution Quality</div>'
+                        f'<div class="combined-stat-value">{_fmt_num(execution_quality_value(row), "{:.0f}")}</div></div>'
+                    )
                 )
                 action_text, action_cls, action_label = _action_display(row)
-                day_text = _fmt_num(row.get("day_pct"), "{:+.1f}%")
+                day_value = row.get("day_pct") if offhours_row else today_change_pct(row)
+                day_text = _fmt_num(day_value, "{:+.1f}%", fallback="N/A")
                 volume_text, volume_value = _volume_pace_display(row)
                 grade_cls = _grade_class(grade)
-                change_cls = _change_class(row.get("day_pct"))
+                change_cls = _change_class(day_value)
                 volume_cls = _volume_class(volume_value)
 
                 detail_html = scanner_detail_html(detail_data.get(symbol))
@@ -1687,6 +1710,24 @@ if view == "Momentum Scanner":
             )
 
 
+        # Keep this inside the card fragment and use its exact source object.
+        # The legacy detailed-dashboard fragment does not refresh in quick mode.
+        st.caption(_scanner_snapshot_summary(
+            offhours_source_payload if offhours_candidates else live_scan_payload,
+            len(candidates),
+        ))
+
+        if not offhours_candidates:
+            from cross_horizon_visibility import render_cross_horizon
+            from scanner_ranking import rank_candidates
+            render_cross_horizon(
+                st, rank_candidates((live_scan_payload or {}).get("candidates") or [], live=True), trade_horizon,
+                stale=latest_scan_stale,
+                on_analyze=lambda symbol, binding, _source=live_scan_payload: _toggle_analyzer_and_navigate(
+                    symbol, binding, __import__("market_heat").launch_context(_source, symbol)),
+                source_payload=live_scan_payload,
+            )
+
     _render_compact_scanner_candidates()
 
 # Both legacy child apps call st.set_page_config themselves. In the combined
@@ -1737,7 +1778,7 @@ TECHNICAL_TOOLTIPS = {
     "WAIT PULLBACK": "Momentum may remain attractive, but the current price looks too stretched to chase. Wait for a better pullback area and confirm it in Analyzer.",
     "BREAKOUT WATCH": "Price is pressing the session high with constructive momentum. Wait for breakout confirmation and check the exact trigger in Analyzer.",
     "ML 60M": "Validated XGBoost estimate of the chance this scanner setup will be at least 3% higher 60 minutes later. It stays in Learning mode until chronological validation passes.",
-    "OPPORTUNITY": "Supporting score using 70% of the existing scanner score and 30% of validated ML probability. ML has no weight in this score until validation passes. The displayed stock order uses Tradeability.",
+    "OPPORTUNITY": "Supporting score using 70% of the existing scanner score and 30% of validated ML probability. ML has no weight in this score until validation passes. The displayed stock order uses eligibility-aware Tradability.",
     "GRADE": "A quick quality tier based on the scanner's rules. A is strongest, followed by B and C; the grade is not a guarantee of profit.",
     "DAY RANGE": "The lowest and highest prices traded during the current session.",
     "BASE SETUP": "The analyzer's overall read of the current technical setup before considering a specific entry, stop and targets.",
