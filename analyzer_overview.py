@@ -373,8 +373,13 @@ def render_overview(st, pd, result, card, pp, render_details):
             st.caption("EXPLORE DETAILS")
             st.session_state.setdefault("analyzer_detail", st.session_state.get("_analyzer_detail_selection", "Overview"))
             selected = st.pills("Explore details", DETAILS, key="analyzer_detail", label_visibility="collapsed", selection_mode="single", required=True, on_change=_remember_detail, args=(st,))
+        # Explicitly replace every inactive panel with an empty element. A
+        # following timer can supersede this fragment's completion before it
+        # reaches the browser, skipping Streamlit's stale-child cleanup. Fixed
+        # slots remove the old subtree without relying on that completion.
+        detail_slots = {name: st.empty() for name in DETAILS if name != "Overview"}
         if selected != "Overview":
-            with st.container(key="ao_detail_content", border=True):
+            with detail_slots[selected].container(key="ao_detail_content", border=True):
                 st.subheader(selected)
                 if selected == "ML diagnostics":
                     from ml_ui import render_ml_prediction

@@ -99,6 +99,7 @@ on:
       - "equity_directory.py"
       - "rendering_regression_check.py"
       - "analyzer_fragment_regression_check.py"
+      - "analyzer_panel_cleanup_check.py"
       - "analyzer_session_regression_check.py"
       - "analyzer_return_regression_check.py"
       - "tests/analyzer_return_scroll.test.cjs"
@@ -389,6 +390,7 @@ jobs:
           python analyzer_provider_regression_check.py
           python rendering_regression_check.py
           python analyzer_fragment_regression_check.py
+          python analyzer_panel_cleanup_check.py
           python analyzer_session_regression_check.py
           python analyzer_return_regression_check.py
           node --test tests/analyzer_return_scroll.test.cjs
