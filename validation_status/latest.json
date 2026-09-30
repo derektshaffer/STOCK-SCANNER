@@ -1,5 +1,5 @@
 {
-  "generated_at_utc": "2026-09-30T06:39:54.074655+00:00",
+  "generated_at_utc": "2026-09-30T06:55:36.482708+00:00",
   "production_claim": "Rules-based Scanner/Analyzer decision support remains usable. Predictive ML and Swing/Longer-Term probability claims remain gated until their independent evidence requirements pass.",
   "schema_version": 1,
   "sections": {
@@ -62,29 +62,29 @@
       "target_replay_dates": 267
     },
     "offhours_timeframe_forward": {
-      "cohort_count": 21,
-      "longer_20d_resolved": 30,
+      "cohort_count": 22,
+      "longer_20d_resolved": 59,
       "longer_early_read_gate": {
-        "current": 30,
+        "current": 59,
         "passed": true,
         "remaining": 0,
         "required": 30
       },
       "longer_useful_gate": {
-        "current": 30,
+        "current": 59,
         "passed": false,
-        "remaining": 70,
+        "remaining": 41,
         "required": 100
       },
-      "swing_5d_resolved": 478,
+      "swing_5d_resolved": 508,
       "swing_early_read_gate": {
-        "current": 478,
+        "current": 508,
         "passed": true,
         "remaining": 0,
         "required": 30
       },
       "swing_useful_gate": {
-        "current": 478,
+        "current": 508,
         "passed": true,
         "remaining": 0,
         "required": 100
@@ -149,10 +149,10 @@
       "note": "Passing these count gates only makes the independent live holdout large enough to evaluate. Production validation still requires the live AUC/Brier performance gate to pass.",
       "replay_end_day": "2026-08-31",
       "training_source": {
-        "artifact_report_count": 11,
+        "artifact_report_count": 10,
         "historical_replay_samples": 11887,
         "live_samples": 89,
-        "local_report_count": 23,
+        "local_report_count": 24,
         "observation_source_counts": {
           "historical_replay": 11887,
           "live_scan": 89
@@ -236,7 +236,7 @@
         },
         "observations_loaded": 16564,
         "production_influence": false,
-        "report_count": 21,
+        "report_count": 22,
         "target_description": ">= +3% within 60m before -3% failure stop"
       },
       "symbols": 1110,
