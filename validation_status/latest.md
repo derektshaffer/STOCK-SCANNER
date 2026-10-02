@@ -1,6 +1,6 @@
 # Forward Validation Status
 
-Generated: 2026-10-01T07:19:53.180264+00:00
+Generated: 2026-10-02T06:59:16.475763+00:00
 
 ## Scanner ML — independent live confirmation
 - **Samples:** 38/100 — 62 remaining
@@ -49,9 +49,9 @@ Generated: 2026-10-01T07:19:53.180264+00:00
 - Top-decile target-rate lift: -4.2 pp
 
 ## Point-in-time universe coverage
-- **Replay-ready nightly snapshots:** 23/3 ✅
+- **Replay-ready nightly snapshots:** 24/3 ✅
 - First capture: 2026-08-31
-- Latest capture: 2026-10-01
+- Latest capture: 2026-10-02
 
 ## Historical listing-universe backfill
 - Provider: missing_key (key missing)
