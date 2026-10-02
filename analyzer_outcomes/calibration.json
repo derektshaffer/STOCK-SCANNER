@@ -3,7 +3,7 @@
   "feature_version": "analyzer-features-v10-confirmed-multisession",
   "decision_score_version": "decision-v2.8-integrity-gated",
   "timeframe_score_version": "timeframe-fit-v1",
-  "generated_at_utc": "2026-10-01T07:18:25.748817+00:00",
+  "generated_at_utc": "2026-10-02T07:07:12.886470+00:00",
   "prediction_rows": 40,
   "legacy_prediction_rows_excluded": 402,
   "legacy_decision_rows_excluded": 27,
