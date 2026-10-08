@@ -8,8 +8,8 @@
   "research_only": true,
   "production_rank_impact": false,
   "candidate_count": 30,
-  "last_checked_utc": "2026-10-07T07:22:09.644944+00:00",
-  "elapsed_trading_sessions": 20,
+  "last_checked_utc": "2026-10-08T07:36:28.350514+00:00",
+  "elapsed_trading_sessions": 21,
   "fully_resolved": false,
   "candidates": [
     {
@@ -487,6 +487,14 @@
           "resolved_session_date": "2026-09-22",
           "spy_return_pct": 0.969,
           "excess_vs_spy_pct": -3.608
+        },
+        "20": {
+          "return_pct": -11.346,
+          "mfe_pct": 21.372,
+          "mae_pct": -17.942,
+          "resolved_session_date": "2026-10-07",
+          "spy_return_pct": 1.714,
+          "excess_vs_spy_pct": -13.06
         }
       }
     },
@@ -2480,13 +2488,13 @@
         "swing_ambiguous_same_day": null
       },
       "20": {
-        "resolved": 29,
-        "avg_return_pct": -2.913,
-        "median_return_pct": -7.937,
-        "higher_rate_pct": 27.6,
-        "avg_mfe_pct": 33.133,
-        "avg_mae_pct": -21.396,
-        "avg_excess_vs_spy_pct": -4.627,
+        "resolved": 30,
+        "avg_return_pct": -3.194,
+        "median_return_pct": -8.847,
+        "higher_rate_pct": 26.7,
+        "avg_mfe_pct": 32.741,
+        "avg_mae_pct": -21.281,
+        "avg_excess_vs_spy_pct": -4.908,
         "swing_target_resolved": null,
         "swing_target_before_stop_rate_pct": null,
         "swing_ambiguous_same_day": null
@@ -2620,13 +2628,13 @@
     },
     "longer_20d_by_grade": {
       "A": {
-        "resolved": 19,
-        "avg_return_pct": -4.712,
-        "median_return_pct": -12.039,
-        "higher_rate_pct": 21.1,
-        "avg_mfe_pct": 39.43,
-        "avg_mae_pct": -27.608,
-        "avg_excess_vs_spy_pct": -6.426,
+        "resolved": 20,
+        "avg_return_pct": -5.043,
+        "median_return_pct": -11.692,
+        "higher_rate_pct": 20.0,
+        "avg_mfe_pct": 38.528,
+        "avg_mae_pct": -27.124,
+        "avg_excess_vs_spy_pct": -6.757,
         "swing_target_resolved": null,
         "swing_target_before_stop_rate_pct": null,
         "swing_ambiguous_same_day": null
@@ -2646,13 +2654,13 @@
     },
     "longer_20d_by_best_fit": {
       "LONGER-TERM": {
-        "resolved": 19,
-        "avg_return_pct": 0.941,
-        "median_return_pct": -7.018,
-        "higher_rate_pct": 26.3,
-        "avg_mfe_pct": 39.371,
-        "avg_mae_pct": -23.122,
-        "avg_excess_vs_spy_pct": -0.773,
+        "resolved": 20,
+        "avg_return_pct": 0.327,
+        "median_return_pct": -8.803,
+        "higher_rate_pct": 25.0,
+        "avg_mfe_pct": 38.471,
+        "avg_mae_pct": -22.863,
+        "avg_excess_vs_spy_pct": -1.387,
         "swing_target_resolved": null,
         "swing_target_before_stop_rate_pct": null,
         "swing_ambiguous_same_day": null
@@ -2684,13 +2692,13 @@
     },
     "longer_20d_by_archetype": {
       "20D BREAKOUT": {
-        "resolved": 14,
-        "avg_return_pct": 6.374,
-        "median_return_pct": -10.484,
-        "higher_rate_pct": 28.6,
-        "avg_mfe_pct": 59.626,
-        "avg_mae_pct": -24.55,
-        "avg_excess_vs_spy_pct": 4.66,
+        "resolved": 15,
+        "avg_return_pct": 5.192,
+        "median_return_pct": -11.212,
+        "higher_rate_pct": 26.7,
+        "avg_mfe_pct": 57.076,
+        "avg_mae_pct": -24.109,
+        "avg_excess_vs_spy_pct": 3.478,
         "swing_target_resolved": null,
         "swing_target_before_stop_rate_pct": null,
         "swing_ambiguous_same_day": null
@@ -2720,13 +2728,13 @@
         "swing_ambiguous_same_day": null
       },
       "TREND CONTINUATION": {
-        "resolved": 16,
-        "avg_return_pct": 0.714,
-        "median_return_pct": -8.387,
-        "higher_rate_pct": 31.2,
-        "avg_mfe_pct": 44.958,
-        "avg_mae_pct": -26.882,
-        "avg_excess_vs_spy_pct": -1.0,
+        "resolved": 17,
+        "avg_return_pct": 0.005,
+        "median_return_pct": -9.756,
+        "higher_rate_pct": 29.4,
+        "avg_mfe_pct": 43.571,
+        "avg_mae_pct": -26.356,
+        "avg_excess_vs_spy_pct": -1.709,
         "swing_target_resolved": null,
         "swing_target_before_stop_rate_pct": null,
         "swing_ambiguous_same_day": null
