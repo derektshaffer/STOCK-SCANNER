@@ -1,6 +1,6 @@
 # Forward Validation Status
 
-Generated: 2026-10-09T07:21:19.791622+00:00
+Generated: 2026-10-09T07:32:55.356924+00:00
 
 ## Scanner ML — independent live confirmation
 - **Samples:** 38/100 — 62 remaining
@@ -35,10 +35,10 @@ Generated: 2026-10-09T07:21:19.791622+00:00
 - Calibration provenance: interactive_analyzer: 1 rows/1 resolved
 
 ## Swing / Longer-Term forward cohorts
-- **Swing 5-day resolved — early read:** 686/30 ✅
-- **Swing 5-day resolved — useful:** 686/100 ✅
-- **Longer-Term 20-day resolved — early read:** 237/30 ✅
-- **Longer-Term 20-day resolved — useful:** 237/100 ✅
+- **Swing 5-day resolved — early read:** 715/30 ✅
+- **Swing 5-day resolved — useful:** 715/100 ✅
+- **Longer-Term 20-day resolved — early read:** 268/30 ✅
+- **Longer-Term 20-day resolved — useful:** 268/100 ✅
 
 ## Swing timeframe ML
 - Status: **experimental_not_validated**
