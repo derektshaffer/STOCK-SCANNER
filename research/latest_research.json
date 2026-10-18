@@ -1,237 +1,238 @@
 {
-  "generated_at": "2026-10-11T17:52:21.572692+00:00",
+  "generated_at": "2026-10-18T16:18:57.504493+00:00",
   "model": "gpt-5.6-luna",
-  "response_id": "resp_033ebaf49d27f2c6016acbccd6609087d0a264b3d7eb55a0a4",
+  "response_id": "resp_03c173976201a4fe016ad4f172e33c87d2a8059d9c43634d24",
   "status": "ok",
   "response_status": "completed",
   "incomplete_reason": null,
   "guardrail": "Research is hypothesis generation only. No item in this file is allowed to change live predictions until separately validated.",
-  "research_summary": "Evidence supports testing intraday continuation, reversal, liquidity, and regime effects jointly rather than relying on named chart patterns. Small-cap momentum may persist after information shocks, but thin liquidity, spread costs, volume exhaustion, and repeated failed rebounds can materially alter outcomes. Sequence discovery should use strictly chronological discovery and validation.",
+  "research_summary": "Evidence supports testing momentum continuation and reversal jointly with intraday timing, volume, liquidity, and catalyst context rather than treating named setups as universal. Small-cap and low-priced stocks require explicit spread, turnover, and impact controls because illiquidity can dominate apparent price signals. ([sciencedirect.com](https://www.sciencedirect.com/science/article/pii/S0304405X18301351?utm_source=openai))",
   "hypotheses": [
     {
-      "title": "Climax-to-pullback bounce decay",
-      "claim": "After a catalyst-driven impulse, the second and third rebounds from a pullback have lower median forward returns and higher failure rates than the first rebound, especially when each bounce makes a lower high.",
-      "why_it_might_matter": "Repeated tests of a prior high may consume demand while adverse selection and overhead supply increase.",
+      "title": "Impulse quality predicts first pullback outcome",
+      "claim": "After an abnormal upward impulse, a shallow pullback with lower selling volume, preserved VWAP proximity, and a higher low has higher probability of revisiting the impulse high than a pullback with expanding volume and VWAP loss.",
+      "why_it_might_matter": "Separates orderly continuation from exhaustion using measurable path and volume features.",
       "features_to_test": [
-        "bounce number",
-        "impulse return",
-        "pullback depth",
-        "bounce return",
-        "lower-high indicator",
-        "relative volume",
-        "VWAP distance"
+        "Impulse return and range percentile",
+        "Pullback retracement and duration",
+        "Relative volume by bar",
+        "VWAP distance and reclaim latency",
+        "Higher-low indicator"
       ],
-      "target_outcome": "Forward 5-, 15-, and 30-minute return; probability of a 5% or 10% decline within 1, 2, and 4 hours.",
+      "target_outcome": "Within 30, 60, and 120 minutes, price reaches the prior impulse high before falling 5% from the pullback pivot.",
       "conditioning_variables": [
-        "catalyst type",
-        "price",
-        "float",
-        "market capitalization",
-        "spread",
-        "time of day",
-        "halt history"
+        "Market capitalization",
+        "Float",
+        "Price",
+        "Catalyst type",
+        "Time of day",
+        "Spread"
       ],
-      "expected_direction": "Later and weaker bounces should predict smaller upside, greater downside, and shorter time-to-failure.",
-      "recommended_test": "Chronological event study with stock-day clustered errors, matched first-bounce controls, and realistic spread/slippage assumptions.",
-      "minimum_evidence_to_promote": "Consistent monotonic decay across at least three broad time periods and economically meaningful improvement over impulse-only baselines after costs.",
-      "failure_or_rejection_criteria": "No monotonic decay, unstable signs across periods, or effect disappears after controlling for volatility, spread, and catalyst severity.",
+      "expected_direction": "Continuation probability increases with shallow retracement, contracting pullback volume, higher lows, and sustained VWAP acceptance.",
+      "recommended_test": "Chronological event study with symbol-date clustering, quote-based transaction-cost adjustment, and separate discovery and confirmation periods.",
+      "minimum_evidence_to_promote": "Out-of-sample directional improvement over price-only and VWAP-only baselines across at least three calendar periods, with stable results after spread and slippage costs.",
+      "failure_or_rejection_criteria": "Effect disappears after controlling for time of day, catalyst, volatility, and liquidity, or fails in the latest untouched period.",
+      "source_quality": "HIGH",
+      "confidence": "MEDIUM",
+      "candidate_id": "2026-10-18-H01",
+      "status": "RESEARCH_CANDIDATE",
+      "production_weight": 0,
+      "promotion_gate": "Must be implemented as a leakage-safe historical experiment and pass out-of-sample / walk-forward validation before use."
+    },
+    {
+      "title": "Bounce-size decay forecasts repeat-bounce failure",
+      "claim": "For successive intraday bounces from comparable support or VWAP zones, declining bounce magnitude, duration, and volume participation predict greater probability of a failed reclaim and a 5% or 10% falloff.",
+      "why_it_might_matter": "Tests the commonly asserted second- or third-bounce exhaustion effect without assuming it is universally valid.",
+      "features_to_test": [
+        "Bounce count",
+        "Return per bounce",
+        "High-to-high and low-to-low structure",
+        "Volume participation ratio",
+        "Time between bounces",
+        "VWAP reclaim success",
+        "Spread and depth proxies"
+      ],
+      "target_outcome": "Probability and time-to-event for a 5% and 10% decline from the most recent bounce high within 30, 60, 120, and 390 minutes.",
+      "conditioning_variables": [
+        "Initial impulse size",
+        "Float turnover",
+        "Catalyst strength",
+        "Market regime",
+        "Bounce time of day",
+        "Short-sale constraints if available"
+      ],
+      "expected_direction": "Failure risk increases as bounce returns and volume shrink, lower highs form, and reclaim attempts take longer.",
+      "recommended_test": "Survival analysis or discrete-time hazard model on first, second, and third bounces, with walk-forward calibration and bootstrap confidence intervals.",
+      "minimum_evidence_to_promote": "Monotonic hazard increase across bounce counts and decay quintiles, economically meaningful after costs, and replicated out of sample across multiple regimes.",
+      "failure_or_rejection_criteria": "No monotonic relationship, strong dependence on one ticker subgroup, or apparent effect vanishes after conditioning on volatility and elapsed time.",
+      "source_quality": "MEDIUM",
+      "confidence": "LOW",
+      "candidate_id": "2026-10-18-H02",
+      "status": "RESEARCH_CANDIDATE",
+      "production_weight": 0,
+      "promotion_gate": "Must be implemented as a leakage-safe historical experiment and pass out-of-sample / walk-forward validation before use."
+    },
+    {
+      "title": "Failed reclaim and failed breakout asymmetry",
+      "claim": "A failed reclaim of VWAP, prior high, or opening-range resistance followed by a lower high predicts a larger and faster downside move than a simple pullback that never attempted the level.",
+      "why_it_might_matter": "Distinguishes rejection after trapped breakout participation from ordinary consolidation.",
+      "features_to_test": [
+        "Level-crossing count",
+        "Maximum excursion beyond level",
+        "Bars above level",
+        "Rejection wick and close location",
+        "Lower-high slope",
+        "Order imbalance if available",
+        "VWAP slope"
+      ],
+      "target_outcome": "Maximum adverse excursion, probability of 5% and 10% decline, and minutes to reach those thresholds after the failure.",
+      "conditioning_variables": [
+        "Level type",
+        "Relative volume",
+        "Spread",
+        "Float turnover",
+        "News timestamp",
+        "Time of day"
+      ],
+      "expected_direction": "Failed reclaims with high excursion, rapid rejection, and expanding sell volume produce faster and deeper declines.",
+      "recommended_test": "Matched event study comparing failed-reclaim events with non-failure pullbacks matched on prior return, volatility, price, and time of day.",
+      "minimum_evidence_to_promote": "Consistent increase in downside hazard and adverse excursion across level types, with confidence intervals excluding zero after multiple-testing control.",
+      "failure_or_rejection_criteria": "No incremental explanatory power over prior return, volatility, and VWAP distance, or results are entirely attributable to wide spreads.",
       "source_quality": "MEDIUM",
       "confidence": "MEDIUM",
-      "candidate_id": "2026-10-11-H01",
+      "candidate_id": "2026-10-18-H03",
       "status": "RESEARCH_CANDIDATE",
       "production_weight": 0,
       "promotion_gate": "Must be implemented as a leakage-safe historical experiment and pass out-of-sample / walk-forward validation before use."
     },
     {
-      "title": "VWAP and volume confirmation distinguish bounce from continuation",
-      "claim": "A bounce that reclaims VWAP with expanding relative volume and improving trade imbalance is more likely to produce a new intraday high than a bounce occurring below VWAP on contracting volume.",
-      "why_it_might_matter": "VWAP location proxies accepted price, while volume and imbalance measure whether new demand is arriving rather than merely covering shorts.",
+      "title": "Climax-to-contraction transition identifies exhaustion",
+      "claim": "An extreme price-volume impulse followed by range contraction, declining relative volume, and inability to make new highs has higher short-horizon reversal risk than an impulse followed by renewed volume expansion and range acceptance.",
+      "why_it_might_matter": "Tests whether volume climax is informative only when followed by failed price acceptance rather than treating high volume alone as bearish.",
       "features_to_test": [
-        "VWAP reclaim distance",
-        "volume percentile",
-        "volume slope",
-        "signed-volume imbalance",
-        "dollar turnover",
-        "high-of-day distance",
-        "spread and depth"
+        "Impulse volume percentile",
+        "Price-volume efficiency",
+        "Bar range and close location",
+        "Subsequent volume contraction",
+        "New-high attempts",
+        "VWAP slope",
+        "Cumulative signed volume"
       ],
-      "target_outcome": "Probability of a new high within 30 minutes and maximum favorable excursion before a 5% drawdown.",
+      "target_outcome": "Forward return, probability of a new high, and probability of a 5% drawdown over 15 to 120 minutes.",
       "conditioning_variables": [
-        "bounce number",
-        "impulse size",
-        "catalyst presence",
-        "float",
-        "price level",
-        "market regime",
-        "minute of session"
+        "Catalyst category",
+        "Float",
+        "Price",
+        "Opening gap",
+        "Market volatility",
+        "Session segment"
       ],
-      "expected_direction": "VWAP reclaim plus volume expansion should predict continuation; below-VWAP contraction should predict quick failure or range-bound behavior.",
-      "recommended_test": "Walk-forward logistic or survival model compared with price-only and VWAP-only baselines; evaluate calibration and net outcomes after costs.",
-      "minimum_evidence_to_promote": "Stable lift in out-of-sample new-high probability across liquidity and catalyst strata, with calibration error materially below baseline.",
-      "failure_or_rejection_criteria": "Signal is explained by spread, volatility, or time-of-day controls, or fails in later unseen periods.",
+      "expected_direction": "Climax plus contraction and failed highs predicts reversal; climax plus sustained acceptance and expanding volume predicts continuation.",
+      "recommended_test": "Two-stage conditional event study with interaction terms and purged walk-forward validation.",
+      "minimum_evidence_to_promote": "The interaction between climax and post-climax behavior materially improves calibration and remains significant after time-of-day and liquidity controls.",
+      "failure_or_rejection_criteria": "Volume level alone performs as well, interaction signs are unstable, or performance disappears under conservative trade-price assumptions.",
       "source_quality": "HIGH",
       "confidence": "MEDIUM",
-      "candidate_id": "2026-10-11-H02",
+      "candidate_id": "2026-10-18-H04",
       "status": "RESEARCH_CANDIDATE",
       "production_weight": 0,
       "promotion_gate": "Must be implemented as a leakage-safe historical experiment and pass out-of-sample / walk-forward validation before use."
     },
     {
-      "title": "Liquidity-conditioned failed reclaim severity",
-      "claim": "A failed reclaim of a prior high or VWAP followed by persistent selling imbalance produces faster and larger downside in low-float, low-priced, wide-spread stocks than in more liquid stocks.",
-      "why_it_might_matter": "Thin books and high price impact can amplify exits after trapped momentum participants abandon a failed breakout.",
+      "title": "Step-plateau-reacceleration persistence",
+      "claim": "A multi-session advance followed by a higher-level plateau with reduced volatility and turnover, then renewed range expansion, has greater probability of continued multi-session momentum than a one-session spike of similar size.",
+      "why_it_might_matter": "Tests whether price acceptance and consolidation distinguish durable information incorporation from transient promotion or squeeze behavior.",
       "features_to_test": [
-        "quoted and effective spread",
-        "relative depth",
-        "turnover-to-float",
-        "free float",
-        "price",
-        "order imbalance",
-        "reclaim overshoot",
-        "time below reclaim level"
+        "Session-to-session high and low structure",
+        "Plateau range width",
+        "Close location within plateau",
+        "Turnover decay and reacceleration",
+        "Gap behavior",
+        "Relative volume on expansion",
+        "News persistence"
       ],
-      "target_outcome": "Probability and time-to-5% and 10% falloff from the failed-reclaim price within 1, 2, and 4 hours.",
+      "target_outcome": "Forward 1-, 3-, and 5-session excess return, new-high probability, and maximum drawdown after reacceleration.",
       "conditioning_variables": [
-        "catalyst category",
-        "halt status",
-        "market capitalization",
-        "relative volume",
-        "short-sale constraints",
-        "time of day"
+        "Catalyst persistence",
+        "Float turnover",
+        "Market cap",
+        "Price",
+        "Prior volatility",
+        "Short interest if available",
+        "Market regime"
       ],
-      "expected_direction": "Wider spreads, lower depth, and lower float should increase falloff probability, severity, and execution uncertainty.",
-      "recommended_test": "Competing-risk survival analysis with inverse-liquidity weighting, quote-aware transaction costs, and cross-sectional bootstrap confidence intervals.",
-      "minimum_evidence_to_promote": "Effect remains significant after controlling for volatility and impulse size, with monotonic results across liquidity buckets and stable time-to-event estimates.",
-      "failure_or_rejection_criteria": "Results vanish after volatility adjustment, rely on a few extreme symbols, or cannot survive conservative execution-cost assumptions.",
-      "source_quality": "HIGH",
-      "confidence": "HIGH",
-      "candidate_id": "2026-10-11-H03",
-      "status": "RESEARCH_CANDIDATE",
-      "production_weight": 0,
-      "promotion_gate": "Must be implemented as a leakage-safe historical experiment and pass out-of-sample / walk-forward validation before use."
-    },
-    {
-      "title": "Step-plateau-reacceleration acceptance",
-      "claim": "A multi-session advance followed by a plateau with compressed range, sustained elevated turnover, and repeated closes above the prior step level has greater probability of reacceleration than a similar advance with declining turnover and loss of the accepted level.",
-      "why_it_might_matter": "The structure may indicate price acceptance and supply absorption rather than exhaustion, but only if the plateau retains liquidity and support.",
-      "features_to_test": [
-        "step return",
-        "plateau range compression",
-        "close location",
-        "turnover persistence",
-        "volume contraction then expansion",
-        "anchored VWAP",
-        "higher-low count",
-        "gap behavior"
-      ],
-      "target_outcome": "Next-session and next-3-session probability of a new high, maximum return, and adverse excursion.",
-      "conditioning_variables": [
-        "catalyst persistence",
-        "float",
-        "market capitalization",
-        "index regime",
-        "prior volatility",
-        "news recency"
-      ],
-      "expected_direction": "Accepted higher levels with compressed volatility and renewed volume should predict reacceleration; loss of the level should predict reversal.",
-      "recommended_test": "Multi-session event study with regime-stratified walk-forward validation and matched controls based on prior return and volatility.",
-      "minimum_evidence_to_promote": "Positive out-of-sample lift in both new-high probability and return expectancy across at least two market regimes and multiple plateau lengths.",
-      "failure_or_rejection_criteria": "Performance depends on one fixed window, fails after news and gap controls, or shows no stability across symbols.",
+      "expected_direction": "Higher lows, stable closes near plateau highs, and expansion accompanied by renewed but not extreme turnover predict continuation.",
+      "recommended_test": "Panel event study with issuer-level clustered errors, strict news-timestamp alignment, and walk-forward threshold selection.",
+      "minimum_evidence_to_promote": "Positive and stable risk-adjusted excess returns or classification lift across distinct historical eras and catalyst groups after gap and liquidity controls.",
+      "failure_or_rejection_criteria": "Effect is limited to a small number of promotional episodes, fails after excluding extreme outliers, or lacks stability across sessions.",
       "source_quality": "MEDIUM",
-      "confidence": "MEDIUM",
-      "candidate_id": "2026-10-11-H04",
+      "confidence": "LOW",
+      "candidate_id": "2026-10-18-H05",
       "status": "RESEARCH_CANDIDATE",
       "production_weight": 0,
       "promotion_gate": "Must be implemented as a leakage-safe historical experiment and pass out-of-sample / walk-forward validation before use."
     },
     {
-      "title": "Time-of-day and closing-hour exhaustion",
-      "claim": "Late-session rebounds after an intraday climax are more likely to fail when they occur below the session VWAP or prior high with contracting volume, while late rebounds that break the high on expanding dollar volume have greater next-session continuation.",
-      "why_it_might_matter": "Intraday liquidity, institutional rebalancing, closing auctions, and overnight information risk create different continuation and exhaustion dynamics near the close.",
+      "title": "Leakage-safe unnamed motif discovery",
+      "claim": "Unsupervised discovery of normalized multivariate price-volume sequences can identify recurring intraday states with stable forward outcomes beyond named setup features.",
+      "why_it_might_matter": "Allows unknown motifs, regimes, and change-points to be tested without encoding trader folklore in advance.",
       "features_to_test": [
-        "minute-of-day",
-        "distance to close",
-        "VWAP relation",
-        "closing-auction volume proxy",
-        "relative volume",
-        "range extension",
-        "high-of-day retests",
-        "overnight gap history"
+        "Normalized returns and ranges",
+        "Volume and turnover trajectories",
+        "VWAP distance",
+        "Spread and quote-depth proxies",
+        "Signed volume or imbalance",
+        "Time-of-day encoding",
+        "News proximity"
       ],
-      "target_outcome": "Same-day 30-minute return, close-to-close return, next-open gap, and next-session high/low excursion.",
+      "target_outcome": "Cluster-conditional probability of continuation, reversal, 5% and 10% falloff, and time-to-failure over fixed horizons.",
       "conditioning_variables": [
-        "catalyst type",
-        "bounce number",
-        "float",
-        "spread",
-        "market return",
-        "halt or volatility interruption"
+        "Ticker liquidity bucket",
+        "Catalyst status",
+        "Session segment",
+        "Market regime",
+        "Sequence length",
+        "Price normalization method"
       ],
-      "expected_direction": "Weak late bounces should show higher same-day failure and downside excursion; confirmed late breakouts should show stronger next-session continuation than unconfirmed rebounds.",
-      "recommended_test": "Separate opening, midday, and closing event studies with purged day-level splits and benchmarks matched on intraday return and volume.",
-      "minimum_evidence_to_promote": "Directionally consistent effects in each major time block, surviving day clustering and realistic close-auction or exit assumptions.",
-      "failure_or_rejection_criteria": "Effect disappears after controlling for volatility and news timing, or is confined to one historical market regime.",
+      "expected_direction": "Some motifs should show stable, economically distinct forward distributions; most should not survive validation.",
+      "recommended_test": "Fit motifs, clusters, shapelets, or change-points only on an initial chronological block; freeze representations and labels; evaluate on later validation blocks, then one untouched test block using purged walk-forward evaluation and multiple-hypothesis correction. Compare against simple baselines.",
+      "minimum_evidence_to_promote": "A discovered motif shows stable lift versus baselines in every later block, survives symbol and date permutation checks, remains after transaction-cost modeling, and has adequate event counts.",
+      "failure_or_rejection_criteria": "Motif definitions drift materially, performance exists only in discovery data, cluster membership leaks future information, or lift disappears after correcting for selection and costs.",
       "source_quality": "HIGH",
       "confidence": "MEDIUM",
-      "candidate_id": "2026-10-11-H05",
-      "status": "RESEARCH_CANDIDATE",
-      "production_weight": 0,
-      "promotion_gate": "Must be implemented as a leakage-safe historical experiment and pass out-of-sample / walk-forward validation before use."
-    },
-    {
-      "title": "Leakage-safe unsupervised motif discovery",
-      "claim": "Unsupervised clustering of normalized price-volume-order-flow windows can discover recurring motifs with materially different forward outcomes, including unnamed exhaustion and continuation states.",
-      "why_it_might_matter": "Named setups may omit nonlinear combinations of path shape, volume, spread, and liquidity that are detectable with shapelets, motifs, change-points, or regime models.",
-      "features_to_test": [
-        "normalized return path",
-        "range path",
-        "volume path",
-        "signed-volume path",
-        "VWAP distance path",
-        "spread path",
-        "depth path",
-        "change-point statistics"
-      ],
-      "target_outcome": "Cluster-conditional probability of new high, 5% or 10% falloff, time-to-failure, and next-session continuation.",
-      "conditioning_variables": [
-        "window length",
-        "symbol liquidity",
-        "catalyst status",
-        "session segment",
-        "market regime",
-        "bounce count"
-      ],
-      "expected_direction": "Some discovered states should exhibit stable continuation or exhaustion outcomes, but direction must be estimated only after discovery.",
-      "recommended_test": "Use an early chronological discovery set for motif extraction and clustering; freeze representations and labels, then test on later unseen dates with rolling out-of-sample evaluation and cross-symbol validation.",
-      "minimum_evidence_to_promote": "At least one motif has a pre-specified minimum sample size, significant and economically meaningful outcome separation in multiple later windows, and stability under clustering seeds and reasonable distance metrics.",
-      "failure_or_rejection_criteria": "Motif identity changes materially with small parameter changes, outcome separation disappears out of sample, or discovery and validation periods overlap through scaling, labeling, or hyperparameter tuning.",
-      "source_quality": "HIGH",
-      "confidence": "MEDIUM",
-      "candidate_id": "2026-10-11-H06",
+      "candidate_id": "2026-10-18-H06",
       "status": "RESEARCH_CANDIDATE",
       "production_weight": 0,
       "promotion_gate": "Must be implemented as a leakage-safe historical experiment and pass out-of-sample / walk-forward validation before use."
     }
   ],
   "important_caveats": [
-    "All tests must use information available at the event timestamp, including point-in-time float, news timestamps, halts, borrow constraints, and quotes.",
-    "Use dollar-volume, spread, depth, and market-impact controls because percentage returns alone can exaggerate apparent predictability in thin stocks.",
-    "Separate discovery, model selection, and final validation chronologically; apply purging and embargoes whenever labels overlap forecast windows.",
-    "Report both gross and execution-adjusted outcomes, including adverse selection, partial fills, halts, and inability to exit.",
-    "Control for multiple testing, symbol concentration, catalyst selection, survivorship, delistings, and changing market microstructure.",
-    "Do not interpret statistical significance as evidence of deployable profitability or as a trade recommendation."
+    "Intraday academic evidence often uses larger or more liquid stocks than the intended small-cap universe; external validity must be tested rather than assumed. ([sciencedirect.com](https://www.sciencedirect.com/science/article/pii/S0304405X18301351?utm_source=openai))",
+    "Low-priced and microcap stocks can have wide percentage spreads, sparse depth, manipulation risk, and large price impact; every result should be reported gross and net of conservative execution costs. ([finra.org](https://www.finra.org/investors/insights/low-priced-stocks-big-problems?utm_source=openai))",
+    "Time-of-day effects can confound nearly every momentum, reversal, and volume result; normalize volume and volatility by symbol and session segment. ([papers.ssrn.com](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=4192163&utm_source=openai))",
+    "News timestamps, halts, offerings, splits, symbol changes, survivorship, borrow availability, and delistings require point-in-time handling.",
+    "Do not infer causality from motif labels or feature importance; require chronological replication and robustness to alternative definitions."
   ],
   "research_gaps": [
-    "Point-in-time datasets linking catalyst semantics, halt events, float changes, borrow availability, and intraday quotes for low-priced U.S. equities.",
-    "Reliable definitions of bounce identity that remain stable across volatility, tick size, and price regimes.",
-    "How repeated-bounce failure interacts with short-sale constraints, retail order flow, and opening or closing auctions.",
-    "Whether motif representations transfer across symbols, catalysts, exchanges, and post-regulatory microstructure regimes.",
-    "Comparison of shapelets, matrix-profile motifs, hidden-state models, change-point segmentation, and contrastive sequence embeddings under identical leakage-safe protocols.",
-    "Statistical methods for estimating 5% and 10% falloff risk when halted or delisted securities create censored outcomes."
+    "There is limited direct evidence on second- and third-bounce failure severity in U.S. low-float catalyst stocks.",
+    "More work is needed on quote-level VWAP acceptance, hidden liquidity, and spread-adjusted breakout failure outcomes.",
+    "The interaction between catalyst credibility, social-media attention, float turnover, and post-climax reversals remains under-measured.",
+    "Research should compare motif discovery on raw paths, volatility-normalized paths, and event-time volume paths.",
+    "Future tests should quantify how halt risk, offerings, warrants, and dilution announcements alter continuation and exhaustion patterns."
   ],
   "sources": [
     {
-      "url": "https://www.sec.gov/data-research/market-structure-data",
+      "url": "https://www.investor.gov/introduction-investing/general-resources/news-alerts/alerts-bulletins/investor-bulletins/investor-2",
+      "title": null,
+      "type": "url"
+    },
+    {
+      "url": "https://www.investor.gov/introduction-investing/investing-basics/glossary/liquidity-or-marketability",
+      "title": null,
+      "type": "url"
+    },
+    {
+      "url": "https://www.sciencedirect.com/science/article/pii/S1544612325018926",
       "title": null,
       "type": "url"
     },
@@ -241,7 +242,7 @@
       "type": "url"
     },
     {
-      "url": "https://www.nyse.com/trade/equities",
+      "url": "https://www.sec.gov/newsroom/speeches-statements/clayton-statement-staff-bulletin-offshore-omnibus-accounts",
       "title": null,
       "type": "url"
     },
@@ -251,57 +252,72 @@
       "type": "url"
     },
     {
-      "url": "https://www.sec.gov/newsroom/speeches-statements/testimony-venture-exchanges",
+      "url": "https://www.sec.gov/comments/s7-26-18/s72618-6082119-191807.pdf",
       "title": null,
       "type": "url"
     },
     {
-      "url": "https://www.sec.gov/comments/s7-30-22/s73022-20163074-333038.pdf",
+      "url": "https://doi.org/10.1016/j.iref.2026.105679",
       "title": null,
       "type": "url"
     },
     {
-      "url": "https://www.sec.gov/rules-regulations/2001/03/disclosure-order-execution-routing-practices",
+      "url": "https://www.sciencedirect.com/org/science/article/pii/S1940597919000437",
       "title": null,
       "type": "url"
     },
     {
-      "url": "https://www.sec.gov/news/studies/ecnafter.htm",
+      "url": "https://papers.ssrn.com/sol3/Delivery.cfm?abstractid=92589",
       "title": null,
       "type": "url"
     },
     {
-      "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC6814436/",
+      "url": "https://www.sciencedirect.com/science/article/pii/S0927539820300657",
       "title": null,
       "type": "url"
     },
     {
-      "url": "https://academic.oup.com/rfs/article-abstract/39/10/3378/8626980",
+      "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC7597190/",
       "title": null,
       "type": "url"
     },
     {
-      "url": "https://catalog.data.gov/dataset/summary-metrics-by-exchange",
+      "url": "https://www.sciencedirect.com/science/article/pii/S0304405X18301351",
       "title": null,
       "type": "url"
     },
     {
-      "url": "https://www.sec.gov/newsroom/speeches-statements/clayton-redfearn-modernizing-us-equity-market-structure-2020-06-22",
+      "url": "https://www.sec.gov/comments/s7-31-22/s73122-216419-440343.pdf",
       "title": null,
       "type": "url"
     },
     {
-      "url": "https://www.sec.gov/divisions/riskfin/seminar/nimalendran090612.pdf",
+      "url": "https://www.govinfo.gov/content/pkg/CHRG-107hhrg72723/pdf/CHRG-107hhrg72723.pdf",
       "title": null,
       "type": "url"
     },
     {
-      "url": "https://www.sec.gov/files/rules/policy/2019/34-87327.pdf",
+      "url": "https://arxiv.org/abs/1503.03548",
       "title": null,
       "type": "url"
     },
     {
-      "url": "https://www.nyse.com/tick-pilot",
+      "url": "https://www.sec.gov/comments/s7-02-10/s70210-151.pdf",
+      "title": null,
+      "type": "url"
+    },
+    {
+      "url": "https://financialservices.house.gov/uploadedfiles/115-24.pdf",
+      "title": null,
+      "type": "url"
+    },
+    {
+      "url": "https://public-inspection.federalregister.gov/2024-21867.pdf?1728305119=",
+      "title": null,
+      "type": "url"
+    },
+    {
+      "url": "https://en.wikipedia.org/wiki/Price_action_trading",
       "title": null,
       "type": "url"
     },
@@ -311,37 +327,12 @@
       "type": "url"
     },
     {
+      "url": "https://arxiv.org/abs/2212.14670",
+      "title": null,
+      "type": "url"
+    },
+    {
       "url": "https://arxiv.org/abs/1005.3535",
-      "title": null,
-      "type": "url"
-    },
-    {
-      "url": "https://citeseerx.ist.psu.edu/document?doi=ca90cf2df33c40caf4c08fc268d7b4d7f4658b4a&repid=rep1&type=pdf",
-      "title": null,
-      "type": "url"
-    },
-    {
-      "url": "https://arxiv.org/abs/1011.6402",
-      "title": null,
-      "type": "url"
-    },
-    {
-      "url": "https://media.regcompliancewatch.com/uploads/2022/12/NMS96494.pdf",
-      "title": null,
-      "type": "url"
-    },
-    {
-      "url": "https://arxiv.org/abs/2406.17198",
-      "title": null,
-      "type": "url"
-    },
-    {
-      "url": "https://academicweb.nd.edu/~zda/intramom.pdf",
-      "title": null,
-      "type": "url"
-    },
-    {
-      "url": "https://en.wikipedia.org/wiki/Purged_cross-validation",
       "title": null,
       "type": "url"
     },
@@ -351,67 +342,142 @@
       "type": "url"
     },
     {
-      "url": "https://www.reddit.com/r/wallstreetbetsHUZZAH/comments/1vn35as/intraday_event_study/",
+      "url": "https://www.reddit.com/r/Forexstrategy/comments/1sly6i8/clean_trend_or_latestage_selloff_curious_how/",
       "title": null,
       "type": "url"
     },
     {
-      "url": "https://en.wikipedia.org/wiki/Andrew_Aziz",
+      "url": "https://www.reddit.com/r/Daytrading/comments/hi085z",
       "title": null,
       "type": "url"
     },
     {
-      "url": "https://www.reddit.com/r/algorithmictrading/comments/1wga9ag/why_would_an_identical_exit_framework_work_for/",
+      "url": "https://www.reddit.com/r/Daytrading/comments/g6mu5q",
       "title": null,
       "type": "url"
     },
     {
-      "url": "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=7029819",
+      "url": "https://www.reddit.com/r/Daytrading/comments/1rgbt1a/spx_at_6979_breakout_or_exhaustion_how_are_you/",
       "title": null,
       "type": "url"
     },
     {
-      "url": "https://papers.ssrn.com/sol3/Delivery.cfm/7007079.pdf?abstractid=7007079&mirid=1&type=2",
+      "url": "https://www.reddit.com/r/EverHint/comments/1u3l9ds/everhint_momentum_swing_explosive_volume_breakout/",
       "title": null,
       "type": "url"
     },
     {
-      "url": "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=6303279",
+      "url": "https://www.reddit.com/r/SMCIDiscussion/comments/1ivhovh",
       "title": null,
       "type": "url"
     },
     {
-      "url": "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=7555699",
+      "url": "https://www.reddit.com/r/Daytrading/comments/1hydvf7",
       "title": null,
       "type": "url"
     },
     {
-      "url": "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=5607630",
+      "url": "https://www.reddit.com/r/FuturesTrading/comments/1icoj2g",
       "title": null,
       "type": "url"
     },
     {
-      "url": "https://papers.ssrn.com/sol3/Delivery.cfm/7361818.pdf?abstractid=7361818&mirid=1",
+      "url": "https://www.reddit.com/r/EverHint/comments/1tidvav/everhint_momentum_swing_breakout_standard/",
       "title": null,
       "type": "url"
     },
     {
-      "url": "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=2745220",
+      "url": "https://www.reddit.com/r/Daytrading/comments/fu9h14",
       "title": null,
       "type": "url"
     },
     {
-      "url": "https://papers.ssrn.com/sol3/Delivery.cfm/7021298.pdf?abstractid=7021298&mirid=1",
+      "url": "https://www.reddit.com/r/EverHint/comments/1u8vmaj/momentum_swing_signals_explosive_volume_breakout/",
       "title": null,
       "type": "url"
     },
     {
-      "url": "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=7346738",
+      "url": "https://en.wikipedia.org/wiki/Market_impact",
       "title": null,
       "type": "url"
     },
     {
-      "url": "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=7260379",
+      "url": "https://www.reddit.com/r/EverHint/comments/1t479sp/momentum_swing_explosive_volume_pullback_for_may/",
+      "title": null,
+      "type": "url"
+    },
+    {
+      "url": "https://en.wikipedia.org/wiki/MIDAS_technical_analysis",
+      "title": null,
+      "type": "url"
+    },
+    {
+      "url": "https://www.finra.org/investors/insights/low-priced-stocks-big-problems",
+      "title": null,
+      "type": "url"
+    },
+    {
+      "url": "https://syndication.finra.org/content/understanding-disclosure-documents",
+      "title": null,
+      "type": "url"
+    },
+    {
+      "url": "https://syndication.finra.org/content/avoiding-pump-and-dump-scams",
+      "title": null,
+      "type": "url"
+    },
+    {
+      "url": "https://www.finra.org/sites/default/files/NoticeDocument/p123431.pdf",
+      "title": null,
+      "type": "url"
+    },
+    {
+      "url": "https://syndication.finra.org/content/boiler-room-alert-if-you-get-call-dont-bite-and-dont-buy",
+      "title": null,
+      "type": "url"
+    },
+    {
+      "url": "https://arxiv.org/abs/1501.00405",
+      "title": null,
+      "type": "url"
+    },
+    {
+      "url": "https://syndication.finra.org/content/nothing-micro-about-microcap-fraud-investing-low-priced-stocks",
+      "title": null,
+      "type": "url"
+    },
+    {
+      "url": "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=3719233",
+      "title": null,
+      "type": "url"
+    },
+    {
+      "url": "https://syndication.finra.org/content/investor-alert-social-media-investment-group-imposter-scams-rise",
+      "title": null,
+      "type": "url"
+    },
+    {
+      "url": "https://www.finra.org/sites/default/files/NoticeDocument/p004139.pdf",
+      "title": null,
+      "type": "url"
+    },
+    {
+      "url": "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=4192163",
+      "title": null,
+      "type": "url"
+    },
+    {
+      "url": "https://syndication.finra.org/content/frequent-intraday-trading-understanding-basics",
+      "title": null,
+      "type": "url"
+    },
+    {
+      "url": "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=263939",
+      "title": null,
+      "type": "url"
+    },
+    {
+      "url": "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=3336171",
       "title": null,
       "type": "url"
     },
@@ -421,29 +487,54 @@
       "type": "url"
     },
     {
-      "url": "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=3385636",
+      "url": "https://syndication.finra.org/content/ramp-could-lead-you-dump",
       "title": null,
       "type": "url"
     },
     {
-      "url": "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=7257858",
+      "url": "https://www.finra.org/sites/default/files/Investors_Guide_to_Securities_Industry_Disputes.pdf",
       "title": null,
       "type": "url"
     },
     {
-      "url": "https://arxiv.org/abs/1503.03238",
+      "url": "https://arxiv.org/abs/2004.08176",
       "title": null,
       "type": "url"
     },
     {
-      "url": "https://arxiv.org/abs/1703.04385",
+      "url": "https://arxiv.org/abs/1706.03161",
       "title": null,
       "type": "url"
     },
     {
-      "url": "https://arxiv.org/abs/0912.3390",
+      "url": "https://files.brokercheck.finra.org/firm/firm_28269.pdf",
       "title": null,
       "type": "url"
+    },
+    {
+      "url": "https://cdn.finra.org/606/2024/39473_606_NMS_2024_Q2_TRAD_V1.pdf",
+      "title": null,
+      "type": "url"
+    },
+    {
+      "url": "https://files.brokercheck.finra.org/individual/individual_2063050.pdf",
+      "title": null,
+      "type": "url"
+    },
+    {
+      "url": "https://www.sciencedirect.com/science/article/pii/S0304405X18301351?utm_source=openai",
+      "title": "Market intraday momentum - ScienceDirect",
+      "type": "url_citation"
+    },
+    {
+      "url": "https://www.finra.org/investors/insights/low-priced-stocks-big-problems?utm_source=openai",
+      "title": "Low-Priced Stocks Can Spell Big Problems",
+      "type": "url_citation"
+    },
+    {
+      "url": "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=4192163&utm_source=openai",
+      "title": "A Tale of One Day: Morning Momentum, Afternoon Reversal by Haoyu Xu, Xiaoneng Zhu :: SSRN",
+      "type": "url_citation"
     }
   ],
   "raw_output": null
