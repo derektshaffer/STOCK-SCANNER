@@ -1,12 +1,12 @@
 {
   "schema_version": 1,
   "tracker_version": "offhours-timeframe-outcome-v2-shared-swing-target",
-  "generated_at_utc": "2026-10-21T06:10:34.540287+00:00",
+  "generated_at_utc": "2026-10-22T06:14:28.596738+00:00",
   "cohorts": [
     {
       "signal_date": "2026-08-28",
       "candidate_count": 30,
-      "elapsed_trading_sessions": 36,
+      "elapsed_trading_sessions": 37,
       "fully_resolved": false,
       "summary": {
         "horizons": {
@@ -352,7 +352,7 @@
     {
       "signal_date": "2026-08-31",
       "candidate_count": 30,
-      "elapsed_trading_sessions": 35,
+      "elapsed_trading_sessions": 36,
       "fully_resolved": false,
       "summary": {
         "horizons": {
@@ -674,7 +674,7 @@
     {
       "signal_date": "2026-09-01",
       "candidate_count": 30,
-      "elapsed_trading_sessions": 34,
+      "elapsed_trading_sessions": 35,
       "fully_resolved": false,
       "summary": {
         "horizons": {
@@ -1020,7 +1020,7 @@
     {
       "signal_date": "2026-09-02",
       "candidate_count": 30,
-      "elapsed_trading_sessions": 33,
+      "elapsed_trading_sessions": 34,
       "fully_resolved": false,
       "summary": {
         "horizons": {
@@ -1342,7 +1342,7 @@
     {
       "signal_date": "2026-09-03",
       "candidate_count": 30,
-      "elapsed_trading_sessions": 32,
+      "elapsed_trading_sessions": 33,
       "fully_resolved": false,
       "summary": {
         "horizons": {
@@ -1664,7 +1664,7 @@
     {
       "signal_date": "2026-09-04",
       "candidate_count": 30,
-      "elapsed_trading_sessions": 31,
+      "elapsed_trading_sessions": 32,
       "fully_resolved": false,
       "summary": {
         "horizons": {
@@ -1986,7 +1986,7 @@
     {
       "signal_date": "2026-09-08",
       "candidate_count": 30,
-      "elapsed_trading_sessions": 30,
+      "elapsed_trading_sessions": 31,
       "fully_resolved": false,
       "summary": {
         "horizons": {
@@ -2308,7 +2308,7 @@
     {
       "signal_date": "2026-09-09",
       "candidate_count": 30,
-      "elapsed_trading_sessions": 29,
+      "elapsed_trading_sessions": 30,
       "fully_resolved": false,
       "summary": {
         "horizons": {
@@ -2630,7 +2630,7 @@
     {
       "signal_date": "2026-09-10",
       "candidate_count": 30,
-      "elapsed_trading_sessions": 28,
+      "elapsed_trading_sessions": 29,
       "fully_resolved": false,
       "summary": {
         "horizons": {
@@ -2976,7 +2976,7 @@
     {
       "signal_date": "2026-09-11",
       "candidate_count": 30,
-      "elapsed_trading_sessions": 27,
+      "elapsed_trading_sessions": 28,
       "fully_resolved": false,
       "summary": {
         "horizons": {
@@ -3322,7 +3322,7 @@
     {
       "signal_date": "2026-09-14",
       "candidate_count": 30,
-      "elapsed_trading_sessions": 26,
+      "elapsed_trading_sessions": 27,
       "fully_resolved": false,
       "summary": {
         "horizons": {
@@ -3692,7 +3692,7 @@
     {
       "signal_date": "2026-09-15",
       "candidate_count": 30,
-      "elapsed_trading_sessions": 25,
+      "elapsed_trading_sessions": 26,
       "fully_resolved": false,
       "summary": {
         "horizons": {
@@ -4038,7 +4038,7 @@
     {
       "signal_date": "2026-09-16",
       "candidate_count": 30,
-      "elapsed_trading_sessions": 24,
+      "elapsed_trading_sessions": 25,
       "fully_resolved": false,
       "summary": {
         "horizons": {
@@ -4384,7 +4384,7 @@
     {
       "signal_date": "2026-09-17",
       "candidate_count": 30,
-      "elapsed_trading_sessions": 23,
+      "elapsed_trading_sessions": 24,
       "fully_resolved": false,
       "summary": {
         "horizons": {
@@ -4754,7 +4754,7 @@
     {
       "signal_date": "2026-09-18",
       "candidate_count": 30,
-      "elapsed_trading_sessions": 22,
+      "elapsed_trading_sessions": 23,
       "fully_resolved": false,
       "summary": {
         "horizons": {
@@ -5076,7 +5076,7 @@
     {
       "signal_date": "2026-09-21",
       "candidate_count": 30,
-      "elapsed_trading_sessions": 21,
+      "elapsed_trading_sessions": 22,
       "fully_resolved": false,
       "summary": {
         "horizons": {
@@ -5398,7 +5398,7 @@
     {
       "signal_date": "2026-09-22",
       "candidate_count": 30,
-      "elapsed_trading_sessions": 20,
+      "elapsed_trading_sessions": 21,
       "fully_resolved": false,
       "summary": {
         "horizons": {
@@ -5744,7 +5744,7 @@
     {
       "signal_date": "2026-09-23",
       "candidate_count": 30,
-      "elapsed_trading_sessions": 19,
+      "elapsed_trading_sessions": 20,
       "fully_resolved": false,
       "summary": {
         "horizons": {
@@ -5809,13 +5809,13 @@
             "swing_ambiguous_same_day": null
           },
           "20": {
-            "resolved": 0,
-            "avg_return_pct": null,
-            "median_return_pct": null,
-            "higher_rate_pct": null,
-            "avg_mfe_pct": null,
-            "avg_mae_pct": null,
-            "avg_excess_vs_spy_pct": null,
+            "resolved": 29,
+            "avg_return_pct": -24.368,
+            "median_return_pct": -21.417,
+            "higher_rate_pct": 6.9,
+            "avg_mfe_pct": 10.768,
+            "avg_mae_pct": -30.956,
+            "avg_excess_vs_spy_pct": -25.056,
             "swing_target_resolved": null,
             "swing_target_before_stop_rate_pct": null,
             "swing_ambiguous_same_day": null
@@ -5961,37 +5961,37 @@
         },
         "longer_20d_by_grade": {
           "A": {
-            "resolved": 0,
-            "avg_return_pct": null,
-            "median_return_pct": null,
-            "higher_rate_pct": null,
-            "avg_mfe_pct": null,
-            "avg_mae_pct": null,
-            "avg_excess_vs_spy_pct": null,
+            "resolved": 15,
+            "avg_return_pct": -24.497,
+            "median_return_pct": -30.99,
+            "higher_rate_pct": 6.7,
+            "avg_mfe_pct": 9.895,
+            "avg_mae_pct": -31.231,
+            "avg_excess_vs_spy_pct": -25.185,
             "swing_target_resolved": null,
             "swing_target_before_stop_rate_pct": null,
             "swing_ambiguous_same_day": null
           },
           "B": {
-            "resolved": 0,
-            "avg_return_pct": null,
-            "median_return_pct": null,
-            "higher_rate_pct": null,
-            "avg_mfe_pct": null,
-            "avg_mae_pct": null,
-            "avg_excess_vs_spy_pct": null,
+            "resolved": 9,
+            "avg_return_pct": -15.144,
+            "median_return_pct": -14.165,
+            "higher_rate_pct": 11.1,
+            "avg_mfe_pct": 16.993,
+            "avg_mae_pct": -22.8,
+            "avg_excess_vs_spy_pct": -15.832,
             "swing_target_resolved": null,
             "swing_target_before_stop_rate_pct": null,
             "swing_ambiguous_same_day": null
           },
           "C": {
-            "resolved": 0,
-            "avg_return_pct": null,
-            "median_return_pct": null,
-            "higher_rate_pct": null,
-            "avg_mfe_pct": null,
-            "avg_mae_pct": null,
-            "avg_excess_vs_spy_pct": null,
+            "resolved": 5,
+            "avg_return_pct": -40.582,
+            "median_return_pct": -40.15,
+            "higher_rate_pct": 0.0,
+            "avg_mfe_pct": 2.179,
+            "avg_mae_pct": -44.814,
+            "avg_excess_vs_spy_pct": -41.27,
             "swing_target_resolved": null,
             "swing_target_before_stop_rate_pct": null,
             "swing_ambiguous_same_day": null
@@ -5999,37 +5999,37 @@
         },
         "longer_20d_by_best_fit": {
           "LONGER-TERM": {
-            "resolved": 0,
-            "avg_return_pct": null,
-            "median_return_pct": null,
-            "higher_rate_pct": null,
-            "avg_mfe_pct": null,
-            "avg_mae_pct": null,
-            "avg_excess_vs_spy_pct": null,
+            "resolved": 14,
+            "avg_return_pct": -18.457,
+            "median_return_pct": -18.29,
+            "higher_rate_pct": 14.3,
+            "avg_mfe_pct": 8.2,
+            "avg_mae_pct": -26.495,
+            "avg_excess_vs_spy_pct": -19.145,
             "swing_target_resolved": null,
             "swing_target_before_stop_rate_pct": null,
             "swing_ambiguous_same_day": null
           },
           "MIXED": {
-            "resolved": 0,
-            "avg_return_pct": null,
-            "median_return_pct": null,
-            "higher_rate_pct": null,
-            "avg_mfe_pct": null,
-            "avg_mae_pct": null,
-            "avg_excess_vs_spy_pct": null,
+            "resolved": 8,
+            "avg_return_pct": -30.462,
+            "median_return_pct": -34.396,
+            "higher_rate_pct": 0.0,
+            "avg_mfe_pct": 7.548,
+            "avg_mae_pct": -36.185,
+            "avg_excess_vs_spy_pct": -31.151,
             "swing_target_resolved": null,
             "swing_target_before_stop_rate_pct": null,
             "swing_ambiguous_same_day": null
           },
           "SWING": {
-            "resolved": 0,
-            "avg_return_pct": null,
-            "median_return_pct": null,
-            "higher_rate_pct": null,
-            "avg_mfe_pct": null,
-            "avg_mae_pct": null,
-            "avg_excess_vs_spy_pct": null,
+            "resolved": 7,
+            "avg_return_pct": -29.224,
+            "median_return_pct": -10.104,
+            "higher_rate_pct": 0.0,
+            "avg_mfe_pct": 19.584,
+            "avg_mae_pct": -33.901,
+            "avg_excess_vs_spy_pct": -29.912,
             "swing_target_resolved": null,
             "swing_target_before_stop_rate_pct": null,
             "swing_ambiguous_same_day": null
@@ -6037,49 +6037,49 @@
         },
         "longer_20d_by_archetype": {
           "20D BREAKOUT": {
-            "resolved": 0,
-            "avg_return_pct": null,
-            "median_return_pct": null,
-            "higher_rate_pct": null,
-            "avg_mfe_pct": null,
-            "avg_mae_pct": null,
-            "avg_excess_vs_spy_pct": null,
+            "resolved": 8,
+            "avg_return_pct": -26.825,
+            "median_return_pct": -16.591,
+            "higher_rate_pct": 0.0,
+            "avg_mfe_pct": 13.66,
+            "avg_mae_pct": -30.715,
+            "avg_excess_vs_spy_pct": -27.512,
             "swing_target_resolved": null,
             "swing_target_before_stop_rate_pct": null,
             "swing_ambiguous_same_day": null
           },
           "CONSTRUCTIVE PULLBACK": {
-            "resolved": 0,
-            "avg_return_pct": null,
-            "median_return_pct": null,
-            "higher_rate_pct": null,
-            "avg_mfe_pct": null,
-            "avg_mae_pct": null,
-            "avg_excess_vs_spy_pct": null,
+            "resolved": 3,
+            "avg_return_pct": -5.544,
+            "median_return_pct": -16.218,
+            "higher_rate_pct": 33.3,
+            "avg_mfe_pct": 10.136,
+            "avg_mae_pct": -16.548,
+            "avg_excess_vs_spy_pct": -6.232,
             "swing_target_resolved": null,
             "swing_target_before_stop_rate_pct": null,
             "swing_ambiguous_same_day": null
           },
           "MOMENTUM TREND": {
-            "resolved": 0,
-            "avg_return_pct": null,
-            "median_return_pct": null,
-            "higher_rate_pct": null,
-            "avg_mfe_pct": null,
-            "avg_mae_pct": null,
-            "avg_excess_vs_spy_pct": null,
+            "resolved": 10,
+            "avg_return_pct": -22.162,
+            "median_return_pct": -17.263,
+            "higher_rate_pct": 10.0,
+            "avg_mfe_pct": 15.735,
+            "avg_mae_pct": -29.646,
+            "avg_excess_vs_spy_pct": -22.85,
             "swing_target_resolved": null,
             "swing_target_before_stop_rate_pct": null,
             "swing_ambiguous_same_day": null
           },
           "TREND CONTINUATION": {
-            "resolved": 0,
-            "avg_return_pct": null,
-            "median_return_pct": null,
-            "higher_rate_pct": null,
-            "avg_mfe_pct": null,
-            "avg_mae_pct": null,
-            "avg_excess_vs_spy_pct": null,
+            "resolved": 12,
+            "avg_return_pct": -25.215,
+            "median_return_pct": -35.377,
+            "higher_rate_pct": 8.3,
+            "avg_mfe_pct": 8.266,
+            "avg_mae_pct": -32.184,
+            "avg_excess_vs_spy_pct": -25.903,
             "swing_target_resolved": null,
             "swing_target_before_stop_rate_pct": null,
             "swing_ambiguous_same_day": null
@@ -6090,7 +6090,7 @@
     {
       "signal_date": "2026-09-24",
       "candidate_count": 30,
-      "elapsed_trading_sessions": 18,
+      "elapsed_trading_sessions": 19,
       "fully_resolved": false,
       "summary": {
         "horizons": {
@@ -6436,7 +6436,7 @@
     {
       "signal_date": "2026-09-25",
       "candidate_count": 30,
-      "elapsed_trading_sessions": 17,
+      "elapsed_trading_sessions": 18,
       "fully_resolved": false,
       "summary": {
         "horizons": {
@@ -6782,7 +6782,7 @@
     {
       "signal_date": "2026-09-28",
       "candidate_count": 30,
-      "elapsed_trading_sessions": 16,
+      "elapsed_trading_sessions": 17,
       "fully_resolved": false,
       "summary": {
         "horizons": {
@@ -7128,7 +7128,7 @@
     {
       "signal_date": "2026-09-29",
       "candidate_count": 30,
-      "elapsed_trading_sessions": 15,
+      "elapsed_trading_sessions": 16,
       "fully_resolved": false,
       "summary": {
         "horizons": {
@@ -7498,7 +7498,7 @@
     {
       "signal_date": "2026-09-30",
       "candidate_count": 30,
-      "elapsed_trading_sessions": 14,
+      "elapsed_trading_sessions": 15,
       "fully_resolved": false,
       "summary": {
         "horizons": {
@@ -7868,7 +7868,7 @@
     {
       "signal_date": "2026-10-01",
       "candidate_count": 30,
-      "elapsed_trading_sessions": 13,
+      "elapsed_trading_sessions": 14,
       "fully_resolved": false,
       "summary": {
         "horizons": {
@@ -8238,7 +8238,7 @@
     {
       "signal_date": "2026-10-02",
       "candidate_count": 30,
-      "elapsed_trading_sessions": 12,
+      "elapsed_trading_sessions": 13,
       "fully_resolved": false,
       "summary": {
         "horizons": {
@@ -8608,7 +8608,7 @@
     {
       "signal_date": "2026-10-05",
       "candidate_count": 30,
-      "elapsed_trading_sessions": 11,
+      "elapsed_trading_sessions": 12,
       "fully_resolved": false,
       "summary": {
         "horizons": {
@@ -8978,7 +8978,7 @@
     {
       "signal_date": "2026-10-06",
       "candidate_count": 30,
-      "elapsed_trading_sessions": 10,
+      "elapsed_trading_sessions": 11,
       "fully_resolved": false,
       "summary": {
         "horizons": {
@@ -9300,7 +9300,7 @@
     {
       "signal_date": "2026-10-07",
       "candidate_count": 30,
-      "elapsed_trading_sessions": 9,
+      "elapsed_trading_sessions": 10,
       "fully_resolved": false,
       "summary": {
         "horizons": {
@@ -9353,13 +9353,13 @@
             "swing_ambiguous_same_day": 5
           },
           "10": {
-            "resolved": 0,
-            "avg_return_pct": null,
-            "median_return_pct": null,
-            "higher_rate_pct": null,
-            "avg_mfe_pct": null,
-            "avg_mae_pct": null,
-            "avg_excess_vs_spy_pct": null,
+            "resolved": 29,
+            "avg_return_pct": -7.284,
+            "median_return_pct": -12.593,
+            "higher_rate_pct": 37.9,
+            "avg_mfe_pct": 16.38,
+            "avg_mae_pct": -16.949,
+            "avg_excess_vs_spy_pct": -6.753,
             "swing_target_resolved": null,
             "swing_target_before_stop_rate_pct": null,
             "swing_ambiguous_same_day": null
@@ -9646,7 +9646,7 @@
     {
       "signal_date": "2026-10-08",
       "candidate_count": 30,
-      "elapsed_trading_sessions": 8,
+      "elapsed_trading_sessions": 9,
       "fully_resolved": false,
       "summary": {
         "horizons": {
@@ -10016,7 +10016,7 @@
     {
       "signal_date": "2026-10-09",
       "candidate_count": 30,
-      "elapsed_trading_sessions": 7,
+      "elapsed_trading_sessions": 8,
       "fully_resolved": false,
       "summary": {
         "horizons": {
@@ -10362,7 +10362,7 @@
     {
       "signal_date": "2026-10-12",
       "candidate_count": 30,
-      "elapsed_trading_sessions": 6,
+      "elapsed_trading_sessions": 7,
       "fully_resolved": false,
       "summary": {
         "horizons": {
@@ -10732,7 +10732,7 @@
     {
       "signal_date": "2026-10-13",
       "candidate_count": 30,
-      "elapsed_trading_sessions": 5,
+      "elapsed_trading_sessions": 6,
       "fully_resolved": false,
       "summary": {
         "horizons": {
@@ -10773,15 +10773,15 @@
             "swing_ambiguous_same_day": null
           },
           "5": {
-            "resolved": 28,
-            "avg_return_pct": -6.661,
-            "median_return_pct": -2.154,
-            "higher_rate_pct": 39.3,
-            "avg_mfe_pct": 86.851,
-            "avg_mae_pct": -15.284,
-            "avg_excess_vs_spy_pct": -5.509,
-            "swing_target_resolved": 25,
-            "swing_target_before_stop_rate_pct": 16.0,
+            "resolved": 29,
+            "avg_return_pct": -7.401,
+            "median_return_pct": -2.625,
+            "higher_rate_pct": 37.9,
+            "avg_mfe_pct": 83.689,
+            "avg_mae_pct": -15.727,
+            "avg_excess_vs_spy_pct": -6.249,
+            "swing_target_resolved": 26,
+            "swing_target_before_stop_rate_pct": 15.4,
             "swing_ambiguous_same_day": 3
           },
           "10": {
@@ -10847,15 +10847,15 @@
             "swing_ambiguous_same_day": 0
           },
           "C": {
-            "resolved": 8,
-            "avg_return_pct": -2.162,
-            "median_return_pct": -0.224,
-            "higher_rate_pct": 50.0,
-            "avg_mfe_pct": 283.77,
-            "avg_mae_pct": -12.375,
-            "avg_excess_vs_spy_pct": -1.01,
-            "swing_target_resolved": 8,
-            "swing_target_before_stop_rate_pct": 25.0,
+            "resolved": 9,
+            "avg_return_pct": -5.045,
+            "median_return_pct": -1.683,
+            "higher_rate_pct": 44.4,
+            "avg_mfe_pct": 251.701,
+            "avg_mae_pct": -14.123,
+            "avg_excess_vs_spy_pct": -3.893,
+            "swing_target_resolved": 9,
+            "swing_target_before_stop_rate_pct": 22.2,
             "swing_ambiguous_same_day": 0
           }
         },
@@ -10885,15 +10885,15 @@
             "swing_ambiguous_same_day": 3
           },
           "SWING": {
-            "resolved": 5,
-            "avg_return_pct": -8.533,
-            "median_return_pct": -5.755,
-            "higher_rate_pct": 40.0,
-            "avg_mfe_pct": 448.758,
-            "avg_mae_pct": -19.107,
-            "avg_excess_vs_spy_pct": -7.381,
-            "swing_target_resolved": 5,
-            "swing_target_before_stop_rate_pct": 40.0,
+            "resolved": 6,
+            "avg_return_pct": -11.796,
+            "median_return_pct": -15.082,
+            "higher_rate_pct": 33.3,
+            "avg_mfe_pct": 373.157,
+            "avg_mae_pct": -20.607,
+            "avg_excess_vs_spy_pct": -10.644,
+            "swing_target_resolved": 6,
+            "swing_target_before_stop_rate_pct": 33.3,
             "swing_ambiguous_same_day": 0
           }
         },
@@ -10923,15 +10923,15 @@
             "swing_ambiguous_same_day": 0
           },
           "MOMENTUM TREND": {
-            "resolved": 10,
-            "avg_return_pct": -2.512,
-            "median_return_pct": 2.113,
-            "higher_rate_pct": 60.0,
-            "avg_mfe_pct": 226.998,
-            "avg_mae_pct": -11.873,
-            "avg_excess_vs_spy_pct": -1.36,
-            "swing_target_resolved": 10,
-            "swing_target_before_stop_rate_pct": 30.0,
+            "resolved": 11,
+            "avg_return_pct": -4.839,
+            "median_return_pct": 1.235,
+            "higher_rate_pct": 54.5,
+            "avg_mfe_pct": 205.921,
+            "avg_mae_pct": -13.349,
+            "avg_excess_vs_spy_pct": -3.687,
+            "swing_target_resolved": 11,
+            "swing_target_before_stop_rate_pct": 27.3,
             "swing_ambiguous_same_day": 0
           },
           "TREND CONTINUATION": {
@@ -11078,7 +11078,7 @@
     {
       "signal_date": "2026-10-14",
       "candidate_count": 30,
-      "elapsed_trading_sessions": 4,
+      "elapsed_trading_sessions": 5,
       "fully_resolved": false,
       "summary": {
         "horizons": {
@@ -11119,16 +11119,16 @@
             "swing_ambiguous_same_day": null
           },
           "5": {
-            "resolved": 0,
-            "avg_return_pct": null,
-            "median_return_pct": null,
-            "higher_rate_pct": null,
-            "avg_mfe_pct": null,
-            "avg_mae_pct": null,
-            "avg_excess_vs_spy_pct": null,
-            "swing_target_resolved": 0,
-            "swing_target_before_stop_rate_pct": null,
-            "swing_ambiguous_same_day": 0
+            "resolved": 29,
+            "avg_return_pct": -2.448,
+            "median_return_pct": 0.804,
+            "higher_rate_pct": 55.2,
+            "avg_mfe_pct": 10.656,
+            "avg_mae_pct": -9.218,
+            "avg_excess_vs_spy_pct": -2.901,
+            "swing_target_resolved": 23,
+            "swing_target_before_stop_rate_pct": 34.8,
+            "swing_ambiguous_same_day": 6
           },
           "10": {
             "resolved": 0,
@@ -11169,128 +11169,128 @@
         },
         "swing_5d_by_grade": {
           "A": {
-            "resolved": 0,
-            "avg_return_pct": null,
-            "median_return_pct": null,
-            "higher_rate_pct": null,
-            "avg_mfe_pct": null,
-            "avg_mae_pct": null,
-            "avg_excess_vs_spy_pct": null,
-            "swing_target_resolved": 0,
-            "swing_target_before_stop_rate_pct": null,
-            "swing_ambiguous_same_day": 0
+            "resolved": 4,
+            "avg_return_pct": -6.061,
+            "median_return_pct": -4.838,
+            "higher_rate_pct": 25.0,
+            "avg_mfe_pct": 10.464,
+            "avg_mae_pct": -9.703,
+            "avg_excess_vs_spy_pct": -6.514,
+            "swing_target_resolved": 3,
+            "swing_target_before_stop_rate_pct": 33.3,
+            "swing_ambiguous_same_day": 1
           },
           "B": {
-            "resolved": 0,
-            "avg_return_pct": null,
-            "median_return_pct": null,
-            "higher_rate_pct": null,
-            "avg_mfe_pct": null,
-            "avg_mae_pct": null,
-            "avg_excess_vs_spy_pct": null,
-            "swing_target_resolved": 0,
-            "swing_target_before_stop_rate_pct": null,
+            "resolved": 7,
+            "avg_return_pct": -1.552,
+            "median_return_pct": 0.615,
+            "higher_rate_pct": 57.1,
+            "avg_mfe_pct": 8.26,
+            "avg_mae_pct": -10.732,
+            "avg_excess_vs_spy_pct": -2.005,
+            "swing_target_resolved": 7,
+            "swing_target_before_stop_rate_pct": 28.6,
             "swing_ambiguous_same_day": 0
           },
           "C": {
-            "resolved": 0,
-            "avg_return_pct": null,
-            "median_return_pct": null,
-            "higher_rate_pct": null,
-            "avg_mfe_pct": null,
-            "avg_mae_pct": null,
-            "avg_excess_vs_spy_pct": null,
-            "swing_target_resolved": 0,
-            "swing_target_before_stop_rate_pct": null,
-            "swing_ambiguous_same_day": 0
+            "resolved": 18,
+            "avg_return_pct": -1.993,
+            "median_return_pct": 1.91,
+            "higher_rate_pct": 61.1,
+            "avg_mfe_pct": 11.631,
+            "avg_mae_pct": -8.522,
+            "avg_excess_vs_spy_pct": -2.446,
+            "swing_target_resolved": 13,
+            "swing_target_before_stop_rate_pct": 38.5,
+            "swing_ambiguous_same_day": 5
           }
         },
         "swing_5d_by_best_fit": {
           "LONGER-TERM": {
-            "resolved": 0,
-            "avg_return_pct": null,
-            "median_return_pct": null,
-            "higher_rate_pct": null,
-            "avg_mfe_pct": null,
-            "avg_mae_pct": null,
-            "avg_excess_vs_spy_pct": null,
-            "swing_target_resolved": 0,
-            "swing_target_before_stop_rate_pct": null,
-            "swing_ambiguous_same_day": 0
+            "resolved": 19,
+            "avg_return_pct": 0.601,
+            "median_return_pct": 2.131,
+            "higher_rate_pct": 73.7,
+            "avg_mfe_pct": 6.632,
+            "avg_mae_pct": -5.771,
+            "avg_excess_vs_spy_pct": 0.148,
+            "swing_target_resolved": 17,
+            "swing_target_before_stop_rate_pct": 29.4,
+            "swing_ambiguous_same_day": 2
           },
           "MIXED": {
-            "resolved": 0,
-            "avg_return_pct": null,
-            "median_return_pct": null,
-            "higher_rate_pct": null,
-            "avg_mfe_pct": null,
-            "avg_mae_pct": null,
-            "avg_excess_vs_spy_pct": null,
-            "swing_target_resolved": 0,
-            "swing_target_before_stop_rate_pct": null,
-            "swing_ambiguous_same_day": 0
+            "resolved": 2,
+            "avg_return_pct": 5.133,
+            "median_return_pct": 5.133,
+            "higher_rate_pct": 50.0,
+            "avg_mfe_pct": 34.478,
+            "avg_mae_pct": -6.55,
+            "avg_excess_vs_spy_pct": 4.68,
+            "swing_target_resolved": 1,
+            "swing_target_before_stop_rate_pct": 100.0,
+            "swing_ambiguous_same_day": 1
           },
           "SWING": {
-            "resolved": 0,
-            "avg_return_pct": null,
-            "median_return_pct": null,
-            "higher_rate_pct": null,
-            "avg_mfe_pct": null,
-            "avg_mae_pct": null,
-            "avg_excess_vs_spy_pct": null,
-            "swing_target_resolved": 0,
-            "swing_target_before_stop_rate_pct": null,
-            "swing_ambiguous_same_day": 0
+            "resolved": 8,
+            "avg_return_pct": -11.583,
+            "median_return_pct": -11.027,
+            "higher_rate_pct": 12.5,
+            "avg_mfe_pct": 14.259,
+            "avg_mae_pct": -18.072,
+            "avg_excess_vs_spy_pct": -12.036,
+            "swing_target_resolved": 5,
+            "swing_target_before_stop_rate_pct": 40.0,
+            "swing_ambiguous_same_day": 3
           }
         },
         "swing_5d_by_archetype": {
           "20D BREAKOUT": {
-            "resolved": 0,
-            "avg_return_pct": null,
-            "median_return_pct": null,
-            "higher_rate_pct": null,
-            "avg_mfe_pct": null,
-            "avg_mae_pct": null,
-            "avg_excess_vs_spy_pct": null,
-            "swing_target_resolved": 0,
-            "swing_target_before_stop_rate_pct": null,
-            "swing_ambiguous_same_day": 0
+            "resolved": 6,
+            "avg_return_pct": -0.868,
+            "median_return_pct": 0.526,
+            "higher_rate_pct": 50.0,
+            "avg_mfe_pct": 10.441,
+            "avg_mae_pct": -5.75,
+            "avg_excess_vs_spy_pct": -1.321,
+            "swing_target_resolved": 5,
+            "swing_target_before_stop_rate_pct": 40.0,
+            "swing_ambiguous_same_day": 1
           },
           "MOMENTUM TREND": {
-            "resolved": 0,
-            "avg_return_pct": null,
-            "median_return_pct": null,
-            "higher_rate_pct": null,
-            "avg_mfe_pct": null,
-            "avg_mae_pct": null,
-            "avg_excess_vs_spy_pct": null,
-            "swing_target_resolved": 0,
-            "swing_target_before_stop_rate_pct": null,
-            "swing_ambiguous_same_day": 0
+            "resolved": 16,
+            "avg_return_pct": -2.121,
+            "median_return_pct": 1.91,
+            "higher_rate_pct": 62.5,
+            "avg_mfe_pct": 12.457,
+            "avg_mae_pct": -8.161,
+            "avg_excess_vs_spy_pct": -2.574,
+            "swing_target_resolved": 12,
+            "swing_target_before_stop_rate_pct": 41.7,
+            "swing_ambiguous_same_day": 4
           },
           "REVERSAL / IGNITION": {
-            "resolved": 0,
-            "avg_return_pct": null,
-            "median_return_pct": null,
-            "higher_rate_pct": null,
-            "avg_mfe_pct": null,
-            "avg_mae_pct": null,
-            "avg_excess_vs_spy_pct": null,
-            "swing_target_resolved": 0,
-            "swing_target_before_stop_rate_pct": null,
+            "resolved": 1,
+            "avg_return_pct": -25.0,
+            "median_return_pct": -25.0,
+            "higher_rate_pct": 0.0,
+            "avg_mfe_pct": -1.829,
+            "avg_mae_pct": -30.03,
+            "avg_excess_vs_spy_pct": -25.453,
+            "swing_target_resolved": 1,
+            "swing_target_before_stop_rate_pct": 0.0,
             "swing_ambiguous_same_day": 0
           },
           "TREND CONTINUATION": {
-            "resolved": 0,
-            "avg_return_pct": null,
-            "median_return_pct": null,
-            "higher_rate_pct": null,
-            "avg_mfe_pct": null,
-            "avg_mae_pct": null,
-            "avg_excess_vs_spy_pct": null,
-            "swing_target_resolved": 0,
-            "swing_target_before_stop_rate_pct": null,
-            "swing_ambiguous_same_day": 0
+            "resolved": 7,
+            "avg_return_pct": -1.131,
+            "median_return_pct": -1.079,
+            "higher_rate_pct": 42.9,
+            "avg_mfe_pct": 7.082,
+            "avg_mae_pct": -10.775,
+            "avg_excess_vs_spy_pct": -1.584,
+            "swing_target_resolved": 6,
+            "swing_target_before_stop_rate_pct": 16.7,
+            "swing_ambiguous_same_day": 1
           }
         },
         "longer_20d_by_grade": {
@@ -11424,7 +11424,7 @@
     {
       "signal_date": "2026-10-15",
       "candidate_count": 30,
-      "elapsed_trading_sessions": 3,
+      "elapsed_trading_sessions": 4,
       "fully_resolved": false,
       "summary": {
         "horizons": {
@@ -11794,7 +11794,7 @@
     {
       "signal_date": "2026-10-16",
       "candidate_count": 30,
-      "elapsed_trading_sessions": 2,
+      "elapsed_trading_sessions": 3,
       "fully_resolved": false,
       "summary": {
         "horizons": {
@@ -11823,13 +11823,13 @@
             "swing_ambiguous_same_day": null
           },
           "3": {
-            "resolved": 0,
-            "avg_return_pct": null,
-            "median_return_pct": null,
-            "higher_rate_pct": null,
-            "avg_mfe_pct": null,
-            "avg_mae_pct": null,
-            "avg_excess_vs_spy_pct": null,
+            "resolved": 30,
+            "avg_return_pct": 3.72,
+            "median_return_pct": -0.181,
+            "higher_rate_pct": 46.7,
+            "avg_mfe_pct": 8.788,
+            "avg_mae_pct": -5.022,
+            "avg_excess_vs_spy_pct": 2.431,
             "swing_target_resolved": null,
             "swing_target_before_stop_rate_pct": null,
             "swing_ambiguous_same_day": null
@@ -12164,7 +12164,7 @@
     {
       "signal_date": "2026-10-19",
       "candidate_count": 30,
-      "elapsed_trading_sessions": 1,
+      "elapsed_trading_sessions": 2,
       "fully_resolved": false,
       "summary": {
         "horizons": {
@@ -12181,13 +12181,13 @@
             "swing_ambiguous_same_day": null
           },
           "2": {
-            "resolved": 0,
-            "avg_return_pct": null,
-            "median_return_pct": null,
-            "higher_rate_pct": null,
-            "avg_mfe_pct": null,
-            "avg_mae_pct": null,
-            "avg_excess_vs_spy_pct": null,
+            "resolved": 30,
+            "avg_return_pct": 1.556,
+            "median_return_pct": 1.025,
+            "higher_rate_pct": 63.3,
+            "avg_mfe_pct": 7.731,
+            "avg_mae_pct": -3.853,
+            "avg_excess_vs_spy_pct": 0.694,
             "swing_target_resolved": null,
             "swing_target_before_stop_rate_pct": null,
             "swing_ambiguous_same_day": null
@@ -12533,6 +12533,376 @@
     },
     {
       "signal_date": "2026-10-20",
+      "candidate_count": 30,
+      "elapsed_trading_sessions": 1,
+      "fully_resolved": false,
+      "summary": {
+        "horizons": {
+          "1": {
+            "resolved": 30,
+            "avg_return_pct": -2.19,
+            "median_return_pct": -0.446,
+            "higher_rate_pct": 46.7,
+            "avg_mfe_pct": 2.063,
+            "avg_mae_pct": -4.925,
+            "avg_excess_vs_spy_pct": -2.715,
+            "swing_target_resolved": null,
+            "swing_target_before_stop_rate_pct": null,
+            "swing_ambiguous_same_day": null
+          },
+          "2": {
+            "resolved": 0,
+            "avg_return_pct": null,
+            "median_return_pct": null,
+            "higher_rate_pct": null,
+            "avg_mfe_pct": null,
+            "avg_mae_pct": null,
+            "avg_excess_vs_spy_pct": null,
+            "swing_target_resolved": null,
+            "swing_target_before_stop_rate_pct": null,
+            "swing_ambiguous_same_day": null
+          },
+          "3": {
+            "resolved": 0,
+            "avg_return_pct": null,
+            "median_return_pct": null,
+            "higher_rate_pct": null,
+            "avg_mfe_pct": null,
+            "avg_mae_pct": null,
+            "avg_excess_vs_spy_pct": null,
+            "swing_target_resolved": null,
+            "swing_target_before_stop_rate_pct": null,
+            "swing_ambiguous_same_day": null
+          },
+          "5": {
+            "resolved": 0,
+            "avg_return_pct": null,
+            "median_return_pct": null,
+            "higher_rate_pct": null,
+            "avg_mfe_pct": null,
+            "avg_mae_pct": null,
+            "avg_excess_vs_spy_pct": null,
+            "swing_target_resolved": 0,
+            "swing_target_before_stop_rate_pct": null,
+            "swing_ambiguous_same_day": 0
+          },
+          "10": {
+            "resolved": 0,
+            "avg_return_pct": null,
+            "median_return_pct": null,
+            "higher_rate_pct": null,
+            "avg_mfe_pct": null,
+            "avg_mae_pct": null,
+            "avg_excess_vs_spy_pct": null,
+            "swing_target_resolved": null,
+            "swing_target_before_stop_rate_pct": null,
+            "swing_ambiguous_same_day": null
+          },
+          "20": {
+            "resolved": 0,
+            "avg_return_pct": null,
+            "median_return_pct": null,
+            "higher_rate_pct": null,
+            "avg_mfe_pct": null,
+            "avg_mae_pct": null,
+            "avg_excess_vs_spy_pct": null,
+            "swing_target_resolved": null,
+            "swing_target_before_stop_rate_pct": null,
+            "swing_ambiguous_same_day": null
+          },
+          "40": {
+            "resolved": 0,
+            "avg_return_pct": null,
+            "median_return_pct": null,
+            "higher_rate_pct": null,
+            "avg_mfe_pct": null,
+            "avg_mae_pct": null,
+            "avg_excess_vs_spy_pct": null,
+            "swing_target_resolved": null,
+            "swing_target_before_stop_rate_pct": null,
+            "swing_ambiguous_same_day": null
+          }
+        },
+        "swing_5d_by_grade": {
+          "A": {
+            "resolved": 0,
+            "avg_return_pct": null,
+            "median_return_pct": null,
+            "higher_rate_pct": null,
+            "avg_mfe_pct": null,
+            "avg_mae_pct": null,
+            "avg_excess_vs_spy_pct": null,
+            "swing_target_resolved": 0,
+            "swing_target_before_stop_rate_pct": null,
+            "swing_ambiguous_same_day": 0
+          },
+          "B": {
+            "resolved": 0,
+            "avg_return_pct": null,
+            "median_return_pct": null,
+            "higher_rate_pct": null,
+            "avg_mfe_pct": null,
+            "avg_mae_pct": null,
+            "avg_excess_vs_spy_pct": null,
+            "swing_target_resolved": 0,
+            "swing_target_before_stop_rate_pct": null,
+            "swing_ambiguous_same_day": 0
+          },
+          "C": {
+            "resolved": 0,
+            "avg_return_pct": null,
+            "median_return_pct": null,
+            "higher_rate_pct": null,
+            "avg_mfe_pct": null,
+            "avg_mae_pct": null,
+            "avg_excess_vs_spy_pct": null,
+            "swing_target_resolved": 0,
+            "swing_target_before_stop_rate_pct": null,
+            "swing_ambiguous_same_day": 0
+          }
+        },
+        "swing_5d_by_best_fit": {
+          "LONGER-TERM": {
+            "resolved": 0,
+            "avg_return_pct": null,
+            "median_return_pct": null,
+            "higher_rate_pct": null,
+            "avg_mfe_pct": null,
+            "avg_mae_pct": null,
+            "avg_excess_vs_spy_pct": null,
+            "swing_target_resolved": 0,
+            "swing_target_before_stop_rate_pct": null,
+            "swing_ambiguous_same_day": 0
+          },
+          "MIXED": {
+            "resolved": 0,
+            "avg_return_pct": null,
+            "median_return_pct": null,
+            "higher_rate_pct": null,
+            "avg_mfe_pct": null,
+            "avg_mae_pct": null,
+            "avg_excess_vs_spy_pct": null,
+            "swing_target_resolved": 0,
+            "swing_target_before_stop_rate_pct": null,
+            "swing_ambiguous_same_day": 0
+          },
+          "SWING": {
+            "resolved": 0,
+            "avg_return_pct": null,
+            "median_return_pct": null,
+            "higher_rate_pct": null,
+            "avg_mfe_pct": null,
+            "avg_mae_pct": null,
+            "avg_excess_vs_spy_pct": null,
+            "swing_target_resolved": 0,
+            "swing_target_before_stop_rate_pct": null,
+            "swing_ambiguous_same_day": 0
+          }
+        },
+        "swing_5d_by_archetype": {
+          "20D BREAKOUT": {
+            "resolved": 0,
+            "avg_return_pct": null,
+            "median_return_pct": null,
+            "higher_rate_pct": null,
+            "avg_mfe_pct": null,
+            "avg_mae_pct": null,
+            "avg_excess_vs_spy_pct": null,
+            "swing_target_resolved": 0,
+            "swing_target_before_stop_rate_pct": null,
+            "swing_ambiguous_same_day": 0
+          },
+          "CONSTRUCTIVE PULLBACK": {
+            "resolved": 0,
+            "avg_return_pct": null,
+            "median_return_pct": null,
+            "higher_rate_pct": null,
+            "avg_mfe_pct": null,
+            "avg_mae_pct": null,
+            "avg_excess_vs_spy_pct": null,
+            "swing_target_resolved": 0,
+            "swing_target_before_stop_rate_pct": null,
+            "swing_ambiguous_same_day": 0
+          },
+          "MOMENTUM TREND": {
+            "resolved": 0,
+            "avg_return_pct": null,
+            "median_return_pct": null,
+            "higher_rate_pct": null,
+            "avg_mfe_pct": null,
+            "avg_mae_pct": null,
+            "avg_excess_vs_spy_pct": null,
+            "swing_target_resolved": 0,
+            "swing_target_before_stop_rate_pct": null,
+            "swing_ambiguous_same_day": 0
+          },
+          "REVERSAL / IGNITION": {
+            "resolved": 0,
+            "avg_return_pct": null,
+            "median_return_pct": null,
+            "higher_rate_pct": null,
+            "avg_mfe_pct": null,
+            "avg_mae_pct": null,
+            "avg_excess_vs_spy_pct": null,
+            "swing_target_resolved": 0,
+            "swing_target_before_stop_rate_pct": null,
+            "swing_ambiguous_same_day": 0
+          },
+          "TREND CONTINUATION": {
+            "resolved": 0,
+            "avg_return_pct": null,
+            "median_return_pct": null,
+            "higher_rate_pct": null,
+            "avg_mfe_pct": null,
+            "avg_mae_pct": null,
+            "avg_excess_vs_spy_pct": null,
+            "swing_target_resolved": 0,
+            "swing_target_before_stop_rate_pct": null,
+            "swing_ambiguous_same_day": 0
+          }
+        },
+        "longer_20d_by_grade": {
+          "A": {
+            "resolved": 0,
+            "avg_return_pct": null,
+            "median_return_pct": null,
+            "higher_rate_pct": null,
+            "avg_mfe_pct": null,
+            "avg_mae_pct": null,
+            "avg_excess_vs_spy_pct": null,
+            "swing_target_resolved": null,
+            "swing_target_before_stop_rate_pct": null,
+            "swing_ambiguous_same_day": null
+          },
+          "B": {
+            "resolved": 0,
+            "avg_return_pct": null,
+            "median_return_pct": null,
+            "higher_rate_pct": null,
+            "avg_mfe_pct": null,
+            "avg_mae_pct": null,
+            "avg_excess_vs_spy_pct": null,
+            "swing_target_resolved": null,
+            "swing_target_before_stop_rate_pct": null,
+            "swing_ambiguous_same_day": null
+          },
+          "C": {
+            "resolved": 0,
+            "avg_return_pct": null,
+            "median_return_pct": null,
+            "higher_rate_pct": null,
+            "avg_mfe_pct": null,
+            "avg_mae_pct": null,
+            "avg_excess_vs_spy_pct": null,
+            "swing_target_resolved": null,
+            "swing_target_before_stop_rate_pct": null,
+            "swing_ambiguous_same_day": null
+          }
+        },
+        "longer_20d_by_best_fit": {
+          "LONGER-TERM": {
+            "resolved": 0,
+            "avg_return_pct": null,
+            "median_return_pct": null,
+            "higher_rate_pct": null,
+            "avg_mfe_pct": null,
+            "avg_mae_pct": null,
+            "avg_excess_vs_spy_pct": null,
+            "swing_target_resolved": null,
+            "swing_target_before_stop_rate_pct": null,
+            "swing_ambiguous_same_day": null
+          },
+          "MIXED": {
+            "resolved": 0,
+            "avg_return_pct": null,
+            "median_return_pct": null,
+            "higher_rate_pct": null,
+            "avg_mfe_pct": null,
+            "avg_mae_pct": null,
+            "avg_excess_vs_spy_pct": null,
+            "swing_target_resolved": null,
+            "swing_target_before_stop_rate_pct": null,
+            "swing_ambiguous_same_day": null
+          },
+          "SWING": {
+            "resolved": 0,
+            "avg_return_pct": null,
+            "median_return_pct": null,
+            "higher_rate_pct": null,
+            "avg_mfe_pct": null,
+            "avg_mae_pct": null,
+            "avg_excess_vs_spy_pct": null,
+            "swing_target_resolved": null,
+            "swing_target_before_stop_rate_pct": null,
+            "swing_ambiguous_same_day": null
+          }
+        },
+        "longer_20d_by_archetype": {
+          "20D BREAKOUT": {
+            "resolved": 0,
+            "avg_return_pct": null,
+            "median_return_pct": null,
+            "higher_rate_pct": null,
+            "avg_mfe_pct": null,
+            "avg_mae_pct": null,
+            "avg_excess_vs_spy_pct": null,
+            "swing_target_resolved": null,
+            "swing_target_before_stop_rate_pct": null,
+            "swing_ambiguous_same_day": null
+          },
+          "CONSTRUCTIVE PULLBACK": {
+            "resolved": 0,
+            "avg_return_pct": null,
+            "median_return_pct": null,
+            "higher_rate_pct": null,
+            "avg_mfe_pct": null,
+            "avg_mae_pct": null,
+            "avg_excess_vs_spy_pct": null,
+            "swing_target_resolved": null,
+            "swing_target_before_stop_rate_pct": null,
+            "swing_ambiguous_same_day": null
+          },
+          "MOMENTUM TREND": {
+            "resolved": 0,
+            "avg_return_pct": null,
+            "median_return_pct": null,
+            "higher_rate_pct": null,
+            "avg_mfe_pct": null,
+            "avg_mae_pct": null,
+            "avg_excess_vs_spy_pct": null,
+            "swing_target_resolved": null,
+            "swing_target_before_stop_rate_pct": null,
+            "swing_ambiguous_same_day": null
+          },
+          "REVERSAL / IGNITION": {
+            "resolved": 0,
+            "avg_return_pct": null,
+            "median_return_pct": null,
+            "higher_rate_pct": null,
+            "avg_mfe_pct": null,
+            "avg_mae_pct": null,
+            "avg_excess_vs_spy_pct": null,
+            "swing_target_resolved": null,
+            "swing_target_before_stop_rate_pct": null,
+            "swing_ambiguous_same_day": null
+          },
+          "TREND CONTINUATION": {
+            "resolved": 0,
+            "avg_return_pct": null,
+            "median_return_pct": null,
+            "higher_rate_pct": null,
+            "avg_mfe_pct": null,
+            "avg_mae_pct": null,
+            "avg_excess_vs_spy_pct": null,
+            "swing_target_resolved": null,
+            "swing_target_before_stop_rate_pct": null,
+            "swing_ambiguous_same_day": null
+          }
+        }
+      }
+    },
+    {
+      "signal_date": "2026-10-21",
       "candidate_count": 30,
       "elapsed_trading_sessions": 0,
       "fully_resolved": false,
