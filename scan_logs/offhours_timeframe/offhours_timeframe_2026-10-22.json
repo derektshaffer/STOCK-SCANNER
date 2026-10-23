@@ -1,0 +1,3444 @@
+{
+  "schema_version": 1,
+  "version": "offhours-timeframe-scan-v1",
+  "generated_at_et": "2026-10-22T20:38:02.354972-04:00",
+  "generated_at_utc": "2026-10-23T00:38:02.354972+00:00",
+  "last_completed_session_date": "2026-10-22",
+  "mode": "offhours_daily_timeframe_discovery",
+  "source": "Tradier consolidated completed daily candles",
+  "universe": {
+    "source": "nasdaqtrader_full_market_cache",
+    "market_date": "2026-10-22",
+    "symbols": 6101,
+    "cache_hit": true,
+    "directory_generated_at_et": "2026-10-22T09:43:44.264251-04:00",
+    "directory_stale_fallback": false,
+    "quote_rows": 6045,
+    "eligible_quotes": 3616,
+    "history_pool": 120,
+    "history_rows_scored": 118,
+    "qualified": 54,
+    "returned": 30
+  },
+  "benchmark": {
+    "symbol": "SPY",
+    "return_20d_pct": -0.42
+  },
+  "candidates": [
+    {
+      "symbol": "ATNM",
+      "price": 1.6,
+      "day_pct": 15.94,
+      "average_volume": 2968526.0,
+      "average_dollar_volume": 4749641.600000001,
+      "daily_history_sessions": 85,
+      "daily_context_source": "tradier_consolidated_daily",
+      "daily_return_5d_pct": 50.94,
+      "daily_return_20d_pct": 34.45,
+      "daily_return_40d_pct": 58.42,
+      "daily_ma_10": 1.2024,
+      "daily_ma_20": 1.1722,
+      "daily_ma_40": 1.166,
+      "daily_above_ma20": true,
+      "daily_above_ma40": true,
+      "daily_ma_alignment": "BULLISH",
+      "daily_recent_high": 1.66,
+      "daily_from_recent_high_pct": -3.61,
+      "daily_volume": 828818.0,
+      "daily_avg_volume_20": 194625.0,
+      "daily_volume_ratio": 4.26,
+      "daily_breakout_20d": true,
+      "news_bonus": 0.0,
+      "stair_step_count": 5.0,
+      "stair_last_step_pct": 15.94,
+      "stair_step_acceleration_ratio": 2.63,
+      "stair_plateau_days": 0.0,
+      "stair_plateau_range_pct": 0.0,
+      "stair_plateau_retention_pct": 100.0,
+      "stair_plateau_volume_ratio": null,
+      "stair_higher_plateau_count": 4.0,
+      "stair_structure_score": 100.0,
+      "stair_reaccelerating": 1.0,
+      "stair_reacceleration_developing": 0.0,
+      "stair_breakdown": 0.0,
+      "stair_breakdown_confirmed": 0.0,
+      "stair_breakdown_developing": 0.0,
+      "timeframe_fit": {
+        "version": "scanner-timeframe-fit-v1",
+        "best_fit": "MIXED",
+        "primary_fit": "LONGER-TERM",
+        "secondary_fit": "SWING",
+        "fit_horizons": [
+          "LONGER-TERM",
+          "SWING"
+        ],
+        "scores": {
+          "INTRADAY": 50.0,
+          "SWING": 98.0,
+          "LONGER-TERM": 100.0
+        },
+        "coverage": {
+          "INTRADAY": 0,
+          "SWING": 5,
+          "LONGER-TERM": 8
+        },
+        "confidence": "MODERATE",
+        "margin_points": 2.0,
+        "reasons": {
+          "INTRADAY": [],
+          "SWING": [
+            "current move is strong without being extreme",
+            "strong five-session trend",
+            "20-session trend is strong",
+            "strong multi-session stair-step structure",
+            "multiple higher momentum steps are visible",
+            "multi-session trend is reaccelerating"
+          ],
+          "LONGER-TERM": [
+            "20-session trend is firmly positive",
+            "roughly two-month trend is strong",
+            "price is above its 20-session average",
+            "price is above its 40-session average",
+            "10/20/40-session averages are bullishly aligned",
+            "price is still near its recent multi-week high",
+            "multi-session structure supports trend persistence",
+            "current momentum is supportive without extreme extension"
+          ]
+        },
+        "explanation": [
+          "20-session trend is firmly positive",
+          "roughly two-month trend is strong",
+          "price is above its 20-session average",
+          "swing evidence is also close"
+        ],
+        "horizon_guide": {
+          "INTRADAY": "minutes to same day",
+          "SWING": "roughly 2-10 trading days",
+          "LONGER-TERM": "roughly 2-8 weeks"
+        },
+        "production_rank_impact": false,
+        "note": "Timeframe Fit is an explainable scanner classification only. It does not change momentum ranking, Scanner ACTION, or validated intraday ML. LONGER-TERM is a technical screen and should be confirmed in Analyzer with fundamentals, dilution/filings, catalyst durability, and risk."
+      },
+      "timeframe_fit_version": "scanner-timeframe-fit-v1",
+      "timeframe_best_fit": "MIXED",
+      "timeframe_primary_fit": "LONGER-TERM",
+      "timeframe_secondary_fit": "SWING",
+      "timeframe_fit_horizons": [
+        "LONGER-TERM",
+        "SWING"
+      ],
+      "timeframe_intraday_score": 50.0,
+      "timeframe_swing_score": 98.0,
+      "timeframe_longer_term_score": 100.0,
+      "timeframe_fit_confidence": "MODERATE",
+      "timeframe_fit_reason": "20-session trend is firmly positive \u00b7 roughly two-month trend is strong \u00b7 price is above its 20-session average \u00b7 swing evidence is also close",
+      "relative_strength_vs_spy_20d_pct": 34.87,
+      "daily_setup_archetypes": [
+        "20D BREAKOUT",
+        "TREND CONTINUATION"
+      ],
+      "trend_candidate_raw_score": 101.6,
+      "trend_candidate_score_version": "trend-candidate-score-v1",
+      "daily_discovery_score": 100.0,
+      "daily_setup_grade": "A",
+      "daily_review_action": "REVIEW SWING / LONGER-TERM",
+      "daily_review_reason": "20-session trend is firmly positive \u00b7 roughly two-month trend is strong \u00b7 price is above its 20-session average \u00b7 swing evidence is also close",
+      "production_rank_impact": false
+    },
+    {
+      "symbol": "YHC",
+      "price": 2.5,
+      "day_pct": 39.66,
+      "average_volume": 225231.0,
+      "average_dollar_volume": 563077.5,
+      "daily_history_sessions": 85,
+      "daily_context_source": "tradier_consolidated_daily",
+      "daily_return_5d_pct": 30.89,
+      "daily_return_20d_pct": 85.19,
+      "daily_return_40d_pct": 50.6,
+      "daily_ma_10": 1.847,
+      "daily_ma_20": 1.564,
+      "daily_ma_40": 1.4944,
+      "daily_above_ma20": true,
+      "daily_above_ma40": true,
+      "daily_ma_alignment": "BULLISH",
+      "daily_recent_high": 2.57,
+      "daily_from_recent_high_pct": -2.72,
+      "daily_volume": 928929.0,
+      "daily_avg_volume_20": 299195.0,
+      "daily_volume_ratio": 3.1,
+      "daily_breakout_20d": true,
+      "news_bonus": 0.0,
+      "stair_step_count": 5.0,
+      "stair_last_step_pct": 39.66,
+      "stair_step_acceleration_ratio": 2.624,
+      "stair_plateau_days": 0.0,
+      "stair_plateau_range_pct": 0.0,
+      "stair_plateau_retention_pct": 100.0,
+      "stair_plateau_volume_ratio": null,
+      "stair_higher_plateau_count": 1.0,
+      "stair_structure_score": 100.0,
+      "stair_reaccelerating": 1.0,
+      "stair_reacceleration_developing": 0.0,
+      "stair_breakdown": 0.0,
+      "stair_breakdown_confirmed": 0.0,
+      "stair_breakdown_developing": 0.0,
+      "timeframe_fit": {
+        "version": "scanner-timeframe-fit-v1",
+        "best_fit": "LONGER-TERM",
+        "primary_fit": "LONGER-TERM",
+        "secondary_fit": "SWING",
+        "fit_horizons": [
+          "LONGER-TERM"
+        ],
+        "scores": {
+          "INTRADAY": 50.0,
+          "SWING": 94.0,
+          "LONGER-TERM": 100.0
+        },
+        "coverage": {
+          "INTRADAY": 0,
+          "SWING": 5,
+          "LONGER-TERM": 8
+        },
+        "confidence": "MODERATE",
+        "margin_points": 6.0,
+        "reasons": {
+          "INTRADAY": [],
+          "SWING": [
+            "strong current move can support continuation",
+            "strong five-session trend",
+            "20-session trend is strong",
+            "strong multi-session stair-step structure",
+            "multiple higher momentum steps are visible",
+            "multi-session trend is reaccelerating"
+          ],
+          "LONGER-TERM": [
+            "20-session trend is firmly positive",
+            "roughly two-month trend is strong",
+            "price is above its 20-session average",
+            "price is above its 40-session average",
+            "10/20/40-session averages are bullishly aligned",
+            "price is still near its recent multi-week high",
+            "multi-session structure supports trend persistence"
+          ]
+        },
+        "explanation": [
+          "20-session trend is firmly positive",
+          "roughly two-month trend is strong",
+          "price is above its 20-session average"
+        ],
+        "horizon_guide": {
+          "INTRADAY": "minutes to same day",
+          "SWING": "roughly 2-10 trading days",
+          "LONGER-TERM": "roughly 2-8 weeks"
+        },
+        "production_rank_impact": false,
+        "note": "Timeframe Fit is an explainable scanner classification only. It does not change momentum ranking, Scanner ACTION, or validated intraday ML. LONGER-TERM is a technical screen and should be confirmed in Analyzer with fundamentals, dilution/filings, catalyst durability, and risk."
+      },
+      "timeframe_fit_version": "scanner-timeframe-fit-v1",
+      "timeframe_best_fit": "LONGER-TERM",
+      "timeframe_primary_fit": "LONGER-TERM",
+      "timeframe_secondary_fit": "SWING",
+      "timeframe_fit_horizons": [
+        "LONGER-TERM"
+      ],
+      "timeframe_intraday_score": 50.0,
+      "timeframe_swing_score": 94.0,
+      "timeframe_longer_term_score": 100.0,
+      "timeframe_fit_confidence": "MODERATE",
+      "timeframe_fit_reason": "20-session trend is firmly positive \u00b7 roughly two-month trend is strong \u00b7 price is above its 20-session average",
+      "relative_strength_vs_spy_20d_pct": 85.61,
+      "daily_setup_archetypes": [
+        "20D BREAKOUT",
+        "TREND CONTINUATION"
+      ],
+      "trend_candidate_raw_score": 100.8,
+      "trend_candidate_score_version": "trend-candidate-score-v1",
+      "daily_discovery_score": 100.0,
+      "daily_setup_grade": "A",
+      "daily_review_action": "REVIEW LONGER-TERM",
+      "daily_review_reason": "20-session trend is firmly positive \u00b7 roughly two-month trend is strong \u00b7 price is above its 20-session average",
+      "production_rank_impact": false
+    },
+    {
+      "symbol": "EGBN",
+      "price": 32.97,
+      "day_pct": 15.56,
+      "average_volume": 188679.0,
+      "average_dollar_volume": 6220746.63,
+      "daily_history_sessions": 85,
+      "daily_context_source": "tradier_consolidated_daily",
+      "daily_return_5d_pct": 17.67,
+      "daily_return_20d_pct": 16.42,
+      "daily_return_40d_pct": 19.33,
+      "daily_ma_10": 28.655,
+      "daily_ma_20": 28.4385,
+      "daily_ma_40": 28.138,
+      "daily_above_ma20": true,
+      "daily_above_ma40": true,
+      "daily_ma_alignment": "BULLISH",
+      "daily_recent_high": 33.09,
+      "daily_from_recent_high_pct": -0.36,
+      "daily_volume": 1536386.0,
+      "daily_avg_volume_20": 377748.0,
+      "daily_volume_ratio": 4.07,
+      "daily_breakout_20d": true,
+      "news_bonus": 0.0,
+      "stair_step_count": 1.0,
+      "stair_last_step_pct": 15.56,
+      "stair_step_acceleration_ratio": null,
+      "stair_plateau_days": 0.0,
+      "stair_plateau_range_pct": 0.0,
+      "stair_plateau_retention_pct": 100.0,
+      "stair_plateau_volume_ratio": null,
+      "stair_higher_plateau_count": 0.0,
+      "stair_structure_score": 62.0,
+      "stair_reaccelerating": 0.0,
+      "stair_reacceleration_developing": 0.0,
+      "stair_breakdown": 0.0,
+      "stair_breakdown_confirmed": 0.0,
+      "stair_breakdown_developing": 0.0,
+      "timeframe_fit": {
+        "version": "scanner-timeframe-fit-v1",
+        "best_fit": "LONGER-TERM",
+        "primary_fit": "LONGER-TERM",
+        "secondary_fit": "SWING",
+        "fit_horizons": [
+          "LONGER-TERM"
+        ],
+        "scores": {
+          "INTRADAY": 50.0,
+          "SWING": 83.0,
+          "LONGER-TERM": 100.0
+        },
+        "coverage": {
+          "INTRADAY": 0,
+          "SWING": 5,
+          "LONGER-TERM": 8
+        },
+        "confidence": "HIGH",
+        "margin_points": 17.0,
+        "reasons": {
+          "INTRADAY": [],
+          "SWING": [
+            "current move is strong without being extreme",
+            "strong five-session trend",
+            "20-session trend is strong",
+            "constructive multi-session structure"
+          ],
+          "LONGER-TERM": [
+            "20-session trend is firmly positive",
+            "roughly two-month trend is positive",
+            "price is above its 20-session average",
+            "price is above its 40-session average",
+            "10/20/40-session averages are bullishly aligned",
+            "price is still near its recent multi-week high",
+            "current momentum is supportive without extreme extension"
+          ]
+        },
+        "explanation": [
+          "20-session trend is firmly positive",
+          "roughly two-month trend is positive",
+          "price is above its 20-session average"
+        ],
+        "horizon_guide": {
+          "INTRADAY": "minutes to same day",
+          "SWING": "roughly 2-10 trading days",
+          "LONGER-TERM": "roughly 2-8 weeks"
+        },
+        "production_rank_impact": false,
+        "note": "Timeframe Fit is an explainable scanner classification only. It does not change momentum ranking, Scanner ACTION, or validated intraday ML. LONGER-TERM is a technical screen and should be confirmed in Analyzer with fundamentals, dilution/filings, catalyst durability, and risk."
+      },
+      "timeframe_fit_version": "scanner-timeframe-fit-v1",
+      "timeframe_best_fit": "LONGER-TERM",
+      "timeframe_primary_fit": "LONGER-TERM",
+      "timeframe_secondary_fit": "SWING",
+      "timeframe_fit_horizons": [
+        "LONGER-TERM"
+      ],
+      "timeframe_intraday_score": 50.0,
+      "timeframe_swing_score": 83.0,
+      "timeframe_longer_term_score": 100.0,
+      "timeframe_fit_confidence": "HIGH",
+      "timeframe_fit_reason": "20-session trend is firmly positive \u00b7 roughly two-month trend is positive \u00b7 price is above its 20-session average",
+      "relative_strength_vs_spy_20d_pct": 16.84,
+      "daily_setup_archetypes": [
+        "20D BREAKOUT",
+        "TREND CONTINUATION"
+      ],
+      "trend_candidate_raw_score": 98.6,
+      "trend_candidate_score_version": "trend-candidate-score-v1",
+      "daily_discovery_score": 98.6,
+      "daily_setup_grade": "A",
+      "daily_review_action": "REVIEW LONGER-TERM",
+      "daily_review_reason": "20-session trend is firmly positive \u00b7 roughly two-month trend is positive \u00b7 price is above its 20-session average",
+      "production_rank_impact": false
+    },
+    {
+      "symbol": "TCX",
+      "price": 11.91,
+      "day_pct": 25.5,
+      "average_volume": 52354.0,
+      "average_dollar_volume": 623536.14,
+      "daily_history_sessions": 85,
+      "daily_context_source": "tradier_consolidated_daily",
+      "daily_return_5d_pct": 13.43,
+      "daily_return_20d_pct": 16.76,
+      "daily_return_40d_pct": 31.02,
+      "daily_ma_10": 9.7315,
+      "daily_ma_20": 9.6333,
+      "daily_ma_40": 10.0542,
+      "daily_above_ma20": true,
+      "daily_above_ma40": true,
+      "daily_ma_alignment": "MIXED",
+      "daily_recent_high": 11.91,
+      "daily_from_recent_high_pct": 0.0,
+      "daily_volume": 168899.0,
+      "daily_avg_volume_20": 68829.0,
+      "daily_volume_ratio": 2.45,
+      "daily_breakout_20d": true,
+      "news_bonus": 0.0,
+      "stair_step_count": 3.0,
+      "stair_last_step_pct": 25.5,
+      "stair_step_acceleration_ratio": 2.687,
+      "stair_plateau_days": 0.0,
+      "stair_plateau_range_pct": 0.0,
+      "stair_plateau_retention_pct": 100.0,
+      "stair_plateau_volume_ratio": null,
+      "stair_higher_plateau_count": 1.0,
+      "stair_structure_score": 100.0,
+      "stair_reaccelerating": 1.0,
+      "stair_reacceleration_developing": 0.0,
+      "stair_breakdown": 0.0,
+      "stair_breakdown_confirmed": 0.0,
+      "stair_breakdown_developing": 0.0,
+      "timeframe_fit": {
+        "version": "scanner-timeframe-fit-v1",
+        "best_fit": "LONGER-TERM",
+        "primary_fit": "LONGER-TERM",
+        "secondary_fit": "SWING",
+        "fit_horizons": [
+          "LONGER-TERM"
+        ],
+        "scores": {
+          "INTRADAY": 50.0,
+          "SWING": 94.0,
+          "LONGER-TERM": 100.0
+        },
+        "coverage": {
+          "INTRADAY": 0,
+          "SWING": 5,
+          "LONGER-TERM": 8
+        },
+        "confidence": "MODERATE",
+        "margin_points": 6.0,
+        "reasons": {
+          "INTRADAY": [],
+          "SWING": [
+            "strong current move can support continuation",
+            "strong five-session trend",
+            "20-session trend is strong",
+            "strong multi-session stair-step structure",
+            "multiple higher momentum steps are visible",
+            "multi-session trend is reaccelerating"
+          ],
+          "LONGER-TERM": [
+            "20-session trend is firmly positive",
+            "roughly two-month trend is strong",
+            "price is above its 20-session average",
+            "price is above its 40-session average",
+            "price is still near its recent multi-week high",
+            "multi-session structure supports trend persistence"
+          ]
+        },
+        "explanation": [
+          "20-session trend is firmly positive",
+          "roughly two-month trend is strong",
+          "price is above its 20-session average"
+        ],
+        "horizon_guide": {
+          "INTRADAY": "minutes to same day",
+          "SWING": "roughly 2-10 trading days",
+          "LONGER-TERM": "roughly 2-8 weeks"
+        },
+        "production_rank_impact": false,
+        "note": "Timeframe Fit is an explainable scanner classification only. It does not change momentum ranking, Scanner ACTION, or validated intraday ML. LONGER-TERM is a technical screen and should be confirmed in Analyzer with fundamentals, dilution/filings, catalyst durability, and risk."
+      },
+      "timeframe_fit_version": "scanner-timeframe-fit-v1",
+      "timeframe_best_fit": "LONGER-TERM",
+      "timeframe_primary_fit": "LONGER-TERM",
+      "timeframe_secondary_fit": "SWING",
+      "timeframe_fit_horizons": [
+        "LONGER-TERM"
+      ],
+      "timeframe_intraday_score": 50.0,
+      "timeframe_swing_score": 94.0,
+      "timeframe_longer_term_score": 100.0,
+      "timeframe_fit_confidence": "MODERATE",
+      "timeframe_fit_reason": "20-session trend is firmly positive \u00b7 roughly two-month trend is strong \u00b7 price is above its 20-session average",
+      "relative_strength_vs_spy_20d_pct": 17.18,
+      "daily_setup_archetypes": [
+        "20D BREAKOUT"
+      ],
+      "trend_candidate_raw_score": 97.8,
+      "trend_candidate_score_version": "trend-candidate-score-v1",
+      "daily_discovery_score": 97.8,
+      "daily_setup_grade": "A",
+      "daily_review_action": "REVIEW LONGER-TERM",
+      "daily_review_reason": "20-session trend is firmly positive \u00b7 roughly two-month trend is strong \u00b7 price is above its 20-session average",
+      "production_rank_impact": false
+    },
+    {
+      "symbol": "ATGL",
+      "price": 9.5,
+      "day_pct": 23.38,
+      "average_volume": 45283.0,
+      "average_dollar_volume": 430188.5,
+      "daily_history_sessions": 77,
+      "daily_context_source": "tradier_consolidated_daily",
+      "daily_return_5d_pct": 115.91,
+      "daily_return_20d_pct": 72.73,
+      "daily_return_40d_pct": 40.74,
+      "daily_ma_10": 5.625,
+      "daily_ma_20": 5.467,
+      "daily_ma_40": 5.7144,
+      "daily_above_ma20": true,
+      "daily_above_ma40": true,
+      "daily_ma_alignment": "MIXED",
+      "daily_recent_high": 9.85,
+      "daily_from_recent_high_pct": -3.55,
+      "daily_volume": 277021.0,
+      "daily_avg_volume_20": 133463.0,
+      "daily_volume_ratio": 2.08,
+      "daily_breakout_20d": true,
+      "news_bonus": 0.0,
+      "stair_step_count": 6.0,
+      "stair_last_step_pct": 23.38,
+      "stair_step_acceleration_ratio": 2.104,
+      "stair_plateau_days": 0.0,
+      "stair_plateau_range_pct": 0.0,
+      "stair_plateau_retention_pct": 100.0,
+      "stair_plateau_volume_ratio": null,
+      "stair_higher_plateau_count": 4.0,
+      "stair_structure_score": 100.0,
+      "stair_reaccelerating": 1.0,
+      "stair_reacceleration_developing": 0.0,
+      "stair_breakdown": 0.0,
+      "stair_breakdown_confirmed": 0.0,
+      "stair_breakdown_developing": 0.0,
+      "timeframe_fit": {
+        "version": "scanner-timeframe-fit-v1",
+        "best_fit": "LONGER-TERM",
+        "primary_fit": "LONGER-TERM",
+        "secondary_fit": "SWING",
+        "fit_horizons": [
+          "LONGER-TERM"
+        ],
+        "scores": {
+          "INTRADAY": 50.0,
+          "SWING": 94.0,
+          "LONGER-TERM": 100.0
+        },
+        "coverage": {
+          "INTRADAY": 0,
+          "SWING": 5,
+          "LONGER-TERM": 8
+        },
+        "confidence": "MODERATE",
+        "margin_points": 6.0,
+        "reasons": {
+          "INTRADAY": [],
+          "SWING": [
+            "strong current move can support continuation",
+            "strong five-session trend",
+            "20-session trend is strong",
+            "strong multi-session stair-step structure",
+            "multiple higher momentum steps are visible",
+            "multi-session trend is reaccelerating"
+          ],
+          "LONGER-TERM": [
+            "20-session trend is firmly positive",
+            "roughly two-month trend is strong",
+            "price is above its 20-session average",
+            "price is above its 40-session average",
+            "price is still near its recent multi-week high",
+            "multi-session structure supports trend persistence"
+          ]
+        },
+        "explanation": [
+          "20-session trend is firmly positive",
+          "roughly two-month trend is strong",
+          "price is above its 20-session average"
+        ],
+        "horizon_guide": {
+          "INTRADAY": "minutes to same day",
+          "SWING": "roughly 2-10 trading days",
+          "LONGER-TERM": "roughly 2-8 weeks"
+        },
+        "production_rank_impact": false,
+        "note": "Timeframe Fit is an explainable scanner classification only. It does not change momentum ranking, Scanner ACTION, or validated intraday ML. LONGER-TERM is a technical screen and should be confirmed in Analyzer with fundamentals, dilution/filings, catalyst durability, and risk."
+      },
+      "timeframe_fit_version": "scanner-timeframe-fit-v1",
+      "timeframe_best_fit": "LONGER-TERM",
+      "timeframe_primary_fit": "LONGER-TERM",
+      "timeframe_secondary_fit": "SWING",
+      "timeframe_fit_horizons": [
+        "LONGER-TERM"
+      ],
+      "timeframe_intraday_score": 50.0,
+      "timeframe_swing_score": 94.0,
+      "timeframe_longer_term_score": 100.0,
+      "timeframe_fit_confidence": "MODERATE",
+      "timeframe_fit_reason": "20-session trend is firmly positive \u00b7 roughly two-month trend is strong \u00b7 price is above its 20-session average",
+      "relative_strength_vs_spy_20d_pct": 73.15,
+      "daily_setup_archetypes": [
+        "20D BREAKOUT"
+      ],
+      "trend_candidate_raw_score": 97.8,
+      "trend_candidate_score_version": "trend-candidate-score-v1",
+      "daily_discovery_score": 97.8,
+      "daily_setup_grade": "A",
+      "daily_review_action": "REVIEW LONGER-TERM",
+      "daily_review_reason": "20-session trend is firmly positive \u00b7 roughly two-month trend is strong \u00b7 price is above its 20-session average",
+      "production_rank_impact": false
+    },
+    {
+      "symbol": "INFY",
+      "price": 13.22,
+      "day_pct": 3.69,
+      "average_volume": 19425426.0,
+      "average_dollar_volume": 256804131.72,
+      "daily_history_sessions": 85,
+      "daily_context_source": "tradier_consolidated_daily",
+      "daily_return_5d_pct": 8.99,
+      "daily_return_20d_pct": 25.9,
+      "daily_return_40d_pct": 13.09,
+      "daily_ma_10": 11.964,
+      "daily_ma_20": 11.3505,
+      "daily_ma_40": 11.3403,
+      "daily_above_ma20": true,
+      "daily_above_ma40": true,
+      "daily_ma_alignment": "BULLISH",
+      "daily_recent_high": 13.3,
+      "daily_from_recent_high_pct": -0.6,
+      "daily_volume": 38310793.0,
+      "daily_avg_volume_20": 20678917.0,
+      "daily_volume_ratio": 1.85,
+      "daily_breakout_20d": true,
+      "news_bonus": 0.0,
+      "stair_step_count": 3.0,
+      "stair_last_step_pct": 5.66,
+      "stair_step_acceleration_ratio": 1.076,
+      "stair_plateau_days": 5.0,
+      "stair_plateau_range_pct": 10.93,
+      "stair_plateau_retention_pct": 181.5,
+      "stair_plateau_volume_ratio": 0.746,
+      "stair_higher_plateau_count": 2.0,
+      "stair_structure_score": 98.0,
+      "stair_reaccelerating": 0.0,
+      "stair_reacceleration_developing": 0.0,
+      "stair_breakdown": 0.0,
+      "stair_breakdown_confirmed": 0.0,
+      "stair_breakdown_developing": 0.0,
+      "timeframe_fit": {
+        "version": "scanner-timeframe-fit-v1",
+        "best_fit": "LONGER-TERM",
+        "primary_fit": "LONGER-TERM",
+        "secondary_fit": "SWING",
+        "fit_horizons": [
+          "LONGER-TERM"
+        ],
+        "scores": {
+          "INTRADAY": 50.0,
+          "SWING": 86.0,
+          "LONGER-TERM": 100.0
+        },
+        "coverage": {
+          "INTRADAY": 0,
+          "SWING": 5,
+          "LONGER-TERM": 8
+        },
+        "confidence": "HIGH",
+        "margin_points": 14.0,
+        "reasons": {
+          "INTRADAY": [],
+          "SWING": [
+            "strong five-session trend",
+            "20-session trend is strong",
+            "strong multi-session stair-step structure",
+            "multiple higher momentum steps are visible"
+          ],
+          "LONGER-TERM": [
+            "20-session trend is firmly positive",
+            "roughly two-month trend is positive",
+            "price is above its 20-session average",
+            "price is above its 40-session average",
+            "10/20/40-session averages are bullishly aligned",
+            "price is still near its recent multi-week high",
+            "multi-session structure supports trend persistence",
+            "current momentum is supportive without extreme extension"
+          ]
+        },
+        "explanation": [
+          "20-session trend is firmly positive",
+          "roughly two-month trend is positive",
+          "price is above its 20-session average"
+        ],
+        "horizon_guide": {
+          "INTRADAY": "minutes to same day",
+          "SWING": "roughly 2-10 trading days",
+          "LONGER-TERM": "roughly 2-8 weeks"
+        },
+        "production_rank_impact": false,
+        "note": "Timeframe Fit is an explainable scanner classification only. It does not change momentum ranking, Scanner ACTION, or validated intraday ML. LONGER-TERM is a technical screen and should be confirmed in Analyzer with fundamentals, dilution/filings, catalyst durability, and risk."
+      },
+      "timeframe_fit_version": "scanner-timeframe-fit-v1",
+      "timeframe_best_fit": "LONGER-TERM",
+      "timeframe_primary_fit": "LONGER-TERM",
+      "timeframe_secondary_fit": "SWING",
+      "timeframe_fit_horizons": [
+        "LONGER-TERM"
+      ],
+      "timeframe_intraday_score": 50.0,
+      "timeframe_swing_score": 86.0,
+      "timeframe_longer_term_score": 100.0,
+      "timeframe_fit_confidence": "HIGH",
+      "timeframe_fit_reason": "20-session trend is firmly positive \u00b7 roughly two-month trend is positive \u00b7 price is above its 20-session average",
+      "relative_strength_vs_spy_20d_pct": 26.32,
+      "daily_setup_archetypes": [
+        "20D BREAKOUT",
+        "TREND CONTINUATION"
+      ],
+      "trend_candidate_raw_score": 97.2,
+      "trend_candidate_score_version": "trend-candidate-score-v1",
+      "daily_discovery_score": 97.2,
+      "daily_setup_grade": "A",
+      "daily_review_action": "REVIEW LONGER-TERM",
+      "daily_review_reason": "20-session trend is firmly positive \u00b7 roughly two-month trend is positive \u00b7 price is above its 20-session average",
+      "production_rank_impact": false
+    },
+    {
+      "symbol": "COTY",
+      "price": 3.21,
+      "day_pct": 5.25,
+      "average_volume": 12141007.0,
+      "average_dollar_volume": 38972632.47,
+      "daily_history_sessions": 85,
+      "daily_context_source": "tradier_consolidated_daily",
+      "daily_return_5d_pct": 0.63,
+      "daily_return_20d_pct": 22.05,
+      "daily_return_40d_pct": 17.15,
+      "daily_ma_10": 3.071,
+      "daily_ma_20": 2.8875,
+      "daily_ma_40": 2.7983,
+      "daily_above_ma20": true,
+      "daily_above_ma40": true,
+      "daily_ma_alignment": "BULLISH",
+      "daily_recent_high": 3.28,
+      "daily_from_recent_high_pct": -2.13,
+      "daily_volume": 8575251.0,
+      "daily_avg_volume_20": 4919751.0,
+      "daily_volume_ratio": 1.74,
+      "daily_breakout_20d": false,
+      "news_bonus": 0.0,
+      "stair_step_count": 2.0,
+      "stair_last_step_pct": 5.25,
+      "stair_step_acceleration_ratio": 0.617,
+      "stair_plateau_days": 0.0,
+      "stair_plateau_range_pct": 0.0,
+      "stair_plateau_retention_pct": 100.0,
+      "stair_plateau_volume_ratio": null,
+      "stair_higher_plateau_count": 0.0,
+      "stair_structure_score": 78.0,
+      "stair_reaccelerating": 1.0,
+      "stair_reacceleration_developing": 0.0,
+      "stair_breakdown": 0.0,
+      "stair_breakdown_confirmed": 0.0,
+      "stair_breakdown_developing": 0.0,
+      "timeframe_fit": {
+        "version": "scanner-timeframe-fit-v1",
+        "best_fit": "LONGER-TERM",
+        "primary_fit": "LONGER-TERM",
+        "secondary_fit": "SWING",
+        "fit_horizons": [
+          "LONGER-TERM"
+        ],
+        "scores": {
+          "INTRADAY": 50.0,
+          "SWING": 93.0,
+          "LONGER-TERM": 100.0
+        },
+        "coverage": {
+          "INTRADAY": 0,
+          "SWING": 5,
+          "LONGER-TERM": 8
+        },
+        "confidence": "MODERATE",
+        "margin_points": 7.0,
+        "reasons": {
+          "INTRADAY": [],
+          "SWING": [
+            "current move is strong without being extreme",
+            "five-session trend is positive",
+            "20-session trend is strong",
+            "strong multi-session stair-step structure",
+            "multiple higher momentum steps are visible",
+            "multi-session trend is reaccelerating"
+          ],
+          "LONGER-TERM": [
+            "20-session trend is firmly positive",
+            "roughly two-month trend is positive",
+            "price is above its 20-session average",
+            "price is above its 40-session average",
+            "10/20/40-session averages are bullishly aligned",
+            "price is still near its recent multi-week high",
+            "multi-session structure supports trend persistence",
+            "current momentum is supportive without extreme extension"
+          ]
+        },
+        "explanation": [
+          "20-session trend is firmly positive",
+          "roughly two-month trend is positive",
+          "price is above its 20-session average"
+        ],
+        "horizon_guide": {
+          "INTRADAY": "minutes to same day",
+          "SWING": "roughly 2-10 trading days",
+          "LONGER-TERM": "roughly 2-8 weeks"
+        },
+        "production_rank_impact": false,
+        "note": "Timeframe Fit is an explainable scanner classification only. It does not change momentum ranking, Scanner ACTION, or validated intraday ML. LONGER-TERM is a technical screen and should be confirmed in Analyzer with fundamentals, dilution/filings, catalyst durability, and risk."
+      },
+      "timeframe_fit_version": "scanner-timeframe-fit-v1",
+      "timeframe_best_fit": "LONGER-TERM",
+      "timeframe_primary_fit": "LONGER-TERM",
+      "timeframe_secondary_fit": "SWING",
+      "timeframe_fit_horizons": [
+        "LONGER-TERM"
+      ],
+      "timeframe_intraday_score": 50.0,
+      "timeframe_swing_score": 93.0,
+      "timeframe_longer_term_score": 100.0,
+      "timeframe_fit_confidence": "MODERATE",
+      "timeframe_fit_reason": "20-session trend is firmly positive \u00b7 roughly two-month trend is positive \u00b7 price is above its 20-session average",
+      "relative_strength_vs_spy_20d_pct": 22.47,
+      "daily_setup_archetypes": [
+        "TREND CONTINUATION"
+      ],
+      "trend_candidate_raw_score": 94.6,
+      "trend_candidate_score_version": "trend-candidate-score-v1",
+      "daily_discovery_score": 94.6,
+      "daily_setup_grade": "A",
+      "daily_review_action": "REVIEW LONGER-TERM",
+      "daily_review_reason": "20-session trend is firmly positive \u00b7 roughly two-month trend is positive \u00b7 price is above its 20-session average",
+      "production_rank_impact": false
+    },
+    {
+      "symbol": "HTZ",
+      "price": 2.18,
+      "day_pct": 5.31,
+      "average_volume": 35090302.0,
+      "average_dollar_volume": 76496858.36,
+      "daily_history_sessions": 85,
+      "daily_context_source": "tradier_consolidated_daily",
+      "daily_return_5d_pct": 19.13,
+      "daily_return_20d_pct": 24.22,
+      "daily_return_40d_pct": 4.31,
+      "daily_ma_10": 1.911,
+      "daily_ma_20": 1.863,
+      "daily_ma_40": 1.9457,
+      "daily_above_ma20": true,
+      "daily_above_ma40": true,
+      "daily_ma_alignment": "MIXED",
+      "daily_recent_high": 2.4499,
+      "daily_from_recent_high_pct": -11.02,
+      "daily_volume": 49795115.0,
+      "daily_avg_volume_20": 19271404.0,
+      "daily_volume_ratio": 2.58,
+      "daily_breakout_20d": false,
+      "news_bonus": 0.0,
+      "stair_step_count": 4.0,
+      "stair_last_step_pct": 5.31,
+      "stair_step_acceleration_ratio": 0.68,
+      "stair_plateau_days": 0.0,
+      "stair_plateau_range_pct": 0.0,
+      "stair_plateau_retention_pct": 100.0,
+      "stair_plateau_volume_ratio": null,
+      "stair_higher_plateau_count": 3.0,
+      "stair_structure_score": 100.0,
+      "stair_reaccelerating": 1.0,
+      "stair_reacceleration_developing": 0.0,
+      "stair_breakdown": 0.0,
+      "stair_breakdown_confirmed": 0.0,
+      "stair_breakdown_developing": 0.0,
+      "timeframe_fit": {
+        "version": "scanner-timeframe-fit-v1",
+        "best_fit": "SWING",
+        "primary_fit": "SWING",
+        "secondary_fit": "LONGER-TERM",
+        "fit_horizons": [
+          "SWING"
+        ],
+        "scores": {
+          "INTRADAY": 50.0,
+          "SWING": 98.0,
+          "LONGER-TERM": 91.0
+        },
+        "coverage": {
+          "INTRADAY": 0,
+          "SWING": 5,
+          "LONGER-TERM": 8
+        },
+        "confidence": "MODERATE",
+        "margin_points": 7.0,
+        "reasons": {
+          "INTRADAY": [],
+          "SWING": [
+            "current move is strong without being extreme",
+            "strong five-session trend",
+            "20-session trend is strong",
+            "strong multi-session stair-step structure",
+            "multiple higher momentum steps are visible",
+            "multi-session trend is reaccelerating"
+          ],
+          "LONGER-TERM": [
+            "20-session trend is firmly positive",
+            "price is above its 20-session average",
+            "price is above its 40-session average",
+            "price is still near its recent multi-week high",
+            "multi-session structure supports trend persistence",
+            "current momentum is supportive without extreme extension"
+          ]
+        },
+        "explanation": [
+          "current move is strong without being extreme",
+          "strong five-session trend",
+          "20-session trend is strong"
+        ],
+        "horizon_guide": {
+          "INTRADAY": "minutes to same day",
+          "SWING": "roughly 2-10 trading days",
+          "LONGER-TERM": "roughly 2-8 weeks"
+        },
+        "production_rank_impact": false,
+        "note": "Timeframe Fit is an explainable scanner classification only. It does not change momentum ranking, Scanner ACTION, or validated intraday ML. LONGER-TERM is a technical screen and should be confirmed in Analyzer with fundamentals, dilution/filings, catalyst durability, and risk."
+      },
+      "timeframe_fit_version": "scanner-timeframe-fit-v1",
+      "timeframe_best_fit": "SWING",
+      "timeframe_primary_fit": "SWING",
+      "timeframe_secondary_fit": "LONGER-TERM",
+      "timeframe_fit_horizons": [
+        "SWING"
+      ],
+      "timeframe_intraday_score": 50.0,
+      "timeframe_swing_score": 98.0,
+      "timeframe_longer_term_score": 91.0,
+      "timeframe_fit_confidence": "MODERATE",
+      "timeframe_fit_reason": "current move is strong without being extreme \u00b7 strong five-session trend \u00b7 20-session trend is strong",
+      "relative_strength_vs_spy_20d_pct": 24.64,
+      "daily_setup_archetypes": [
+        "MOMENTUM TREND"
+      ],
+      "trend_candidate_raw_score": 91.9,
+      "trend_candidate_score_version": "trend-candidate-score-v1",
+      "daily_discovery_score": 91.9,
+      "daily_setup_grade": "A",
+      "daily_review_action": "REVIEW SWING",
+      "daily_review_reason": "current move is strong without being extreme \u00b7 strong five-session trend \u00b7 20-session trend is strong",
+      "production_rank_impact": false
+    },
+    {
+      "symbol": "POM",
+      "price": 2.03,
+      "day_pct": -32.56,
+      "average_volume": 65983.0,
+      "average_dollar_volume": 133945.49,
+      "daily_history_sessions": 85,
+      "daily_context_source": "tradier_consolidated_daily",
+      "daily_return_5d_pct": 186.28,
+      "daily_return_20d_pct": 109.28,
+      "daily_return_40d_pct": 113.68,
+      "daily_ma_10": 1.0356,
+      "daily_ma_20": 0.9765,
+      "daily_ma_40": 0.9031,
+      "daily_above_ma20": true,
+      "daily_above_ma40": true,
+      "daily_ma_alignment": "BULLISH",
+      "daily_recent_high": 3.01,
+      "daily_from_recent_high_pct": -32.56,
+      "daily_volume": 14581988.0,
+      "daily_avg_volume_20": 2493480.0,
+      "daily_volume_ratio": 5.85,
+      "daily_breakout_20d": false,
+      "news_bonus": 0.0,
+      "stair_step_count": 6.0,
+      "stair_last_step_pct": 352.77,
+      "stair_step_acceleration_ratio": 14.053,
+      "stair_plateau_days": 1.0,
+      "stair_plateau_range_pct": 84.46,
+      "stair_plateau_retention_pct": 58.2,
+      "stair_plateau_volume_ratio": 0.299,
+      "stair_higher_plateau_count": 2.0,
+      "stair_structure_score": 92.0,
+      "stair_reaccelerating": 0.0,
+      "stair_reacceleration_developing": 0.0,
+      "stair_breakdown": 0.0,
+      "stair_breakdown_confirmed": 0.0,
+      "stair_breakdown_developing": 0.0,
+      "timeframe_fit": {
+        "version": "scanner-timeframe-fit-v1",
+        "best_fit": "LONGER-TERM",
+        "primary_fit": "LONGER-TERM",
+        "secondary_fit": "SWING",
+        "fit_horizons": [
+          "LONGER-TERM"
+        ],
+        "scores": {
+          "INTRADAY": 50.0,
+          "SWING": 86.0,
+          "LONGER-TERM": 100.0
+        },
+        "coverage": {
+          "INTRADAY": 0,
+          "SWING": 5,
+          "LONGER-TERM": 8
+        },
+        "confidence": "HIGH",
+        "margin_points": 14.0,
+        "reasons": {
+          "INTRADAY": [],
+          "SWING": [
+            "strong five-session trend",
+            "20-session trend is strong",
+            "strong multi-session stair-step structure",
+            "multiple higher momentum steps are visible"
+          ],
+          "LONGER-TERM": [
+            "20-session trend is firmly positive",
+            "roughly two-month trend is strong",
+            "price is above its 20-session average",
+            "price is above its 40-session average",
+            "10/20/40-session averages are bullishly aligned",
+            "multi-session structure supports trend persistence"
+          ]
+        },
+        "explanation": [
+          "20-session trend is firmly positive",
+          "roughly two-month trend is strong",
+          "price is above its 20-session average"
+        ],
+        "horizon_guide": {
+          "INTRADAY": "minutes to same day",
+          "SWING": "roughly 2-10 trading days",
+          "LONGER-TERM": "roughly 2-8 weeks"
+        },
+        "production_rank_impact": false,
+        "note": "Timeframe Fit is an explainable scanner classification only. It does not change momentum ranking, Scanner ACTION, or validated intraday ML. LONGER-TERM is a technical screen and should be confirmed in Analyzer with fundamentals, dilution/filings, catalyst durability, and risk."
+      },
+      "timeframe_fit_version": "scanner-timeframe-fit-v1",
+      "timeframe_best_fit": "LONGER-TERM",
+      "timeframe_primary_fit": "LONGER-TERM",
+      "timeframe_secondary_fit": "SWING",
+      "timeframe_fit_horizons": [
+        "LONGER-TERM"
+      ],
+      "timeframe_intraday_score": 50.0,
+      "timeframe_swing_score": 86.0,
+      "timeframe_longer_term_score": 100.0,
+      "timeframe_fit_confidence": "HIGH",
+      "timeframe_fit_reason": "20-session trend is firmly positive \u00b7 roughly two-month trend is strong \u00b7 price is above its 20-session average",
+      "relative_strength_vs_spy_20d_pct": 109.7,
+      "daily_setup_archetypes": [
+        "TREND CONTINUATION"
+      ],
+      "trend_candidate_raw_score": 91.2,
+      "trend_candidate_score_version": "trend-candidate-score-v1",
+      "daily_discovery_score": 91.2,
+      "daily_setup_grade": "A",
+      "daily_review_action": "REVIEW LONGER-TERM",
+      "daily_review_reason": "20-session trend is firmly positive \u00b7 roughly two-month trend is strong \u00b7 price is above its 20-session average",
+      "production_rank_impact": false
+    },
+    {
+      "symbol": "RBLX",
+      "price": 53.96,
+      "day_pct": 2.68,
+      "average_volume": 12654709.0,
+      "average_dollar_volume": 682848097.64,
+      "daily_history_sessions": 85,
+      "daily_context_source": "tradier_consolidated_daily",
+      "daily_return_5d_pct": 5.53,
+      "daily_return_20d_pct": 10.51,
+      "daily_return_40d_pct": 43.66,
+      "daily_ma_10": 50.501,
+      "daily_ma_20": 47.3025,
+      "daily_ma_40": 46.3415,
+      "daily_above_ma20": true,
+      "daily_above_ma40": true,
+      "daily_ma_alignment": "BULLISH",
+      "daily_recent_high": 54.05,
+      "daily_from_recent_high_pct": -0.17,
+      "daily_volume": 7845994.0,
+      "daily_avg_volume_20": 11828187.0,
+      "daily_volume_ratio": 0.66,
+      "daily_breakout_20d": true,
+      "news_bonus": 0.0,
+      "stair_step_count": 2.0,
+      "stair_last_step_pct": 7.55,
+      "stair_step_acceleration_ratio": 1.338,
+      "stair_plateau_days": 5.0,
+      "stair_plateau_range_pct": 10.04,
+      "stair_plateau_retention_pct": 134.0,
+      "stair_plateau_volume_ratio": 0.58,
+      "stair_higher_plateau_count": 1.0,
+      "stair_structure_score": 82.0,
+      "stair_reaccelerating": 0.0,
+      "stair_reacceleration_developing": 0.0,
+      "stair_breakdown": 0.0,
+      "stair_breakdown_confirmed": 0.0,
+      "stair_breakdown_developing": 0.0,
+      "timeframe_fit": {
+        "version": "scanner-timeframe-fit-v1",
+        "best_fit": "LONGER-TERM",
+        "primary_fit": "LONGER-TERM",
+        "secondary_fit": "SWING",
+        "fit_horizons": [
+          "LONGER-TERM"
+        ],
+        "scores": {
+          "INTRADAY": 50.0,
+          "SWING": 75.0,
+          "LONGER-TERM": 100.0
+        },
+        "coverage": {
+          "INTRADAY": 0,
+          "SWING": 5,
+          "LONGER-TERM": 8
+        },
+        "confidence": "HIGH",
+        "margin_points": 25.0,
+        "reasons": {
+          "INTRADAY": [],
+          "SWING": [
+            "five-session trend is positive",
+            "20-session trend is positive",
+            "strong multi-session stair-step structure",
+            "multiple higher momentum steps are visible"
+          ],
+          "LONGER-TERM": [
+            "20-session trend is constructive",
+            "roughly two-month trend is strong",
+            "price is above its 20-session average",
+            "price is above its 40-session average",
+            "10/20/40-session averages are bullishly aligned",
+            "price is still near its recent multi-week high",
+            "multi-session structure supports trend persistence"
+          ]
+        },
+        "explanation": [
+          "20-session trend is constructive",
+          "roughly two-month trend is strong",
+          "price is above its 20-session average"
+        ],
+        "horizon_guide": {
+          "INTRADAY": "minutes to same day",
+          "SWING": "roughly 2-10 trading days",
+          "LONGER-TERM": "roughly 2-8 weeks"
+        },
+        "production_rank_impact": false,
+        "note": "Timeframe Fit is an explainable scanner classification only. It does not change momentum ranking, Scanner ACTION, or validated intraday ML. LONGER-TERM is a technical screen and should be confirmed in Analyzer with fundamentals, dilution/filings, catalyst durability, and risk."
+      },
+      "timeframe_fit_version": "scanner-timeframe-fit-v1",
+      "timeframe_best_fit": "LONGER-TERM",
+      "timeframe_primary_fit": "LONGER-TERM",
+      "timeframe_secondary_fit": "SWING",
+      "timeframe_fit_horizons": [
+        "LONGER-TERM"
+      ],
+      "timeframe_intraday_score": 50.0,
+      "timeframe_swing_score": 75.0,
+      "timeframe_longer_term_score": 100.0,
+      "timeframe_fit_confidence": "HIGH",
+      "timeframe_fit_reason": "20-session trend is constructive \u00b7 roughly two-month trend is strong \u00b7 price is above its 20-session average",
+      "relative_strength_vs_spy_20d_pct": 10.93,
+      "daily_setup_archetypes": [
+        "20D BREAKOUT",
+        "TREND CONTINUATION"
+      ],
+      "trend_candidate_raw_score": 91.0,
+      "trend_candidate_score_version": "trend-candidate-score-v1",
+      "daily_discovery_score": 91.0,
+      "daily_setup_grade": "A",
+      "daily_review_action": "REVIEW LONGER-TERM",
+      "daily_review_reason": "20-session trend is constructive \u00b7 roughly two-month trend is strong \u00b7 price is above its 20-session average",
+      "production_rank_impact": false
+    },
+    {
+      "symbol": "HCSG",
+      "price": 24.79,
+      "day_pct": 14.19,
+      "average_volume": 599991.0,
+      "average_dollar_volume": 14873776.889999999,
+      "daily_history_sessions": 85,
+      "daily_context_source": "tradier_consolidated_daily",
+      "daily_return_5d_pct": 15.68,
+      "daily_return_20d_pct": 18.22,
+      "daily_return_40d_pct": 8.21,
+      "daily_ma_10": 21.48,
+      "daily_ma_20": 21.16,
+      "daily_ma_40": 21.4803,
+      "daily_above_ma20": true,
+      "daily_above_ma40": true,
+      "daily_ma_alignment": "MIXED",
+      "daily_recent_high": 24.89,
+      "daily_from_recent_high_pct": -0.4,
+      "daily_volume": 1337906.0,
+      "daily_avg_volume_20": 739056.0,
+      "daily_volume_ratio": 1.81,
+      "daily_breakout_20d": true,
+      "news_bonus": 0.0,
+      "stair_step_count": 1.0,
+      "stair_last_step_pct": 14.19,
+      "stair_step_acceleration_ratio": null,
+      "stair_plateau_days": 0.0,
+      "stair_plateau_range_pct": 0.0,
+      "stair_plateau_retention_pct": 100.0,
+      "stair_plateau_volume_ratio": null,
+      "stair_higher_plateau_count": 0.0,
+      "stair_structure_score": 62.0,
+      "stair_reaccelerating": 0.0,
+      "stair_reacceleration_developing": 0.0,
+      "stair_breakdown": 0.0,
+      "stair_breakdown_confirmed": 0.0,
+      "stair_breakdown_developing": 0.0,
+      "timeframe_fit": {
+        "version": "scanner-timeframe-fit-v1",
+        "best_fit": "LONGER-TERM",
+        "primary_fit": "LONGER-TERM",
+        "secondary_fit": "SWING",
+        "fit_horizons": [
+          "LONGER-TERM"
+        ],
+        "scores": {
+          "INTRADAY": 50.0,
+          "SWING": 83.0,
+          "LONGER-TERM": 93.0
+        },
+        "coverage": {
+          "INTRADAY": 0,
+          "SWING": 5,
+          "LONGER-TERM": 8
+        },
+        "confidence": "HIGH",
+        "margin_points": 10.0,
+        "reasons": {
+          "INTRADAY": [],
+          "SWING": [
+            "current move is strong without being extreme",
+            "strong five-session trend",
+            "20-session trend is strong",
+            "constructive multi-session structure"
+          ],
+          "LONGER-TERM": [
+            "20-session trend is firmly positive",
+            "roughly two-month trend is positive",
+            "price is above its 20-session average",
+            "price is above its 40-session average",
+            "price is still near its recent multi-week high",
+            "current momentum is supportive without extreme extension"
+          ]
+        },
+        "explanation": [
+          "20-session trend is firmly positive",
+          "roughly two-month trend is positive",
+          "price is above its 20-session average"
+        ],
+        "horizon_guide": {
+          "INTRADAY": "minutes to same day",
+          "SWING": "roughly 2-10 trading days",
+          "LONGER-TERM": "roughly 2-8 weeks"
+        },
+        "production_rank_impact": false,
+        "note": "Timeframe Fit is an explainable scanner classification only. It does not change momentum ranking, Scanner ACTION, or validated intraday ML. LONGER-TERM is a technical screen and should be confirmed in Analyzer with fundamentals, dilution/filings, catalyst durability, and risk."
+      },
+      "timeframe_fit_version": "scanner-timeframe-fit-v1",
+      "timeframe_best_fit": "LONGER-TERM",
+      "timeframe_primary_fit": "LONGER-TERM",
+      "timeframe_secondary_fit": "SWING",
+      "timeframe_fit_horizons": [
+        "LONGER-TERM"
+      ],
+      "timeframe_intraday_score": 50.0,
+      "timeframe_swing_score": 83.0,
+      "timeframe_longer_term_score": 93.0,
+      "timeframe_fit_confidence": "HIGH",
+      "timeframe_fit_reason": "20-session trend is firmly positive \u00b7 roughly two-month trend is positive \u00b7 price is above its 20-session average",
+      "relative_strength_vs_spy_20d_pct": 18.64,
+      "daily_setup_archetypes": [
+        "20D BREAKOUT"
+      ],
+      "trend_candidate_raw_score": 89.1,
+      "trend_candidate_score_version": "trend-candidate-score-v1",
+      "daily_discovery_score": 89.1,
+      "daily_setup_grade": "A",
+      "daily_review_action": "REVIEW LONGER-TERM",
+      "daily_review_reason": "20-session trend is firmly positive \u00b7 roughly two-month trend is positive \u00b7 price is above its 20-session average",
+      "production_rank_impact": false
+    },
+    {
+      "symbol": "BP",
+      "price": 50.05,
+      "day_pct": 0.4,
+      "average_volume": 9119322.0,
+      "average_dollar_volume": 456422066.09999996,
+      "daily_history_sessions": 85,
+      "daily_context_source": "tradier_consolidated_daily",
+      "daily_return_5d_pct": 3.32,
+      "daily_return_20d_pct": 12.7,
+      "daily_return_40d_pct": 17.76,
+      "daily_ma_10": 48.77,
+      "daily_ma_20": 46.679,
+      "daily_ma_40": 45.5725,
+      "daily_above_ma20": true,
+      "daily_above_ma40": true,
+      "daily_ma_alignment": "BULLISH",
+      "daily_recent_high": 50.42,
+      "daily_from_recent_high_pct": -0.73,
+      "daily_volume": 7578551.0,
+      "daily_avg_volume_20": 9214595.0,
+      "daily_volume_ratio": 0.82,
+      "daily_breakout_20d": false,
+      "news_bonus": 0.0,
+      "stair_step_count": 3.0,
+      "stair_last_step_pct": 3.65,
+      "stair_step_acceleration_ratio": 0.949,
+      "stair_plateau_days": 4.0,
+      "stair_plateau_range_pct": 3.96,
+      "stair_plateau_retention_pct": 68.1,
+      "stair_plateau_volume_ratio": 0.81,
+      "stair_higher_plateau_count": 2.0,
+      "stair_structure_score": 81.0,
+      "stair_reaccelerating": 0.0,
+      "stair_reacceleration_developing": 0.0,
+      "stair_breakdown": 0.0,
+      "stair_breakdown_confirmed": 0.0,
+      "stair_breakdown_developing": 0.0,
+      "timeframe_fit": {
+        "version": "scanner-timeframe-fit-v1",
+        "best_fit": "LONGER-TERM",
+        "primary_fit": "LONGER-TERM",
+        "secondary_fit": "SWING",
+        "fit_horizons": [
+          "LONGER-TERM"
+        ],
+        "scores": {
+          "INTRADAY": 50.0,
+          "SWING": 81.0,
+          "LONGER-TERM": 100.0
+        },
+        "coverage": {
+          "INTRADAY": 0,
+          "SWING": 5,
+          "LONGER-TERM": 8
+        },
+        "confidence": "HIGH",
+        "margin_points": 19.0,
+        "reasons": {
+          "INTRADAY": [],
+          "SWING": [
+            "five-session trend is positive",
+            "20-session trend is strong",
+            "strong multi-session stair-step structure",
+            "multiple higher momentum steps are visible"
+          ],
+          "LONGER-TERM": [
+            "20-session trend is constructive",
+            "roughly two-month trend is positive",
+            "price is above its 20-session average",
+            "price is above its 40-session average",
+            "10/20/40-session averages are bullishly aligned",
+            "price is still near its recent multi-week high",
+            "multi-session structure supports trend persistence"
+          ]
+        },
+        "explanation": [
+          "20-session trend is constructive",
+          "roughly two-month trend is positive",
+          "price is above its 20-session average"
+        ],
+        "horizon_guide": {
+          "INTRADAY": "minutes to same day",
+          "SWING": "roughly 2-10 trading days",
+          "LONGER-TERM": "roughly 2-8 weeks"
+        },
+        "production_rank_impact": false,
+        "note": "Timeframe Fit is an explainable scanner classification only. It does not change momentum ranking, Scanner ACTION, or validated intraday ML. LONGER-TERM is a technical screen and should be confirmed in Analyzer with fundamentals, dilution/filings, catalyst durability, and risk."
+      },
+      "timeframe_fit_version": "scanner-timeframe-fit-v1",
+      "timeframe_best_fit": "LONGER-TERM",
+      "timeframe_primary_fit": "LONGER-TERM",
+      "timeframe_secondary_fit": "SWING",
+      "timeframe_fit_horizons": [
+        "LONGER-TERM"
+      ],
+      "timeframe_intraday_score": 50.0,
+      "timeframe_swing_score": 81.0,
+      "timeframe_longer_term_score": 100.0,
+      "timeframe_fit_confidence": "HIGH",
+      "timeframe_fit_reason": "20-session trend is constructive \u00b7 roughly two-month trend is positive \u00b7 price is above its 20-session average",
+      "relative_strength_vs_spy_20d_pct": 13.12,
+      "daily_setup_archetypes": [
+        "TREND CONTINUATION"
+      ],
+      "trend_candidate_raw_score": 88.2,
+      "trend_candidate_score_version": "trend-candidate-score-v1",
+      "daily_discovery_score": 88.2,
+      "daily_setup_grade": "A",
+      "daily_review_action": "REVIEW LONGER-TERM",
+      "daily_review_reason": "20-session trend is constructive \u00b7 roughly two-month trend is positive \u00b7 price is above its 20-session average",
+      "production_rank_impact": false
+    },
+    {
+      "symbol": "PBR",
+      "price": 25.62,
+      "day_pct": -0.16,
+      "average_volume": 20965943.0,
+      "average_dollar_volume": 537147459.66,
+      "daily_history_sessions": 85,
+      "daily_context_source": "tradier_consolidated_daily",
+      "daily_return_5d_pct": 1.26,
+      "daily_return_20d_pct": 22.94,
+      "daily_return_40d_pct": 44.26,
+      "daily_ma_10": 25.6,
+      "daily_ma_20": 23.8895,
+      "daily_ma_40": 22.2255,
+      "daily_above_ma20": true,
+      "daily_above_ma40": true,
+      "daily_ma_alignment": "BULLISH",
+      "daily_recent_high": 26.115,
+      "daily_from_recent_high_pct": -1.9,
+      "daily_volume": 13123535.0,
+      "daily_avg_volume_20": 23757093.0,
+      "daily_volume_ratio": 0.55,
+      "daily_breakout_20d": false,
+      "news_bonus": 0.0,
+      "stair_step_count": 1.0,
+      "stair_last_step_pct": 11.5,
+      "stair_step_acceleration_ratio": null,
+      "stair_plateau_days": 13.0,
+      "stair_plateau_range_pct": 10.63,
+      "stair_plateau_retention_pct": 154.6,
+      "stair_plateau_volume_ratio": 0.281,
+      "stair_higher_plateau_count": 0.0,
+      "stair_structure_score": 68.0,
+      "stair_reaccelerating": 0.0,
+      "stair_reacceleration_developing": 0.0,
+      "stair_breakdown": 0.0,
+      "stair_breakdown_confirmed": 0.0,
+      "stair_breakdown_developing": 0.0,
+      "timeframe_fit": {
+        "version": "scanner-timeframe-fit-v1",
+        "best_fit": "LONGER-TERM",
+        "primary_fit": "LONGER-TERM",
+        "secondary_fit": "SWING",
+        "fit_horizons": [
+          "LONGER-TERM"
+        ],
+        "scores": {
+          "INTRADAY": 50.0,
+          "SWING": 76.0,
+          "LONGER-TERM": 100.0
+        },
+        "coverage": {
+          "INTRADAY": 0,
+          "SWING": 5,
+          "LONGER-TERM": 8
+        },
+        "confidence": "HIGH",
+        "margin_points": 24.0,
+        "reasons": {
+          "INTRADAY": [],
+          "SWING": [
+            "five-session trend is positive",
+            "20-session trend is strong",
+            "strong multi-session stair-step structure"
+          ],
+          "LONGER-TERM": [
+            "20-session trend is firmly positive",
+            "roughly two-month trend is strong",
+            "price is above its 20-session average",
+            "price is above its 40-session average",
+            "10/20/40-session averages are bullishly aligned",
+            "price is still near its recent multi-week high",
+            "multi-session structure supports trend persistence"
+          ]
+        },
+        "explanation": [
+          "20-session trend is firmly positive",
+          "roughly two-month trend is strong",
+          "price is above its 20-session average"
+        ],
+        "horizon_guide": {
+          "INTRADAY": "minutes to same day",
+          "SWING": "roughly 2-10 trading days",
+          "LONGER-TERM": "roughly 2-8 weeks"
+        },
+        "production_rank_impact": false,
+        "note": "Timeframe Fit is an explainable scanner classification only. It does not change momentum ranking, Scanner ACTION, or validated intraday ML. LONGER-TERM is a technical screen and should be confirmed in Analyzer with fundamentals, dilution/filings, catalyst durability, and risk."
+      },
+      "timeframe_fit_version": "scanner-timeframe-fit-v1",
+      "timeframe_best_fit": "LONGER-TERM",
+      "timeframe_primary_fit": "LONGER-TERM",
+      "timeframe_secondary_fit": "SWING",
+      "timeframe_fit_horizons": [
+        "LONGER-TERM"
+      ],
+      "timeframe_intraday_score": 50.0,
+      "timeframe_swing_score": 76.0,
+      "timeframe_longer_term_score": 100.0,
+      "timeframe_fit_confidence": "HIGH",
+      "timeframe_fit_reason": "20-session trend is firmly positive \u00b7 roughly two-month trend is strong \u00b7 price is above its 20-session average",
+      "relative_strength_vs_spy_20d_pct": 23.36,
+      "daily_setup_archetypes": [
+        "TREND CONTINUATION"
+      ],
+      "trend_candidate_raw_score": 87.2,
+      "trend_candidate_score_version": "trend-candidate-score-v1",
+      "daily_discovery_score": 87.2,
+      "daily_setup_grade": "B",
+      "daily_review_action": "REVIEW LONGER-TERM",
+      "daily_review_reason": "20-session trend is firmly positive \u00b7 roughly two-month trend is strong \u00b7 price is above its 20-session average",
+      "production_rank_impact": false
+    },
+    {
+      "symbol": "ABEV",
+      "price": 3.33,
+      "day_pct": 1.83,
+      "average_volume": 27904920.0,
+      "average_dollar_volume": 92923383.60000001,
+      "daily_history_sessions": 85,
+      "daily_context_source": "tradier_consolidated_daily",
+      "daily_return_5d_pct": 2.15,
+      "daily_return_20d_pct": 14.43,
+      "daily_return_40d_pct": 14.83,
+      "daily_ma_10": 3.261,
+      "daily_ma_20": 3.1445,
+      "daily_ma_40": 3.0582,
+      "daily_above_ma20": true,
+      "daily_above_ma40": true,
+      "daily_ma_alignment": "BULLISH",
+      "daily_recent_high": 3.35,
+      "daily_from_recent_high_pct": -0.6,
+      "daily_volume": 20769835.0,
+      "daily_avg_volume_20": 22374630.0,
+      "daily_volume_ratio": 0.93,
+      "daily_breakout_20d": false,
+      "news_bonus": 0.0,
+      "stair_step_count": 1.0,
+      "stair_last_step_pct": 8.7,
+      "stair_step_acceleration_ratio": null,
+      "stair_plateau_days": 13.0,
+      "stair_plateau_range_pct": 7.03,
+      "stair_plateau_retention_pct": 100.0,
+      "stair_plateau_volume_ratio": 0.384,
+      "stair_higher_plateau_count": 0.0,
+      "stair_structure_score": 76.0,
+      "stair_reaccelerating": 0.0,
+      "stair_reacceleration_developing": 0.0,
+      "stair_breakdown": 0.0,
+      "stair_breakdown_confirmed": 0.0,
+      "stair_breakdown_developing": 0.0,
+      "timeframe_fit": {
+        "version": "scanner-timeframe-fit-v1",
+        "best_fit": "LONGER-TERM",
+        "primary_fit": "LONGER-TERM",
+        "secondary_fit": "SWING",
+        "fit_horizons": [
+          "LONGER-TERM"
+        ],
+        "scores": {
+          "INTRADAY": 50.0,
+          "SWING": 76.0,
+          "LONGER-TERM": 100.0
+        },
+        "coverage": {
+          "INTRADAY": 0,
+          "SWING": 5,
+          "LONGER-TERM": 8
+        },
+        "confidence": "HIGH",
+        "margin_points": 24.0,
+        "reasons": {
+          "INTRADAY": [],
+          "SWING": [
+            "five-session trend is positive",
+            "20-session trend is strong",
+            "strong multi-session stair-step structure"
+          ],
+          "LONGER-TERM": [
+            "20-session trend is constructive",
+            "roughly two-month trend is positive",
+            "price is above its 20-session average",
+            "price is above its 40-session average",
+            "10/20/40-session averages are bullishly aligned",
+            "price is still near its recent multi-week high",
+            "multi-session structure supports trend persistence"
+          ]
+        },
+        "explanation": [
+          "20-session trend is constructive",
+          "roughly two-month trend is positive",
+          "price is above its 20-session average"
+        ],
+        "horizon_guide": {
+          "INTRADAY": "minutes to same day",
+          "SWING": "roughly 2-10 trading days",
+          "LONGER-TERM": "roughly 2-8 weeks"
+        },
+        "production_rank_impact": false,
+        "note": "Timeframe Fit is an explainable scanner classification only. It does not change momentum ranking, Scanner ACTION, or validated intraday ML. LONGER-TERM is a technical screen and should be confirmed in Analyzer with fundamentals, dilution/filings, catalyst durability, and risk."
+      },
+      "timeframe_fit_version": "scanner-timeframe-fit-v1",
+      "timeframe_best_fit": "LONGER-TERM",
+      "timeframe_primary_fit": "LONGER-TERM",
+      "timeframe_secondary_fit": "SWING",
+      "timeframe_fit_horizons": [
+        "LONGER-TERM"
+      ],
+      "timeframe_intraday_score": 50.0,
+      "timeframe_swing_score": 76.0,
+      "timeframe_longer_term_score": 100.0,
+      "timeframe_fit_confidence": "HIGH",
+      "timeframe_fit_reason": "20-session trend is constructive \u00b7 roughly two-month trend is positive \u00b7 price is above its 20-session average",
+      "relative_strength_vs_spy_20d_pct": 14.85,
+      "daily_setup_archetypes": [
+        "TREND CONTINUATION"
+      ],
+      "trend_candidate_raw_score": 87.2,
+      "trend_candidate_score_version": "trend-candidate-score-v1",
+      "daily_discovery_score": 87.2,
+      "daily_setup_grade": "B",
+      "daily_review_action": "REVIEW LONGER-TERM",
+      "daily_review_reason": "20-session trend is constructive \u00b7 roughly two-month trend is positive \u00b7 price is above its 20-session average",
+      "production_rank_impact": false
+    },
+    {
+      "symbol": "FIG",
+      "price": 24.1,
+      "day_pct": 4.87,
+      "average_volume": 15814550.0,
+      "average_dollar_volume": 381130655.0,
+      "daily_history_sessions": 85,
+      "daily_context_source": "tradier_consolidated_daily",
+      "daily_return_5d_pct": 4.83,
+      "daily_return_20d_pct": 12.93,
+      "daily_return_40d_pct": -10.84,
+      "daily_ma_10": 22.351,
+      "daily_ma_20": 21.8735,
+      "daily_ma_40": 23.0207,
+      "daily_above_ma20": true,
+      "daily_above_ma40": true,
+      "daily_ma_alignment": "MIXED",
+      "daily_recent_high": 31.22,
+      "daily_from_recent_high_pct": -22.81,
+      "daily_volume": 14463543.0,
+      "daily_avg_volume_20": 9875057.0,
+      "daily_volume_ratio": 1.46,
+      "daily_breakout_20d": true,
+      "news_bonus": 0.0,
+      "stair_step_count": 4.0,
+      "stair_last_step_pct": 4.87,
+      "stair_step_acceleration_ratio": 0.897,
+      "stair_plateau_days": 0.0,
+      "stair_plateau_range_pct": 0.0,
+      "stair_plateau_retention_pct": 100.0,
+      "stair_plateau_volume_ratio": null,
+      "stair_higher_plateau_count": 2.0,
+      "stair_structure_score": 100.0,
+      "stair_reaccelerating": 1.0,
+      "stair_reacceleration_developing": 0.0,
+      "stair_breakdown": 0.0,
+      "stair_breakdown_confirmed": 0.0,
+      "stair_breakdown_developing": 0.0,
+      "timeframe_fit": {
+        "version": "scanner-timeframe-fit-v1",
+        "best_fit": "SWING",
+        "primary_fit": "SWING",
+        "secondary_fit": "LONGER-TERM",
+        "fit_horizons": [
+          "SWING"
+        ],
+        "scores": {
+          "INTRADAY": 50.0,
+          "SWING": 93.0,
+          "LONGER-TERM": 80.0
+        },
+        "coverage": {
+          "INTRADAY": 0,
+          "SWING": 5,
+          "LONGER-TERM": 8
+        },
+        "confidence": "HIGH",
+        "margin_points": 13.0,
+        "reasons": {
+          "INTRADAY": [],
+          "SWING": [
+            "current move is strong without being extreme",
+            "five-session trend is positive",
+            "20-session trend is strong",
+            "strong multi-session stair-step structure",
+            "multiple higher momentum steps are visible",
+            "multi-session trend is reaccelerating"
+          ],
+          "LONGER-TERM": [
+            "20-session trend is constructive",
+            "price is above its 20-session average",
+            "price is above its 40-session average",
+            "multi-session structure supports trend persistence",
+            "current momentum is supportive without extreme extension"
+          ]
+        },
+        "explanation": [
+          "current move is strong without being extreme",
+          "five-session trend is positive",
+          "20-session trend is strong"
+        ],
+        "horizon_guide": {
+          "INTRADAY": "minutes to same day",
+          "SWING": "roughly 2-10 trading days",
+          "LONGER-TERM": "roughly 2-8 weeks"
+        },
+        "production_rank_impact": false,
+        "note": "Timeframe Fit is an explainable scanner classification only. It does not change momentum ranking, Scanner ACTION, or validated intraday ML. LONGER-TERM is a technical screen and should be confirmed in Analyzer with fundamentals, dilution/filings, catalyst durability, and risk."
+      },
+      "timeframe_fit_version": "scanner-timeframe-fit-v1",
+      "timeframe_best_fit": "SWING",
+      "timeframe_primary_fit": "SWING",
+      "timeframe_secondary_fit": "LONGER-TERM",
+      "timeframe_fit_horizons": [
+        "SWING"
+      ],
+      "timeframe_intraday_score": 50.0,
+      "timeframe_swing_score": 93.0,
+      "timeframe_longer_term_score": 80.0,
+      "timeframe_fit_confidence": "HIGH",
+      "timeframe_fit_reason": "current move is strong without being extreme \u00b7 five-session trend is positive \u00b7 20-session trend is strong",
+      "relative_strength_vs_spy_20d_pct": 13.35,
+      "daily_setup_archetypes": [
+        "20D BREAKOUT"
+      ],
+      "trend_candidate_raw_score": 86.5,
+      "trend_candidate_score_version": "trend-candidate-score-v1",
+      "daily_discovery_score": 86.5,
+      "daily_setup_grade": "B",
+      "daily_review_action": "REVIEW SWING",
+      "daily_review_reason": "current move is strong without being extreme \u00b7 five-session trend is positive \u00b7 20-session trend is strong",
+      "production_rank_impact": false
+    },
+    {
+      "symbol": "SES",
+      "price": 0.727,
+      "day_pct": 15.18,
+      "average_volume": 20813832.0,
+      "average_dollar_volume": 15131655.864,
+      "daily_history_sessions": 85,
+      "daily_context_source": "tradier_consolidated_daily",
+      "daily_return_5d_pct": -17.73,
+      "daily_return_20d_pct": 37.38,
+      "daily_return_40d_pct": 35.71,
+      "daily_ma_10": 0.7783,
+      "daily_ma_20": 0.7409,
+      "daily_ma_40": 0.6413,
+      "daily_above_ma20": false,
+      "daily_above_ma40": true,
+      "daily_ma_alignment": "BULLISH",
+      "daily_recent_high": 1.06,
+      "daily_from_recent_high_pct": -31.42,
+      "daily_volume": 35690993.0,
+      "daily_avg_volume_20": 27102512.0,
+      "daily_volume_ratio": 1.32,
+      "daily_breakout_20d": false,
+      "news_bonus": 0.0,
+      "stair_step_count": 6.0,
+      "stair_last_step_pct": 15.18,
+      "stair_step_acceleration_ratio": 0.607,
+      "stair_plateau_days": 0.0,
+      "stair_plateau_range_pct": 0.0,
+      "stair_plateau_retention_pct": 100.0,
+      "stair_plateau_volume_ratio": null,
+      "stair_higher_plateau_count": 1.0,
+      "stair_structure_score": 93.0,
+      "stair_reaccelerating": 1.0,
+      "stair_reacceleration_developing": 0.0,
+      "stair_breakdown": 0.0,
+      "stair_breakdown_confirmed": 0.0,
+      "stair_breakdown_developing": 0.0,
+      "timeframe_fit": {
+        "version": "scanner-timeframe-fit-v1",
+        "best_fit": "LONGER-TERM",
+        "primary_fit": "LONGER-TERM",
+        "secondary_fit": "SWING",
+        "fit_horizons": [
+          "LONGER-TERM"
+        ],
+        "scores": {
+          "INTRADAY": 50.0,
+          "SWING": 81.0,
+          "LONGER-TERM": 94.0
+        },
+        "coverage": {
+          "INTRADAY": 0,
+          "SWING": 5,
+          "LONGER-TERM": 8
+        },
+        "confidence": "HIGH",
+        "margin_points": 13.0,
+        "reasons": {
+          "INTRADAY": [],
+          "SWING": [
+            "current move is strong without being extreme",
+            "five-session trend is weak",
+            "20-session trend is strong",
+            "strong multi-session stair-step structure",
+            "multiple higher momentum steps are visible",
+            "multi-session trend is reaccelerating"
+          ],
+          "LONGER-TERM": [
+            "20-session trend is firmly positive",
+            "roughly two-month trend is strong",
+            "price is below its 20-session average",
+            "price is above its 40-session average",
+            "10/20/40-session averages are bullishly aligned",
+            "multi-session structure supports trend persistence",
+            "current momentum is supportive without extreme extension"
+          ]
+        },
+        "explanation": [
+          "20-session trend is firmly positive",
+          "roughly two-month trend is strong",
+          "price is below its 20-session average"
+        ],
+        "horizon_guide": {
+          "INTRADAY": "minutes to same day",
+          "SWING": "roughly 2-10 trading days",
+          "LONGER-TERM": "roughly 2-8 weeks"
+        },
+        "production_rank_impact": false,
+        "note": "Timeframe Fit is an explainable scanner classification only. It does not change momentum ranking, Scanner ACTION, or validated intraday ML. LONGER-TERM is a technical screen and should be confirmed in Analyzer with fundamentals, dilution/filings, catalyst durability, and risk."
+      },
+      "timeframe_fit_version": "scanner-timeframe-fit-v1",
+      "timeframe_best_fit": "LONGER-TERM",
+      "timeframe_primary_fit": "LONGER-TERM",
+      "timeframe_secondary_fit": "SWING",
+      "timeframe_fit_horizons": [
+        "LONGER-TERM"
+      ],
+      "timeframe_intraday_score": 50.0,
+      "timeframe_swing_score": 81.0,
+      "timeframe_longer_term_score": 94.0,
+      "timeframe_fit_confidence": "HIGH",
+      "timeframe_fit_reason": "20-session trend is firmly positive \u00b7 roughly two-month trend is strong \u00b7 price is below its 20-session average",
+      "relative_strength_vs_spy_20d_pct": 37.8,
+      "daily_setup_archetypes": [
+        "TREND CONTINUATION",
+        "CONSTRUCTIVE PULLBACK"
+      ],
+      "trend_candidate_raw_score": 86.3,
+      "trend_candidate_score_version": "trend-candidate-score-v1",
+      "daily_discovery_score": 86.3,
+      "daily_setup_grade": "B",
+      "daily_review_action": "REVIEW LONGER-TERM",
+      "daily_review_reason": "20-session trend is firmly positive \u00b7 roughly two-month trend is strong \u00b7 price is below its 20-session average",
+      "production_rank_impact": false
+    },
+    {
+      "symbol": "VEEA",
+      "price": 4.19,
+      "day_pct": 5.28,
+      "average_volume": 8299213.0,
+      "average_dollar_volume": 34773702.470000006,
+      "daily_history_sessions": 85,
+      "daily_context_source": "tradier_consolidated_daily",
+      "daily_return_5d_pct": -13.43,
+      "daily_return_20d_pct": 37.83,
+      "daily_return_40d_pct": 71.02,
+      "daily_ma_10": 4.592,
+      "daily_ma_20": 4.1285,
+      "daily_ma_40": 3.4825,
+      "daily_above_ma20": true,
+      "daily_above_ma40": true,
+      "daily_ma_alignment": "BULLISH",
+      "daily_recent_high": 8.88,
+      "daily_from_recent_high_pct": -52.82,
+      "daily_volume": 409299.0,
+      "daily_avg_volume_20": 12564165.0,
+      "daily_volume_ratio": 0.03,
+      "daily_breakout_20d": false,
+      "news_bonus": 0.0,
+      "stair_step_count": 5.0,
+      "stair_last_step_pct": 5.28,
+      "stair_step_acceleration_ratio": 0.412,
+      "stair_plateau_days": 0.0,
+      "stair_plateau_range_pct": 0.0,
+      "stair_plateau_retention_pct": 100.0,
+      "stair_plateau_volume_ratio": null,
+      "stair_higher_plateau_count": 0.0,
+      "stair_structure_score": 86.0,
+      "stair_reaccelerating": 1.0,
+      "stair_reacceleration_developing": 0.0,
+      "stair_breakdown": 0.0,
+      "stair_breakdown_confirmed": 0.0,
+      "stair_breakdown_developing": 0.0,
+      "timeframe_fit": {
+        "version": "scanner-timeframe-fit-v1",
+        "best_fit": "LONGER-TERM",
+        "primary_fit": "LONGER-TERM",
+        "secondary_fit": "SWING",
+        "fit_horizons": [
+          "LONGER-TERM"
+        ],
+        "scores": {
+          "INTRADAY": 50.0,
+          "SWING": 81.0,
+          "LONGER-TERM": 100.0
+        },
+        "coverage": {
+          "INTRADAY": 0,
+          "SWING": 5,
+          "LONGER-TERM": 8
+        },
+        "confidence": "HIGH",
+        "margin_points": 19.0,
+        "reasons": {
+          "INTRADAY": [],
+          "SWING": [
+            "current move is strong without being extreme",
+            "five-session trend is weak",
+            "20-session trend is strong",
+            "strong multi-session stair-step structure",
+            "multiple higher momentum steps are visible",
+            "multi-session trend is reaccelerating"
+          ],
+          "LONGER-TERM": [
+            "20-session trend is firmly positive",
+            "roughly two-month trend is strong",
+            "price is above its 20-session average",
+            "price is above its 40-session average",
+            "10/20/40-session averages are bullishly aligned",
+            "price remains far below its recent multi-week high",
+            "multi-session structure supports trend persistence",
+            "current momentum is supportive without extreme extension"
+          ]
+        },
+        "explanation": [
+          "20-session trend is firmly positive",
+          "roughly two-month trend is strong",
+          "price is above its 20-session average"
+        ],
+        "horizon_guide": {
+          "INTRADAY": "minutes to same day",
+          "SWING": "roughly 2-10 trading days",
+          "LONGER-TERM": "roughly 2-8 weeks"
+        },
+        "production_rank_impact": false,
+        "note": "Timeframe Fit is an explainable scanner classification only. It does not change momentum ranking, Scanner ACTION, or validated intraday ML. LONGER-TERM is a technical screen and should be confirmed in Analyzer with fundamentals, dilution/filings, catalyst durability, and risk."
+      },
+      "timeframe_fit_version": "scanner-timeframe-fit-v1",
+      "timeframe_best_fit": "LONGER-TERM",
+      "timeframe_primary_fit": "LONGER-TERM",
+      "timeframe_secondary_fit": "SWING",
+      "timeframe_fit_horizons": [
+        "LONGER-TERM"
+      ],
+      "timeframe_intraday_score": 50.0,
+      "timeframe_swing_score": 81.0,
+      "timeframe_longer_term_score": 100.0,
+      "timeframe_fit_confidence": "HIGH",
+      "timeframe_fit_reason": "20-session trend is firmly positive \u00b7 roughly two-month trend is strong \u00b7 price is above its 20-session average",
+      "relative_strength_vs_spy_20d_pct": 38.25,
+      "daily_setup_archetypes": [
+        "TREND CONTINUATION",
+        "CONSTRUCTIVE PULLBACK"
+      ],
+      "trend_candidate_raw_score": 86.2,
+      "trend_candidate_score_version": "trend-candidate-score-v1",
+      "daily_discovery_score": 86.2,
+      "daily_setup_grade": "B",
+      "daily_review_action": "REVIEW LONGER-TERM",
+      "daily_review_reason": "20-session trend is firmly positive \u00b7 roughly two-month trend is strong \u00b7 price is above its 20-session average",
+      "production_rank_impact": false
+    },
+    {
+      "symbol": "IOVA",
+      "price": 14.14,
+      "day_pct": -3.28,
+      "average_volume": 16636799.0,
+      "average_dollar_volume": 235244337.86,
+      "daily_history_sessions": 85,
+      "daily_context_source": "tradier_consolidated_daily",
+      "daily_return_5d_pct": -3.94,
+      "daily_return_20d_pct": 30.93,
+      "daily_return_40d_pct": 75.0,
+      "daily_ma_10": 14.406,
+      "daily_ma_20": 13.855,
+      "daily_ma_40": 11.5095,
+      "daily_above_ma20": true,
+      "daily_above_ma40": true,
+      "daily_ma_alignment": "BULLISH",
+      "daily_recent_high": 15.37,
+      "daily_from_recent_high_pct": -8.0,
+      "daily_volume": 10769802.0,
+      "daily_avg_volume_20": 16690707.0,
+      "daily_volume_ratio": 0.65,
+      "daily_breakout_20d": false,
+      "news_bonus": 0.0,
+      "stair_step_count": 3.0,
+      "stair_last_step_pct": 4.57,
+      "stair_step_acceleration_ratio": 0.465,
+      "stair_plateau_days": 2.0,
+      "stair_plateau_range_pct": 12.68,
+      "stair_plateau_retention_pct": 26.2,
+      "stair_plateau_volume_ratio": 1.116,
+      "stair_higher_plateau_count": 0.0,
+      "stair_structure_score": 8.0,
+      "stair_reaccelerating": 0.0,
+      "stair_reacceleration_developing": 0.0,
+      "stair_breakdown": 1.0,
+      "stair_breakdown_confirmed": 1.0,
+      "stair_breakdown_developing": 0.0,
+      "timeframe_fit": {
+        "version": "scanner-timeframe-fit-v1",
+        "best_fit": "LONGER-TERM",
+        "primary_fit": "LONGER-TERM",
+        "secondary_fit": "INTRADAY",
+        "fit_horizons": [
+          "LONGER-TERM"
+        ],
+        "scores": {
+          "INTRADAY": 50.0,
+          "SWING": 47.0,
+          "LONGER-TERM": 100.0
+        },
+        "coverage": {
+          "INTRADAY": 0,
+          "SWING": 5,
+          "LONGER-TERM": 8
+        },
+        "confidence": "HIGH",
+        "margin_points": 50.0,
+        "reasons": {
+          "INTRADAY": [],
+          "SWING": [
+            "20-session trend is strong",
+            "multi-session structure is weak",
+            "multiple higher momentum steps are visible",
+            "latest multi-session plateau has broken down"
+          ],
+          "LONGER-TERM": [
+            "20-session trend is firmly positive",
+            "roughly two-month trend is strong",
+            "price is above its 20-session average",
+            "price is above its 40-session average",
+            "10/20/40-session averages are bullishly aligned",
+            "price is still near its recent multi-week high",
+            "multi-session structure is not yet durable"
+          ]
+        },
+        "explanation": [
+          "20-session trend is firmly positive",
+          "roughly two-month trend is strong",
+          "price is above its 20-session average"
+        ],
+        "horizon_guide": {
+          "INTRADAY": "minutes to same day",
+          "SWING": "roughly 2-10 trading days",
+          "LONGER-TERM": "roughly 2-8 weeks"
+        },
+        "production_rank_impact": false,
+        "note": "Timeframe Fit is an explainable scanner classification only. It does not change momentum ranking, Scanner ACTION, or validated intraday ML. LONGER-TERM is a technical screen and should be confirmed in Analyzer with fundamentals, dilution/filings, catalyst durability, and risk."
+      },
+      "timeframe_fit_version": "scanner-timeframe-fit-v1",
+      "timeframe_best_fit": "LONGER-TERM",
+      "timeframe_primary_fit": "LONGER-TERM",
+      "timeframe_secondary_fit": "INTRADAY",
+      "timeframe_fit_horizons": [
+        "LONGER-TERM"
+      ],
+      "timeframe_intraday_score": 50.0,
+      "timeframe_swing_score": 47.0,
+      "timeframe_longer_term_score": 100.0,
+      "timeframe_fit_confidence": "HIGH",
+      "timeframe_fit_reason": "20-session trend is firmly positive \u00b7 roughly two-month trend is strong \u00b7 price is above its 20-session average",
+      "relative_strength_vs_spy_20d_pct": 31.35,
+      "daily_setup_archetypes": [
+        "TREND CONTINUATION",
+        "CONSTRUCTIVE PULLBACK"
+      ],
+      "trend_candidate_raw_score": 85.4,
+      "trend_candidate_score_version": "trend-candidate-score-v1",
+      "daily_discovery_score": 85.4,
+      "daily_setup_grade": "B",
+      "daily_review_action": "REVIEW LONGER-TERM",
+      "daily_review_reason": "20-session trend is firmly positive \u00b7 roughly two-month trend is strong \u00b7 price is above its 20-session average",
+      "production_rank_impact": false
+    },
+    {
+      "symbol": "CCL",
+      "price": 27.08,
+      "day_pct": -0.81,
+      "average_volume": 21489204.0,
+      "average_dollar_volume": 581927644.3199999,
+      "daily_history_sessions": 85,
+      "daily_context_source": "tradier_consolidated_daily",
+      "daily_return_5d_pct": 2.34,
+      "daily_return_20d_pct": 24.28,
+      "daily_return_40d_pct": 5.82,
+      "daily_ma_10": 26.578,
+      "daily_ma_20": 25.7535,
+      "daily_ma_40": 24.324,
+      "daily_above_ma20": true,
+      "daily_above_ma40": true,
+      "daily_ma_alignment": "BULLISH",
+      "daily_recent_high": 27.8,
+      "daily_from_recent_high_pct": -2.59,
+      "daily_volume": 17914242.0,
+      "daily_avg_volume_20": 24533089.0,
+      "daily_volume_ratio": 0.73,
+      "daily_breakout_20d": false,
+      "news_bonus": 0.0,
+      "stair_step_count": 1.0,
+      "stair_last_step_pct": 13.41,
+      "stair_step_acceleration_ratio": null,
+      "stair_plateau_days": 17.0,
+      "stair_plateau_range_pct": 13.38,
+      "stair_plateau_retention_pct": 141.8,
+      "stair_plateau_volume_ratio": 0.246,
+      "stair_higher_plateau_count": 0.0,
+      "stair_structure_score": 68.0,
+      "stair_reaccelerating": 0.0,
+      "stair_reacceleration_developing": 0.0,
+      "stair_breakdown": 0.0,
+      "stair_breakdown_confirmed": 0.0,
+      "stair_breakdown_developing": 0.0,
+      "timeframe_fit": {
+        "version": "scanner-timeframe-fit-v1",
+        "best_fit": "LONGER-TERM",
+        "primary_fit": "LONGER-TERM",
+        "secondary_fit": "SWING",
+        "fit_horizons": [
+          "LONGER-TERM"
+        ],
+        "scores": {
+          "INTRADAY": 50.0,
+          "SWING": 76.0,
+          "LONGER-TERM": 97.0
+        },
+        "coverage": {
+          "INTRADAY": 0,
+          "SWING": 5,
+          "LONGER-TERM": 8
+        },
+        "confidence": "HIGH",
+        "margin_points": 21.0,
+        "reasons": {
+          "INTRADAY": [],
+          "SWING": [
+            "five-session trend is positive",
+            "20-session trend is strong",
+            "strong multi-session stair-step structure"
+          ],
+          "LONGER-TERM": [
+            "20-session trend is firmly positive",
+            "price is above its 20-session average",
+            "price is above its 40-session average",
+            "10/20/40-session averages are bullishly aligned",
+            "price is still near its recent multi-week high",
+            "multi-session structure supports trend persistence"
+          ]
+        },
+        "explanation": [
+          "20-session trend is firmly positive",
+          "price is above its 20-session average",
+          "price is above its 40-session average"
+        ],
+        "horizon_guide": {
+          "INTRADAY": "minutes to same day",
+          "SWING": "roughly 2-10 trading days",
+          "LONGER-TERM": "roughly 2-8 weeks"
+        },
+        "production_rank_impact": false,
+        "note": "Timeframe Fit is an explainable scanner classification only. It does not change momentum ranking, Scanner ACTION, or validated intraday ML. LONGER-TERM is a technical screen and should be confirmed in Analyzer with fundamentals, dilution/filings, catalyst durability, and risk."
+      },
+      "timeframe_fit_version": "scanner-timeframe-fit-v1",
+      "timeframe_best_fit": "LONGER-TERM",
+      "timeframe_primary_fit": "LONGER-TERM",
+      "timeframe_secondary_fit": "SWING",
+      "timeframe_fit_horizons": [
+        "LONGER-TERM"
+      ],
+      "timeframe_intraday_score": 50.0,
+      "timeframe_swing_score": 76.0,
+      "timeframe_longer_term_score": 97.0,
+      "timeframe_fit_confidence": "HIGH",
+      "timeframe_fit_reason": "20-session trend is firmly positive \u00b7 price is above its 20-session average \u00b7 price is above its 40-session average",
+      "relative_strength_vs_spy_20d_pct": 24.7,
+      "daily_setup_archetypes": [
+        "MOMENTUM TREND"
+      ],
+      "trend_candidate_raw_score": 84.2,
+      "trend_candidate_score_version": "trend-candidate-score-v1",
+      "daily_discovery_score": 84.2,
+      "daily_setup_grade": "B",
+      "daily_review_action": "REVIEW LONGER-TERM",
+      "daily_review_reason": "20-session trend is firmly positive \u00b7 price is above its 20-session average \u00b7 price is above its 40-session average",
+      "production_rank_impact": false
+    },
+    {
+      "symbol": "KRRO",
+      "price": 12.05,
+      "day_pct": 29.71,
+      "average_volume": 150705.0,
+      "average_dollar_volume": 1815995.25,
+      "daily_history_sessions": 85,
+      "daily_context_source": "tradier_consolidated_daily",
+      "daily_return_5d_pct": 29.43,
+      "daily_return_20d_pct": 25.91,
+      "daily_return_40d_pct": -11.92,
+      "daily_ma_10": 9.471,
+      "daily_ma_20": 9.6705,
+      "daily_ma_40": 10.9192,
+      "daily_above_ma20": true,
+      "daily_above_ma40": true,
+      "daily_ma_alignment": "BEARISH",
+      "daily_recent_high": 15.15,
+      "daily_from_recent_high_pct": -20.46,
+      "daily_volume": 476475.0,
+      "daily_avg_volume_20": 163814.0,
+      "daily_volume_ratio": 2.91,
+      "daily_breakout_20d": true,
+      "news_bonus": 0.0,
+      "stair_step_count": 3.0,
+      "stair_last_step_pct": 29.71,
+      "stair_step_acceleration_ratio": 4.995,
+      "stair_plateau_days": 0.0,
+      "stair_plateau_range_pct": 0.0,
+      "stair_plateau_retention_pct": 100.0,
+      "stair_plateau_volume_ratio": null,
+      "stair_higher_plateau_count": 2.0,
+      "stair_structure_score": 100.0,
+      "stair_reaccelerating": 1.0,
+      "stair_reacceleration_developing": 0.0,
+      "stair_breakdown": 0.0,
+      "stair_breakdown_confirmed": 0.0,
+      "stair_breakdown_developing": 0.0,
+      "timeframe_fit": {
+        "version": "scanner-timeframe-fit-v1",
+        "best_fit": "SWING",
+        "primary_fit": "SWING",
+        "secondary_fit": "LONGER-TERM",
+        "fit_horizons": [
+          "SWING"
+        ],
+        "scores": {
+          "INTRADAY": 50.0,
+          "SWING": 94.0,
+          "LONGER-TERM": 73.0
+        },
+        "coverage": {
+          "INTRADAY": 0,
+          "SWING": 5,
+          "LONGER-TERM": 8
+        },
+        "confidence": "HIGH",
+        "margin_points": 21.0,
+        "reasons": {
+          "INTRADAY": [],
+          "SWING": [
+            "strong current move can support continuation",
+            "strong five-session trend",
+            "20-session trend is strong",
+            "strong multi-session stair-step structure",
+            "multiple higher momentum steps are visible",
+            "multi-session trend is reaccelerating"
+          ],
+          "LONGER-TERM": [
+            "20-session trend is firmly positive",
+            "price is above its 20-session average",
+            "price is above its 40-session average",
+            "10/20/40-session averages are bearishly aligned",
+            "multi-session structure supports trend persistence"
+          ]
+        },
+        "explanation": [
+          "strong current move can support continuation",
+          "strong five-session trend",
+          "20-session trend is strong"
+        ],
+        "horizon_guide": {
+          "INTRADAY": "minutes to same day",
+          "SWING": "roughly 2-10 trading days",
+          "LONGER-TERM": "roughly 2-8 weeks"
+        },
+        "production_rank_impact": false,
+        "note": "Timeframe Fit is an explainable scanner classification only. It does not change momentum ranking, Scanner ACTION, or validated intraday ML. LONGER-TERM is a technical screen and should be confirmed in Analyzer with fundamentals, dilution/filings, catalyst durability, and risk."
+      },
+      "timeframe_fit_version": "scanner-timeframe-fit-v1",
+      "timeframe_best_fit": "SWING",
+      "timeframe_primary_fit": "SWING",
+      "timeframe_secondary_fit": "LONGER-TERM",
+      "timeframe_fit_horizons": [
+        "SWING"
+      ],
+      "timeframe_intraday_score": 50.0,
+      "timeframe_swing_score": 94.0,
+      "timeframe_longer_term_score": 73.0,
+      "timeframe_fit_confidence": "HIGH",
+      "timeframe_fit_reason": "strong current move can support continuation \u00b7 strong five-session trend \u00b7 20-session trend is strong",
+      "relative_strength_vs_spy_20d_pct": 26.33,
+      "daily_setup_archetypes": [
+        "20D BREAKOUT"
+      ],
+      "trend_candidate_raw_score": 83.7,
+      "trend_candidate_score_version": "trend-candidate-score-v1",
+      "daily_discovery_score": 83.7,
+      "daily_setup_grade": "B",
+      "daily_review_action": "REVIEW SWING",
+      "daily_review_reason": "strong current move can support continuation \u00b7 strong five-session trend \u00b7 20-session trend is strong",
+      "production_rank_impact": false
+    },
+    {
+      "symbol": "WPRT",
+      "price": 2.24,
+      "day_pct": 14.29,
+      "average_volume": 60224.0,
+      "average_dollar_volume": 134901.76,
+      "daily_history_sessions": 85,
+      "daily_context_source": "tradier_consolidated_daily",
+      "daily_return_5d_pct": 23.08,
+      "daily_return_20d_pct": 9.8,
+      "daily_return_40d_pct": 19.79,
+      "daily_ma_10": 1.8685,
+      "daily_ma_20": 1.8958,
+      "daily_ma_40": 1.8977,
+      "daily_above_ma20": true,
+      "daily_above_ma40": true,
+      "daily_ma_alignment": "BEARISH",
+      "daily_recent_high": 2.24,
+      "daily_from_recent_high_pct": 0.0,
+      "daily_volume": 204521.0,
+      "daily_avg_volume_20": 42003.0,
+      "daily_volume_ratio": 4.87,
+      "daily_breakout_20d": true,
+      "news_bonus": 0.0,
+      "stair_step_count": 2.0,
+      "stair_last_step_pct": 14.29,
+      "stair_step_acceleration_ratio": 3.357,
+      "stair_plateau_days": 0.0,
+      "stair_plateau_range_pct": 0.0,
+      "stair_plateau_retention_pct": 100.0,
+      "stair_plateau_volume_ratio": null,
+      "stair_higher_plateau_count": 1.0,
+      "stair_structure_score": 94.0,
+      "stair_reaccelerating": 1.0,
+      "stair_reacceleration_developing": 0.0,
+      "stair_breakdown": 0.0,
+      "stair_breakdown_confirmed": 0.0,
+      "stair_breakdown_developing": 0.0,
+      "timeframe_fit": {
+        "version": "scanner-timeframe-fit-v1",
+        "best_fit": "SWING",
+        "primary_fit": "SWING",
+        "secondary_fit": "LONGER-TERM",
+        "fit_horizons": [
+          "SWING"
+        ],
+        "scores": {
+          "INTRADAY": 50.0,
+          "SWING": 92.0,
+          "LONGER-TERM": 85.0
+        },
+        "coverage": {
+          "INTRADAY": 0,
+          "SWING": 5,
+          "LONGER-TERM": 8
+        },
+        "confidence": "MODERATE",
+        "margin_points": 7.0,
+        "reasons": {
+          "INTRADAY": [],
+          "SWING": [
+            "current move is strong without being extreme",
+            "strong five-session trend",
+            "20-session trend is positive",
+            "strong multi-session stair-step structure",
+            "multiple higher momentum steps are visible",
+            "multi-session trend is reaccelerating"
+          ],
+          "LONGER-TERM": [
+            "20-session trend is constructive",
+            "roughly two-month trend is positive",
+            "price is above its 20-session average",
+            "price is above its 40-session average",
+            "10/20/40-session averages are bearishly aligned",
+            "price is still near its recent multi-week high",
+            "multi-session structure supports trend persistence",
+            "current momentum is supportive without extreme extension"
+          ]
+        },
+        "explanation": [
+          "current move is strong without being extreme",
+          "strong five-session trend",
+          "20-session trend is positive"
+        ],
+        "horizon_guide": {
+          "INTRADAY": "minutes to same day",
+          "SWING": "roughly 2-10 trading days",
+          "LONGER-TERM": "roughly 2-8 weeks"
+        },
+        "production_rank_impact": false,
+        "note": "Timeframe Fit is an explainable scanner classification only. It does not change momentum ranking, Scanner ACTION, or validated intraday ML. LONGER-TERM is a technical screen and should be confirmed in Analyzer with fundamentals, dilution/filings, catalyst durability, and risk."
+      },
+      "timeframe_fit_version": "scanner-timeframe-fit-v1",
+      "timeframe_best_fit": "SWING",
+      "timeframe_primary_fit": "SWING",
+      "timeframe_secondary_fit": "LONGER-TERM",
+      "timeframe_fit_horizons": [
+        "SWING"
+      ],
+      "timeframe_intraday_score": 50.0,
+      "timeframe_swing_score": 92.0,
+      "timeframe_longer_term_score": 85.0,
+      "timeframe_fit_confidence": "MODERATE",
+      "timeframe_fit_reason": "current move is strong without being extreme \u00b7 strong five-session trend \u00b7 20-session trend is positive",
+      "relative_strength_vs_spy_20d_pct": 10.22,
+      "daily_setup_archetypes": [
+        "20D BREAKOUT"
+      ],
+      "trend_candidate_raw_score": 82.8,
+      "trend_candidate_score_version": "trend-candidate-score-v1",
+      "daily_discovery_score": 82.8,
+      "daily_setup_grade": "B",
+      "daily_review_action": "REVIEW SWING",
+      "daily_review_reason": "current move is strong without being extreme \u00b7 strong five-session trend \u00b7 20-session trend is positive",
+      "production_rank_impact": false
+    },
+    {
+      "symbol": "FISV",
+      "price": 50.82,
+      "day_pct": 5.41,
+      "average_volume": 7056790.0,
+      "average_dollar_volume": 358626067.8,
+      "daily_history_sessions": 85,
+      "daily_context_source": "tradier_consolidated_daily",
+      "daily_return_5d_pct": 7.65,
+      "daily_return_20d_pct": 10.53,
+      "daily_return_40d_pct": -3.11,
+      "daily_ma_10": 47.414,
+      "daily_ma_20": 46.4895,
+      "daily_ma_40": 48.2428,
+      "daily_above_ma20": true,
+      "daily_above_ma40": true,
+      "daily_ma_alignment": "MIXED",
+      "daily_recent_high": 53.99,
+      "daily_from_recent_high_pct": -5.87,
+      "daily_volume": 6672528.0,
+      "daily_avg_volume_20": 5866904.0,
+      "daily_volume_ratio": 1.14,
+      "daily_breakout_20d": true,
+      "news_bonus": 0.0,
+      "stair_step_count": 2.0,
+      "stair_last_step_pct": 5.41,
+      "stair_step_acceleration_ratio": 1.349,
+      "stair_plateau_days": 0.0,
+      "stair_plateau_range_pct": 0.0,
+      "stair_plateau_retention_pct": 100.0,
+      "stair_plateau_volume_ratio": null,
+      "stair_higher_plateau_count": 1.0,
+      "stair_structure_score": 94.0,
+      "stair_reaccelerating": 1.0,
+      "stair_reacceleration_developing": 0.0,
+      "stair_breakdown": 0.0,
+      "stair_breakdown_confirmed": 0.0,
+      "stair_breakdown_developing": 0.0,
+      "timeframe_fit": {
+        "version": "scanner-timeframe-fit-v1",
+        "best_fit": "MIXED",
+        "primary_fit": "SWING",
+        "secondary_fit": "LONGER-TERM",
+        "fit_horizons": [
+          "SWING",
+          "LONGER-TERM"
+        ],
+        "scores": {
+          "INTRADAY": 50.0,
+          "SWING": 87.0,
+          "LONGER-TERM": 86.0
+        },
+        "coverage": {
+          "INTRADAY": 0,
+          "SWING": 5,
+          "LONGER-TERM": 8
+        },
+        "confidence": "MODERATE",
+        "margin_points": 1.0,
+        "reasons": {
+          "INTRADAY": [],
+          "SWING": [
+            "current move is strong without being extreme",
+            "five-session trend is positive",
+            "20-session trend is positive",
+            "strong multi-session stair-step structure",
+            "multiple higher momentum steps are visible",
+            "multi-session trend is reaccelerating"
+          ],
+          "LONGER-TERM": [
+            "20-session trend is constructive",
+            "price is above its 20-session average",
+            "price is above its 40-session average",
+            "price is still near its recent multi-week high",
+            "multi-session structure supports trend persistence",
+            "current momentum is supportive without extreme extension"
+          ]
+        },
+        "explanation": [
+          "current move is strong without being extreme",
+          "five-session trend is positive",
+          "20-session trend is positive",
+          "longer-term evidence is also close"
+        ],
+        "horizon_guide": {
+          "INTRADAY": "minutes to same day",
+          "SWING": "roughly 2-10 trading days",
+          "LONGER-TERM": "roughly 2-8 weeks"
+        },
+        "production_rank_impact": false,
+        "note": "Timeframe Fit is an explainable scanner classification only. It does not change momentum ranking, Scanner ACTION, or validated intraday ML. LONGER-TERM is a technical screen and should be confirmed in Analyzer with fundamentals, dilution/filings, catalyst durability, and risk."
+      },
+      "timeframe_fit_version": "scanner-timeframe-fit-v1",
+      "timeframe_best_fit": "MIXED",
+      "timeframe_primary_fit": "SWING",
+      "timeframe_secondary_fit": "LONGER-TERM",
+      "timeframe_fit_horizons": [
+        "SWING",
+        "LONGER-TERM"
+      ],
+      "timeframe_intraday_score": 50.0,
+      "timeframe_swing_score": 87.0,
+      "timeframe_longer_term_score": 86.0,
+      "timeframe_fit_confidence": "MODERATE",
+      "timeframe_fit_reason": "current move is strong without being extreme \u00b7 five-session trend is positive \u00b7 20-session trend is positive \u00b7 longer-term evidence is also close",
+      "relative_strength_vs_spy_20d_pct": 10.95,
+      "daily_setup_archetypes": [
+        "20D BREAKOUT"
+      ],
+      "trend_candidate_raw_score": 81.8,
+      "trend_candidate_score_version": "trend-candidate-score-v1",
+      "daily_discovery_score": 81.8,
+      "daily_setup_grade": "B",
+      "daily_review_action": "REVIEW SWING / LONGER-TERM",
+      "daily_review_reason": "current move is strong without being extreme \u00b7 five-session trend is positive \u00b7 20-session trend is positive \u00b7 longer-term evidence is also close",
+      "production_rank_impact": false
+    },
+    {
+      "symbol": "TANH",
+      "price": 24.83,
+      "day_pct": 181.84,
+      "average_volume": 215402.0,
+      "average_dollar_volume": 5348431.659999999,
+      "daily_history_sessions": 85,
+      "daily_context_source": "tradier_consolidated_daily",
+      "daily_return_5d_pct": 93.38,
+      "daily_return_20d_pct": 71.24,
+      "daily_return_40d_pct": 31.06,
+      "daily_ma_10": 14.488,
+      "daily_ma_20": 15.0162,
+      "daily_ma_40": 16.1544,
+      "daily_above_ma20": true,
+      "daily_above_ma40": true,
+      "daily_ma_alignment": "BEARISH",
+      "daily_recent_high": 29.89,
+      "daily_from_recent_high_pct": -16.93,
+      "daily_volume": 2212208.0,
+      "daily_avg_volume_20": 65279.0,
+      "daily_volume_ratio": 33.89,
+      "daily_breakout_20d": true,
+      "news_bonus": 0.0,
+      "stair_step_count": 5.0,
+      "stair_last_step_pct": 181.84,
+      "stair_step_acceleration_ratio": 29.933,
+      "stair_plateau_days": 0.0,
+      "stair_plateau_range_pct": 0.0,
+      "stair_plateau_retention_pct": 100.0,
+      "stair_plateau_volume_ratio": null,
+      "stair_higher_plateau_count": 1.0,
+      "stair_structure_score": 100.0,
+      "stair_reaccelerating": 1.0,
+      "stair_reacceleration_developing": 0.0,
+      "stair_breakdown": 0.0,
+      "stair_breakdown_confirmed": 0.0,
+      "stair_breakdown_developing": 0.0,
+      "timeframe_fit": {
+        "version": "scanner-timeframe-fit-v1",
+        "best_fit": "MIXED",
+        "primary_fit": "SWING",
+        "secondary_fit": "LONGER-TERM",
+        "fit_horizons": [
+          "SWING",
+          "LONGER-TERM"
+        ],
+        "scores": {
+          "INTRADAY": 50.0,
+          "SWING": 83.0,
+          "LONGER-TERM": 80.0
+        },
+        "coverage": {
+          "INTRADAY": 0,
+          "SWING": 5,
+          "LONGER-TERM": 8
+        },
+        "confidence": "MODERATE",
+        "margin_points": 3.0,
+        "reasons": {
+          "INTRADAY": [],
+          "SWING": [
+            "current move is very extended for a multi-day hold",
+            "strong five-session trend",
+            "20-session trend is strong",
+            "strong multi-session stair-step structure",
+            "multiple higher momentum steps are visible",
+            "multi-session trend is reaccelerating"
+          ],
+          "LONGER-TERM": [
+            "20-session trend is firmly positive",
+            "roughly two-month trend is strong",
+            "price is above its 20-session average",
+            "price is above its 40-session average",
+            "10/20/40-session averages are bearishly aligned",
+            "multi-session structure supports trend persistence",
+            "current move is stretched for a multi-week entry"
+          ]
+        },
+        "explanation": [
+          "current move is very extended for a multi-day hold",
+          "strong five-session trend",
+          "20-session trend is strong",
+          "longer-term evidence is also close"
+        ],
+        "horizon_guide": {
+          "INTRADAY": "minutes to same day",
+          "SWING": "roughly 2-10 trading days",
+          "LONGER-TERM": "roughly 2-8 weeks"
+        },
+        "production_rank_impact": false,
+        "note": "Timeframe Fit is an explainable scanner classification only. It does not change momentum ranking, Scanner ACTION, or validated intraday ML. LONGER-TERM is a technical screen and should be confirmed in Analyzer with fundamentals, dilution/filings, catalyst durability, and risk."
+      },
+      "timeframe_fit_version": "scanner-timeframe-fit-v1",
+      "timeframe_best_fit": "MIXED",
+      "timeframe_primary_fit": "SWING",
+      "timeframe_secondary_fit": "LONGER-TERM",
+      "timeframe_fit_horizons": [
+        "SWING",
+        "LONGER-TERM"
+      ],
+      "timeframe_intraday_score": 50.0,
+      "timeframe_swing_score": 83.0,
+      "timeframe_longer_term_score": 80.0,
+      "timeframe_fit_confidence": "MODERATE",
+      "timeframe_fit_reason": "current move is very extended for a multi-day hold \u00b7 strong five-session trend \u00b7 20-session trend is strong \u00b7 longer-term evidence is also close",
+      "relative_strength_vs_spy_20d_pct": 71.66,
+      "daily_setup_archetypes": [
+        "20D BREAKOUT"
+      ],
+      "trend_candidate_raw_score": 78.0,
+      "trend_candidate_score_version": "trend-candidate-score-v1",
+      "daily_discovery_score": 78.0,
+      "daily_setup_grade": "C",
+      "daily_review_action": "REVIEW SWING / LONGER-TERM",
+      "daily_review_reason": "current move is very extended for a multi-day hold \u00b7 strong five-session trend \u00b7 20-session trend is strong \u00b7 longer-term evidence is also close",
+      "production_rank_impact": false
+    },
+    {
+      "symbol": "M",
+      "price": 24.17,
+      "day_pct": 3.16,
+      "average_volume": 19709037.0,
+      "average_dollar_volume": 476367424.29,
+      "daily_history_sessions": 85,
+      "daily_context_source": "tradier_consolidated_daily",
+      "daily_return_5d_pct": -0.21,
+      "daily_return_20d_pct": 8.34,
+      "daily_return_40d_pct": 5.92,
+      "daily_ma_10": 23.391,
+      "daily_ma_20": 23.082,
+      "daily_ma_40": 22.5977,
+      "daily_above_ma20": true,
+      "daily_above_ma40": true,
+      "daily_ma_alignment": "BULLISH",
+      "daily_recent_high": 24.71,
+      "daily_from_recent_high_pct": -2.19,
+      "daily_volume": 5460086.0,
+      "daily_avg_volume_20": 6809401.0,
+      "daily_volume_ratio": 0.8,
+      "daily_breakout_20d": false,
+      "news_bonus": 0.0,
+      "stair_step_count": 1.0,
+      "stair_last_step_pct": 6.79,
+      "stair_step_acceleration_ratio": null,
+      "stair_plateau_days": 5.0,
+      "stair_plateau_range_pct": 7.34,
+      "stair_plateau_retention_pct": 59.7,
+      "stair_plateau_volume_ratio": 0.597,
+      "stair_higher_plateau_count": 0.0,
+      "stair_structure_score": 65.0,
+      "stair_reaccelerating": 0.0,
+      "stair_reacceleration_developing": 0.0,
+      "stair_breakdown": 0.0,
+      "stair_breakdown_confirmed": 0.0,
+      "stair_breakdown_developing": 0.0,
+      "timeframe_fit": {
+        "version": "scanner-timeframe-fit-v1",
+        "best_fit": "LONGER-TERM",
+        "primary_fit": "LONGER-TERM",
+        "secondary_fit": "SWING",
+        "fit_horizons": [
+          "LONGER-TERM"
+        ],
+        "scores": {
+          "INTRADAY": 50.0,
+          "SWING": 60.0,
+          "LONGER-TERM": 95.0
+        },
+        "coverage": {
+          "INTRADAY": 0,
+          "SWING": 5,
+          "LONGER-TERM": 8
+        },
+        "confidence": "HIGH",
+        "margin_points": 35.0,
+        "reasons": {
+          "INTRADAY": [],
+          "SWING": [
+            "20-session trend is positive",
+            "constructive multi-session structure"
+          ],
+          "LONGER-TERM": [
+            "20-session trend is constructive",
+            "price is above its 20-session average",
+            "price is above its 40-session average",
+            "10/20/40-session averages are bullishly aligned",
+            "price is still near its recent multi-week high",
+            "multi-session structure supports trend persistence",
+            "current momentum is supportive without extreme extension"
+          ]
+        },
+        "explanation": [
+          "20-session trend is constructive",
+          "price is above its 20-session average",
+          "price is above its 40-session average"
+        ],
+        "horizon_guide": {
+          "INTRADAY": "minutes to same day",
+          "SWING": "roughly 2-10 trading days",
+          "LONGER-TERM": "roughly 2-8 weeks"
+        },
+        "production_rank_impact": false,
+        "note": "Timeframe Fit is an explainable scanner classification only. It does not change momentum ranking, Scanner ACTION, or validated intraday ML. LONGER-TERM is a technical screen and should be confirmed in Analyzer with fundamentals, dilution/filings, catalyst durability, and risk."
+      },
+      "timeframe_fit_version": "scanner-timeframe-fit-v1",
+      "timeframe_best_fit": "LONGER-TERM",
+      "timeframe_primary_fit": "LONGER-TERM",
+      "timeframe_secondary_fit": "SWING",
+      "timeframe_fit_horizons": [
+        "LONGER-TERM"
+      ],
+      "timeframe_intraday_score": 50.0,
+      "timeframe_swing_score": 60.0,
+      "timeframe_longer_term_score": 95.0,
+      "timeframe_fit_confidence": "HIGH",
+      "timeframe_fit_reason": "20-session trend is constructive \u00b7 price is above its 20-session average \u00b7 price is above its 40-session average",
+      "relative_strength_vs_spy_20d_pct": 8.76,
+      "daily_setup_archetypes": [
+        "MOMENTUM TREND"
+      ],
+      "trend_candidate_raw_score": 77.8,
+      "trend_candidate_score_version": "trend-candidate-score-v1",
+      "daily_discovery_score": 77.8,
+      "daily_setup_grade": "C",
+      "daily_review_action": "REVIEW LONGER-TERM",
+      "daily_review_reason": "20-session trend is constructive \u00b7 price is above its 20-session average \u00b7 price is above its 40-session average",
+      "production_rank_impact": false
+    },
+    {
+      "symbol": "ESLA",
+      "price": 0.7268,
+      "day_pct": 32.15,
+      "average_volume": 1467700.0,
+      "average_dollar_volume": 1066724.36,
+      "daily_history_sessions": 85,
+      "daily_context_source": "tradier_consolidated_daily",
+      "daily_return_5d_pct": 35.8,
+      "daily_return_20d_pct": 54.31,
+      "daily_return_40d_pct": -0.44,
+      "daily_ma_10": 0.4392,
+      "daily_ma_20": 0.444,
+      "daily_ma_40": 0.5296,
+      "daily_above_ma20": true,
+      "daily_above_ma40": true,
+      "daily_ma_alignment": "BEARISH",
+      "daily_recent_high": 0.85,
+      "daily_from_recent_high_pct": -14.49,
+      "daily_volume": 6850988.0,
+      "daily_avg_volume_20": 4895041.0,
+      "daily_volume_ratio": 1.4,
+      "daily_breakout_20d": false,
+      "news_bonus": 0.0,
+      "stair_step_count": 4.0,
+      "stair_last_step_pct": 32.15,
+      "stair_step_acceleration_ratio": 0.857,
+      "stair_plateau_days": 0.0,
+      "stair_plateau_range_pct": 0.0,
+      "stair_plateau_retention_pct": 100.0,
+      "stair_plateau_volume_ratio": null,
+      "stair_higher_plateau_count": 2.0,
+      "stair_structure_score": 100.0,
+      "stair_reaccelerating": 1.0,
+      "stair_reacceleration_developing": 0.0,
+      "stair_breakdown": 0.0,
+      "stair_breakdown_confirmed": 0.0,
+      "stair_breakdown_developing": 0.0,
+      "timeframe_fit": {
+        "version": "scanner-timeframe-fit-v1",
+        "best_fit": "SWING",
+        "primary_fit": "SWING",
+        "secondary_fit": "LONGER-TERM",
+        "fit_horizons": [
+          "SWING"
+        ],
+        "scores": {
+          "INTRADAY": 50.0,
+          "SWING": 94.0,
+          "LONGER-TERM": 73.0
+        },
+        "coverage": {
+          "INTRADAY": 0,
+          "SWING": 5,
+          "LONGER-TERM": 8
+        },
+        "confidence": "HIGH",
+        "margin_points": 21.0,
+        "reasons": {
+          "INTRADAY": [],
+          "SWING": [
+            "strong current move can support continuation",
+            "strong five-session trend",
+            "20-session trend is strong",
+            "strong multi-session stair-step structure",
+            "multiple higher momentum steps are visible",
+            "multi-session trend is reaccelerating"
+          ],
+          "LONGER-TERM": [
+            "20-session trend is firmly positive",
+            "price is above its 20-session average",
+            "price is above its 40-session average",
+            "10/20/40-session averages are bearishly aligned",
+            "multi-session structure supports trend persistence"
+          ]
+        },
+        "explanation": [
+          "strong current move can support continuation",
+          "strong five-session trend",
+          "20-session trend is strong"
+        ],
+        "horizon_guide": {
+          "INTRADAY": "minutes to same day",
+          "SWING": "roughly 2-10 trading days",
+          "LONGER-TERM": "roughly 2-8 weeks"
+        },
+        "production_rank_impact": false,
+        "note": "Timeframe Fit is an explainable scanner classification only. It does not change momentum ranking, Scanner ACTION, or validated intraday ML. LONGER-TERM is a technical screen and should be confirmed in Analyzer with fundamentals, dilution/filings, catalyst durability, and risk."
+      },
+      "timeframe_fit_version": "scanner-timeframe-fit-v1",
+      "timeframe_best_fit": "SWING",
+      "timeframe_primary_fit": "SWING",
+      "timeframe_secondary_fit": "LONGER-TERM",
+      "timeframe_fit_horizons": [
+        "SWING"
+      ],
+      "timeframe_intraday_score": 50.0,
+      "timeframe_swing_score": 94.0,
+      "timeframe_longer_term_score": 73.0,
+      "timeframe_fit_confidence": "HIGH",
+      "timeframe_fit_reason": "strong current move can support continuation \u00b7 strong five-session trend \u00b7 20-session trend is strong",
+      "relative_strength_vs_spy_20d_pct": 54.73,
+      "daily_setup_archetypes": [
+        "MOMENTUM TREND"
+      ],
+      "trend_candidate_raw_score": 77.7,
+      "trend_candidate_score_version": "trend-candidate-score-v1",
+      "daily_discovery_score": 77.7,
+      "daily_setup_grade": "C",
+      "daily_review_action": "REVIEW SWING",
+      "daily_review_reason": "strong current move can support continuation \u00b7 strong five-session trend \u00b7 20-session trend is strong",
+      "production_rank_impact": false
+    },
+    {
+      "symbol": "BHVN",
+      "price": 14.69,
+      "day_pct": 25.02,
+      "average_volume": 2617535.0,
+      "average_dollar_volume": 38451589.15,
+      "daily_history_sessions": 85,
+      "daily_context_source": "tradier_consolidated_daily",
+      "daily_return_5d_pct": 28.52,
+      "daily_return_20d_pct": 11.37,
+      "daily_return_40d_pct": -13.33,
+      "daily_ma_10": 11.805,
+      "daily_ma_20": 12.291,
+      "daily_ma_40": 13.2815,
+      "daily_above_ma20": true,
+      "daily_above_ma40": true,
+      "daily_ma_alignment": "BEARISH",
+      "daily_recent_high": 18.24,
+      "daily_from_recent_high_pct": -19.46,
+      "daily_volume": 30510243.0,
+      "daily_avg_volume_20": 1908616.0,
+      "daily_volume_ratio": 15.99,
+      "daily_breakout_20d": true,
+      "news_bonus": 0.0,
+      "stair_step_count": 3.0,
+      "stair_last_step_pct": 25.02,
+      "stair_step_acceleration_ratio": 4.732,
+      "stair_plateau_days": 0.0,
+      "stair_plateau_range_pct": 0.0,
+      "stair_plateau_retention_pct": 100.0,
+      "stair_plateau_volume_ratio": null,
+      "stair_higher_plateau_count": 2.0,
+      "stair_structure_score": 100.0,
+      "stair_reaccelerating": 1.0,
+      "stair_reacceleration_developing": 0.0,
+      "stair_breakdown": 0.0,
+      "stair_breakdown_confirmed": 0.0,
+      "stair_breakdown_developing": 0.0,
+      "timeframe_fit": {
+        "version": "scanner-timeframe-fit-v1",
+        "best_fit": "SWING",
+        "primary_fit": "SWING",
+        "secondary_fit": "LONGER-TERM",
+        "fit_horizons": [
+          "SWING"
+        ],
+        "scores": {
+          "INTRADAY": 50.0,
+          "SWING": 88.0,
+          "LONGER-TERM": 68.0
+        },
+        "coverage": {
+          "INTRADAY": 0,
+          "SWING": 5,
+          "LONGER-TERM": 8
+        },
+        "confidence": "HIGH",
+        "margin_points": 20.0,
+        "reasons": {
+          "INTRADAY": [],
+          "SWING": [
+            "strong current move can support continuation",
+            "strong five-session trend",
+            "20-session trend is positive",
+            "strong multi-session stair-step structure",
+            "multiple higher momentum steps are visible",
+            "multi-session trend is reaccelerating"
+          ],
+          "LONGER-TERM": [
+            "20-session trend is constructive",
+            "price is above its 20-session average",
+            "price is above its 40-session average",
+            "10/20/40-session averages are bearishly aligned",
+            "multi-session structure supports trend persistence"
+          ]
+        },
+        "explanation": [
+          "strong current move can support continuation",
+          "strong five-session trend",
+          "20-session trend is positive"
+        ],
+        "horizon_guide": {
+          "INTRADAY": "minutes to same day",
+          "SWING": "roughly 2-10 trading days",
+          "LONGER-TERM": "roughly 2-8 weeks"
+        },
+        "production_rank_impact": false,
+        "note": "Timeframe Fit is an explainable scanner classification only. It does not change momentum ranking, Scanner ACTION, or validated intraday ML. LONGER-TERM is a technical screen and should be confirmed in Analyzer with fundamentals, dilution/filings, catalyst durability, and risk."
+      },
+      "timeframe_fit_version": "scanner-timeframe-fit-v1",
+      "timeframe_best_fit": "SWING",
+      "timeframe_primary_fit": "SWING",
+      "timeframe_secondary_fit": "LONGER-TERM",
+      "timeframe_fit_horizons": [
+        "SWING"
+      ],
+      "timeframe_intraday_score": 50.0,
+      "timeframe_swing_score": 88.0,
+      "timeframe_longer_term_score": 68.0,
+      "timeframe_fit_confidence": "HIGH",
+      "timeframe_fit_reason": "strong current move can support continuation \u00b7 strong five-session trend \u00b7 20-session trend is positive",
+      "relative_strength_vs_spy_20d_pct": 11.79,
+      "daily_setup_archetypes": [
+        "20D BREAKOUT"
+      ],
+      "trend_candidate_raw_score": 76.8,
+      "trend_candidate_score_version": "trend-candidate-score-v1",
+      "daily_discovery_score": 76.8,
+      "daily_setup_grade": "C",
+      "daily_review_action": "REVIEW SWING",
+      "daily_review_reason": "strong current move can support continuation \u00b7 strong five-session trend \u00b7 20-session trend is positive",
+      "production_rank_impact": false
+    },
+    {
+      "symbol": "KMI",
+      "price": 33.72,
+      "day_pct": -0.74,
+      "average_volume": 11858666.0,
+      "average_dollar_volume": 399874217.52,
+      "daily_history_sessions": 85,
+      "daily_context_source": "tradier_consolidated_daily",
+      "daily_return_5d_pct": 2.74,
+      "daily_return_20d_pct": 7.9,
+      "daily_return_40d_pct": 5.31,
+      "daily_ma_10": 33.402,
+      "daily_ma_20": 32.262,
+      "daily_ma_40": 31.8517,
+      "daily_above_ma20": true,
+      "daily_above_ma40": true,
+      "daily_ma_alignment": "BULLISH",
+      "daily_recent_high": 34.6,
+      "daily_from_recent_high_pct": -2.54,
+      "daily_volume": 31391725.0,
+      "daily_avg_volume_20": 12049663.0,
+      "daily_volume_ratio": 2.61,
+      "daily_breakout_20d": false,
+      "news_bonus": 0.0,
+      "stair_step_count": 1.0,
+      "stair_last_step_pct": 4.2,
+      "stair_step_acceleration_ratio": null,
+      "stair_plateau_days": 4.0,
+      "stair_plateau_range_pct": 6.61,
+      "stair_plateau_retention_pct": 59.8,
+      "stair_plateau_volume_ratio": 0.963,
+      "stair_higher_plateau_count": 0.0,
+      "stair_structure_score": 51.0,
+      "stair_reaccelerating": 0.0,
+      "stair_reacceleration_developing": 0.0,
+      "stair_breakdown": 0.0,
+      "stair_breakdown_confirmed": 0.0,
+      "stair_breakdown_developing": 0.0,
+      "timeframe_fit": {
+        "version": "scanner-timeframe-fit-v1",
+        "best_fit": "LONGER-TERM",
+        "primary_fit": "LONGER-TERM",
+        "secondary_fit": "SWING",
+        "fit_horizons": [
+          "LONGER-TERM"
+        ],
+        "scores": {
+          "INTRADAY": 50.0,
+          "SWING": 60.0,
+          "LONGER-TERM": 86.0
+        },
+        "coverage": {
+          "INTRADAY": 0,
+          "SWING": 5,
+          "LONGER-TERM": 8
+        },
+        "confidence": "HIGH",
+        "margin_points": 26.0,
+        "reasons": {
+          "INTRADAY": [],
+          "SWING": [
+            "five-session trend is positive",
+            "20-session trend is positive"
+          ],
+          "LONGER-TERM": [
+            "20-session trend is constructive",
+            "price is above its 20-session average",
+            "price is above its 40-session average",
+            "10/20/40-session averages are bullishly aligned",
+            "price is still near its recent multi-week high"
+          ]
+        },
+        "explanation": [
+          "20-session trend is constructive",
+          "price is above its 20-session average",
+          "price is above its 40-session average"
+        ],
+        "horizon_guide": {
+          "INTRADAY": "minutes to same day",
+          "SWING": "roughly 2-10 trading days",
+          "LONGER-TERM": "roughly 2-8 weeks"
+        },
+        "production_rank_impact": false,
+        "note": "Timeframe Fit is an explainable scanner classification only. It does not change momentum ranking, Scanner ACTION, or validated intraday ML. LONGER-TERM is a technical screen and should be confirmed in Analyzer with fundamentals, dilution/filings, catalyst durability, and risk."
+      },
+      "timeframe_fit_version": "scanner-timeframe-fit-v1",
+      "timeframe_best_fit": "LONGER-TERM",
+      "timeframe_primary_fit": "LONGER-TERM",
+      "timeframe_secondary_fit": "SWING",
+      "timeframe_fit_horizons": [
+        "LONGER-TERM"
+      ],
+      "timeframe_intraday_score": 50.0,
+      "timeframe_swing_score": 60.0,
+      "timeframe_longer_term_score": 86.0,
+      "timeframe_fit_confidence": "HIGH",
+      "timeframe_fit_reason": "20-session trend is constructive \u00b7 price is above its 20-session average \u00b7 price is above its 40-session average",
+      "relative_strength_vs_spy_20d_pct": 8.32,
+      "daily_setup_archetypes": [
+        "MOMENTUM TREND"
+      ],
+      "trend_candidate_raw_score": 75.9,
+      "trend_candidate_score_version": "trend-candidate-score-v1",
+      "daily_discovery_score": 75.9,
+      "daily_setup_grade": "C",
+      "daily_review_action": "REVIEW LONGER-TERM",
+      "daily_review_reason": "20-session trend is constructive \u00b7 price is above its 20-session average \u00b7 price is above its 40-session average",
+      "production_rank_impact": false
+    },
+    {
+      "symbol": "BKYI",
+      "price": 2.74,
+      "day_pct": 30.48,
+      "average_volume": 22255.0,
+      "average_dollar_volume": 60978.700000000004,
+      "daily_history_sessions": 85,
+      "daily_context_source": "tradier_consolidated_daily",
+      "daily_return_5d_pct": -7.12,
+      "daily_return_20d_pct": 34.31,
+      "daily_return_40d_pct": -7.43,
+      "daily_ma_10": 2.405,
+      "daily_ma_20": 2.255,
+      "daily_ma_40": 2.4764,
+      "daily_above_ma20": true,
+      "daily_above_ma40": true,
+      "daily_ma_alignment": "MIXED",
+      "daily_recent_high": 4.66,
+      "daily_from_recent_high_pct": -41.2,
+      "daily_volume": 32439792.0,
+      "daily_avg_volume_20": 13049026.0,
+      "daily_volume_ratio": 2.49,
+      "daily_breakout_20d": false,
+      "news_bonus": 0.0,
+      "stair_step_count": 3.0,
+      "stair_last_step_pct": 30.48,
+      "stair_step_acceleration_ratio": 0.426,
+      "stair_plateau_days": 0.0,
+      "stair_plateau_range_pct": 0.0,
+      "stair_plateau_retention_pct": 100.0,
+      "stair_plateau_volume_ratio": null,
+      "stair_higher_plateau_count": 2.0,
+      "stair_structure_score": 100.0,
+      "stair_reaccelerating": 1.0,
+      "stair_reacceleration_developing": 0.0,
+      "stair_breakdown": 0.0,
+      "stair_breakdown_confirmed": 0.0,
+      "stair_breakdown_developing": 0.0,
+      "timeframe_fit": {
+        "version": "scanner-timeframe-fit-v1",
+        "best_fit": "SWING",
+        "primary_fit": "SWING",
+        "secondary_fit": "LONGER-TERM",
+        "fit_horizons": [
+          "SWING"
+        ],
+        "scores": {
+          "INTRADAY": 50.0,
+          "SWING": 84.0,
+          "LONGER-TERM": 74.0
+        },
+        "coverage": {
+          "INTRADAY": 0,
+          "SWING": 5,
+          "LONGER-TERM": 8
+        },
+        "confidence": "HIGH",
+        "margin_points": 10.0,
+        "reasons": {
+          "INTRADAY": [],
+          "SWING": [
+            "strong current move can support continuation",
+            "20-session trend is strong",
+            "strong multi-session stair-step structure",
+            "multiple higher momentum steps are visible",
+            "multi-session trend is reaccelerating"
+          ],
+          "LONGER-TERM": [
+            "20-session trend is firmly positive",
+            "price is above its 20-session average",
+            "price is above its 40-session average",
+            "price remains far below its recent multi-week high",
+            "multi-session structure supports trend persistence"
+          ]
+        },
+        "explanation": [
+          "strong current move can support continuation",
+          "20-session trend is strong",
+          "strong multi-session stair-step structure"
+        ],
+        "horizon_guide": {
+          "INTRADAY": "minutes to same day",
+          "SWING": "roughly 2-10 trading days",
+          "LONGER-TERM": "roughly 2-8 weeks"
+        },
+        "production_rank_impact": false,
+        "note": "Timeframe Fit is an explainable scanner classification only. It does not change momentum ranking, Scanner ACTION, or validated intraday ML. LONGER-TERM is a technical screen and should be confirmed in Analyzer with fundamentals, dilution/filings, catalyst durability, and risk."
+      },
+      "timeframe_fit_version": "scanner-timeframe-fit-v1",
+      "timeframe_best_fit": "SWING",
+      "timeframe_primary_fit": "SWING",
+      "timeframe_secondary_fit": "LONGER-TERM",
+      "timeframe_fit_horizons": [
+        "SWING"
+      ],
+      "timeframe_intraday_score": 50.0,
+      "timeframe_swing_score": 84.0,
+      "timeframe_longer_term_score": 74.0,
+      "timeframe_fit_confidence": "HIGH",
+      "timeframe_fit_reason": "strong current move can support continuation \u00b7 20-session trend is strong \u00b7 strong multi-session stair-step structure",
+      "relative_strength_vs_spy_20d_pct": 34.73,
+      "daily_setup_archetypes": [
+        "MOMENTUM TREND"
+      ],
+      "trend_candidate_raw_score": 75.4,
+      "trend_candidate_score_version": "trend-candidate-score-v1",
+      "daily_discovery_score": 75.4,
+      "daily_setup_grade": "C",
+      "daily_review_action": "REVIEW SWING",
+      "daily_review_reason": "strong current move can support continuation \u00b7 20-session trend is strong \u00b7 strong multi-session stair-step structure",
+      "production_rank_impact": false
+    },
+    {
+      "symbol": "PFE",
+      "price": 30.42,
+      "day_pct": 1.91,
+      "average_volume": 22489706.0,
+      "average_dollar_volume": 684136856.52,
+      "daily_history_sessions": 85,
+      "daily_context_source": "tradier_consolidated_daily",
+      "daily_return_5d_pct": 3.33,
+      "daily_return_20d_pct": 7.07,
+      "daily_return_40d_pct": 7.49,
+      "daily_ma_10": 29.31,
+      "daily_ma_20": 28.719,
+      "daily_ma_40": 28.372,
+      "daily_above_ma20": true,
+      "daily_above_ma40": true,
+      "daily_ma_alignment": "BULLISH",
+      "daily_recent_high": 30.44,
+      "daily_from_recent_high_pct": -0.07,
+      "daily_volume": 28703381.0,
+      "daily_avg_volume_20": 29982007.0,
+      "daily_volume_ratio": 0.96,
+      "daily_breakout_20d": true,
+      "news_bonus": 0.0,
+      "stair_step_count": 0.0,
+      "stair_last_step_pct": null,
+      "stair_step_acceleration_ratio": null,
+      "stair_plateau_days": 0.0,
+      "stair_plateau_range_pct": null,
+      "stair_plateau_retention_pct": null,
+      "stair_plateau_volume_ratio": null,
+      "stair_higher_plateau_count": 0.0,
+      "stair_structure_score": 25.0,
+      "stair_reaccelerating": 0.0,
+      "stair_reacceleration_developing": 0.0,
+      "stair_breakdown": 0.0,
+      "stair_breakdown_confirmed": 0.0,
+      "stair_breakdown_developing": 0.0,
+      "timeframe_fit": {
+        "version": "scanner-timeframe-fit-v1",
+        "best_fit": "LONGER-TERM",
+        "primary_fit": "LONGER-TERM",
+        "secondary_fit": "SWING",
+        "fit_horizons": [
+          "LONGER-TERM"
+        ],
+        "scores": {
+          "INTRADAY": 50.0,
+          "SWING": 53.0,
+          "LONGER-TERM": 89.0
+        },
+        "coverage": {
+          "INTRADAY": 0,
+          "SWING": 5,
+          "LONGER-TERM": 8
+        },
+        "confidence": "HIGH",
+        "margin_points": 36.0,
+        "reasons": {
+          "INTRADAY": [],
+          "SWING": [
+            "five-session trend is positive",
+            "20-session trend is positive",
+            "multi-session structure is weak"
+          ],
+          "LONGER-TERM": [
+            "20-session trend is constructive",
+            "roughly two-month trend is positive",
+            "price is above its 20-session average",
+            "price is above its 40-session average",
+            "10/20/40-session averages are bullishly aligned",
+            "price is still near its recent multi-week high",
+            "multi-session structure is not yet durable"
+          ]
+        },
+        "explanation": [
+          "20-session trend is constructive",
+          "roughly two-month trend is positive",
+          "price is above its 20-session average"
+        ],
+        "horizon_guide": {
+          "INTRADAY": "minutes to same day",
+          "SWING": "roughly 2-10 trading days",
+          "LONGER-TERM": "roughly 2-8 weeks"
+        },
+        "production_rank_impact": false,
+        "note": "Timeframe Fit is an explainable scanner classification only. It does not change momentum ranking, Scanner ACTION, or validated intraday ML. LONGER-TERM is a technical screen and should be confirmed in Analyzer with fundamentals, dilution/filings, catalyst durability, and risk."
+      },
+      "timeframe_fit_version": "scanner-timeframe-fit-v1",
+      "timeframe_best_fit": "LONGER-TERM",
+      "timeframe_primary_fit": "LONGER-TERM",
+      "timeframe_secondary_fit": "SWING",
+      "timeframe_fit_horizons": [
+        "LONGER-TERM"
+      ],
+      "timeframe_intraday_score": 50.0,
+      "timeframe_swing_score": 53.0,
+      "timeframe_longer_term_score": 89.0,
+      "timeframe_fit_confidence": "HIGH",
+      "timeframe_fit_reason": "20-session trend is constructive \u00b7 roughly two-month trend is positive \u00b7 price is above its 20-session average",
+      "relative_strength_vs_spy_20d_pct": 7.49,
+      "daily_setup_archetypes": [
+        "20D BREAKOUT"
+      ],
+      "trend_candidate_raw_score": 74.5,
+      "trend_candidate_score_version": "trend-candidate-score-v1",
+      "daily_discovery_score": 74.5,
+      "daily_setup_grade": "C",
+      "daily_review_action": "REVIEW LONGER-TERM",
+      "daily_review_reason": "20-session trend is constructive \u00b7 roughly two-month trend is positive \u00b7 price is above its 20-session average",
+      "production_rank_impact": false
+    },
+    {
+      "symbol": "RRC",
+      "price": 43.86,
+      "day_pct": 2.14,
+      "average_volume": 11343833.0,
+      "average_dollar_volume": 497540515.38,
+      "daily_history_sessions": 85,
+      "daily_context_source": "tradier_consolidated_daily",
+      "daily_return_5d_pct": 5.89,
+      "daily_return_20d_pct": 12.06,
+      "daily_return_40d_pct": 5.56,
+      "daily_ma_10": 42.493,
+      "daily_ma_20": 40.522,
+      "daily_ma_40": 40.5973,
+      "daily_above_ma20": true,
+      "daily_above_ma40": true,
+      "daily_ma_alignment": "MIXED",
+      "daily_recent_high": 43.94,
+      "daily_from_recent_high_pct": -0.18,
+      "daily_volume": 3043614.0,
+      "daily_avg_volume_20": 2660777.0,
+      "daily_volume_ratio": 1.14,
+      "daily_breakout_20d": true,
+      "news_bonus": 0.0,
+      "stair_step_count": 1.0,
+      "stair_last_step_pct": 4.35,
+      "stair_step_acceleration_ratio": null,
+      "stair_plateau_days": 4.0,
+      "stair_plateau_range_pct": 4.37,
+      "stair_plateau_retention_pct": 111.7,
+      "stair_plateau_volume_ratio": 1.161,
+      "stair_higher_plateau_count": 0.0,
+      "stair_structure_score": 64.0,
+      "stair_reaccelerating": 0.0,
+      "stair_reacceleration_developing": 0.0,
+      "stair_breakdown": 0.0,
+      "stair_breakdown_confirmed": 0.0,
+      "stair_breakdown_developing": 0.0,
+      "timeframe_fit": {
+        "version": "scanner-timeframe-fit-v1",
+        "best_fit": "LONGER-TERM",
+        "primary_fit": "LONGER-TERM",
+        "secondary_fit": "SWING",
+        "fit_horizons": [
+          "LONGER-TERM"
+        ],
+        "scores": {
+          "INTRADAY": 50.0,
+          "SWING": 71.0,
+          "LONGER-TERM": 77.0
+        },
+        "coverage": {
+          "INTRADAY": 0,
+          "SWING": 5,
+          "LONGER-TERM": 8
+        },
+        "confidence": "MODERATE",
+        "margin_points": 6.0,
+        "reasons": {
+          "INTRADAY": [],
+          "SWING": [
+            "five-session trend is positive",
+            "20-session trend is strong",
+            "constructive multi-session structure"
+          ],
+          "LONGER-TERM": [
+            "20-session trend is constructive",
+            "price is above its 20-session average",
+            "price is above its 40-session average",
+            "price is still near its recent multi-week high"
+          ]
+        },
+        "explanation": [
+          "20-session trend is constructive",
+          "price is above its 20-session average",
+          "price is above its 40-session average"
+        ],
+        "horizon_guide": {
+          "INTRADAY": "minutes to same day",
+          "SWING": "roughly 2-10 trading days",
+          "LONGER-TERM": "roughly 2-8 weeks"
+        },
+        "production_rank_impact": false,
+        "note": "Timeframe Fit is an explainable scanner classification only. It does not change momentum ranking, Scanner ACTION, or validated intraday ML. LONGER-TERM is a technical screen and should be confirmed in Analyzer with fundamentals, dilution/filings, catalyst durability, and risk."
+      },
+      "timeframe_fit_version": "scanner-timeframe-fit-v1",
+      "timeframe_best_fit": "LONGER-TERM",
+      "timeframe_primary_fit": "LONGER-TERM",
+      "timeframe_secondary_fit": "SWING",
+      "timeframe_fit_horizons": [
+        "LONGER-TERM"
+      ],
+      "timeframe_intraday_score": 50.0,
+      "timeframe_swing_score": 71.0,
+      "timeframe_longer_term_score": 77.0,
+      "timeframe_fit_confidence": "MODERATE",
+      "timeframe_fit_reason": "20-session trend is constructive \u00b7 price is above its 20-session average \u00b7 price is above its 40-session average",
+      "relative_strength_vs_spy_20d_pct": 12.48,
+      "daily_setup_archetypes": [
+        "20D BREAKOUT"
+      ],
+      "trend_candidate_raw_score": 72.2,
+      "trend_candidate_score_version": "trend-candidate-score-v1",
+      "daily_discovery_score": 72.2,
+      "daily_setup_grade": "C",
+      "daily_review_action": "REVIEW LONGER-TERM",
+      "daily_review_reason": "20-session trend is constructive \u00b7 price is above its 20-session average \u00b7 price is above its 40-session average",
+      "production_rank_impact": false
+    }
+  ],
+  "errors": [],
+  "runtime_seconds": 114.6,
+  "note": "Off-hours daily discovery is a technical Swing / Longer-Term screen. It does not change live Momentum Scanner ranking, ACTION, or ML. Open a candidate in Analyzer before deciding whether to trade."
+}
