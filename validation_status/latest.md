@@ -1,6 +1,6 @@
 # Forward Validation Status
 
-Generated: 2026-10-28T06:57:34.471718+00:00
+Generated: 2026-10-29T07:00:42.733563+00:00
 
 ## Scanner ML — independent live confirmation
 - **Samples:** 38/100 — 62 remaining
