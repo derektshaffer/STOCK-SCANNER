@@ -1,5 +1,5 @@
 {
-  "generated_at_utc": "2026-10-29T07:17:54.996533+00:00",
+  "generated_at_utc": "2026-10-30T07:03:45.703963+00:00",
   "production_claim": "Rules-based Scanner/Analyzer decision support remains usable. Predictive ML and Swing/Longer-Term probability claims remain gated until their independent evidence requirements pass.",
   "schema_version": 1,
   "sections": {
@@ -102,7 +102,7 @@
       "minimum_snapshots_for_point_in_time_replay": 3,
       "note": "A snapshot captured after a session may only be used for later sessions, never the same replay date.",
       "replay_ready_snapshot_count": 41,
-      "snapshot_count": 43
+      "snapshot_count": 44
     },
     "scanner_ml_live_confirmation": {
       "evidence_gate_ready": false,
