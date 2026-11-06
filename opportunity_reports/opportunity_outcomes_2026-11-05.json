@@ -1,0 +1,13 @@
+{
+  "schema_version": 2,
+  "version": "2.0",
+  "path_target": ">= +3% within 60m before -3% failure stop",
+  "trading_date": "2026-11-05",
+  "generated_at_utc": "2026-11-06T08:02:27.489758+00:00",
+  "production_influence": false,
+  "purpose": "shadow opportunity/path learning",
+  "market_data_source": "none",
+  "scanner_snapshot_count": 0,
+  "observation_count": 0,
+  "observations": []
+}
