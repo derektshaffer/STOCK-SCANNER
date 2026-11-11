@@ -1,5 +1,5 @@
 {
-  "broad_common_stock_count": 6087,
+  "broad_common_stock_count": 6088,
   "broad_common_stock_symbols": [
     "A",
     "AA",
@@ -4853,6 +4853,7 @@
     "SCNX",
     "SCOR",
     "SCPQ",
+    "SCQC",
     "SCSC",
     "SCTX",
     "SCWO",
@@ -6089,10 +6090,10 @@
     "ZYBT",
     "ZYME"
   ],
-  "broad_symbol_sha256": "d4ae4cceebc4feba4e2dc41c1a9b362dea17036220bfefe95403ffb3af6632c8",
-  "captured_date_et": "2026-11-10",
+  "broad_symbol_sha256": "d6374dae41830b3440176053f891e3a83755da237b524f60816a03ddb90d7e68",
+  "captured_date_et": "2026-11-11",
   "error": "HTTP Error 401: Unauthorized",
-  "generated_at_utc": "2026-11-10T08:22:29.971549+00:00",
+  "generated_at_utc": "2026-11-11T07:43:13.830991+00:00",
   "quote_eligible_count": 0,
   "replay_eligibility": "strictly_after_capture_date",
   "replay_ready": false,
