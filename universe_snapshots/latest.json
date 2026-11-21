@@ -1,5 +1,5 @@
 {
-  "broad_common_stock_count": 6079,
+  "broad_common_stock_count": 6080,
   "broad_common_stock_symbols": [
     "A",
     "AA",
@@ -1492,6 +1492,7 @@
     "CZNC",
     "CZR",
     "CZWI",
+    "CZZL",
     "D",
     "DAAQ",
     "DAC",
@@ -6081,10 +6082,10 @@
     "ZYME",
     "ZYN"
   ],
-  "broad_symbol_sha256": "99a2f0174262150354715561c253b817af08a10ea2b2a6e054376d211704d8b7",
-  "captured_date_et": "2026-11-20",
+  "broad_symbol_sha256": "17e489a1debcb40c755859b80573f17ba6ef09af6b3ed057e1fb8896c1fb5d5a",
+  "captured_date_et": "2026-11-21",
   "error": "HTTP Error 401: Unauthorized",
-  "generated_at_utc": "2026-11-20T08:28:31.665377+00:00",
+  "generated_at_utc": "2026-11-21T08:14:19.867027+00:00",
   "quote_eligible_count": 0,
   "replay_eligibility": "strictly_after_capture_date",
   "replay_ready": false,
