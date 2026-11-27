@@ -1,5 +1,5 @@
 {
-  "broad_common_stock_count": 6080,
+  "broad_common_stock_count": 6078,
   "broad_common_stock_symbols": [
     "A",
     "AA",
@@ -2520,7 +2520,6 @@
     "HCM",
     "HCMA",
     "HCSG",
-    "HCTI",
     "HCWB",
     "HCXY",
     "HD",
@@ -5781,7 +5780,6 @@
     "VTSI",
     "VTVT",
     "VUZI",
-    "VVOS",
     "VVR",
     "VVV",
     "VVVV",
@@ -6082,10 +6080,10 @@
     "ZYME",
     "ZYN"
   ],
-  "broad_symbol_sha256": "14b58f865bd4cd90d4ac0b44182f6eb7bf827ae104caec12e7ffb8ed1a502e59",
-  "captured_date_et": "2026-11-26",
+  "broad_symbol_sha256": "39e67d9ba6a80cc1e94857b8df1529c74d466bf3d7faa9b4cf2eef2bd076693c",
+  "captured_date_et": "2026-11-27",
   "error": "HTTP Error 401: Unauthorized",
-  "generated_at_utc": "2026-11-26T09:27:39.207051+00:00",
+  "generated_at_utc": "2026-11-27T09:38:06.051935+00:00",
   "quote_eligible_count": 0,
   "replay_eligibility": "strictly_after_capture_date",
   "replay_ready": false,
