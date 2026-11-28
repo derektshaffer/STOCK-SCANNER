@@ -1,5 +1,5 @@
 {
-  "broad_common_stock_count": 6078,
+  "broad_common_stock_count": 6076,
   "broad_common_stock_symbols": [
     "A",
     "AA",
@@ -842,7 +842,6 @@
     "BOSC",
     "BOT",
     "BOTJ",
-    "BOW",
     "BOX",
     "BOXL",
     "BP",
@@ -1679,7 +1678,6 @@
     "DUO",
     "DUOL",
     "DUOT",
-    "DV",
     "DVA",
     "DVN",
     "DWSN",
@@ -6080,10 +6078,10 @@
     "ZYME",
     "ZYN"
   ],
-  "broad_symbol_sha256": "39e67d9ba6a80cc1e94857b8df1529c74d466bf3d7faa9b4cf2eef2bd076693c",
-  "captured_date_et": "2026-11-27",
+  "broad_symbol_sha256": "c421e4f59742ab1920c38c937f31eff38737a81437e303fafc41014e0cff4147",
+  "captured_date_et": "2026-11-28",
   "error": "HTTP Error 401: Unauthorized",
-  "generated_at_utc": "2026-11-27T09:38:06.051935+00:00",
+  "generated_at_utc": "2026-11-28T08:53:09.891968+00:00",
   "quote_eligible_count": 0,
   "replay_eligibility": "strictly_after_capture_date",
   "replay_ready": false,
